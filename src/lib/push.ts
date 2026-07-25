@@ -83,6 +83,11 @@ export async function enablePush(): Promise<PushState> {
   return 'on';
 }
 
+/** Proves the whole chain works — subscription, VAPID keys, and delivery. */
+export async function sendTestPush(lang: 'ar' | 'en') {
+  await api.post('/push/test', { lang });
+}
+
 export async function disablePush(): Promise<PushState> {
   if (!pushSupported()) return 'unsupported';
   const reg = await navigator.serviceWorker.getRegistration('/');

@@ -12,6 +12,7 @@ import {
   ListChecks,
   LogOut,
   Search,
+  Send,
   Settings2,
   ShieldCheck,
 } from 'lucide-react';
@@ -20,7 +21,15 @@ import { useI18n } from '../lib/i18n';
 import { useWorkspace } from '../lib/workspace';
 import { useOpenApp } from '../lib/useOpenApp';
 import { cx } from '../lib/utils';
-import { currentPushState, disablePush, enablePush, isIos, isStandalone, type PushState } from '../lib/push';
+import {
+  currentPushState,
+  disablePush,
+  enablePush,
+  isIos,
+  isStandalone,
+  sendTestPush,
+  type PushState,
+} from '../lib/push';
 import { PERMISSIONS } from '@shared/permissions';
 import { Logo } from './Brand';
 import { AppSwitcher } from './AppSwitcher';
@@ -106,6 +115,16 @@ export function Shell({ children }: { children: ReactNode }) {
       else toast(t('push.failed'), 'bad');
     } catch {
       toast(t('push.failed'), 'bad');
+    }
+  };
+
+  const testPush = async () => {
+    setMenuOpen(false);
+    try {
+      await sendTestPush(lang);
+      toast(t('push.testSent'));
+    } catch {
+      toast(t('push.testFailed'), 'bad');
     }
   };
 
@@ -261,6 +280,19 @@ export function Shell({ children }: { children: ReactNode }) {
                     >
                       <BellRing size={15} className={push === 'on' ? 'text-status-ok' : undefined} />
                       {push === 'on' ? t('shell.notificationsEnabled') : t('shell.enableNotifications')}
+                    </button>
+                  )}
+
+                  {/* Normal alerts skip the person who caused them, so this is
+                      the only way to confirm delivery without a colleague. */}
+                  {push === 'on' && (
+                    <button
+                      type="button"
+                      onClick={testPush}
+                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-[13px] font-semibold text-ink-muted transition-colors hover:bg-surface-sunken"
+                    >
+                      <Send size={15} />
+                      {t('shell.testNotification')}
                     </button>
                   )}
 

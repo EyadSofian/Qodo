@@ -79,6 +79,9 @@ const STRINGS = {
   'shell.language': { ar: 'اللغة', en: 'Language' },
   'shell.enableNotifications': { ar: 'تفعيل إشعارات الهاتف', en: 'Enable phone notifications' },
   'shell.notificationsEnabled': { ar: 'إشعارات الهاتف مفعّلة', en: 'Phone notifications on' },
+  'shell.testNotification': { ar: 'إرسال إشعار تجريبي', en: 'Send a test notification' },
+  'push.testSent': { ar: 'أُرسل الإشعار — تحقّق من جهازك.', en: 'Sent — check your device.' },
+  'push.testFailed': { ar: 'تعذّر إرسال الإشعار التجريبي.', en: 'Could not send the test notification.' },
 
   /* ── search ──────────────────────────────────────────────── */
   'search.placeholder': { ar: 'ابحث عن تطبيق أو مهمة أو شخص…', en: 'Search for an app, task or person…' },
