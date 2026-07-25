@@ -1,0 +1,17 @@
+{
+  "name": "مساحة عمل إنجوسوفت",
+  "short_name": "Engosoft",
+  "description": "كل تطبيقات إنجوسوفت في مكان واحد",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0B2545",
+  "theme_color": "#0B2545",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/logo.png", "sizes": "1073x353", "type": "image/png" }
+  ]
+}

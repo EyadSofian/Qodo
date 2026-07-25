@@ -1,0 +1,46 @@
+{
+  "name": "engosoft-workspace",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Engosoft Workspace — one hub that launches, embeds and links every Engosoft app, with users, roles and a built-in task board. Arabic-first, RTL, mobile and desktop.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "concurrently -n api,web -c blue,green \"node server/index.js\" \"vite\"",
+    "dev:web": "vite",
+    "dev:api": "node server/index.js",
+    "build": "tsc --noEmit && vite build",
+    "start": "node server/index.js",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
+    "bcryptjs": "^2.4.3",
+    "cookie-parser": "^1.4.7",
+    "express": "^4.21.2",
+    "framer-motion": "^11.15.0",
+    "jose": "^5.9.6",
+    "lucide-react": "^0.469.0",
+    "openai": "^6.49.0",
+    "pg": "^8.13.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.28.0",
+    "web-push": "^3.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "concurrently": "^9.1.2",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.2",
+    "vite": "^5.4.11"
+  }
+}

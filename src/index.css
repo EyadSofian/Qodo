@@ -1,0 +1,142 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Safe-area insets so the phone layout clears the notch and home bar. */
+    --sat: env(safe-area-inset-top, 0px);
+    --sab: env(safe-area-inset-bottom, 0px);
+    --topbar-h: 60px;
+    --bottomnav-h: 62px;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    @apply bg-surface-bg text-ink font-sans antialiased;
+    /* The launcher's atmosphere: a cool wash with a navy bloom top-start,
+       echoing the gradient in the "e" of the logo. */
+    background-image:
+      radial-gradient(1100px 620px at 88% -8%, rgba(29, 111, 184, 0.16), transparent 62%),
+      radial-gradient(820px 520px at 6% 4%, rgba(11, 37, 69, 0.1), transparent 58%);
+    background-attachment: fixed;
+    min-height: 100dvh;
+  }
+
+  /* Latin runs inside Arabic text (URLs, IDs, counts) stay left-to-right. */
+  .ltr {
+    direction: ltr;
+    unicode-bidi: isolate;
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-brand-500 ring-offset-2 ring-offset-surface-bg;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-slate-300;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-slate-400;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-surface-line bg-surface-card shadow-card;
+  }
+
+  .btn {
+    @apply inline-flex select-none items-center justify-center gap-2 rounded-xl px-4 text-sm
+           font-semibold transition-all duration-150 disabled:cursor-not-allowed disabled:opacity-50;
+    /* 44px — the smallest comfortable touch target on a phone. */
+    min-height: 44px;
+  }
+  .btn-primary {
+    @apply btn bg-brand-500 text-white shadow-sm hover:bg-brand-600 active:scale-[0.98];
+  }
+  .btn-navy {
+    @apply btn bg-navy text-white shadow-sm hover:bg-brand-800 active:scale-[0.98];
+  }
+  .btn-accent {
+    @apply btn bg-accent-500 text-white shadow-sm hover:bg-accent-600 active:scale-[0.98];
+  }
+  .btn-ghost {
+    @apply btn border border-surface-line bg-white text-ink hover:bg-surface-sunken active:scale-[0.98];
+  }
+  .btn-quiet {
+    @apply btn text-ink-muted hover:bg-surface-sunken hover:text-ink;
+  }
+  .btn-danger {
+    @apply btn bg-status-badBg text-status-bad hover:bg-status-bad hover:text-white;
+  }
+  .btn-sm {
+    @apply px-3 text-[13px];
+    min-height: 36px;
+  }
+
+  .field {
+    @apply w-full rounded-xl border border-surface-line bg-white px-3.5 py-2.5 text-sm text-ink
+           placeholder:text-ink-faint transition-colors
+           focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100;
+  }
+
+  .label {
+    @apply mb-1.5 block text-[13px] font-semibold text-ink-muted;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-semibold;
+  }
+
+  .surface-blur {
+    @apply border-b border-white/60 bg-white/80 backdrop-blur-xl backdrop-saturate-150;
+  }
+
+  /* Loading placeholder that doesn't flash — used while the grid resolves. */
+  .skeleton {
+    @apply relative overflow-hidden rounded-xl bg-slate-200/70;
+  }
+  .skeleton::after {
+    @apply absolute inset-0 animate-shimmer bg-gradient-to-r from-transparent via-white/60 to-transparent;
+    content: '';
+    transform: translateX(-100%);
+  }
+}
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .pb-safe {
+    padding-bottom: calc(var(--sab) + 0.5rem);
+  }
+  .pt-safe {
+    padding-top: var(--sat);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
