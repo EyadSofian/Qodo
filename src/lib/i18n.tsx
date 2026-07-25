@@ -173,8 +173,12 @@ const STRINGS = {
   'tasks.titleRequired': { ar: 'اكتب عنوان المهمة.', en: 'Enter a task title.' },
   'tasks.dueToday': { ar: 'اليوم', en: 'Today' },
   'tasks.dueTomorrow': { ar: 'غداً', en: 'Tomorrow' },
+  // Arabic counts three ways, not two: يوم / يومين / ٣-١٠ أيام. Skipping the
+  // dual reads as broken Arabic ("خلال 2 أيام"), so each has its own string.
   'tasks.overdueOne': { ar: 'متأخرة يوماً', en: '1 day late' },
-  'tasks.overdueMany': { ar: 'متأخرة {n} يوماً', en: '{n} days late' },
+  'tasks.overdueTwo': { ar: 'متأخرة يومين', en: '2 days late' },
+  'tasks.overdueMany': { ar: 'متأخرة {n} أيام', en: '{n} days late' },
+  'tasks.dueInTwo': { ar: 'خلال يومين', en: 'In 2 days' },
   'tasks.dueInDays': { ar: 'خلال {n} أيام', en: 'In {n} days' },
   'priority.urgent': { ar: 'عاجلة', en: 'Urgent' },
   'priority.high': { ar: 'مهمة', en: 'High' },

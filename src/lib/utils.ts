@@ -63,10 +63,12 @@ export function dueLabel(
 ): { text: string; tone: DueTone } | null {
   const days = daysUntil(dueDate);
   if (days === null) return null;
-  if (days < -1) return { text: t('tasks.overdueMany', { n: Math.abs(days) }), tone: 'bad' };
   if (days === -1) return { text: t('tasks.overdueOne'), tone: 'bad' };
+  if (days === -2) return { text: t('tasks.overdueTwo'), tone: 'bad' };
+  if (days < -1) return { text: t('tasks.overdueMany', { n: Math.abs(days) }), tone: 'bad' };
   if (days === 0) return { text: t('tasks.dueToday'), tone: 'warn' };
   if (days === 1) return { text: t('tasks.dueTomorrow'), tone: 'warn' };
+  if (days === 2) return { text: t('tasks.dueInTwo'), tone: 'info' };
   if (days <= 7) return { text: t('tasks.dueInDays', { n: days }), tone: 'info' };
   return { text: formatDate(dueDate, lang), tone: 'muted' };
 }

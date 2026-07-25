@@ -2,7 +2,10 @@
   "$schema": "https://railway.app/railway.schema.json",
   "build": {
     "builder": "NIXPACKS",
-    "buildCommand": "npm ci && npm run build"
+    "//": "Two Railway-specific reasons this is not the usual `npm ci`:",
+    "//1": "npm ci deletes node_modules wholesale, but Railway mounts its build cache at /app/node_modules/.cache — an in-use mount that cannot be removed, so the delete fails with EBUSY and the build dies before it starts.",
+    "//2": "NODE_ENV=production makes npm skip devDependencies, and the build tools (vite, typescript, tailwind) all live there. --include=dev keeps them for the build; they never reach the runtime image.",
+    "buildCommand": "npm install --include=dev --no-audit --no-fund && npm run build"
   },
   "deploy": {
     "startCommand": "npm start",
