@@ -29,6 +29,7 @@ export const COLLECTIONS = [
   'notifications',
   'activity',
   'pushSubscriptions',
+  'settings',
 ];
 
 export const newId = () => crypto.randomUUID();

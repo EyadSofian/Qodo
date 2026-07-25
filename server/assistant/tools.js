@@ -29,6 +29,7 @@ import {
 } from '../../shared/departments.js';
 import { logActivity } from '../auth.js';
 import { notifyUser } from '../push.js';
+import { APP_DATA_EXECUTORS, APP_DATA_LABELS, APP_DATA_TOOLS } from './appData.js';
 
 const PRIORITY_LABELS = {
   urgent: { ar: 'عاجلة', en: 'Urgent' },
@@ -183,6 +184,8 @@ export const TOOL_DEFINITIONS = [
       additionalProperties: false,
     },
   },
+  // Figures from inside the sibling dashboards — see ./appData.js.
+  ...APP_DATA_TOOLS,
 ];
 
 /* ------------------------------------------------------------------ */
@@ -486,7 +489,7 @@ const EXECUTORS = {
 
 /** Runs one tool call. Never throws — the model gets the error as a result. */
 export async function runTool(name, input, user, lang = 'ar') {
-  const executor = EXECUTORS[name];
+  const executor = EXECUTORS[name] ?? APP_DATA_EXECUTORS[name];
   if (!executor) return { error: `Unknown tool: ${name}` };
   try {
     return await executor(input ?? {}, user, lang);
@@ -505,6 +508,7 @@ export const TOOL_LABELS = {
   list_team: { ar: 'يراجع أسماء الفريق', en: 'Checking the team directory' },
   create_task: { ar: 'يضيف المهمة', en: 'Creating the task' },
   recent_activity: { ar: 'يقرأ سجل الحركة', en: 'Reading the activity log' },
+  ...APP_DATA_LABELS,
 };
 
 // Referenced by the system prompt builder for stage listings.

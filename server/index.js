@@ -15,6 +15,7 @@ import { attachUser } from './auth.js';
 import { seed } from './seed.js';
 import { getStore } from './store.js';
 import { initPush } from './push.js';
+import { startScheduler } from './scheduler.js';
 
 import authRoutes from './routes/auth.js';
 import userRoutes from './routes/users.js';
@@ -92,6 +93,7 @@ if (fs.existsSync(DIST)) {
 
 const store = await seed();
 await initPush();
+startScheduler();
 app.listen(PORT, () => {
   console.log(`[engosoft-workspace] API on :${PORT} — storage: ${store.kind}`);
   if (!fs.existsSync(DIST)) console.log('[engosoft-workspace] no dist/ yet — dev mode');
