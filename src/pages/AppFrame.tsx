@@ -172,8 +172,14 @@ export function AppFrame() {
             src={app.url}
             title={appName}
             onLoad={() => setFrameLoaded(true)}
+            // Positioned, not `h-full`. The wrapper is a flex item, so its
+            // height comes from the flex algorithm and its *specified* height
+            // stays `auto` — which means a percentage height on a child has
+            // nothing to resolve against and the iframe silently collapses to
+            // its 150px default. Absolute inset sizes against the padding box
+            // and is unaffected.
             className={cx(
-              'h-full w-full border-0 transition-opacity duration-200',
+              'absolute inset-0 h-full w-full border-0 transition-opacity duration-200',
               frameLoaded ? 'opacity-100' : 'opacity-0'
             )}
             // The framed app is trusted (it's ours) but still gets an explicit
