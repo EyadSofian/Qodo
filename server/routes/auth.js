@@ -11,6 +11,7 @@ import {
   verifySsoToken,
 } from '../auth.js';
 import { canOpenApp, publicUser } from '../../shared/permissions.js';
+import { visiblePeople } from '../taskAccess.js';
 
 const router = Router();
 
@@ -139,8 +140,11 @@ router.post('/sso/verify', async (req, res) => {
 });
 
 /** Who else is in the workspace — used by task assignment pickers. */
-router.get('/directory', requireAuth, async (_req, res) => {
-  const users = await find('users', (u) => u.status !== 'disabled');
+router.get('/directory', requireAuth, async (req, res) => {
+  const users = visiblePeople(
+    req.user,
+    await find('users', (u) => u.status !== 'disabled')
+  );
   res.json({
     users: users
       .map((u) => ({
@@ -150,6 +154,8 @@ router.get('/directory', requireAuth, async (_req, res) => {
         title: u.title ?? null,
         avatarColor: u.avatarColor ?? '#1D6FB8',
         department: u.department ?? 'general',
+        subteam: u.subteam ?? null,
+        jobRole: u.jobRole ?? null,
         role: u.role,
       }))
       .sort((a, b) => a.name.localeCompare(b.name, 'ar')),

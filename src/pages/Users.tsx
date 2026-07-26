@@ -6,7 +6,15 @@ import { useAuth } from '../lib/auth';
 import { useI18n, type StringKey } from '../lib/i18n';
 import { useWorkspace } from '../lib/workspace';
 import { ALL_PERMISSIONS, PERMISSIONS, ROLES } from '@shared/permissions';
-import { DEFAULT_DEPARTMENT, DEPARTMENTS, getDepartment } from '@shared/departments';
+import {
+  DEFAULT_DEPARTMENT,
+  DEPARTMENTS,
+  getDepartment,
+  getJobRole,
+  getJobRoles,
+  getSubteam,
+  getSubteams,
+} from '@shared/departments';
 import { ModuleIcon } from '../components/ModuleIcon';
 import { Avatar, EmptyState, Field, Modal, Segmented, Spinner, useToast } from '../components/ui';
 import { cx, timeAgo } from '../lib/utils';
@@ -149,6 +157,8 @@ export function Users() {
         <ul className="grid gap-2">
           {shown.map((person) => {
             const department = getDepartment(person.department ?? DEFAULT_DEPARTMENT);
+            const subteam = getSubteam(person.department, person.subteam);
+            const jobRole = getJobRole(person.department, person.subteam, person.jobRole);
             return (
               <li
                 key={person.id}
@@ -168,6 +178,11 @@ export function Users() {
                     )}
                   </p>
                   <p className="ltr mt-0.5 truncate text-[12px] text-ink-muted">{person.email}</p>
+                  {(jobRole || person.title) && (
+                    <p className="mt-0.5 truncate text-[11.5px] text-ink-faint">
+                      {jobRole ? (lang === 'en' ? jobRole.en : jobRole.ar) : person.title}
+                    </p>
+                  )}
                 </div>
 
                 <span
@@ -177,6 +192,11 @@ export function Users() {
                   <ModuleIcon name={department.icon} color={department.color} size={12} variant="plain" />
                   {lang === 'en' ? department.en : department.ar}
                 </span>
+                {subteam && (
+                  <span className="chip shrink-0 bg-surface-sunken text-ink-muted">
+                    {lang === 'en' ? subteam.en : subteam.ar}
+                  </span>
+                )}
 
                 <div className="flex min-w-[7rem] flex-col gap-0.5">
                   <span className="flex items-center gap-1.5 text-[12.5px] font-semibold text-ink">
@@ -276,6 +296,8 @@ function UserDialog({
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<Role>('member');
   const [department, setDepartment] = useState(DEFAULT_DEPARTMENT);
+  const [subteam, setSubteam] = useState('');
+  const [jobRole, setJobRole] = useState('');
   const [customPermissions, setCustomPermissions] = useState<string[] | null>(null);
   const [appIds, setAppIds] = useState<string[] | null>(null);
   const [error, setError] = useState('');
@@ -290,12 +312,16 @@ function UserDialog({
     setTitle(user?.title ?? '');
     setRole(user?.role ?? 'member');
     setDepartment(user?.department ?? DEFAULT_DEPARTMENT);
+    setSubteam(user?.subteam ?? '');
+    setJobRole(user?.jobRole ?? '');
     setCustomPermissions(user?.permissions ?? null);
     setAppIds(user?.appIds ?? null);
   }, [open, user]);
 
   const rolePermissions = ROLES[role]?.permissions ?? [];
   const effective = customPermissions ?? rolePermissions;
+  const subteams = getSubteams(department);
+  const jobRoles = getJobRoles(department, subteam);
 
   const togglePermission = (permission: string) => {
     const base = customPermissions ?? rolePermissions;
@@ -322,6 +348,8 @@ function UserDialog({
       title: title.trim(),
       role,
       department,
+      subteam: subteam || null,
+      jobRole: jobRole || null,
       permissions: customPermissions,
       appIds,
     };
@@ -381,7 +409,15 @@ function UserDialog({
             />
           </Field>
           <Field label={t('users.userDepartment')} hint={t('users.userDepartmentHint')}>
-            <select className="field" value={department} onChange={(e) => setDepartment(e.target.value)}>
+            <select
+              className="field"
+              value={department}
+              onChange={(e) => {
+                setDepartment(e.target.value);
+                setSubteam('');
+                setJobRole('');
+              }}
+            >
               {DEPARTMENTS.map((d) => (
                 <option key={d.id} value={d.id}>
                   {lang === 'en' ? d.en : d.ar}
@@ -389,6 +425,44 @@ function UserDialog({
               ))}
             </select>
           </Field>
+          {subteams.length > 0 && (
+            <Field label={t('users.subteam')} hint={t('users.subteamHint')}>
+              <select
+                className="field"
+                value={subteam}
+                onChange={(event) => {
+                  setSubteam(event.target.value);
+                  setJobRole('');
+                }}
+              >
+                <option value="">— {t('common.none')} —</option>
+                {subteams.map((team) => (
+                  <option key={team.id} value={team.id}>
+                    {lang === 'en' ? team.en : team.ar}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
+          {subteams.length > 0 && (
+            <Field label={t('users.jobRole')}>
+              <select
+                className="field"
+                value={jobRole}
+                onChange={(event) => setJobRole(event.target.value)}
+                disabled={!subteam}
+              >
+                <option value="">
+                  — {subteam ? t('common.none') : t('users.chooseSubteamFirst')} —
+                </option>
+                {jobRoles.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {lang === 'en' ? item.en : item.ar}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
           <Field
             label={user ? t('users.newPassword') : t('auth.password')}
             hint={user ? t('users.leaveBlank') : t('auth.passwordHint')}

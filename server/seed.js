@@ -8,6 +8,11 @@
 import crypto from 'node:crypto';
 import { create, find, getStore } from './store.js';
 import { hashPassword } from './auth.js';
+import {
+  DEFAULT_DEPARTMENT,
+  isDoneStage,
+  normaliseStageId,
+} from '../shared/departments.js';
 
 /**
  * The four production dashboards, plus the modules that live inside the hub.
@@ -151,6 +156,8 @@ export async function seed() {
       permissions: null,
       appIds: null,
       department: 'general',
+      subteam: null,
+      jobRole: null,
       title: 'Administrator',
       avatarColor: '#1D6FB8',
       lastLoginAt: null,
@@ -169,5 +176,41 @@ export async function seed() {
     console.log(`${line}\n`);
   }
 
+  await migrateOrganisationAndTasks(store);
   return store;
+}
+
+/**
+ * The document store intentionally has no rigid SQL schema, so boot migrations
+ * fill only missing fields and translate known legacy stage ids. They are
+ * idempotent and safe to run on every deploy.
+ */
+async function migrateOrganisationAndTasks(store) {
+  const people = await find('users');
+  for (const person of people) {
+    const patch = {};
+    if (!Object.hasOwn(person, 'subteam')) patch.subteam = null;
+    if (!Object.hasOwn(person, 'jobRole')) patch.jobRole = null;
+    if (Object.keys(patch).length) await store.update('users', person.id, patch);
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+  const tasks = await find('tasks');
+  for (const task of tasks) {
+    const department = task.department ?? DEFAULT_DEPARTMENT;
+    const patch = {};
+    if (!task.department) patch.department = department;
+    const stage = normaliseStageId(department, task.stage);
+    if (stage !== task.stage) patch.stage = stage;
+    if (!Object.hasOwn(task, 'subteam')) patch.subteam = null;
+    if (!Object.hasOwn(task, 'taskDate')) patch.taskDate = task.createdAt?.slice(0, 10) ?? today;
+    if (!Object.hasOwn(task, 'notes')) patch.notes = '';
+    if (!Object.hasOwn(task, 'score')) patch.score = null;
+    if (!Object.hasOwn(task, 'scoreBy')) patch.scoreBy = null;
+    if (!Object.hasOwn(task, 'scoredAt')) patch.scoredAt = null;
+    if (isDoneStage(department, stage) && !task.completedAt) {
+      patch.completedAt = task.updatedAt ?? task.createdAt ?? new Date().toISOString();
+    }
+    if (Object.keys(patch).length) await store.update('tasks', task.id, patch);
+  }
 }

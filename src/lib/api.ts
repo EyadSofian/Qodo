@@ -95,6 +95,18 @@ const ERRORS: Record<string, { ar: string; en: string }> = {
   invalid_url: { ar: 'الرابط غير صحيح. يجب أن يبدأ بـ https://', en: 'Invalid link. It must start with https://' },
   invalid_protocol: { ar: 'الرابط يجب أن يكون http أو https.', en: 'The link must be http or https.' },
   invalid_department: { ar: 'هذا القسم غير معروف.', en: 'That department is not recognised.' },
+  forbidden_team: {
+    ar: 'لا يمكنك الوصول إلى فريق آخر.',
+    en: 'You cannot access another team.',
+  },
+  invalid_subteam: {
+    ar: 'هذا الفريق الفرعي غير موجود داخل القسم المحدد.',
+    en: 'That sub-team does not exist in the selected department.',
+  },
+  invalid_job_role: {
+    ar: 'هذا الدور الوظيفي غير موجود داخل الفريق المحدد.',
+    en: 'That job role does not exist in the selected sub-team.',
+  },
   invalid_stage: {
     ar: 'هذه المرحلة غير متاحة في هذا القسم.',
     en: 'That stage does not exist in this department.',
@@ -112,6 +124,19 @@ const ERRORS: Record<string, { ar: string; en: string }> = {
   cannot_delete_self: { ar: 'لا يمكنك حذف حسابك بنفسك.', en: 'You cannot delete your own account.' },
   unknown_role: { ar: 'هذا الدور غير معروف.', en: 'That role is not recognised.' },
   unknown_assignee: { ar: 'هذا الموظف غير موجود.', en: 'That person does not exist.' },
+  assignee_team_mismatch: {
+    ar: 'الموظف المُسند إليه يجب أن يكون من نفس فريق المهمة.',
+    en: 'The assignee must belong to the task’s team.',
+  },
+  score_forbidden: {
+    ar: 'تقييم الأداء متاح للمدير فقط.',
+    en: 'Only a manager can set performance scores.',
+  },
+  invalid_score: {
+    ar: 'التقييم يجب أن يكون رقماً من ٠ إلى ١٠٠.',
+    en: 'The score must be a number from 0 to 100.',
+  },
+  invalid_task_date: { ar: 'تاريخ المهمة غير صالح.', en: 'The task date is not valid.' },
   forbidden: { ar: 'ليست لديك صلاحية على هذا الإجراء.', en: 'You do not have permission for that.' },
   unauthenticated: { ar: 'يجب تسجيل الدخول أولاً.', en: 'You need to sign in first.' },
   not_found: { ar: 'لم يتم العثور على هذا العنصر.', en: 'That item was not found.' },

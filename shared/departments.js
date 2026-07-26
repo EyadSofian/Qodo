@@ -104,11 +104,78 @@ export const DEPARTMENTS = [
     en: 'Marketing',
     color: '#F5821F',
     icon: 'bolt',
+    /**
+     * Organisational structure is deliberately separate from access roles.
+     * "Manager" / "member" answers what a person may do; these entries answer
+     * where they sit in the marketing organisation and what work they do.
+     */
+    subteams: [
+      {
+        id: 'creative',
+        ar: 'الكرييتف',
+        en: 'Creative',
+        roles: [
+          { id: 'designer', ar: 'مصمم', en: 'Designer' },
+          { id: 'video_editor', ar: 'مونتير فيديو', en: 'Video editor' },
+          { id: 'content_creator', ar: 'صانع محتوى', en: 'Content creator' },
+        ],
+      },
+      {
+        id: 'marketing_core',
+        ar: 'الماركتنج',
+        en: 'Marketing',
+        roles: [
+          { id: 'social_media', ar: 'سوشيال ميديا', en: 'Social media' },
+          { id: 'marketing_specialist', ar: 'أخصائي تسويق', en: 'Marketing specialist' },
+          {
+            id: 'digital_marketing_specialist',
+            ar: 'أخصائي تسويق رقمي',
+            en: 'Digital marketing specialist',
+          },
+          { id: 'marketing_coordinator', ar: 'منسق تسويق', en: 'Marketing coordinator' },
+          {
+            id: 'digital_marketing_coordinator',
+            ar: 'منسق تسويق رقمي',
+            en: 'Digital marketing coordinator',
+          },
+        ],
+      },
+      {
+        id: 'website',
+        ar: 'الويب سايت',
+        en: 'Website & e-commerce',
+        roles: [
+          { id: 'ecommerce_manager', ar: 'مدير تجارة إلكترونية', en: 'E-commerce manager' },
+          {
+            id: 'ecommerce_specialist',
+            ar: 'أخصائي تجارة إلكترونية',
+            en: 'E-commerce specialist',
+          },
+          { id: 'seo_specialist', ar: 'أخصائي SEO', en: 'SEO specialist' },
+          { id: 'web_developer', ar: 'مطور ويب', en: 'Web developer' },
+        ],
+      },
+      {
+        id: 'merchandising',
+        ar: 'الميرشندايزنج',
+        en: 'Merchandising',
+        roles: [{ id: 'merchandiser', ar: 'أخصائي ميرشندايزنج', en: 'Merchandiser' }],
+      },
+      {
+        id: 'performance',
+        ar: 'البيرفورمانس',
+        en: 'Performance',
+        roles: [{ id: 'media_buyer', ar: 'ميديا باير', en: 'Media buyer' }],
+      },
+    ],
     stages: [
-      { id: 'idea', type: 'open', ar: 'فكرة', en: 'Idea' },
-      { id: 'production', type: 'active', ar: 'قيد الإنتاج', en: 'In production' },
-      { id: 'approval', type: 'review', ar: 'بانتظار الاعتماد', en: 'Approval' },
-      { id: 'live', type: 'done', ar: 'منشورة', en: 'Live' },
+      { id: 'pending', type: 'open', ar: 'قيد الانتظار', en: 'Pending' },
+      { id: 'approved', type: 'open', ar: 'معتمدة', en: 'Approved' },
+      { id: 'working', type: 'active', ar: 'قيد العمل', en: 'Working' },
+      { id: 'review', type: 'review', ar: 'قيد المراجعة', en: 'In review' },
+      { id: 'rework', type: 'active', ar: 'إعادة عمل', en: 'Rework' },
+      { id: 'blocked', type: 'active', ar: 'متوقفة', en: 'Blocked' },
+      { id: 'done', type: 'done', ar: 'منجزة', en: 'Done' },
     ],
   },
   {
@@ -171,6 +238,20 @@ export const DEPARTMENTS = [
 export const DEPARTMENT_IDS = DEPARTMENTS.map((d) => d.id);
 export const DEFAULT_DEPARTMENT = 'general';
 
+/**
+ * Old marketing cards used four content-production stages. Keeping the alias
+ * table next to the workflow lets the boot migration move them without losing
+ * their meaning.
+ */
+export const STAGE_ALIASES = {
+  marketing: {
+    idea: 'pending',
+    production: 'working',
+    approval: 'review',
+    live: 'done',
+  },
+};
+
 export function getDepartment(id) {
   return DEPARTMENTS.find((d) => d.id === id) ?? DEPARTMENTS[0];
 }
@@ -179,9 +260,44 @@ export function getStages(departmentId) {
   return getDepartment(departmentId).stages;
 }
 
+export function getSubteams(departmentId) {
+  return getDepartment(departmentId).subteams ?? [];
+}
+
+export function getSubteam(departmentId, subteamId) {
+  if (!subteamId) return null;
+  return getSubteams(departmentId).find((team) => team.id === subteamId) ?? null;
+}
+
+export function getJobRoles(departmentId, subteamId) {
+  return getSubteam(departmentId, subteamId)?.roles ?? [];
+}
+
+export function getJobRole(departmentId, subteamId, roleId) {
+  if (!roleId) return null;
+  return getJobRoles(departmentId, subteamId).find((role) => role.id === roleId) ?? null;
+}
+
+export function subteamLabel(departmentId, subteamId, lang = 'ar') {
+  const team = getSubteam(departmentId, subteamId);
+  if (!team) return '';
+  return lang === 'en' ? team.en : team.ar;
+}
+
+export function jobRoleLabel(departmentId, subteamId, roleId, lang = 'ar') {
+  const role = getJobRole(departmentId, subteamId, roleId);
+  if (!role) return '';
+  return lang === 'en' ? role.en : role.ar;
+}
+
+export function normaliseStageId(departmentId, stageId) {
+  return STAGE_ALIASES[departmentId]?.[stageId] ?? stageId;
+}
+
 export function getStage(departmentId, stageId) {
   const stages = getStages(departmentId);
-  return stages.find((s) => s.id === stageId) ?? stages[0];
+  const normalised = normaliseStageId(departmentId, stageId);
+  return stages.find((s) => s.id === normalised) ?? stages[0];
 }
 
 /** The stage a newly filed task lands in. */

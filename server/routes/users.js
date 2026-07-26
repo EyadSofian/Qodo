@@ -7,14 +7,20 @@ import {
   ROLE_IDS,
   publicUser,
 } from '../../shared/permissions.js';
-import { DEFAULT_DEPARTMENT, DEPARTMENT_IDS } from '../../shared/departments.js';
+import {
+  DEFAULT_DEPARTMENT,
+  DEPARTMENT_IDS,
+  getJobRole,
+  getSubteam,
+} from '../../shared/departments.js';
+import { canUseDepartment, visiblePeople } from '../taskAccess.js';
 
 const router = Router();
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-router.get('/', requirePermission(PERMISSIONS.USERS_VIEW), async (_req, res) => {
-  const users = await find('users');
+router.get('/', requirePermission(PERMISSIONS.USERS_VIEW), async (req, res) => {
+  const users = visiblePeople(req.user, await find('users'));
   res.json({
     users: users
       .map(publicUser)
@@ -36,6 +42,15 @@ router.post('/', requirePermission(PERMISSIONS.USERS_MANAGE), async (req, res) =
     return res.status(409).json({ error: 'email_taken' });
   }
 
+  const department = DEPARTMENT_IDS.includes(req.body?.department)
+    ? req.body.department
+    : req.user.department ?? DEFAULT_DEPARTMENT;
+  if (!canUseDepartment(req.user, department)) {
+    return res.status(403).json({ error: 'forbidden_team' });
+  }
+  const organisation = parseOrganisation(req.body, department);
+  if (organisation.error) return res.status(400).json({ error: organisation.error });
+
   const user = await create('users', {
     name,
     email,
@@ -45,9 +60,9 @@ router.post('/', requirePermission(PERMISSIONS.USERS_MANAGE), async (req, res) =
     // null on both = "inherit from role" / "every app". Explicit arrays override.
     permissions: normalisePermissions(req.body?.permissions),
     appIds: normaliseAppIds(req.body?.appIds),
-    department: DEPARTMENT_IDS.includes(req.body?.department)
-      ? req.body.department
-      : DEFAULT_DEPARTMENT,
+    department,
+    subteam: organisation.subteam,
+    jobRole: organisation.jobRole,
     title: req.body?.title ? String(req.body.title).trim() : null,
     avatarColor: pickAvatarColor(name),
     lastLoginAt: null,
@@ -67,6 +82,9 @@ router.patch('/:id', requirePermission(PERMISSIONS.USERS_MANAGE), async (req, re
   const store = await getStore();
   const target = await findOne('users', (u) => u.id === req.params.id);
   if (!target) return res.status(404).json({ error: 'not_found' });
+  if (!visiblePeople(req.user, [target]).length) {
+    return res.status(404).json({ error: 'not_found' });
+  }
 
   const patch = {};
   if (req.body?.name !== undefined) patch.name = String(req.body.name).trim();
@@ -92,8 +110,42 @@ router.patch('/:id', requirePermission(PERMISSIONS.USERS_MANAGE), async (req, re
     patch.passwordHash = await hashPassword(String(req.body.password));
   }
 
-  if (req.body?.department !== undefined && DEPARTMENT_IDS.includes(req.body.department)) {
+  if (req.body?.department !== undefined) {
+    if (!DEPARTMENT_IDS.includes(req.body.department)) {
+      return res.status(400).json({ error: 'invalid_department' });
+    }
+    if (!canUseDepartment(req.user, req.body.department)) {
+      return res.status(403).json({ error: 'forbidden_team' });
+    }
     patch.department = req.body.department;
+  }
+
+  if (
+    req.body?.subteam !== undefined ||
+    req.body?.jobRole !== undefined ||
+    (patch.department && patch.department !== target.department)
+  ) {
+    const department = patch.department ?? target.department ?? DEFAULT_DEPARTMENT;
+    const organisation = parseOrganisation(
+      {
+        subteam:
+          req.body?.subteam !== undefined
+            ? req.body.subteam
+            : patch.department !== undefined
+              ? null
+              : target.subteam,
+        jobRole:
+          req.body?.jobRole !== undefined
+            ? req.body.jobRole
+            : req.body?.subteam !== undefined || patch.department !== undefined
+              ? null
+              : target.jobRole,
+      },
+      department
+    );
+    if (organisation.error) return res.status(400).json({ error: organisation.error });
+    patch.subteam = organisation.subteam;
+    patch.jobRole = organisation.jobRole;
   }
 
   if (req.body?.permissions !== undefined) {
@@ -131,6 +183,9 @@ router.delete('/:id', requirePermission(PERMISSIONS.USERS_MANAGE), async (req, r
   const store = await getStore();
   const target = await findOne('users', (u) => u.id === req.params.id);
   if (!target) return res.status(404).json({ error: 'not_found' });
+  if (!visiblePeople(req.user, [target]).length) {
+    return res.status(404).json({ error: 'not_found' });
+  }
   if (target.id === req.user.id) return res.status(409).json({ error: 'cannot_delete_self' });
 
   if (target.role === 'admin') {
@@ -171,6 +226,16 @@ function normaliseAppIds(value) {
   if (value === null || value === undefined) return null;
   if (!Array.isArray(value)) return null;
   return [...new Set(value.map(String))];
+}
+
+function parseOrganisation(body, department) {
+  const subteam = body?.subteam ? String(body.subteam) : null;
+  const jobRole = body?.jobRole ? String(body.jobRole) : null;
+  if (subteam && !getSubteam(department, subteam)) return { error: 'invalid_subteam' };
+  if (jobRole && !getJobRole(department, subteam, jobRole)) {
+    return { error: 'invalid_job_role' };
+  }
+  return { subteam, jobRole };
 }
 
 const AVATAR_COLORS = ['#1D6FB8', '#F5821F', '#0EA5A5', '#6366F1', '#16A34A', '#7C3AED', '#0B2545'];

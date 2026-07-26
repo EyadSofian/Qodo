@@ -7,8 +7,8 @@
  * and still be right five minutes later.
  *
  * Every tool receives the signed-in user and re-checks their permissions. The
- * assistant is not a way around the access rules: a `member` asking "show me
- * every task in the team" gets only their own, exactly as the board would.
+ * assistant is not a way around the access rules: team members stay inside
+ * their department, and company-wide data remains administrator-only.
  */
 
 import { create, find, findOne } from '../store.js';
@@ -29,6 +29,13 @@ import {
 } from '../../shared/departments.js';
 import { logActivity } from '../auth.js';
 import { notifyUser } from '../push.js';
+import {
+  canAssignUser,
+  canManagePerformance,
+  canUseDepartment,
+  taskPredicate,
+  visiblePeople,
+} from '../taskAccess.js';
 import { APP_DATA_EXECUTORS, APP_DATA_LABELS, APP_DATA_TOOLS } from './appData.js';
 
 const PRIORITY_LABELS = {
@@ -51,9 +58,13 @@ const dept = (task) => task.department ?? DEFAULT_DEPARTMENT;
 
 /** The tasks this user is allowed to see — same rule the board uses. */
 async function visibleTasks(user) {
-  const all = await find('tasks');
-  if (can(user, PERMISSIONS.TASKS_VIEW_ALL)) return all;
-  return all.filter((t) => t.assigneeId === user.id || t.createdBy === user.id);
+  return find('tasks', taskPredicate(user));
+}
+
+function taskScope(user) {
+  if (can(user, PERMISSIONS.TASKS_VIEW_ALL)) return 'whole company';
+  if (can(user, PERMISSIONS.TASKS_VIEW_TEAM)) return 'this team';
+  return 'this user only';
 }
 
 async function nameOf(userId) {
@@ -225,9 +236,12 @@ const EXECUTORS = {
     };
   },
 
-  async list_departments(_input, _user, lang) {
+  async list_departments(_input, user, lang) {
+    const departments = can(user, PERMISSIONS.TASKS_VIEW_ALL)
+      ? DEPARTMENTS
+      : DEPARTMENTS.filter((department) => department.id === (user.department ?? DEFAULT_DEPARTMENT));
     return {
-      departments: DEPARTMENTS.map((d) => ({
+      departments: departments.map((d) => ({
         id: d.id,
         name: lang === 'en' ? d.en : d.ar,
         stages: d.stages.map((s) => ({
@@ -256,9 +270,12 @@ const EXECUTORS = {
 
     if (input.assigneeName) {
       const term = String(input.assigneeName).toLowerCase();
-      const matches = await find(
-        'users',
-        (u) => u.name.toLowerCase().includes(term) || u.email.toLowerCase().includes(term)
+      const matches = visiblePeople(
+        user,
+        await find(
+          'users',
+          (u) => u.name.toLowerCase().includes(term) || u.email.toLowerCase().includes(term)
+        )
       );
       if (matches.length === 0) {
         return {
@@ -294,7 +311,7 @@ const EXECUTORS = {
     return {
       totalMatching: tasks.length,
       returned: page.length,
-      scope: can(user, PERMISSIONS.TASKS_VIEW_ALL) ? 'whole team' : 'this user only',
+      scope: taskScope(user),
       tasks: await Promise.all(page.map((t) => shapeTask(t, lang))),
     };
   },
@@ -302,7 +319,10 @@ const EXECUTORS = {
   async task_summary(_input, user, lang) {
     if (!can(user, PERMISSIONS.TASKS_VIEW)) return { error: DENIED.tasks[lang] };
 
-    const tasks = await visibleTasks(user);
+    const visible = await visibleTasks(user);
+    const tasks = canManagePerformance(user)
+      ? visible
+      : visible.filter((task) => task.assigneeId === user.id);
     const open = tasks.filter((t) => !isDoneStage(dept(t), t.stage));
     const weekAgo = Date.now() - 7 * 86_400_000;
 
@@ -331,7 +351,7 @@ const EXECUTORS = {
     }
 
     return {
-      scope: can(user, PERMISSIONS.TASKS_VIEW_ALL) ? 'whole team' : 'this user only',
+      scope: canManagePerformance(user) ? taskScope(user) : 'this user only',
       total: tasks.length,
       byProgress,
       overdue: open.filter((t) => (daysUntil(t.dueDate) ?? 99999) < 0).length,
@@ -349,7 +369,10 @@ const EXECUTORS = {
     // Without users.view a member still needs names to assign work — so they
     // get the directory (name, title, department), never roles or emails.
     const detailed = can(user, PERMISSIONS.USERS_VIEW);
-    const users = await find('users', (u) => u.status !== 'disabled');
+    const users = visiblePeople(
+      user,
+      await find('users', (u) => u.status !== 'disabled')
+    );
     return {
       detail: detailed ? 'full' : 'names_only',
       people: users.map((u) => {
@@ -382,11 +405,25 @@ const EXECUTORS = {
     const department = DEPARTMENT_IDS.includes(input.department)
       ? input.department
       : (user.department ?? DEFAULT_DEPARTMENT);
+    if (!canUseDepartment(user, department)) {
+      return {
+        error:
+          lang === 'en'
+            ? 'You can only create tasks for your own team.'
+            : 'يمكنك إنشاء مهام لفريقك فقط.',
+      };
+    }
 
     let assigneeId = null;
     if (input.assigneeName) {
       const term = String(input.assigneeName).toLowerCase();
-      const matches = await find('users', (u) => u.name.toLowerCase().includes(term));
+      const matches = await find(
+        'users',
+        (u) =>
+          u.status !== 'disabled' &&
+          (u.department ?? DEFAULT_DEPARTMENT) === department &&
+          u.name.toLowerCase().includes(term)
+      );
       if (matches.length === 0) {
         return {
           error:
@@ -402,6 +439,14 @@ const EXECUTORS = {
             lang === 'en'
               ? `That name matches more than one person: ${names}`
               : `الاسم يطابق أكثر من شخص: ${names}`,
+        };
+      }
+      if (!canAssignUser(user, matches[0], department)) {
+        return {
+          error:
+            lang === 'en'
+              ? 'That person is not in the selected team.'
+              : 'هذا الموظف ليس ضمن الفريق المحدد.',
         };
       }
       assigneeId = matches[0].id;
@@ -427,7 +472,10 @@ const EXECUTORS = {
     const task = await create('tasks', {
       title,
       description: String(input.description || '').trim(),
+      notes: '',
+      taskDate: new Date().toISOString().slice(0, 10),
       department,
+      subteam: user.department === department ? (user.subteam ?? null) : null,
       stage,
       priority: ['low', 'normal', 'high', 'urgent'].includes(input.priority)
         ? input.priority
@@ -437,7 +485,10 @@ const EXECUTORS = {
       dueDate,
       appId,
       labels: [],
-      completedAt: null,
+      score: null,
+      scoreBy: null,
+      scoredAt: null,
+      completedAt: isDoneStage(department, stage) ? new Date().toISOString() : null,
       order: Math.min(0, ...siblings.map((t) => t.order ?? 0)) - 1,
     });
 

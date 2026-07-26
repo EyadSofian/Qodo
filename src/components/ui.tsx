@@ -232,7 +232,7 @@ export function Segmented<T extends string>({
 }: {
   value: T;
   onChange: (value: T) => void;
-  options: Array<{ value: T; label: string; count?: number }>;
+  options: Array<{ value: T; label: string; count?: number; icon?: ReactNode }>;
   className?: string;
 }) {
   return (
@@ -257,6 +257,7 @@ export function Segmented<T extends string>({
               active ? 'bg-navy text-white shadow-sm' : 'text-ink-muted hover:bg-surface-sunken'
             )}
           >
+            {option.icon}
             {option.label}
             {option.count !== undefined && (
               <span

@@ -11,6 +11,7 @@ import {
   firstStage,
   getDepartment,
   getStages,
+  getSubteams,
   translateStage,
 } from '@shared/departments';
 import { Avatar, Field, Modal, Spinner, useToast } from './ui';
@@ -46,12 +47,16 @@ export function TaskDialog({
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [notes, setNotes] = useState('');
   const [department, setDepartment] = useState(defaultDepartment);
+  const [subteam, setSubteam] = useState('');
   const [stage, setStage] = useState('');
   const [priority, setPriority] = useState<TaskPriority>('normal');
   const [assigneeId, setAssigneeId] = useState('');
   const [appId, setAppId] = useState('');
+  const [taskDate, setTaskDate] = useState('');
   const [dueDate, setDueDate] = useState('');
+  const [score, setScore] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -61,12 +66,16 @@ export function TaskDialog({
     const nextDepartment = task?.department ?? defaultDepartment ?? DEFAULT_DEPARTMENT;
     setTitle(task?.title ?? '');
     setDescription(task?.description ?? '');
+    setNotes(task?.notes ?? '');
     setDepartment(nextDepartment);
+    setSubteam(task?.subteam ?? '');
     setStage(task?.stage ?? defaultStage ?? firstStage(nextDepartment));
     setPriority(task?.priority ?? 'normal');
     setAssigneeId(task?.assigneeId ?? '');
     setAppId(task?.appId ?? '');
+    setTaskDate(task?.taskDate ?? new Date().toISOString().slice(0, 10));
     setDueDate(task?.dueDate ?? '');
+    setScore(task?.score === null || task?.score === undefined ? '' : String(task.score));
   }, [open, task, defaultDepartment, defaultStage]);
 
   /**
@@ -76,9 +85,21 @@ export function TaskDialog({
   const changeDepartment = (next: string) => {
     setStage((current) => translateStage(department, current, next));
     setDepartment(next);
+    setSubteam('');
+    setAssigneeId('');
   };
 
   const stages = getStages(department);
+  const subteams = getSubteams(department);
+  const availableDepartments = can(PERMISSIONS.TASKS_VIEW_ALL)
+    ? DEPARTMENTS
+    : DEPARTMENTS.filter((item) => item.id === (user?.department ?? DEFAULT_DEPARTMENT));
+  const assignees = directory.filter(
+    (person) =>
+      person.department === department &&
+      (!subteam || !person.subteam || person.subteam === subteam)
+  );
+  const canScore = can(PERMISSIONS.TASKS_EDIT_ANY);
 
   const editable = useMemo(() => {
     if (!task) return true;
@@ -97,12 +118,16 @@ export function TaskDialog({
     const payload = {
       title: title.trim(),
       description: description.trim(),
+      notes: notes.trim(),
       department,
+      subteam: subteam || null,
       stage,
       priority,
       assigneeId: assigneeId || null,
       appId: appId || null,
+      taskDate,
       dueDate: dueDate || null,
+      ...(canScore ? { score: score === '' ? null : Number(score) } : {}),
     };
 
     try {
@@ -181,7 +206,28 @@ export function TaskDialog({
           />
         </Field>
 
+        <Field label={t('tasks.notes')}>
+          <textarea
+            className="field min-h-[72px] resize-y"
+            value={notes}
+            onChange={(event) => setNotes(event.target.value)}
+            placeholder={t('tasks.notesPlaceholder')}
+            disabled={!editable}
+          />
+        </Field>
+
         <div className="grid gap-3.5 sm:grid-cols-2">
+          <Field label={t('tasks.taskDate')}>
+            <input
+              type="date"
+              className="field ltr text-start"
+              value={taskDate}
+              onChange={(event) => setTaskDate(event.target.value)}
+              disabled={!editable}
+              required
+            />
+          </Field>
+
           <Field label={t('tasks.department')} hint={t('tasks.departmentHint')}>
             <select
               className="field"
@@ -189,13 +235,34 @@ export function TaskDialog({
               onChange={(event) => changeDepartment(event.target.value)}
               disabled={!editable}
             >
-              {DEPARTMENTS.map((d) => (
+              {availableDepartments.map((d) => (
                 <option key={d.id} value={d.id}>
                   {lang === 'en' ? d.en : d.ar}
                 </option>
               ))}
             </select>
           </Field>
+
+          {subteams.length > 0 && (
+            <Field label={t('tasks.subteam')}>
+              <select
+                className="field"
+                value={subteam}
+                onChange={(event) => {
+                  setSubteam(event.target.value);
+                  setAssigneeId('');
+                }}
+                disabled={!editable}
+              >
+                <option value="">— {t('tasks.noSubteam')} —</option>
+                {subteams.map((team) => (
+                  <option key={team.id} value={team.id}>
+                    {lang === 'en' ? team.en : team.ar}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
 
           <Field label={t('tasks.stage')}>
             <select
@@ -235,13 +302,29 @@ export function TaskDialog({
               disabled={!editable}
             >
               <option value="">— {t('tasks.unassigned')} —</option>
-              {directory.map((person) => (
+              {assignees.map((person) => (
                 <option key={person.id} value={person.id}>
                   {person.name}
                 </option>
               ))}
             </select>
           </Field>
+
+          {(canScore || score !== '') && (
+            <Field label={t('tasks.score')} hint={t('tasks.scoreHint')}>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                step="0.5"
+                className="field ltr text-start"
+                value={score}
+                onChange={(event) => setScore(event.target.value)}
+                placeholder="—"
+                disabled={!editable || !canScore}
+              />
+            </Field>
+          )}
 
           <Field label={t('tasks.dueDate')}>
             <input

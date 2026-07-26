@@ -72,6 +72,9 @@ export async function issueSsoToken(user, audience) {
     name: user.name,
     email: user.email,
     role: user.role,
+    department: user.department,
+    subteam: user.subteam ?? null,
+    jobRole: user.jobRole ?? null,
     permissions: publicUser(user).effectivePermissions,
   })
     .setProtectedHeader({ alg: 'HS256' })

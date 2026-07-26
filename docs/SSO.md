@@ -57,6 +57,9 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
   "name": "أحمد سيد",
   "email": "ahmed@engosoft.com",
   "role": "manager",
+  "department": "marketing",
+  "subteam": "performance",
+  "jobRole": "media_buyer",
   "permissions": ["apps.view", "tasks.view", "…"],
   "iat": 1753400000,
   "exp": 1753400300

@@ -86,8 +86,8 @@ async function sendDigest() {
   const users = await find('users', (u) => u.status !== 'disabled');
 
   for (const user of users) {
-    // Managers see the whole picture; everyone else sees their own workload —
-    // the same boundary the board and the assistant already enforce.
+    // Administrators see the company picture. Team managers get their
+    // department only; everyone else gets their own workload.
     if (can(user, PERMISSIONS.TASKS_VIEW_ALL)) {
       if (digest.totalOpen === 0) continue;
 
@@ -105,6 +105,27 @@ async function sendDigest() {
           en: `Today — ${digest.totalOpen} open task${digest.totalOpen === 1 ? '' : 's'}`,
         },
         body: { ar: lines.join(' · '), en: linesEn.join(' · ') },
+        link: '/tasks',
+      });
+      continue;
+    }
+
+    if (can(user, PERMISSIONS.TASKS_EDIT_ANY)) {
+      const department = user.department ?? DEFAULT_DEPARTMENT;
+      const team = digest.open.filter((task) => dept(task) === department);
+      if (team.length === 0) continue;
+      const late = team.filter(digest.isOverdue).length;
+      const label = DEPARTMENTS.find((item) => item.id === department);
+      await notifyAndRecord(user.id, {
+        type: 'digest.daily',
+        title: {
+          ar: `${label?.ar ?? 'فريقك'} — ${team.length} مهمة مفتوحة`,
+          en: `${label?.en ?? 'Your team'} — ${team.length} open task${team.length === 1 ? '' : 's'}`,
+        },
+        body: {
+          ar: late ? `منها ${late} متأخرة عن موعدها.` : 'لا توجد مهام متأخرة.',
+          en: late ? `${late} of them are past due.` : 'No overdue tasks.',
+        },
         link: '/tasks',
       });
       continue;
