@@ -13,6 +13,34 @@ export function initials(name: string) {
 }
 
 /**
+ * File sizes, in the units people actually recognise. Always Latin digits with
+ * an isolated direction — «2.4 MB» inside Arabic must not have its number and
+ * unit swapped by the bidi algorithm.
+ */
+export function formatBytes(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 KB';
+  if (bytes < 1024) return `${bytes} B`;
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${Math.round(kb)} KB`;
+  return `${(kb / 1024).toFixed(kb / 1024 < 10 ? 1 : 0)} MB`;
+}
+
+/** Score → chip colours. One ramp, used by the card, the table and the review. */
+export function scoreTone(score: number) {
+  if (score >= 90) return 'bg-status-okBg text-status-ok';
+  if (score >= 75) return 'bg-status-infoBg text-brand-600';
+  if (score >= 60) return 'bg-status-warnBg text-accent-600';
+  return 'bg-status-badBg text-status-bad';
+}
+
+export function scoreTextTone(score: number) {
+  if (score >= 90) return 'text-status-ok';
+  if (score >= 75) return 'text-brand-600';
+  if (score >= 60) return 'text-accent-600';
+  return 'text-status-bad';
+}
+
+/**
  * Relative time. `Intl.RelativeTimeFormat` would do this, but its Arabic output
  * ("قبل ٣ أيام") reads more formally than the rest of the interface, so the
  * common buckets come from the string table instead.

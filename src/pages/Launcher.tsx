@@ -9,6 +9,7 @@ import { useWorkspace } from '../lib/workspace';
 import { useOpenApp } from '../lib/useOpenApp';
 import { PERMISSIONS } from '@shared/permissions';
 import { DEFAULT_DEPARTMENT, getDepartment, isDoneStage, stageLabel } from '@shared/departments';
+import { isReviewer, taskState } from '@shared/workflow';
 import { ModuleIcon } from '../components/ModuleIcon';
 import { EmptyState } from '../components/ui';
 import { DUE_CHIP_CLASS, PRIORITY_META, cx, daysUntil, dueLabel } from '../lib/utils';
@@ -142,6 +143,11 @@ function MyWork() {
     );
     return {
       open,
+      // A manager's real backlog is not their own tasks — it is other people's
+      // work sitting in their queue, blocking the board behind it.
+      toReview: isReviewer(user)
+        ? tasks.filter((t) => taskState(t) === 'submitted' && t.assigneeId !== user.id).length
+        : null,
       overdue: open.filter((t) => (daysUntil(t.dueDate) ?? 99) < 0).length,
       doneThisWeek: tasks.filter(
         (t) =>
@@ -228,7 +234,15 @@ function MyWork() {
         <div className="grid grid-cols-3 gap-3 lg:grid-cols-1">
           <Stat label={t('launcher.statOpen')} value={mine?.open.length ?? 0} tone="info" />
           <Stat label={t('launcher.statOverdue')} value={mine?.overdue ?? 0} tone={mine?.overdue ? 'bad' : 'muted'} />
-          <Stat label={t('launcher.statDoneWeek')} value={mine?.doneThisWeek ?? 0} tone="ok" />
+          {mine?.toReview === null || mine?.toReview === undefined ? (
+            <Stat label={t('launcher.statDoneWeek')} value={mine?.doneThisWeek ?? 0} tone="ok" />
+          ) : (
+            <Stat
+              label={t('flow.awaitingYou')}
+              value={mine.toReview}
+              tone={mine.toReview ? 'warn' : 'muted'}
+            />
+          )}
         </div>
       </div>
     </section>
@@ -242,12 +256,13 @@ function Stat({
 }: {
   label: string;
   value: number;
-  tone: 'info' | 'bad' | 'ok' | 'muted';
+  tone: 'info' | 'bad' | 'ok' | 'warn' | 'muted';
 }) {
   const tones = {
     info: 'text-brand-600',
     bad: 'text-status-bad',
     ok: 'text-status-ok',
+    warn: 'text-accent-600',
     muted: 'text-ink-muted',
   };
   return (

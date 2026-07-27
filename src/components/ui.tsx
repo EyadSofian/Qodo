@@ -57,7 +57,7 @@ export function Modal({
   title: ReactNode;
   children: ReactNode;
   footer?: ReactNode;
-  width?: 'sm' | 'md' | 'lg';
+  width?: 'sm' | 'md' | 'lg' | 'xl';
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -79,7 +79,13 @@ export function Modal({
 
   if (!open) return null;
 
-  const widths = { sm: 'sm:max-w-md', md: 'sm:max-w-xl', lg: 'sm:max-w-3xl' };
+  const widths = {
+    sm: 'sm:max-w-md',
+    md: 'sm:max-w-xl',
+    lg: 'sm:max-w-3xl',
+    // Wide enough for a task's work column and its properties rail side by side.
+    xl: 'sm:max-w-5xl',
+  };
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">

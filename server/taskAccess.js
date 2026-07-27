@@ -59,11 +59,13 @@ export function visiblePeople(user, people) {
 }
 
 /**
- * Scores are performance data. A team manager may see the team's scores; an
- * employee sees only their own. The rest of a task remains visible to the team.
+ * Scores and the manager's written verdict are performance data — feedback for
+ * one person, not team news. A manager sees the team's; an employee sees only
+ * their own. Everything else about the task stays visible so the team can still
+ * work together on it.
  */
 export function taskForUser(user, task) {
   if (canManagePerformance(user) || task.assigneeId === user.id) return task;
-  return { ...task, score: null, scoreBy: null, scoredAt: null };
+  return { ...task, score: null, scoreBy: null, scoredAt: null, reviewNote: '' };
 }
 

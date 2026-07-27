@@ -1,5 +1,22 @@
+/**
+ * Two dialogs sharing one file, because they are two genuinely different jobs.
+ *
+ *   Creating  — a short brief. Who does it, by when, what "done" means. Nothing
+ *               about outcomes, because none exist yet: no score field, no
+ *               deliverables, no review. That absence is the point.
+ *
+ *   Open task — a workspace. A tracker across the top so the state is readable
+ *               in one glance, the actions the viewer can actually take right
+ *               under it, the work and its deliverables in the main column, and
+ *               the editable properties on a rail to the side.
+ *
+ * The old dialog was one flat form with every field in it, score included, so a
+ * manager filing a task was invited to grade work that had not happened. The
+ * split is what fixes that.
+ */
+
 import { useEffect, useMemo, useState } from 'react';
-import { MessageSquare, Send, Trash2 } from 'lucide-react';
+import { CalendarClock, MessageSquare, Send, Trash2, UserRound } from 'lucide-react';
 import { api, errorMessage } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useI18n } from '../lib/i18n';
@@ -14,15 +31,26 @@ import {
   getSubteams,
   translateStage,
 } from '@shared/departments';
+import { isDoer, isReviewer } from '@shared/workflow';
 import { Avatar, Field, Modal, Spinner, useToast } from './ui';
 import { ModuleIcon } from './ModuleIcon';
-import { PRIORITY_META, PRIORITY_ORDER, cx, timeAgo } from '../lib/utils';
-import type { Task, TaskComment, TaskPriority } from '../lib/types';
+import {
+  Deliverables,
+  ScoreChip,
+  StateBadge,
+  SubmissionSummary,
+  WorkflowActions,
+  WorkflowTracker,
+  returnedLabel,
+  stateOf,
+} from './TaskWorkflow';
+import { PRIORITY_META, PRIORITY_ORDER, cx, formatDate, timeAgo } from '../lib/utils';
+import type { Task, TaskAttachment, TaskComment, TaskPriority } from '../lib/types';
 
 interface Props {
   open: boolean;
   onClose: () => void;
-  /** `null` = create a new task; a task = edit it. */
+  /** `null` = create a new task; a task = open it. */
   task: Task | null;
   defaultDepartment: string;
   /** Column the "+" was pressed in, so a new card lands where it was asked for. */
@@ -56,13 +84,17 @@ export function TaskDialog({
   const [appId, setAppId] = useState('');
   const [taskDate, setTaskDate] = useState('');
   const [dueDate, setDueDate] = useState('');
-  const [score, setScore] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  const [live, setLive] = useState<Task | null>(task);
+  const [attachments, setAttachments] = useState<TaskAttachment[] | null>(null);
+  const [canAttach, setCanAttach] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setError('');
+    setLive(task);
     const nextDepartment = task?.department ?? defaultDepartment ?? DEFAULT_DEPARTMENT;
     setTitle(task?.title ?? '');
     setDescription(task?.description ?? '');
@@ -75,42 +107,78 @@ export function TaskDialog({
     setAppId(task?.appId ?? '');
     setTaskDate(task?.taskDate ?? new Date().toISOString().slice(0, 10));
     setDueDate(task?.dueDate ?? '');
-    setScore(task?.score === null || task?.score === undefined ? '' : String(task.score));
   }, [open, task, defaultDepartment, defaultStage]);
+
+  // Deliverables are the evidence the review is based on, so they load with the
+  // task rather than behind a tab — a reviewer should never have to go looking.
+  useEffect(() => {
+    if (!open || !task) {
+      setAttachments(null);
+      return;
+    }
+    setAttachments(null);
+    api
+      .get<{ attachments: TaskAttachment[]; canAttach: boolean }>(`/tasks/${task.id}/attachments`)
+      .then((data) => {
+        setAttachments(data.attachments);
+        setCanAttach(data.canAttach);
+      })
+      .catch(() => setAttachments([]));
+  }, [open, task]);
+
+  const current = live ?? task;
 
   /**
    * Changing department mid-edit can't keep a stage id that doesn't exist over
    * there, so the stage moves to the closest equivalent instead of resetting.
    */
   const changeDepartment = (next: string) => {
-    setStage((current) => translateStage(department, current, next));
+    setStage((value) => translateStage(department, value, next));
     setDepartment(next);
     setSubteam('');
     setAssigneeId('');
   };
 
-  const stages = getStages(department);
   const subteams = getSubteams(department);
   const availableDepartments = can(PERMISSIONS.TASKS_VIEW_ALL)
     ? DEPARTMENTS
     : DEPARTMENTS.filter((item) => item.id === (user?.department ?? DEFAULT_DEPARTMENT));
   const assignees = directory.filter(
     (person) =>
-      person.department === department &&
-      (!subteam || !person.subteam || person.subteam === subteam)
+      person.department === department && (!subteam || !person.subteam || person.subteam === subteam)
   );
-  const canScore = can(PERMISSIONS.TASKS_EDIT_ANY);
+
+  /**
+   * The stage picker offers only the columns anyone may move between freely.
+   * Reaching review means submitting, and reaching done means being approved —
+   * both are buttons with requirements attached, so neither belongs in a
+   * dropdown that would quietly skip them.
+   */
+  const selectableStages = useMemo(
+    () =>
+      getStages(department).filter(
+        (item: { id: string; type: string }) =>
+          item.type === 'open' || item.type === 'active' || item.id === stage
+      ),
+    [department, stage]
+  );
 
   const editable = useMemo(() => {
-    if (!task) return true;
+    if (!current) return true;
     if (can(PERMISSIONS.TASKS_EDIT_ANY)) return true;
-    return task.createdBy === user?.id || task.assigneeId === user?.id;
-  }, [task, can, user]);
+    return current.createdBy === user?.id || current.assigneeId === user?.id;
+  }, [current, can, user]);
 
-  const deletable = task && (can(PERMISSIONS.TASKS_DELETE_ANY) || task.createdBy === user?.id);
+  const deletable = current && (can(PERMISSIONS.TASKS_DELETE_ANY) || current.createdBy === user?.id);
 
-  const submit = async (event: React.FormEvent) => {
-    event.preventDefault();
+  const applyTask = (updated: Task) => {
+    setLive(updated);
+    setStage(updated.stage);
+    onSaved(updated);
+  };
+
+  const submit = async (event?: React.FormEvent) => {
+    event?.preventDefault();
     if (!title.trim()) return setError(t('tasks.titleRequired'));
 
     setSaving(true);
@@ -127,15 +195,15 @@ export function TaskDialog({
       appId: appId || null,
       taskDate,
       dueDate: dueDate || null,
-      ...(canScore ? { score: score === '' ? null : Number(score) } : {}),
     };
 
     try {
-      const result = task
-        ? await api.patch<{ task: Task }>(`/tasks/${task.id}`, payload)
+      const result = current
+        ? await api.patch<{ task: Task }>(`/tasks/${current.id}`, payload)
         : await api.post<{ task: Task }>('/tasks', payload);
-      onSaved(result.task);
-      push(task ? t('tasks.updated') : t('tasks.added'));
+      if (current) applyTask(result.task);
+      else onSaved(result.task);
+      push(current ? t('tasks.updated') : t('tasks.added'));
       onClose();
     } catch (err) {
       setError(errorMessage(err, lang));
@@ -145,11 +213,11 @@ export function TaskDialog({
   };
 
   const remove = async () => {
-    if (!task) return;
-    if (!window.confirm(t('tasks.confirmDelete', { title: task.title }))) return;
+    if (!current) return;
+    if (!window.confirm(t('tasks.confirmDelete', { title: current.title }))) return;
     try {
-      await api.delete(`/tasks/${task.id}`);
-      onDeleted(task.id);
+      await api.delete(`/tasks/${current.id}`);
+      onDeleted(current.id);
       push(t('tasks.deleted'));
       onClose();
     } catch (err) {
@@ -157,12 +225,145 @@ export function TaskDialog({
     }
   };
 
+  const properties = (
+    <div className="grid gap-3.5">
+      <Field label={t('tasks.assignee')}>
+        <select
+          className="field"
+          value={assigneeId}
+          onChange={(event) => setAssigneeId(event.target.value)}
+          disabled={!editable}
+        >
+          <option value="">— {t('tasks.unassigned')} —</option>
+          {assignees.map((person) => (
+            <option key={person.id} value={person.id}>
+              {person.name}
+            </option>
+          ))}
+        </select>
+      </Field>
+
+      <div className="grid grid-cols-2 gap-3">
+        <Field label={t('tasks.taskDate')}>
+          <input
+            type="date"
+            className="field ltr text-start"
+            value={taskDate}
+            onChange={(event) => setTaskDate(event.target.value)}
+            disabled={!editable}
+            required
+          />
+        </Field>
+        <Field label={t('tasks.dueDate')}>
+          <input
+            type="date"
+            className="field ltr text-start"
+            value={dueDate}
+            onChange={(event) => setDueDate(event.target.value)}
+            disabled={!editable}
+          />
+        </Field>
+      </div>
+
+      <Field label={t('tasks.priority')}>
+        <select
+          className="field"
+          value={priority}
+          onChange={(event) => setPriority(event.target.value as TaskPriority)}
+          disabled={!editable}
+        >
+          {PRIORITY_ORDER.map((key) => (
+            <option key={key} value={key}>
+              {t(PRIORITY_META[key].key)}
+            </option>
+          ))}
+        </select>
+      </Field>
+
+      <Field label={t('tasks.department')} hint={current ? undefined : t('tasks.departmentHint')}>
+        <select
+          className="field"
+          value={department}
+          onChange={(event) => changeDepartment(event.target.value)}
+          disabled={!editable}
+        >
+          {availableDepartments.map((d) => (
+            <option key={d.id} value={d.id}>
+              {lang === 'en' ? d.en : d.ar}
+            </option>
+          ))}
+        </select>
+      </Field>
+
+      {subteams.length > 0 && (
+        <Field label={t('tasks.subteam')}>
+          <select
+            className="field"
+            value={subteam}
+            onChange={(event) => {
+              setSubteam(event.target.value);
+              setAssigneeId('');
+            }}
+            disabled={!editable}
+          >
+            <option value="">— {t('tasks.noSubteam')} —</option>
+            {subteams.map((team: { id: string; ar: string; en: string }) => (
+              <option key={team.id} value={team.id}>
+                {lang === 'en' ? team.en : team.ar}
+              </option>
+            ))}
+          </select>
+        </Field>
+      )}
+
+      <Field label={t('tasks.stage')}>
+        <select
+          className="field"
+          value={stage}
+          onChange={(event) => setStage(event.target.value)}
+          disabled={!editable}
+        >
+          {selectableStages.map((s: { id: string; ar: string; en: string }) => (
+            <option key={s.id} value={s.id}>
+              {lang === 'en' ? s.en : s.ar}
+            </option>
+          ))}
+        </select>
+      </Field>
+
+      <Field label={t('tasks.relatedApp')}>
+        <select
+          className="field"
+          value={appId}
+          onChange={(event) => setAppId(event.target.value)}
+          disabled={!editable}
+        >
+          <option value="">— {t('tasks.noRelatedApp')} —</option>
+          {apps.map((app) => (
+            <option key={app.id} value={app.id}>
+              {lang === 'en' && app.nameEn ? app.nameEn : app.nameAr}
+            </option>
+          ))}
+        </select>
+      </Field>
+    </div>
+  );
+
+  const errorBox = error ? (
+    <p
+      role="alert"
+      className="rounded-xl bg-status-badBg px-3 py-2 text-[13px] font-semibold text-status-bad"
+    >
+      {error}
+    </p>
+  ) : null;
+
   return (
     <Modal
       open={open}
       onClose={onClose}
-      width="lg"
-      title={task ? t('tasks.detail') : t('tasks.new')}
+      width={current ? 'xl' : 'md'}
+      title={current ? t('tasks.detail') : t('tasks.new')}
       footer={
         <>
           {deletable && (
@@ -175,193 +376,232 @@ export function TaskDialog({
             {editable ? t('common.cancel') : t('common.close')}
           </button>
           {editable && (
-            <button type="submit" form="task-form" className="btn-primary btn-sm" disabled={saving}>
+            <button
+              type={current ? 'button' : 'submit'}
+              form={current ? undefined : 'task-form'}
+              onClick={current ? () => submit() : undefined}
+              className="btn-primary btn-sm"
+              disabled={saving}
+            >
               {saving && <Spinner size={15} />}
-              {task ? t('common.save') : t('common.add')}
+              {current ? t('common.save') : t('common.add')}
             </button>
           )}
         </>
       }
     >
-      <form id="task-form" onSubmit={submit} className="grid gap-3.5">
-        <Field label={t('tasks.titleField')} required>
-          <input
-            className="field"
-            value={title}
-            onChange={(event) => setTitle(event.target.value)}
-            placeholder={t('tasks.titlePlaceholder')}
-            disabled={!editable}
-            autoFocus={!task}
-            required
+      {current ? (
+        // `min-w-0` throughout: a grid track sizes to its widest child by
+        // default, and one wide row would push the whole dialog sideways.
+        <div className="grid min-w-0 gap-5">
+          <TaskHeading
+            task={current}
+            title={title}
+            editable={editable}
+            onTitle={setTitle}
           />
-        </Field>
 
-        <Field label={t('tasks.descField')}>
-          <textarea
-            className="field min-h-[92px] resize-y"
-            value={description}
-            onChange={(event) => setDescription(event.target.value)}
-            placeholder={t('tasks.descPlaceholder')}
-            disabled={!editable}
-          />
-        </Field>
+          <div className="min-w-0 rounded-2xl border border-surface-line bg-surface-sunken/40 p-3 sm:p-4">
+            <WorkflowTracker task={current} />
+            <div className="mt-4">
+              <WorkflowActions
+                task={current}
+                attachmentCount={attachments?.length ?? current.attachmentCount ?? 0}
+                onChanged={applyTask}
+              />
+            </div>
+          </div>
 
-        <Field label={t('tasks.notes')}>
-          <textarea
-            className="field min-h-[72px] resize-y"
-            value={notes}
-            onChange={(event) => setNotes(event.target.value)}
-            placeholder={t('tasks.notesPlaceholder')}
-            disabled={!editable}
-          />
-        </Field>
+          <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_17rem]">
+            <div className="grid min-w-0 gap-5">
+              <Field label={t('tasks.descField')}>
+                <textarea
+                  className="field min-h-[92px] resize-y"
+                  value={description}
+                  onChange={(event) => setDescription(event.target.value)}
+                  placeholder={t('tasks.descPlaceholder')}
+                  disabled={!editable}
+                />
+              </Field>
 
-        <div className="grid gap-3.5 sm:grid-cols-2">
-          <Field label={t('tasks.taskDate')}>
+              <Field label={t('tasks.notes')}>
+                <textarea
+                  className="field min-h-[64px] resize-y"
+                  value={notes}
+                  onChange={(event) => setNotes(event.target.value)}
+                  placeholder={t('tasks.notesPlaceholder')}
+                  disabled={!editable}
+                />
+              </Field>
+
+              {stateOf(current) === 'submitted' && <SubmissionSummary task={current} />}
+
+              <Deliverables
+                task={current}
+                attachments={attachments}
+                canAttach={canAttach}
+                onChanged={(list) => {
+                  setAttachments(list);
+                  setLive((value) =>
+                    value ? { ...value, attachmentCount: list.length } : value
+                  );
+                }}
+              />
+
+              {errorBox}
+            </div>
+
+            <aside className="grid gap-5 lg:border-s lg:border-surface-line lg:ps-5">
+              <div>
+                <h3 className="mb-3 text-[13px] font-bold text-ink">{t('flow.properties')}</h3>
+                {properties}
+              </div>
+              <Timeline task={current} />
+            </aside>
+          </div>
+
+          <Comments taskId={current.id} />
+        </div>
+      ) : (
+        <form id="task-form" onSubmit={submit} className="grid gap-3.5">
+          <p className="rounded-xl bg-brand-50 px-3.5 py-2.5 text-[12.5px] leading-relaxed text-brand-700">
+            {t('tasks.newHint')}
+          </p>
+
+          <Field label={t('tasks.titleField')} required>
             <input
-              type="date"
-              className="field ltr text-start"
-              value={taskDate}
-              onChange={(event) => setTaskDate(event.target.value)}
-              disabled={!editable}
+              className="field"
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              placeholder={t('tasks.titlePlaceholder')}
+              autoFocus
               required
             />
           </Field>
 
-          <Field label={t('tasks.department')} hint={t('tasks.departmentHint')}>
-            <select
-              className="field"
-              value={department}
-              onChange={(event) => changeDepartment(event.target.value)}
-              disabled={!editable}
-            >
-              {availableDepartments.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {lang === 'en' ? d.en : d.ar}
-                </option>
-              ))}
-            </select>
-          </Field>
-
-          {subteams.length > 0 && (
-            <Field label={t('tasks.subteam')}>
-              <select
-                className="field"
-                value={subteam}
-                onChange={(event) => {
-                  setSubteam(event.target.value);
-                  setAssigneeId('');
-                }}
-                disabled={!editable}
-              >
-                <option value="">— {t('tasks.noSubteam')} —</option>
-                {subteams.map((team) => (
-                  <option key={team.id} value={team.id}>
-                    {lang === 'en' ? team.en : team.ar}
-                  </option>
-                ))}
-              </select>
-            </Field>
-          )}
-
-          <Field label={t('tasks.stage')}>
-            <select
-              className="field"
-              value={stage}
-              onChange={(event) => setStage(event.target.value)}
-              disabled={!editable}
-            >
-              {stages.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {lang === 'en' ? s.en : s.ar}
-                </option>
-              ))}
-            </select>
-          </Field>
-
-          <Field label={t('tasks.priority')}>
-            <select
-              className="field"
-              value={priority}
-              onChange={(event) => setPriority(event.target.value as TaskPriority)}
-              disabled={!editable}
-            >
-              {PRIORITY_ORDER.map((key) => (
-                <option key={key} value={key}>
-                  {t(PRIORITY_META[key].key)}
-                </option>
-              ))}
-            </select>
-          </Field>
-
-          <Field label={t('tasks.assignee')}>
-            <select
-              className="field"
-              value={assigneeId}
-              onChange={(event) => setAssigneeId(event.target.value)}
-              disabled={!editable}
-            >
-              <option value="">— {t('tasks.unassigned')} —</option>
-              {assignees.map((person) => (
-                <option key={person.id} value={person.id}>
-                  {person.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-
-          {(canScore || score !== '') && (
-            <Field label={t('tasks.score')} hint={t('tasks.scoreHint')}>
-              <input
-                type="number"
-                min="0"
-                max="100"
-                step="0.5"
-                className="field ltr text-start"
-                value={score}
-                onChange={(event) => setScore(event.target.value)}
-                placeholder="—"
-                disabled={!editable || !canScore}
-              />
-            </Field>
-          )}
-
-          <Field label={t('tasks.dueDate')}>
-            <input
-              type="date"
-              className="field ltr text-start"
-              value={dueDate}
-              onChange={(event) => setDueDate(event.target.value)}
-              disabled={!editable}
+          <Field label={t('tasks.descField')}>
+            <textarea
+              className="field min-h-[92px] resize-y"
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              placeholder={t('tasks.descPlaceholder')}
             />
           </Field>
 
-          <Field label={t('tasks.relatedApp')} hint={t('tasks.relatedAppHint')}>
-            <select
-              className="field"
-              value={appId}
-              onChange={(event) => setAppId(event.target.value)}
-              disabled={!editable}
-            >
-              <option value="">— {t('tasks.noRelatedApp')} —</option>
-              {apps.map((app) => (
-                <option key={app.id} value={app.id}>
-                  {lang === 'en' && app.nameEn ? app.nameEn : app.nameAr}
-                </option>
-              ))}
-            </select>
+          {properties}
+
+          <Field label={t('tasks.notes')}>
+            <textarea
+              className="field min-h-[64px] resize-y"
+              value={notes}
+              onChange={(event) => setNotes(event.target.value)}
+              placeholder={t('tasks.notesPlaceholder')}
+            />
           </Field>
-        </div>
 
-        {error && (
-          <p role="alert" className="rounded-xl bg-status-badBg px-3 py-2 text-[13px] font-semibold text-status-bad">
-            {error}
-          </p>
-        )}
-      </form>
-
-      {task && <Comments taskId={task.id} />}
+          {errorBox}
+        </form>
+      )}
     </Modal>
+  );
+}
+
+/* ── heading ─────────────────────────────────────────────────────── */
+
+function TaskHeading({
+  task,
+  title,
+  editable,
+  onTitle,
+}: {
+  task: Task;
+  title: string;
+  editable: boolean;
+  onTitle: (value: string) => void;
+}) {
+  const { user } = useAuth();
+  const { t, lang } = useI18n();
+  const department = getDepartment(task.department ?? DEFAULT_DEPARTMENT);
+  const priority = PRIORITY_META[task.priority];
+
+  return (
+    <header>
+      <input
+        value={title}
+        onChange={(event) => onTitle(event.target.value)}
+        disabled={!editable}
+        aria-label={t('tasks.titleField')}
+        className={cx(
+          'w-full rounded-lg border border-transparent bg-transparent px-1.5 py-1',
+          'text-[18px] font-extrabold leading-snug text-ink sm:text-[21px]',
+          'transition-colors focus:border-surface-line focus:bg-white focus:outline-none',
+          editable && 'hover:border-surface-line'
+        )}
+      />
+      <div className="mt-1.5 flex flex-wrap items-center gap-1.5 px-1.5">
+        <span
+          className="chip"
+          style={{ background: `${department.color}18`, color: department.color }}
+        >
+          <span className="h-2 w-2 rounded-full" style={{ background: department.color }} />
+          {lang === 'en' ? department.en : department.ar}
+        </span>
+        <StateBadge task={task} forReviewer={isReviewer(user) && !isDoer(user, task)} />
+        {task.priority !== 'normal' && (
+          <span className={cx('chip', priority.className)}>{t(priority.key)}</span>
+        )}
+        {task.reworkCount > 0 && (
+          <span className="chip bg-surface-sunken text-ink-muted">
+            {returnedLabel(task.reworkCount, t)}
+          </span>
+        )}
+        {task.score !== null && task.score !== undefined && <ScoreChip score={task.score} size="sm" />}
+      </div>
+    </header>
+  );
+}
+
+/* ── timeline ────────────────────────────────────────────────────── */
+
+/** Dates, in the order they happened. The audit trail a manager asks for. */
+function Timeline({ task }: { task: Task }) {
+  const { t, lang } = useI18n();
+  const { userById } = useWorkspace();
+
+  const rows = [
+    { key: 'flow.createdOn' as const, at: task.createdAt, who: task.createdBy },
+    { key: 'flow.startedOn' as const, at: task.startedAt, who: task.assigneeId },
+    { key: 'flow.submittedOn' as const, at: task.submittedAt, who: task.submittedBy },
+    { key: 'flow.reviewedOn' as const, at: task.reviewedAt, who: task.reviewedBy },
+  ].filter((row) => row.at);
+
+  return (
+    <div>
+      <h3 className="mb-2.5 text-[13px] font-bold text-ink">{t('flow.timeline')}</h3>
+      <ul className="grid gap-2">
+        {rows.map((row) => {
+          const person = userById(row.who);
+          return (
+            <li key={row.key} className="flex items-baseline justify-between gap-2 text-[12px]">
+              <span className="font-semibold text-ink-muted">{t(row.key)}</span>
+              <span className="text-end text-ink-faint">
+                <span className="block">{formatDate(row.at, lang)}</span>
+                {person && <span className="block text-[11px]">{person.name}</span>}
+              </span>
+            </li>
+          );
+        })}
+        {task.dueDate && (
+          <li className="flex items-baseline justify-between gap-2 border-t border-surface-line pt-2 text-[12px]">
+            <span className="inline-flex items-center gap-1 font-semibold text-ink-muted">
+              <CalendarClock size={13} />
+              {t('tasks.dueDate')}
+            </span>
+            <span className="text-ink-faint">{formatDate(task.dueDate, lang)}</span>
+          </li>
+        )}
+      </ul>
+    </div>
   );
 }
 
@@ -403,7 +643,7 @@ function Comments({ taskId }: { taskId: string }) {
   };
 
   return (
-    <section className="mt-6 border-t border-surface-line pt-4">
+    <section className="border-t border-surface-line pt-4">
       <h3 className="mb-3 flex items-center gap-2 text-[13px] font-bold text-ink">
         <MessageSquare size={15} className="text-brand-500" />
         {t('tasks.comments')}
@@ -426,7 +666,12 @@ function Comments({ taskId }: { taskId: string }) {
             return (
               <li key={comment.id} className="flex gap-2.5">
                 <Avatar name={author?.name ?? '?'} color={author?.avatarColor} size={30} className="mt-0.5" />
-                <div className={cx('min-w-0 flex-1 rounded-xl px-3 py-2', mine ? 'bg-brand-50' : 'bg-surface-sunken')}>
+                <div
+                  className={cx(
+                    'min-w-0 flex-1 rounded-xl px-3 py-2',
+                    mine ? 'bg-brand-50' : 'bg-surface-sunken'
+                  )}
+                >
                   <p className="flex items-baseline gap-2 text-[12px]">
                     <span className="font-bold text-ink">{author?.name ?? t('common.removedUser')}</span>
                     <span className="text-ink-faint">{timeAgo(comment.createdAt, t)}</span>
@@ -473,10 +718,14 @@ export function TaskMeta({ task }: { task: Task }) {
 
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-ink-faint">
-      {assignee && (
+      {assignee ? (
         <span className="inline-flex items-center gap-1">
           <Avatar name={assignee.name} color={assignee.avatarColor} size={16} />
           {assignee.name.split(/\s+/)[0]}
+        </span>
+      ) : (
+        <span className="inline-flex items-center gap-1">
+          <UserRound size={12} />
         </span>
       )}
       {app && (

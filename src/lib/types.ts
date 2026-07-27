@@ -1,6 +1,9 @@
 export type Role = 'admin' | 'manager' | 'member' | 'viewer';
 export type TaskPriority = 'low' | 'normal' | 'high' | 'urgent';
 export type StageType = 'open' | 'active' | 'review' | 'done';
+/** Where a task sits in the assign → deliver → review → approve cycle. */
+export type TaskState = 'assigned' | 'working' | 'submitted' | 'approved';
+export type ReviewDecision = 'approved' | 'changes_requested';
 export type EmbedMode = 'auto' | 'iframe' | 'newtab' | 'internal';
 
 export interface User {
@@ -73,10 +76,30 @@ export interface Task {
   taskDate: string;
   dueDate: string | null;
   notes: string;
+
+  /* ── the lifecycle ──────────────────────────────────────────────
+     Written only by the workflow endpoints, never by the edit form. */
+
+  startedAt: string | null;
+  /** Set when the assignee hands the work in; cleared if it is sent back. */
+  submittedAt: string | null;
+  submittedBy: string | null;
+  /** What the assignee said they delivered. */
+  submissionNote: string;
+  reviewedAt: string | null;
+  reviewedBy: string | null;
+  /** The manager's written verdict. Private, like the score. */
+  reviewNote: string;
+  reviewDecision: ReviewDecision | null;
+  /** How many times a manager sent the work back. */
+  reworkCount: number;
+  /** Denormalised so a board card can show it without a request per card. */
+  attachmentCount: number;
   /** Manager-owned final score from 0 to 100. Hidden from other employees. */
   score: number | null;
   scoreBy: string | null;
   scoredAt: string | null;
+
   appId: string | null;
   labels: string[];
   order: number;
@@ -93,13 +116,30 @@ export interface TaskComment {
   createdAt: string;
 }
 
+/** A file handed in as proof the task was actually done. */
+export interface TaskAttachment {
+  id: string;
+  taskId: string;
+  userId: string;
+  name: string;
+  size: number;
+  type: string;
+  createdAt: string;
+}
+
 export interface PerformanceMetrics {
   total: number;
   completed: number;
   active: number;
   overdue: number;
+  /** Handed in and sitting in a manager's queue. */
+  awaitingReview: number;
+  /** Sent back at least once. */
+  returned: number;
   completionRate: number;
   onTimeRate: number;
+  /** Approved without ever being sent back — the clarity-of-brief signal. */
+  firstPassRate: number;
   averageScore: number | null;
   scoredTasks: number;
 }

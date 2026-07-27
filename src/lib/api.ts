@@ -57,11 +57,42 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   return payload as T;
 }
 
+/**
+ * One file, raw. Name and media type ride in headers so the body stays a clean
+ * byte stream — which also keeps a .json deliverable from being eaten by the
+ * server's JSON body parser on the way in.
+ */
+async function upload<T>(path: string, file: File): Promise<T> {
+  const response = await fetch(`/api${path}`, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: {
+      'Content-Type': 'application/octet-stream',
+      'X-File-Name': encodeURIComponent(file.name),
+      'X-File-Type': file.type || 'application/octet-stream',
+    },
+    body: file,
+  });
+
+  let payload: Record<string, unknown> = {};
+  try {
+    payload = await response.json();
+  } catch {
+    payload = {};
+  }
+  if (!response.ok) {
+    if (response.status === 401) unauthorizedListeners.forEach((l) => l());
+    throw new ApiError(response.status, payload);
+  }
+  return payload as T;
+}
+
 export const api = {
   get: <T,>(path: string) => request<T>('GET', path),
   post: <T,>(path: string, body?: unknown) => request<T>('POST', path, body ?? {}),
   patch: <T,>(path: string, body: unknown) => request<T>('PATCH', path, body),
   delete: <T,>(path: string) => request<T>('DELETE', path),
+  upload,
 };
 
 /**
@@ -136,6 +167,34 @@ const ERRORS: Record<string, { ar: string; en: string }> = {
     ar: 'التقييم يجب أن يكون رقماً من ٠ إلى ١٠٠.',
     en: 'The score must be a number from 0 to 100.',
   },
+  score_before_review: {
+    ar: 'التقييم يأتي بعد تسليم العمل ومراجعته — لا يمكن وضعه عند إنشاء المهمة.',
+    en: 'A score comes after the work is delivered and reviewed — not when the task is created.',
+  },
+  deliverable_required: {
+    ar: 'أرفق ملف التسليم أولاً قبل إرسال المهمة للمراجعة.',
+    en: 'Attach what you produced before sending the task for review.',
+  },
+  submit_required: {
+    ar: 'المهمة تدخل المراجعة عن طريق «تسليم للمراجعة» مع إرفاق العمل.',
+    en: 'Use “Submit for review” — a task enters review with its deliverable attached.',
+  },
+  review_required: {
+    ar: 'اعتماد المهمة من صلاحية المدير، ويتم من خلال المراجعة والتقييم.',
+    en: 'Closing a task is the manager’s call, and happens through the review.',
+  },
+  not_submitted: {
+    ar: 'هذه المهمة ليست قيد المراجعة.',
+    en: 'This task is not waiting for review.',
+  },
+  invalid_decision: { ar: 'قرار المراجعة غير معروف.', en: 'That review decision is not recognised.' },
+  review_note_required: {
+    ar: 'اكتب سبب الإعادة حتى يعرف الموظف ما المطلوب تعديله.',
+    en: 'Write why it is going back, so they know what to change.',
+  },
+  file_too_large: { ar: 'الملف أكبر من ١٠ ميجابايت.', en: 'That file is larger than 10 MB.' },
+  too_many_files: { ar: 'وصلت للحد الأقصى من المرفقات لهذه المهمة.', en: 'This task has reached its attachment limit.' },
+  empty_file: { ar: 'الملف فارغ.', en: 'That file is empty.' },
   invalid_task_date: { ar: 'تاريخ المهمة غير صالح.', en: 'The task date is not valid.' },
   forbidden: { ar: 'ليست لديك صلاحية على هذا الإجراء.', en: 'You do not have permission for that.' },
   unauthenticated: { ar: 'يجب تسجيل الدخول أولاً.', en: 'You need to sign in first.' },

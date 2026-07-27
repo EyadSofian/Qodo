@@ -79,6 +79,21 @@ async function request(pathname, { method = 'GET', body, cookie } = {}) {
   };
 }
 
+/** Deliverables go up as raw bytes, so they need their own helper. */
+async function upload(taskId, { name, type = 'application/pdf', bytes = 'demo' }, cookie) {
+  const response = await fetch(`${ORIGIN}/api/tasks/${taskId}/attachments`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/octet-stream',
+      'X-File-Name': encodeURIComponent(name),
+      'X-File-Type': type,
+      Cookie: cookie,
+    },
+    body: Buffer.from(bytes),
+  });
+  return { status: response.status, data: await response.json().catch(() => null) };
+}
+
 async function login(email, password) {
   const response = await request('/auth/login', {
     method: 'POST',
@@ -95,10 +110,16 @@ async function create(pathname, body, cookie) {
   return response.data;
 }
 
-test('team boundaries, performance privacy, scoring and export', async () => {
-  const adminCookie = await login('admin@test.local', 'AdminPass123!');
+let manager;
+let creative;
+let managerCookie;
+let creativeCookie;
+let adminCookie;
 
-  const manager = await create(
+test('team boundaries, performance privacy and export', async () => {
+  adminCookie = await login('admin@test.local', 'AdminPass123!');
+
+  manager = await create(
     '/users',
     {
       name: 'Marketing Manager',
@@ -111,7 +132,7 @@ test('team boundaries, performance privacy, scoring and export', async () => {
     },
     adminCookie
   );
-  const creative = await create(
+  creative = await create(
     '/users',
     {
       name: 'Creative Employee',
@@ -148,17 +169,19 @@ test('team boundaries, performance privacy, scoring and export', async () => {
       stage: 'working',
       assigneeId: creative.user.id,
       dueDate: '2026-07-30',
-      score: 88,
     },
     adminCookie
   );
 
-  const creativeCookie = await login('creative@test.local', 'Creative123!');
+  creativeCookie = await login('creative@test.local', 'Creative123!');
   const creativeTasks = await request('/tasks', { cookie: creativeCookie });
   assert.equal(creativeTasks.status, 200);
   assert.equal(creativeTasks.data.tasks.length, 1);
   assert.equal(creativeTasks.data.tasks[0].department, 'marketing');
-  assert.equal(creativeTasks.data.tasks[0].score, 88);
+  // A brand-new task carries no verdict of any kind.
+  assert.equal(creativeTasks.data.tasks[0].score, null);
+  assert.equal(creativeTasks.data.tasks[0].reviewDecision, null);
+  assert.equal(creativeTasks.data.tasks[0].attachmentCount, 0);
 
   const creativeDirectory = await request('/auth/directory', { cookie: creativeCookie });
   assert.ok(creativeDirectory.data.users.every((person) => person.department === 'marketing'));
@@ -177,9 +200,7 @@ test('team boundaries, performance privacy, scoring and export', async () => {
   });
   assert.equal(crossTeam.status, 403);
 
-  const managerCookie = await login('manager@test.local', 'Manager123!');
-  const managerTasks = await request('/tasks', { cookie: managerCookie });
-  assert.equal(managerTasks.data.tasks.length, 1);
+  managerCookie = await login('manager@test.local', 'Manager123!');
   const managerOverview = await request('/tasks/overview?department=marketing', {
     cookie: managerCookie,
   });
@@ -191,35 +212,237 @@ test('team boundaries, performance privacy, scoring and export', async () => {
   });
   assert.equal(exported.status, 200);
   assert.match(exported.text, /Launch campaign/);
+  assert.match(exported.text, /Times returned/);
 
   const salesCookie = await login('sales@test.local', 'SalesPass123!');
   const salesTasks = await request('/tasks', { cookie: salesCookie });
   assert.equal(salesTasks.data.tasks.length, 0);
+});
 
-  // A score on somebody else's task is not exposed to a regular teammate.
-  const managerTask = await create(
+test('a score cannot be set before the work has been reviewed', async () => {
+  const atCreation = await request('/tasks', {
+    method: 'POST',
+    cookie: adminCookie,
+    body: { title: 'Scored too early', department: 'marketing', stage: 'working', score: 90 },
+  });
+  assert.equal(atCreation.status, 400);
+  assert.equal(atCreation.data.error, 'score_before_review');
+
+  const task = await create(
+    '/tasks',
+    { title: 'Not delivered yet', department: 'marketing', stage: 'working' },
+    managerCookie
+  );
+  const onOpenTask = await request(`/tasks/${task.task.id}`, {
+    method: 'PATCH',
+    cookie: managerCookie,
+    body: { score: 90 },
+  });
+  assert.equal(onOpenTask.status, 400);
+  assert.equal(onOpenTask.data.error, 'score_before_review');
+});
+
+test('the board cannot be dragged past either gate', async () => {
+  const { task } = await create(
     '/tasks',
     {
-      title: 'Performance report',
+      title: 'Gate test',
       department: 'marketing',
-      subteam: 'performance',
-      stage: 'done',
-      assigneeId: manager.user.id,
-      dueDate: '2099-07-26',
-      score: 94,
+      stage: 'working',
+      assigneeId: creative.user.id,
+    },
+    managerCookie
+  );
+
+  // Employee drags it to "done": that is an approval, and not theirs to make.
+  const employeeToDone = await request(`/tasks/${task.id}`, {
+    method: 'PATCH',
+    cookie: creativeCookie,
+    body: { stage: 'done' },
+  });
+  assert.equal(employeeToDone.status, 409);
+  assert.equal(employeeToDone.data.error, 'review_required');
+
+  // A manager cannot skip the score either — approving is an action, not a field.
+  const managerToDone = await request(`/tasks/${task.id}`, {
+    method: 'PATCH',
+    cookie: managerCookie,
+    body: { stage: 'done' },
+  });
+  assert.equal(managerToDone.status, 409);
+  assert.equal(managerToDone.data.error, 'review_required');
+
+  // And dropping onto the review column is a submission, with what that requires.
+  const straightToReview = await request(`/tasks/${task.id}`, {
+    method: 'PATCH',
+    cookie: creativeCookie,
+    body: { stage: 'review' },
+  });
+  assert.equal(straightToReview.status, 409);
+  assert.equal(straightToReview.data.error, 'submit_required');
+
+  // Moving between the open and active columns stays an ordinary drag.
+  const ordinaryMove = await request(`/tasks/${task.id}`, {
+    method: 'PATCH',
+    cookie: creativeCookie,
+    body: { stage: 'pending' },
+  });
+  assert.equal(ordinaryMove.status, 200);
+  assert.equal(ordinaryMove.data.task.stage, 'pending');
+});
+
+test('assign → deliver → review → approve, including the rework loop', async () => {
+  const { task } = await create(
+    '/tasks',
+    {
+      title: 'Ramadan key visual',
+      description: 'Three sizes, brand colours',
+      department: 'marketing',
+      subteam: 'creative',
+      stage: 'pending',
+      assigneeId: creative.user.id,
+      dueDate: '2099-01-01',
+    },
+    managerCookie
+  );
+
+  const started = await request(`/tasks/${task.id}/start`, {
+    method: 'POST',
+    cookie: creativeCookie,
+  });
+  assert.equal(started.status, 200);
+  assert.equal(started.data.task.stage, 'working');
+  assert.ok(started.data.task.startedAt);
+
+  // Handing in with nothing attached is the case the whole gate exists for.
+  const empty = await request(`/tasks/${task.id}/submit`, {
+    method: 'POST',
+    cookie: creativeCookie,
+    body: { note: 'done' },
+  });
+  assert.equal(empty.status, 400);
+  assert.equal(empty.data.error, 'deliverable_required');
+
+  const uploaded = await upload(task.id, { name: 'كي فيجوال.pdf' }, creativeCookie);
+  assert.equal(uploaded.status, 201, JSON.stringify(uploaded.data));
+  assert.equal(uploaded.data.attachmentCount, 1);
+  assert.equal(uploaded.data.attachment.name, 'كي فيجوال.pdf');
+
+  const submitted = await request(`/tasks/${task.id}/submit`, {
+    method: 'POST',
+    cookie: creativeCookie,
+    body: { note: 'الثلاث مقاسات جاهزة' },
+  });
+  assert.equal(submitted.status, 200);
+  assert.equal(submitted.data.task.stage, 'review');
+  assert.ok(submitted.data.task.submittedAt);
+  assert.equal(submitted.data.task.submittedBy, creative.user.id);
+
+  // The employee cannot review their own submission into approval.
+  const selfApprove = await request(`/tasks/${task.id}/review`, {
+    method: 'POST',
+    cookie: creativeCookie,
+    body: { decision: 'approved', score: 100 },
+  });
+  assert.equal(selfApprove.status, 403);
+
+  // Sending it back without saying why helps nobody, so it is refused.
+  const silentReturn = await request(`/tasks/${task.id}/review`, {
+    method: 'POST',
+    cookie: managerCookie,
+    body: { decision: 'changes_requested' },
+  });
+  assert.equal(silentReturn.status, 400);
+  assert.equal(silentReturn.data.error, 'review_note_required');
+
+  const returned = await request(`/tasks/${task.id}/review`, {
+    method: 'POST',
+    cookie: managerCookie,
+    body: { decision: 'changes_requested', note: 'اللوجو صغير في مقاس الستوري' },
+  });
+  assert.equal(returned.status, 200);
+  // Marketing names this column itself, so returned work lands there.
+  assert.equal(returned.data.task.stage, 'rework');
+  assert.equal(returned.data.task.reworkCount, 1);
+  assert.equal(returned.data.task.submittedAt, null);
+  assert.equal(returned.data.task.score, null);
+
+  const resubmitted = await request(`/tasks/${task.id}/submit`, {
+    method: 'POST',
+    cookie: creativeCookie,
+    body: { note: 'كبّرت اللوجو' },
+  });
+  assert.equal(resubmitted.status, 200);
+  assert.equal(resubmitted.data.task.reviewDecision, null);
+
+  const badScore = await request(`/tasks/${task.id}/review`, {
+    method: 'POST',
+    cookie: managerCookie,
+    body: { decision: 'approved', score: 140 },
+  });
+  assert.equal(badScore.status, 400);
+  assert.equal(badScore.data.error, 'invalid_score');
+
+  const approved = await request(`/tasks/${task.id}/review`, {
+    method: 'POST',
+    cookie: managerCookie,
+    body: { decision: 'approved', score: 88, note: 'تمام بعد التعديل' },
+  });
+  assert.equal(approved.status, 200);
+  assert.equal(approved.data.task.stage, 'done');
+  assert.equal(approved.data.task.score, 88);
+  assert.equal(approved.data.task.reviewedBy, manager.user.id);
+  assert.equal(approved.data.task.reviewDecision, 'approved');
+  assert.ok(approved.data.task.completedAt);
+
+  // The assignee sees their own score and the feedback written for them.
+  const mine = await request('/tasks', { cookie: creativeCookie });
+  const own = mine.data.tasks.find((item) => item.id === task.id);
+  assert.equal(own.score, 88);
+  assert.equal(own.reviewNote, 'تمام بعد التعديل');
+
+  // A teammate on the same board sees the task, but not the verdict on it.
+  const colleague = await create(
+    '/users',
+    {
+      name: 'Other Designer',
+      email: 'other@test.local',
+      password: 'Other123!',
+      role: 'member',
+      department: 'marketing',
+      subteam: 'creative',
     },
     adminCookie
   );
-  assert.equal(managerTask.task.score, 94);
-  assert.ok(managerTask.task.completedAt);
-  const managerOverviewAfterDone = await request('/tasks/overview?department=marketing', {
-    cookie: managerCookie,
-  });
-  const managerPerformance = managerOverviewAfterDone.data.people.find(
-    (person) => person.user.id === manager.user.id
+  assert.ok(colleague.user.id);
+  const colleagueCookie = await login('other@test.local', 'Other123!');
+  const theirs = await request('/tasks', { cookie: colleagueCookie });
+  const seen = theirs.data.tasks.find((item) => item.id === task.id);
+  assert.equal(seen.score, null);
+  assert.equal(seen.reviewNote, '');
+
+  // The deliverable itself is downloadable, with its Arabic name intact.
+  const files = await request(`/tasks/${task.id}/attachments`, { cookie: managerCookie });
+  assert.equal(files.data.attachments.length, 1);
+  const download = await fetch(
+    `${ORIGIN}/api/tasks/${task.id}/attachments/${files.data.attachments[0].id}`,
+    { headers: { Cookie: managerCookie } }
   );
-  assert.equal(managerPerformance.onTimeRate, 100);
-  const creativeAfter = await request('/tasks', { cookie: creativeCookie });
-  const colleagueTask = creativeAfter.data.tasks.find((item) => item.title === 'Performance report');
-  assert.equal(colleagueTask.score, null);
+  assert.equal(download.status, 200);
+  assert.match(download.headers.get('content-disposition'), /filename\*=UTF-8''/);
+  assert.equal(await download.text(), 'demo');
+});
+
+test('the overview counts rework, queue depth and first-pass approvals', async () => {
+  const overview = await request('/tasks/overview?department=marketing', { cookie: managerCookie });
+  assert.equal(overview.status, 200);
+  const row = overview.data.people.find((person) => person.user.id === creative.user.id);
+
+  assert.equal(row.completed, 1);
+  assert.equal(row.returned, 1);
+  // The one approved task went back once, so nothing was approved first time.
+  assert.equal(row.firstPassRate, 0);
+  assert.equal(row.averageScore, 88);
+  assert.equal(row.onTimeRate, 100);
+  assert.equal(typeof overview.data.summary.awaitingReview, 'number');
 });

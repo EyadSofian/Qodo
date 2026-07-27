@@ -88,6 +88,10 @@ async function shapeTask(task, lang) {
     dueDate: task.dueDate,
     daysUntilDue: daysUntil(task.dueDate),
     relatedApp: task.appId,
+    deliverables: task.attachmentCount ?? 0,
+    submittedAt: task.submittedAt ?? null,
+    // How many times a manager sent it back — the useful half of "why is this late".
+    timesReturned: task.reworkCount ?? 0,
     completedAt: task.completedAt,
   };
 }
@@ -485,6 +489,18 @@ const EXECUTORS = {
       dueDate,
       appId,
       labels: [],
+      // The lifecycle starts empty: nothing has been delivered, so nothing has
+      // been reviewed and there is no score. Only the review gate writes these.
+      startedAt: null,
+      submittedAt: null,
+      submittedBy: null,
+      submissionNote: '',
+      reviewedAt: null,
+      reviewedBy: null,
+      reviewNote: '',
+      reviewDecision: null,
+      reworkCount: 0,
+      attachmentCount: 0,
       score: null,
       scoreBy: null,
       scoredAt: null,

@@ -195,6 +195,12 @@ async function migrateOrganisationAndTasks(store) {
   }
 
   const today = new Date().toISOString().slice(0, 10);
+  const attachments = await find('attachments');
+  const filesPerTask = new Map();
+  for (const file of attachments) {
+    filesPerTask.set(file.taskId, (filesPerTask.get(file.taskId) ?? 0) + 1);
+  }
+
   const tasks = await find('tasks');
   for (const task of tasks) {
     const department = task.department ?? DEFAULT_DEPARTMENT;
@@ -208,9 +214,34 @@ async function migrateOrganisationAndTasks(store) {
     if (!Object.hasOwn(task, 'score')) patch.score = null;
     if (!Object.hasOwn(task, 'scoreBy')) patch.scoreBy = null;
     if (!Object.hasOwn(task, 'scoredAt')) patch.scoredAt = null;
-    if (isDoneStage(department, stage) && !task.completedAt) {
+    const closed = isDoneStage(department, stage);
+    if (closed && !task.completedAt) {
       patch.completedAt = task.updatedAt ?? task.createdAt ?? new Date().toISOString();
     }
+
+    /*
+     * Lifecycle fields arrived with the review gate. Tasks that predate it have
+     * no submission history to invent, so they start empty — except a task that
+     * is already closed and already scored, which is exactly what an approval
+     * produces. Reading that as an approval keeps the old board's numbers
+     * meaningful instead of showing every finished task as never reviewed.
+     */
+    if (!Object.hasOwn(task, 'startedAt')) patch.startedAt = null;
+    if (!Object.hasOwn(task, 'submittedAt')) patch.submittedAt = null;
+    if (!Object.hasOwn(task, 'submittedBy')) patch.submittedBy = null;
+    if (!Object.hasOwn(task, 'submissionNote')) patch.submissionNote = '';
+    if (!Object.hasOwn(task, 'reviewNote')) patch.reviewNote = '';
+    if (!Object.hasOwn(task, 'reworkCount')) patch.reworkCount = 0;
+    if (!Object.hasOwn(task, 'reviewedAt')) {
+      const scored = Number.isFinite(task.score);
+      patch.reviewedAt = closed && scored ? (task.scoredAt ?? patch.completedAt ?? null) : null;
+      patch.reviewedBy = closed && scored ? (task.scoreBy ?? null) : null;
+      patch.reviewDecision = closed && scored ? 'approved' : null;
+    }
+
+    const fileCount = filesPerTask.get(task.id) ?? 0;
+    if (task.attachmentCount !== fileCount) patch.attachmentCount = fileCount;
+
     if (Object.keys(patch).length) await store.update('tasks', task.id, patch);
   }
 }

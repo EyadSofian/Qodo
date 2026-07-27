@@ -10,6 +10,12 @@
  * Filtering and sorting happen in JS — right call at workspace scale (tens of
  * users, thousands of tasks). If tasks ever grow past ~100k, move the hot
  * queries into SQL against the `data` jsonb column, which is already indexed.
+ *
+ * Task deliverables are the one thing that does not fit a document: a 10 MB PDF
+ * in workspace.json would be rewritten on every unrelated save, and in Postgres
+ * it would sit inside a jsonb column that gets scanned by every query. So each
+ * backend also carries a blob half — files on disk, or a `bytea` table — while
+ * the file's *metadata* stays an ordinary document in `attachments`.
  */
 
 import fs from 'node:fs/promises';
@@ -20,12 +26,14 @@ import crypto from 'node:crypto';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
 const DATA_FILE = path.join(DATA_DIR, 'workspace.json');
+const BLOB_DIR = path.join(DATA_DIR, 'uploads');
 
 export const COLLECTIONS = [
   'users',
   'apps',
   'tasks',
   'comments',
+  'attachments',
   'notifications',
   'activity',
   'pushSubscriptions',
@@ -47,6 +55,7 @@ class FileStore {
 
   async init() {
     await fs.mkdir(DATA_DIR, { recursive: true });
+    await fs.mkdir(BLOB_DIR, { recursive: true });
     try {
       const raw = await fs.readFile(DATA_FILE, 'utf8');
       this.cache = JSON.parse(raw);
@@ -100,6 +109,25 @@ class FileStore {
     await this.flush();
     return true;
   }
+
+  /* Blobs live beside the JSON, one file each, named by the id we generated —
+     never by anything the uploader chose, so a filename can't escape the dir. */
+
+  async putBlob(id, bytes) {
+    await fs.writeFile(path.join(BLOB_DIR, id), bytes);
+  }
+
+  async getBlob(id) {
+    try {
+      return await fs.readFile(path.join(BLOB_DIR, id));
+    } catch {
+      return null;
+    }
+  }
+
+  async removeBlob(id) {
+    await fs.rm(path.join(BLOB_DIR, id), { force: true });
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -131,6 +159,13 @@ class PgStore {
     await this.pool.query(
       `CREATE INDEX IF NOT EXISTS documents_data_idx ON documents USING gin (data jsonb_path_ops);`
     );
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS blobs (
+        id         text PRIMARY KEY,
+        bytes      bytea NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT now()
+      );
+    `);
     return this;
   }
 
@@ -177,6 +212,23 @@ class PgStore {
     );
     return rowCount > 0;
   }
+
+  async putBlob(id, bytes) {
+    await this.pool.query(
+      `INSERT INTO blobs (id, bytes) VALUES ($1, $2)
+       ON CONFLICT (id) DO UPDATE SET bytes = EXCLUDED.bytes`,
+      [id, bytes]
+    );
+  }
+
+  async getBlob(id) {
+    const { rows } = await this.pool.query('SELECT bytes FROM blobs WHERE id = $1', [id]);
+    return rows[0]?.bytes ?? null;
+  }
+
+  async removeBlob(id) {
+    await this.pool.query('DELETE FROM blobs WHERE id = $1', [id]);
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -208,4 +260,18 @@ export async function find(collection, predicate) {
 export async function findOne(collection, predicate) {
   const list = await find(collection, predicate);
   return list[0] ?? null;
+}
+
+/* Blob half — bytes only. Whatever the bytes belong to is a document. */
+
+export async function putBlob(id, bytes) {
+  return (await getStore()).putBlob(id, bytes);
+}
+
+export async function getBlob(id) {
+  return (await getStore()).getBlob(id);
+}
+
+export async function removeBlob(id) {
+  return (await getStore()).removeBlob(id);
 }

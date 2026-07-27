@@ -5,8 +5,10 @@ import {
   CalendarClock,
   Download,
   GripVertical,
+  Inbox,
   LayoutGrid,
   ListPlus,
+  Paperclip,
   Plus,
   Search,
   Table2,
@@ -28,10 +30,21 @@ import {
   subteamLabel,
   stageType,
 } from '@shared/departments';
+import { isReviewer, stageWriteVerdict } from '@shared/workflow';
 import { TaskDialog, TaskMeta } from '../components/TaskDialog';
+import { ScoreChip, StateBadge, returnedLabel, stateOf } from '../components/TaskWorkflow';
 import { ModuleIcon } from '../components/ModuleIcon';
-import { EmptyState, Segmented, useToast } from '../components/ui';
-import { DUE_TONE_CLASS, PRIORITY_META, cx, dueLabel, hexWithAlpha } from '../lib/utils';
+import { Avatar, EmptyState, Segmented, useToast } from '../components/ui';
+import {
+  DUE_CHIP_CLASS,
+  DUE_TONE_CLASS,
+  PRIORITY_META,
+  cx,
+  dueLabel,
+  hexWithAlpha,
+  scoreTextTone,
+  timeAgo,
+} from '../lib/utils';
 import type {
   PerformanceMetrics,
   PerformanceOverview,
@@ -82,7 +95,7 @@ export function Tasks() {
 
   const [tasks, setTasks] = useState<Task[] | null>(null);
   const [scope, setScope] = useState<'mine' | 'all'>('mine');
-  const [view, setView] = useState<'table' | 'board' | 'overview'>('table');
+  const [view, setView] = useState<'table' | 'board' | 'review' | 'overview'>('table');
   const [overview, setOverview] = useState<PerformanceOverview | null>(null);
   // '' = every department, which falls back to the canonical progress columns.
   const [department, setDepartment] = useState<string>(user?.department ?? DEFAULT_DEPARTMENT);
@@ -103,6 +116,8 @@ export function Tasks() {
 
   const seesAll = can(PERMISSIONS.TASKS_VIEW_ALL);
   const seesTeam = can(PERMISSIONS.TASKS_VIEW_TEAM) || seesAll;
+  /** Managers and admins — the people a submitted task is actually waiting on. */
+  const reviews = isReviewer(user);
   const availableDepartments = seesAll
     ? DEPARTMENTS
     : DEPARTMENTS.filter((item) => item.id === (user?.department ?? DEFAULT_DEPARTMENT));
@@ -213,6 +228,20 @@ export function Tasks() {
     setDialogOpen(true);
   };
 
+  const openTask = useCallback((task: Task) => {
+    setDialogTask(task);
+    setDialogOpen(true);
+  }, []);
+
+  /** Everything handed in and still waiting, oldest first — review before new work. */
+  const reviewQueue = useMemo(() => {
+    if (!tasks) return [];
+    return tasks
+      .filter((task) => stateOf(task) === 'submitted')
+      .filter((task) => !department || (task.department ?? DEFAULT_DEPARTMENT) === department)
+      .sort((a, b) => (a.submittedAt ?? '').localeCompare(b.submittedAt ?? ''));
+  }, [tasks, department]);
+
   const canMove = useCallback(
     (task: Task) =>
       can(PERMISSIONS.TASKS_EDIT_ANY) ||
@@ -225,6 +254,11 @@ export function Tasks() {
    * Move optimistically so the card lands where it was dropped immediately,
    * then reconcile with the server. On failure the board reloads rather than
    * trying to unwind the local edit.
+   *
+   * A drop onto one of the two gate columns is not a move. Review means the
+   * work is being handed in, and done means it is being approved — both carry
+   * requirements a drag cannot express, so the card stays put and the task
+   * opens on the gate that is asking for something.
    */
   const moveTask = useCallback(
     async (taskId: string, columnId: string, index: number) => {
@@ -245,6 +279,16 @@ export function Tasks() {
       // Same column, same slot: the card was picked up and put back down.
       if (targetStage === task.stage && here === index) return;
 
+      const verdict = stageWriteVerdict(user, task, taskDepartment, targetStage);
+      if (verdict === 'forbidden' || (verdict === 'review' && !isReviewer(user))) {
+        push(t('flow.managerOnly'), 'bad');
+        return;
+      }
+      if (verdict !== 'ok') {
+        openTask(task);
+        return;
+      }
+
       // Order is a sparse rank, so a drop only has to land between its new
       // neighbours — the rest of the column never has to be rewritten.
       const siblings = column.filter((t) => t.id !== taskId);
@@ -261,7 +305,7 @@ export function Tasks() {
         load().catch(() => {});
       }
     },
-    [tasks, department, byColumn, push, lang, load]
+    [tasks, department, byColumn, push, lang, load, user, t, openTask]
   );
 
   /**
@@ -497,6 +541,18 @@ export function Tasks() {
         options={[
           { value: 'table', label: t('tasks.table'), icon: <Table2 size={14} /> },
           { value: 'board', label: t('tasks.board'), icon: <LayoutGrid size={14} /> },
+          // Only a reviewer has a queue; for everyone else the tab would be empty
+          // by definition, because nobody is waiting on them.
+          ...(reviews
+            ? [
+                {
+                  value: 'review' as const,
+                  label: t('flow.reviewQueue'),
+                  icon: <Inbox size={14} />,
+                  count: reviewQueue.length,
+                },
+              ]
+            : []),
           { value: 'overview', label: t('tasks.overview'), icon: <BarChart3 size={14} /> },
         ]}
       />
@@ -523,7 +579,7 @@ export function Tasks() {
         ))}
       </div>
 
-      {view !== 'overview' && <div className="mb-4 flex flex-wrap items-center gap-2">
+      {(view === 'table' || view === 'board') && <div className="mb-4 flex flex-wrap items-center gap-2">
         {seesTeam && (
           <Segmented
             value={scope}
@@ -583,14 +639,10 @@ export function Tasks() {
             <div key={index} className="skeleton h-56 rounded-2xl" />
           ))}
         </div>
+      ) : view === 'review' ? (
+        <ReviewQueue tasks={reviewQueue} onOpen={openTask} />
       ) : view === 'table' ? (
-        <TaskTable
-          tasks={filtered}
-          onOpen={(task) => {
-            setDialogTask(task);
-            setDialogOpen(true);
-          }}
-        />
+        <TaskTable tasks={filtered} onOpen={openTask} />
       ) : (
         <div
           className="grid gap-3"
@@ -639,15 +691,13 @@ export function Tasks() {
                       task={task}
                       movable={canMove(task)}
                       showDepartment={!department}
+                      forReviewer={reviews}
                       cardRef={(node) => {
                         cardRefs.current[task.id] = node;
                       }}
                       onPointerDown={(event, fromHandle) => armDrag(task, event, fromHandle)}
                       onKeyDown={(event) => nudge(task, event)}
-                      onOpen={() => {
-                        setDialogTask(task);
-                        setDialogOpen(true);
-                      }}
+                      onOpen={() => openTask(task)}
                     />
                   </Fragment>
                 ))}
@@ -683,7 +733,7 @@ export function Tasks() {
         </div>
       )}
 
-      {view !== 'overview' && tasks !== null && filtered.length === 0 && (
+      {(view === 'table' || view === 'board') && tasks !== null && filtered.length === 0 && (
         <div className="card mt-4">
           <EmptyState
             icon={<ListPlus size={26} />}
@@ -723,7 +773,7 @@ function TaskTable({ tasks, onOpen }: { tasks: Task[]; onOpen: (task: Task) => v
   return (
     <div className="overflow-hidden rounded-2xl border border-surface-line bg-white shadow-sm">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1180px] table-fixed border-collapse text-start">
+        <table className="w-full min-w-[1280px] table-fixed border-collapse text-start">
           <thead className="bg-navy text-white">
             <tr className="text-[11.5px] font-bold">
               {[
@@ -735,6 +785,7 @@ function TaskTable({ tasks, onOpen }: { tasks: Task[]; onOpen: (task: Task) => v
                 t('tasks.dueDate'),
                 t('tasks.notes'),
                 t('tasks.stage'),
+                t('tasks.deliverables'),
                 t('tasks.score'),
               ].map((label) => (
                 <th key={label} className="whitespace-nowrap px-3 py-3 text-start">
@@ -815,14 +866,27 @@ function TaskTable({ tasks, onOpen }: { tasks: Task[]; onOpen: (task: Task) => v
                     <span className={cx('chip', statusTone(type))}>
                       {stage ? (lang === 'en' ? stage.en : stage.ar) : task.stage}
                     </span>
+                    {task.reworkCount > 0 && (
+                      <span className="mt-1 block whitespace-nowrap text-[10.5px] text-ink-faint">
+                        {returnedLabel(task.reworkCount, t)}
+                      </span>
+                    )}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-3 text-center">
+                    {task.attachmentCount > 0 ? (
+                      <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-ink-muted">
+                        <Paperclip size={12} />
+                        <span className="ltr tabular-nums">{task.attachmentCount}</span>
+                      </span>
+                    ) : (
+                      <span className="text-[11px] text-ink-faint">—</span>
+                    )}
                   </td>
                   <td className="px-3 py-3 text-center">
                     {task.score === null || task.score === undefined ? (
                       <span className="text-[11px] text-ink-faint">—</span>
                     ) : (
-                      <span className={cx('inline-flex min-w-11 justify-center rounded-lg px-2 py-1 text-[12px] font-extrabold', scoreTone(task.score))}>
-                        {task.score}
-                      </span>
+                      <ScoreChip score={task.score} size="sm" />
                     )}
                   </td>
                 </tr>
@@ -832,6 +896,80 @@ function TaskTable({ tasks, onOpen }: { tasks: Task[]; onOpen: (task: Task) => v
         </table>
       </div>
     </div>
+  );
+}
+
+/**
+ * The manager's inbox.
+ *
+ * Everything handed in and still waiting, oldest first. Kanban practice is that
+ * review takes priority over starting new work — if this queue grows, the whole
+ * board stalls behind it — so it gets its own tab with a count on it rather than
+ * being a column you have to notice.
+ */
+function ReviewQueue({ tasks, onOpen }: { tasks: Task[]; onOpen: (task: Task) => void }) {
+  const { t, lang } = useI18n();
+  const { userById } = useWorkspace();
+
+  if (tasks.length === 0) {
+    return (
+      <div className="card">
+        <EmptyState
+          icon={<Inbox size={26} />}
+          title={t('flow.reviewQueueEmpty')}
+          body={t('flow.reviewQueueEmptyBody')}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <section>
+      <p className="mb-3 text-[12.5px] text-ink-muted">{t('flow.reviewQueueHint')}</p>
+      <ul className="grid gap-2.5">
+        {tasks.map((task) => {
+          const assignee = userById(task.assigneeId);
+          const department = getDepartment(task.department ?? DEFAULT_DEPARTMENT);
+          const due = dueLabel(task.dueDate, t, lang);
+          return (
+            <li key={task.id}>
+              <button
+                type="button"
+                onClick={() => onOpen(task)}
+                className="flex w-full flex-wrap items-center gap-3 rounded-2xl border border-surface-line bg-white px-4 py-3.5 text-start shadow-sm transition-shadow hover:shadow-card"
+                style={{ borderInlineStartWidth: 3, borderInlineStartColor: department.color }}
+              >
+                {assignee && <Avatar name={assignee.name} color={assignee.avatarColor} size={34} />}
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[13.5px] font-bold text-ink">{task.title}</span>
+                  <span className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11.5px] text-ink-faint">
+                    <span>{assignee?.name ?? t('tasks.unassigned')}</span>
+                    <span style={{ color: department.color }}>
+                      {lang === 'en' ? department.en : department.ar}
+                    </span>
+                    <span>{t('flow.waitingSince', { when: timeAgo(task.submittedAt, t) })}</span>
+                  </span>
+                </span>
+                <span className="flex shrink-0 flex-wrap items-center gap-1.5">
+                  {task.attachmentCount > 0 && (
+                    <span className="chip bg-surface-sunken text-ink-muted">
+                      <Paperclip size={12} />
+                      <span className="ltr tabular-nums">{task.attachmentCount}</span>
+                    </span>
+                  )}
+                  {task.reworkCount > 0 && (
+                    <span className="chip bg-status-warnBg text-accent-600">
+                      {returnedLabel(task.reworkCount, t)}
+                    </span>
+                  )}
+                  {due && <span className={cx('chip', DUE_CHIP_CLASS[due.tone])}>{due.text}</span>}
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }
 
@@ -848,17 +986,31 @@ function PerformancePanel({ data }: { data: PerformanceOverview | null }) {
   }
 
   const summary = data.summary;
+  // The row reads as the lifecycle does: how much work, how much got through,
+  // how cleanly, how punctually, how well — and what is stuck.
   const cards = [
-    { label: t('performance.total'), value: summary.total, tone: 'text-ink' },
-    { label: t('performance.completed'), value: summary.completed, tone: 'text-status-good' },
-    { label: t('performance.completionRate'), value: `${summary.completionRate}%`, tone: 'text-brand-600' },
-    { label: t('performance.onTime'), value: `${summary.onTimeRate}%`, tone: 'text-teal-600' },
+    { label: t('performance.total'), value: summary.total, tone: 'text-ink', hint: undefined },
+    { label: t('performance.completed'), value: summary.completed, tone: 'text-status-ok', hint: undefined },
+    {
+      label: t('performance.firstPass'),
+      value: `${summary.firstPassRate}%`,
+      tone: 'text-brand-600',
+      hint: t('performance.firstPassHint'),
+    },
+    { label: t('performance.onTime'), value: `${summary.onTimeRate}%`, tone: 'text-teal-600', hint: undefined },
     {
       label: t('performance.averageScore'),
       value: summary.averageScore ?? '—',
       tone: summary.averageScore === null ? 'text-ink-faint' : scoreTextTone(summary.averageScore),
+      hint: undefined,
     },
-    { label: t('performance.overdue'), value: summary.overdue, tone: 'text-status-bad' },
+    {
+      label: t('performance.awaitingReview'),
+      value: summary.awaitingReview,
+      tone: summary.awaitingReview ? 'text-accent-600' : 'text-ink-faint',
+      hint: undefined,
+    },
+    { label: t('performance.overdue'), value: summary.overdue, tone: 'text-status-bad', hint: undefined },
   ];
   const totalStatuses = data.statuses.reduce((sum, status) => sum + status.count, 0);
 
@@ -871,9 +1023,13 @@ function PerformancePanel({ data }: { data: PerformanceOverview | null }) {
         </p>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
         {cards.map((card) => (
-          <article key={card.label} className="rounded-2xl border border-surface-line bg-white p-4 shadow-sm">
+          <article
+            key={card.label}
+            className="rounded-2xl border border-surface-line bg-white p-4 shadow-sm"
+            title={card.hint}
+          >
             <p className="text-[11.5px] font-semibold text-ink-faint">{card.label}</p>
             <p className={cx('mt-2 text-[25px] font-black tabular-nums', card.tone)}>{card.value}</p>
           </article>
@@ -897,7 +1053,8 @@ function PerformancePanel({ data }: { data: PerformanceOverview | null }) {
                     <th className="px-4 py-2.5 text-start">{t('performance.person')}</th>
                     <th className="px-3 py-2.5 text-center">{t('performance.total')}</th>
                     <th className="px-3 py-2.5 text-center">{t('performance.completed')}</th>
-                    <th className="px-3 py-2.5 text-center">{t('performance.active')}</th>
+                    <th className="px-3 py-2.5 text-center">{t('performance.awaitingReview')}</th>
+                    <th className="px-3 py-2.5 text-center">{t('performance.returned')}</th>
                     <th className="px-3 py-2.5 text-center">{t('performance.overdue')}</th>
                     <th className="px-3 py-2.5 text-center">{t('performance.onTime')}</th>
                     <th className="px-3 py-2.5 text-center">{t('performance.averageScore')}</th>
@@ -977,8 +1134,12 @@ function PerformanceRow({
         </div>
       </td>
       <MetricCell value={person.total} />
-      <MetricCell value={person.completed} className="text-status-good" />
-      <MetricCell value={person.active} />
+      <MetricCell value={person.completed} className="text-status-ok" />
+      <MetricCell
+        value={person.awaitingReview}
+        className={person.awaitingReview ? 'text-accent-600' : 'text-ink-faint'}
+      />
+      <MetricCell value={person.returned} className={person.returned ? 'text-ink-muted' : 'text-ink-faint'} />
       <MetricCell value={person.overdue} className={person.overdue ? 'text-status-bad' : ''} />
       <MetricCell value={`${person.onTimeRate}%`} />
       <MetricCell
@@ -1005,8 +1166,11 @@ function emptyMetrics(): PerformanceMetrics {
     completed: 0,
     active: 0,
     overdue: 0,
+    awaitingReview: 0,
+    returned: 0,
     completionRate: 0,
     onTimeRate: 0,
+    firstPassRate: 0,
     averageScore: null,
     scoredTasks: 0,
   };
@@ -1041,20 +1205,8 @@ function statusTone(type: StageType) {
     open: 'bg-surface-sunken text-ink-muted',
     active: 'bg-status-infoBg text-brand-600',
     review: 'bg-status-warnBg text-accent-600',
-    done: 'bg-status-goodBg text-status-good',
+    done: 'bg-status-okBg text-status-ok',
   }[type];
-}
-
-function scoreTone(score: number) {
-  if (score >= 85) return 'bg-status-goodBg text-status-good';
-  if (score >= 70) return 'bg-status-warnBg text-accent-600';
-  return 'bg-status-badBg text-status-bad';
-}
-
-function scoreTextTone(score: number) {
-  if (score >= 85) return 'text-status-good';
-  if (score >= 70) return 'text-accent-600';
-  return 'text-status-bad';
 }
 
 function DepartmentChip({
@@ -1101,6 +1253,7 @@ function TaskCard({
   task,
   movable,
   showDepartment,
+  forReviewer,
   onOpen,
   cardRef,
   onPointerDown,
@@ -1109,6 +1262,8 @@ function TaskCard({
   task: Task;
   movable: boolean;
   showDepartment: boolean;
+  /** Whether the person looking is the one a submitted card is waiting on. */
+  forReviewer?: boolean;
   onOpen: () => void;
   cardRef?: (node: HTMLElement | null) => void;
   onPointerDown?: (event: React.PointerEvent, fromHandle: boolean) => void;
@@ -1118,7 +1273,11 @@ function TaskCard({
   const due = dueLabel(task.dueDate, t, lang);
   const priority = PRIORITY_META[task.priority];
   const department = getDepartment(task.department ?? DEFAULT_DEPARTMENT);
-  const isDone = stageType(task.department ?? DEFAULT_DEPARTMENT, task.stage) === 'done';
+  const state = stateOf(task);
+  const isDone = state === 'approved';
+  // A card in a review column, or one that came back, is carrying news — say so
+  // rather than making the column position the only clue.
+  const flagged = state === 'submitted' || task.reviewDecision === 'changes_requested';
 
   return (
     <article
@@ -1181,12 +1340,29 @@ function TaskCard({
 
       <TaskMeta task={task} />
 
-      {due && (
-        <p className={cx('mt-2 inline-flex items-center gap-1 text-[11.5px] font-semibold', DUE_TONE_CLASS[due.tone])}>
-          <CalendarClock size={13} />
-          {due.text}
-        </p>
-      )}
+      <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
+        {due && (
+          <span
+            className={cx(
+              'inline-flex items-center gap-1 text-[11.5px] font-semibold',
+              DUE_TONE_CLASS[due.tone]
+            )}
+          >
+            <CalendarClock size={13} />
+            {due.text}
+          </span>
+        )}
+        {task.attachmentCount > 0 && (
+          <span className="inline-flex items-center gap-1 text-[11.5px] text-ink-faint">
+            <Paperclip size={12} />
+            <span className="ltr tabular-nums">{task.attachmentCount}</span>
+          </span>
+        )}
+        {isDone && task.score !== null && task.score !== undefined && (
+          <ScoreChip score={task.score} size="sm" />
+        )}
+        {flagged && <StateBadge task={task} forReviewer={forReviewer} />}
+      </div>
     </article>
   );
 }
