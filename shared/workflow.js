@@ -49,6 +49,22 @@ const STAGE_TYPE_BY_STATE = {
 };
 
 export const REVIEW_DECISIONS = ['approved', 'changes_requested'];
+export const ASSIGNMENT_STATUSES = [
+  'unassigned',
+  'pending',
+  'accepted',
+  'declined',
+  'clarification_requested',
+  'due_date_proposed',
+  'reassignment_requested',
+];
+export const ASSIGNMENT_ACTIONS = [
+  'accept',
+  'decline',
+  'request_clarification',
+  'propose_due_date',
+  'request_reassignment',
+];
 
 /** How large a single deliverable may be, in bytes. */
 export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
@@ -125,15 +141,40 @@ export function isDoer(user, task) {
   return task.createdBy === user.id || isReviewer(user);
 }
 
+/** A named assignee must explicitly accept before execution starts. */
+export function assignmentReady(task) {
+  if (!task?.assigneeId) return true;
+  // Legacy rows are treated as accepted until the boot migration stamps them.
+  return !task.assignmentStatus || task.assignmentStatus === 'accepted';
+}
+
+export function canRespondToAssignment(user, task) {
+  const state = taskState(task);
+  return Boolean(
+    user &&
+      task?.assigneeId === user.id &&
+      (state === 'assigned' || state === 'working') &&
+      task.assignmentStatus !== 'accepted'
+  );
+}
+
 /* ── the gates ───────────────────────────────────────────────────── */
 
 export function canStart(user, task) {
-  return taskState(task) === 'assigned' && (isDoer(user, task) || isReviewer(user));
+  return (
+    taskState(task) === 'assigned' &&
+    ((isDoer(user, task) && assignmentReady(task)) ||
+      (isReviewer(user) && !task.assigneeId))
+  );
 }
 
 export function canSubmit(user, task) {
   const state = taskState(task);
-  return (state === 'assigned' || state === 'working') && (isDoer(user, task) || isReviewer(user));
+  return (
+    (state === 'assigned' || state === 'working') &&
+    ((isDoer(user, task) && assignmentReady(task)) ||
+      (isReviewer(user) && !task.assigneeId))
+  );
 }
 
 export function canReview(user, task) {

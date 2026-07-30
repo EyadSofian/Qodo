@@ -29,9 +29,11 @@ const DATA_FILE = path.join(DATA_DIR, 'workspace.json');
 const BLOB_DIR = path.join(DATA_DIR, 'uploads');
 
 export const COLLECTIONS = [
+  'organizations',
   'users',
   'apps',
   'tasks',
+  'taskAssignments',
   'comments',
   'attachments',
   'notifications',

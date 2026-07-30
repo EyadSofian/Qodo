@@ -159,6 +159,34 @@ const ERRORS: Record<string, { ar: string; en: string }> = {
     ar: 'الموظف المُسند إليه يجب أن يكون من نفس فريق المهمة.',
     en: 'The assignee must belong to the task’s team.',
   },
+  assignment_response_forbidden: {
+    ar: 'الموظف المسند إليه فقط يستطيع الرد على هذا الإسناد.',
+    en: 'Only the assignee can respond to this assignment.',
+  },
+  invalid_assignment_action: {
+    ar: 'إجراء الإسناد غير معروف.',
+    en: 'That assignment action is not supported.',
+  },
+  assignment_reason_required: {
+    ar: 'اكتب سببًا واضحًا لهذا الرد.',
+    en: 'Write a clear reason for this response.',
+  },
+  invalid_effort_points: {
+    ar: 'نقاط الجهد يجب أن تكون ١ أو ٢ أو ٣ أو ٥ أو ٨ أو ١٣.',
+    en: 'Effort points must be 1, 2, 3, 5, 8, or 13.',
+  },
+  invalid_estimate: {
+    ar: 'المدة المقدرة غير صالحة.',
+    en: 'The estimated time is not valid.',
+  },
+  invalid_progress: {
+    ar: 'نسبة التقدم يجب أن تكون من ٠ إلى ١٠٠.',
+    en: 'Progress must be from 0 to 100.',
+  },
+  comment_too_long: {
+    ar: 'التعليق طويل جدًا. الحد الأقصى ٥٠٠٠ حرف.',
+    en: 'That comment is too long. The maximum is 5,000 characters.',
+  },
   score_forbidden: {
     ar: 'تقييم الأداء متاح للمدير فقط.',
     en: 'Only a manager can set performance scores.',

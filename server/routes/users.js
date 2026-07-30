@@ -14,6 +14,7 @@ import {
   getSubteam,
 } from '../../shared/departments.js';
 import { canUseDepartment, visiblePeople } from '../taskAccess.js';
+import { organizationOf } from '../../shared/organization.js';
 
 const router = Router();
 
@@ -56,6 +57,7 @@ router.post('/', requirePermission(PERMISSIONS.USERS_MANAGE), async (req, res) =
     email,
     passwordHash: await hashPassword(password),
     role,
+    organizationId: organizationOf(req.user),
     status: 'active',
     // null on both = "inherit from role" / "every app". Explicit arrays override.
     permissions: normalisePermissions(req.body?.permissions),
@@ -197,7 +199,10 @@ router.delete('/:id', requirePermission(PERMISSIONS.USERS_MANAGE), async (req, r
   }
 
   // Their tasks outlive them — unassign rather than cascade-delete work.
-  const owned = await find('tasks', (t) => t.assigneeId === target.id);
+  const owned = await find(
+    'tasks',
+    (t) => t.assigneeId === target.id && organizationOf(t) === organizationOf(target)
+  );
   for (const task of owned) await store.update('tasks', task.id, { assigneeId: null });
 
   await store.remove('users', target.id);

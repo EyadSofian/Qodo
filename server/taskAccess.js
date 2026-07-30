@@ -1,10 +1,11 @@
 import { PERMISSIONS, can } from '../shared/permissions.js';
 import { DEFAULT_DEPARTMENT } from '../shared/departments.js';
+import { organizationOf, sameOrganization } from '../shared/organization.js';
 
 export const departmentOf = (record) => record?.department ?? DEFAULT_DEPARTMENT;
 
 export function sameDepartment(user, record) {
-  return departmentOf(user) === departmentOf(record);
+  return sameOrganization(user, record) && departmentOf(user) === departmentOf(record);
 }
 
 /**
@@ -15,6 +16,7 @@ export function sameDepartment(user, record) {
  */
 export function canViewTask(user, task) {
   if (!can(user, PERMISSIONS.TASKS_VIEW)) return false;
+  if (!sameOrganization(user, task)) return false;
   if (can(user, PERMISSIONS.TASKS_VIEW_ALL)) return true;
   if (!sameDepartment(user, task)) return false;
   if (can(user, PERMISSIONS.TASKS_VIEW_TEAM)) return true;
@@ -49,13 +51,15 @@ export function canUseDepartment(user, department) {
 
 export function canAssignUser(actor, assignee, department) {
   if (!assignee || assignee.status === 'disabled') return false;
+  if (!sameOrganization(actor, assignee)) return false;
   if (can(actor, PERMISSIONS.TASKS_VIEW_ALL)) return departmentOf(assignee) === department;
   return department === departmentOf(actor) && departmentOf(assignee) === department;
 }
 
 export function visiblePeople(user, people) {
-  if (can(user, PERMISSIONS.TASKS_VIEW_ALL)) return people;
-  return people.filter((person) => sameDepartment(user, person));
+  const sameTenant = people.filter((person) => organizationOf(person) === organizationOf(user));
+  if (can(user, PERMISSIONS.TASKS_VIEW_ALL)) return sameTenant;
+  return sameTenant.filter((person) => sameDepartment(user, person));
 }
 
 /**

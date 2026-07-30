@@ -75,6 +75,8 @@ export function TaskDialog({
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [objective, setObjective] = useState('');
+  const [definitionOfDone, setDefinitionOfDone] = useState('');
   const [notes, setNotes] = useState('');
   const [department, setDepartment] = useState(defaultDepartment);
   const [subteam, setSubteam] = useState('');
@@ -84,6 +86,9 @@ export function TaskDialog({
   const [appId, setAppId] = useState('');
   const [taskDate, setTaskDate] = useState('');
   const [dueDate, setDueDate] = useState('');
+  const [effortPoints, setEffortPoints] = useState('');
+  const [estimatedHours, setEstimatedHours] = useState('');
+  const [progress, setProgress] = useState(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -98,6 +103,8 @@ export function TaskDialog({
     const nextDepartment = task?.department ?? defaultDepartment ?? DEFAULT_DEPARTMENT;
     setTitle(task?.title ?? '');
     setDescription(task?.description ?? '');
+    setObjective(task?.objective ?? '');
+    setDefinitionOfDone(task?.definitionOfDone ?? '');
     setNotes(task?.notes ?? '');
     setDepartment(nextDepartment);
     setSubteam(task?.subteam ?? '');
@@ -107,6 +114,13 @@ export function TaskDialog({
     setAppId(task?.appId ?? '');
     setTaskDate(task?.taskDate ?? new Date().toISOString().slice(0, 10));
     setDueDate(task?.dueDate ?? '');
+    setEffortPoints(task?.effortPoints ? String(task.effortPoints) : '');
+    setEstimatedHours(
+      task?.estimatedMinutes !== null && task?.estimatedMinutes !== undefined
+        ? String(Math.round((task.estimatedMinutes / 60) * 10) / 10)
+        : ''
+    );
+    setProgress(task?.progress ?? 0);
   }, [open, task, defaultDepartment, defaultStage]);
 
   // Deliverables are the evidence the review is based on, so they load with the
@@ -186,6 +200,8 @@ export function TaskDialog({
     const payload = {
       title: title.trim(),
       description: description.trim(),
+      objective: objective.trim(),
+      definitionOfDone: definitionOfDone.trim(),
       notes: notes.trim(),
       department,
       subteam: subteam || null,
@@ -195,6 +211,11 @@ export function TaskDialog({
       appId: appId || null,
       taskDate,
       dueDate: dueDate || null,
+      effortPoints: effortPoints ? Number(effortPoints) : null,
+      estimatedMinutes: estimatedHours
+        ? Math.round(Number(estimatedHours) * 60)
+        : null,
+      progress,
     };
 
     try {
@@ -279,6 +300,51 @@ export function TaskDialog({
           ))}
         </select>
       </Field>
+
+      <div className="grid grid-cols-2 gap-3">
+        <Field label={t('tasks.effortPoints')}>
+          <select
+            className="field"
+            value={effortPoints}
+            onChange={(event) => setEffortPoints(event.target.value)}
+            disabled={!editable}
+          >
+            <option value="">—</option>
+            {[1, 2, 3, 5, 8, 13].map((points) => (
+              <option key={points} value={points}>
+                {points}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label={t('tasks.estimatedHours')}>
+          <input
+            type="number"
+            min={0}
+            max={1666}
+            step={0.5}
+            className="field ltr text-start"
+            value={estimatedHours}
+            onChange={(event) => setEstimatedHours(event.target.value)}
+            disabled={!editable}
+          />
+        </Field>
+      </div>
+
+      {current && (
+        <Field label={t('tasks.progress')} hint={`${progress}%`}>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            step={5}
+            value={progress}
+            onChange={(event) => setProgress(Number(event.target.value))}
+            disabled={!editable}
+            className="ltr h-2 w-full cursor-pointer appearance-none rounded-full bg-surface-sunken accent-brand-500"
+          />
+        </Field>
+      )}
 
       <Field label={t('tasks.department')} hint={current ? undefined : t('tasks.departmentHint')}>
         <select
@@ -424,6 +490,26 @@ export function TaskDialog({
                 />
               </Field>
 
+              <Field label={t('tasks.objective')}>
+                <textarea
+                  className="field min-h-[72px] resize-y"
+                  value={objective}
+                  onChange={(event) => setObjective(event.target.value)}
+                  placeholder={t('tasks.objectivePlaceholder')}
+                  disabled={!editable}
+                />
+              </Field>
+
+              <Field label={t('tasks.definitionOfDone')}>
+                <textarea
+                  className="field min-h-[72px] resize-y"
+                  value={definitionOfDone}
+                  onChange={(event) => setDefinitionOfDone(event.target.value)}
+                  placeholder={t('tasks.definitionOfDonePlaceholder')}
+                  disabled={!editable}
+                />
+              </Field>
+
               <Field label={t('tasks.notes')}>
                 <textarea
                   className="field min-h-[64px] resize-y"
@@ -488,6 +574,24 @@ export function TaskDialog({
             />
           </Field>
 
+          <Field label={t('tasks.objective')}>
+            <textarea
+              className="field min-h-[72px] resize-y"
+              value={objective}
+              onChange={(event) => setObjective(event.target.value)}
+              placeholder={t('tasks.objectivePlaceholder')}
+            />
+          </Field>
+
+          <Field label={t('tasks.definitionOfDone')}>
+            <textarea
+              className="field min-h-[72px] resize-y"
+              value={definitionOfDone}
+              onChange={(event) => setDefinitionOfDone(event.target.value)}
+              placeholder={t('tasks.definitionOfDonePlaceholder')}
+            />
+          </Field>
+
           {properties}
 
           <Field label={t('tasks.notes')}>
@@ -539,6 +643,11 @@ function TaskHeading({
         )}
       />
       <div className="mt-1.5 flex flex-wrap items-center gap-1.5 px-1.5">
+        {task.reference && (
+          <span className="chip ltr bg-surface-sunken font-mono text-ink-muted">
+            {task.reference}
+          </span>
+        )}
         <span
           className="chip"
           style={{ background: `${department.color}18`, color: department.color }}
@@ -570,6 +679,9 @@ function Timeline({ task }: { task: Task }) {
 
   const rows = [
     { key: 'flow.createdOn' as const, at: task.createdAt, who: task.createdBy },
+    { key: 'assignment.assignedOn' as const, at: task.assignedAt, who: task.assignedBy },
+    { key: 'assignment.acceptedOn' as const, at: task.acceptedAt, who: task.assigneeId },
+    { key: 'assignment.declinedOn' as const, at: task.declinedAt, who: task.assigneeId },
     { key: 'flow.startedOn' as const, at: task.startedAt, who: task.assigneeId },
     { key: 'flow.submittedOn' as const, at: task.submittedAt, who: task.submittedBy },
     { key: 'flow.reviewedOn' as const, at: task.reviewedAt, who: task.reviewedBy },

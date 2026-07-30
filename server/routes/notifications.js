@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { find, findOne, getStore } from '../store.js';
 import { requireAuth } from '../auth.js';
 import { PERMISSIONS, can } from '../../shared/permissions.js';
+import { organizationOf } from '../../shared/organization.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -46,7 +47,10 @@ router.get('/activity', async (req, res) => {
   if (!can(req.user, PERMISSIONS.USERS_VIEW)) {
     return res.status(403).json({ error: 'forbidden' });
   }
-  const entries = (await find('activity'))
+  const entries = (await find(
+    'activity',
+    (entry) => organizationOf(entry) === organizationOf(req.user)
+  ))
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
     .slice(0, 100);
 

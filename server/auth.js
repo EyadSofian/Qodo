@@ -11,6 +11,7 @@ import bcrypt from 'bcryptjs';
 import { SignJWT, jwtVerify } from 'jose';
 import { findOne, getStore } from './store.js';
 import { can, publicUser } from '../shared/permissions.js';
+import { organizationOf } from '../shared/organization.js';
 
 const SESSION_COOKIE = 'engosoft_session';
 const SESSION_TTL = '12h';
@@ -72,6 +73,7 @@ export async function issueSsoToken(user, audience) {
     name: user.name,
     email: user.email,
     role: user.role,
+    organizationId: organizationOf(user),
     department: user.department,
     subteam: user.subteam ?? null,
     jobRole: user.jobRole ?? null,
@@ -125,11 +127,13 @@ export function requirePermission(permission) {
 }
 
 /** Records who did what — powers the activity feed and the notification bell. */
-export async function logActivity({ actorId, action, subject, subjectId, meta }) {
+export async function logActivity({ actorId, organizationId, action, subject, subjectId, meta }) {
   const store = await getStore();
+  const actor = actorId ? await findOne('users', (user) => user.id === actorId) : null;
   await store.insert('activity', {
     id: nodeCrypto.randomUUID(),
     actorId,
+    organizationId: organizationId ?? organizationOf(actor),
     action,
     subject,
     subjectId,

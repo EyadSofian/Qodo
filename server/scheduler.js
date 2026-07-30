@@ -16,6 +16,7 @@ import { create, find, findOne, getStore } from './store.js';
 import { notifyUser, pushConfigured } from './push.js';
 import { PERMISSIONS, can } from '../shared/permissions.js';
 import { DEFAULT_DEPARTMENT, DEPARTMENTS, isDoneStage } from '../shared/departments.js';
+import { organizationOf } from '../shared/organization.js';
 
 const TICK_MS = 60 * 1000;
 const DIGEST_HOUR = Number(process.env.DIGEST_HOUR ?? 9);
@@ -58,8 +59,11 @@ function localParts(date = new Date()) {
 
 const dept = (task) => task.department ?? DEFAULT_DEPARTMENT;
 
-async function buildDigest() {
-  const tasks = await find('tasks');
+async function buildDigest(organizationId) {
+  const tasks = await find(
+    'tasks',
+    (task) => organizationOf(task) === organizationId
+  );
   const open = tasks.filter((t) => !isDoneStage(dept(t), t.stage));
 
   const today = new Date();
@@ -82,10 +86,15 @@ async function buildDigest() {
 }
 
 async function sendDigest() {
-  const digest = await buildDigest();
   const users = await find('users', (u) => u.status !== 'disabled');
+  const digests = new Map();
 
   for (const user of users) {
+    const organizationId = organizationOf(user);
+    if (!digests.has(organizationId)) {
+      digests.set(organizationId, await buildDigest(organizationId));
+    }
+    const digest = digests.get(organizationId);
     // Administrators see the company picture. Team managers get their
     // department only; everyone else gets their own workload.
     if (can(user, PERMISSIONS.TASKS_VIEW_ALL)) {
@@ -211,7 +220,16 @@ async function checkInsights() {
 /** Writes the in-app notification and sends the push, so both stay in step. */
 async function notifyAndRecord(userId, { type, title, body, link }) {
   const text = typeof body === 'string' ? body : (body.ar ?? '');
-  await create('notifications', { userId, type, title, body: text, link, read: false });
+  const user = await findOne('users', (candidate) => candidate.id === userId);
+  await create('notifications', {
+    organizationId: organizationOf(user),
+    userId,
+    type,
+    title,
+    body: text,
+    link,
+    read: false,
+  });
   await notifyUser(userId, { title, body: text, link });
 }
 

@@ -25,6 +25,7 @@ import {
   isReviewer,
   taskState,
 } from '../../shared/workflow.js';
+import { organizationOf } from '../../shared/organization.js';
 
 const router = Router({ mergeParams: true });
 
@@ -144,6 +145,7 @@ router.post('/', express.raw({ type: () => true, limit: MAX_ATTACHMENT_BYTES }),
   }
 
   const row = await create('attachments', {
+    organizationId: organizationOf(task),
     taskId: task.id,
     userId: req.user.id,
     name: safeName(req.get('x-file-name')),

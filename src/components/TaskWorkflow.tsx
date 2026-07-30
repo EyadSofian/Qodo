@@ -14,7 +14,9 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
+  CalendarDays,
   CheckCircle2,
+  CircleHelp,
   Clock3,
   Download,
   File as FileIcon,
@@ -28,6 +30,7 @@ import {
   ShieldCheck,
   Trash2,
   Upload,
+  UserRoundX,
 } from 'lucide-react';
 import { api, errorMessage } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -38,6 +41,7 @@ import {
   SCORE_BANDS,
   canReopen,
   canReview,
+  canRespondToAssignment,
   canStart,
   canSubmit,
   isDoer,
@@ -460,6 +464,9 @@ export function WorkflowActions({
   const state = stateOf(task);
   const reviewer = isReviewer(user);
   const doer = isDoer(user, task);
+  const ownsAssignment = canRespondToAssignment(user, task);
+  const awaitingAssignment =
+    Boolean(task.assigneeId) && task.assignmentStatus !== 'accepted';
 
   // Coming back from a return, the panel should already be open — the person
   // has one thing to do and it is not "find the button again".
@@ -533,6 +540,24 @@ export function WorkflowActions({
     );
   }
 
+  if ((state === 'assigned' || state === 'working') && ownsAssignment && awaitingAssignment) {
+    return <AssignmentGate task={task} busy={busy} onAct={act} />;
+  }
+
+  if ((state === 'assigned' || state === 'working') && awaitingAssignment) {
+    return (
+      <div className="grid gap-1.5 rounded-xl border border-status-warn/30 bg-status-warnBg px-3.5 py-3">
+        <p className="flex items-center gap-2 text-[12.5px] font-bold text-accent-600">
+          <Clock3 size={16} />
+          {t('assignment.awaiting')}
+        </p>
+        {task.assignmentNote && (
+          <p className="text-[12px] leading-relaxed text-ink-muted">{task.assignmentNote}</p>
+        )}
+      </div>
+    );
+  }
+
   if (!doer && !reviewer) {
     return <p className="text-[12.5px] text-ink-faint">{t('flow.readOnly')}</p>;
   }
@@ -564,6 +589,147 @@ export function WorkflowActions({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function AssignmentGate({
+  task,
+  busy,
+  onAct,
+}: {
+  task: Task;
+  busy: boolean;
+  onAct: (path: string, body?: unknown) => Promise<boolean>;
+}) {
+  const { t } = useI18n();
+  const { push } = useToast();
+  const [mode, setMode] = useState<
+    'decline' | 'request_clarification' | 'propose_due_date' | 'request_reassignment' | null
+  >(null);
+  const [note, setNote] = useState(task.assignmentNote ?? '');
+  const [dueDate, setDueDate] = useState(task.proposedDueDate ?? task.dueDate ?? '');
+
+  const accept = async () => {
+    if (await onAct('assignment', { action: 'accept' })) {
+      push(t('assignment.accepted'));
+    }
+  };
+
+  const send = async () => {
+    if (mode !== 'propose_due_date' && !note.trim()) {
+      return push(t('assignment.reasonRequired'), 'bad');
+    }
+    const body = {
+      action: mode,
+      note: note.trim(),
+      ...(mode === 'propose_due_date' ? { dueDate } : {}),
+    };
+    if (await onAct('assignment', body)) {
+      push(t('assignment.sent'));
+      setMode(null);
+    }
+  };
+
+  if (mode) {
+    return (
+      <div className="grid gap-3 rounded-xl border border-surface-line bg-white p-3.5 shadow-sm">
+        <div>
+          <h4 className="text-[13px] font-bold text-ink">
+            {t(`assignment.${mode}.title` as StringKey)}
+          </h4>
+          <p className="mt-1 text-[12px] leading-relaxed text-ink-muted">
+            {t('assignment.responseHint')}
+          </p>
+        </div>
+        {mode === 'propose_due_date' && (
+          <Field label={t('tasks.dueDate')} required>
+            <input
+              type="date"
+              className="field ltr text-start"
+              value={dueDate}
+              onChange={(event) => setDueDate(event.target.value)}
+              required
+            />
+          </Field>
+        )}
+        <Field
+          label={t('assignment.reason')}
+          required={mode !== 'propose_due_date'}
+        >
+          <textarea
+            className="field min-h-[76px] resize-y"
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+            placeholder={t('assignment.reasonPlaceholder')}
+            autoFocus={mode !== 'propose_due_date'}
+          />
+        </Field>
+        <div className="flex flex-wrap justify-end gap-2">
+          <button type="button" onClick={() => setMode(null)} className="btn-ghost btn-sm">
+            {t('common.cancel')}
+          </button>
+          <button
+            type="button"
+            onClick={send}
+            disabled={busy || (mode === 'propose_due_date' && !dueDate)}
+            className="btn-primary btn-sm"
+          >
+            {busy && <Spinner size={15} />}
+            {t('common.send')}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-3 rounded-xl border border-brand-200 bg-brand-50/50 p-3.5">
+      <div>
+        <h4 className="text-[13px] font-bold text-ink">{t('assignment.title')}</h4>
+        <p className="mt-1 text-[12px] leading-relaxed text-ink-muted">
+          {t('assignment.hint')}
+        </p>
+      </div>
+      {task.assignmentNote && (
+        <p className="rounded-lg bg-white px-3 py-2 text-[12px] leading-relaxed text-ink-muted">
+          {task.assignmentNote}
+        </p>
+      )}
+      <div className="flex flex-wrap gap-2">
+        <button type="button" onClick={accept} disabled={busy} className="btn-primary btn-sm">
+          <CheckCircle2 size={15} />
+          {t('assignment.accept')}
+        </button>
+        <button
+          type="button"
+          onClick={() => setMode('request_clarification')}
+          className="btn-ghost btn-sm"
+        >
+          <CircleHelp size={15} />
+          {t('assignment.clarify')}
+        </button>
+        <button
+          type="button"
+          onClick={() => setMode('propose_due_date')}
+          className="btn-ghost btn-sm"
+        >
+          <CalendarDays size={15} />
+          {t('assignment.proposeDate')}
+        </button>
+        <button
+          type="button"
+          onClick={() => setMode('request_reassignment')}
+          className="btn-ghost btn-sm"
+        >
+          <UserRoundX size={15} />
+          {t('assignment.reassign')}
+        </button>
+        <button type="button" onClick={() => setMode('decline')} className="btn-ghost btn-sm text-status-bad">
+          <AlertTriangle size={15} />
+          {t('assignment.decline')}
+        </button>
+      </div>
     </div>
   );
 }

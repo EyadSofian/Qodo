@@ -13,6 +13,19 @@ import {
   isDoneStage,
   normaliseStageId,
 } from '../shared/departments.js';
+import { DEFAULT_ORGANIZATION_ID, organizationOf } from '../shared/organization.js';
+
+export const DEFAULT_ORGANIZATION = {
+  id: DEFAULT_ORGANIZATION_ID,
+  name: 'Engosoft',
+  slug: 'engosoft',
+  timezone: process.env.DIGEST_TIMEZONE || 'Africa/Cairo',
+  defaultCurrency: 'EGP',
+  defaultLanguage: 'ar',
+  workingDays: [0, 1, 2, 3, 4],
+  workingHours: { start: '09:00', end: '17:00' },
+  status: 'active',
+};
 
 /**
  * The four production dashboards, plus the modules that live inside the hub.
@@ -135,6 +148,11 @@ export const DEFAULT_APPS = [
 export async function seed() {
   const store = await getStore();
 
+  const organizations = await find('organizations');
+  if (!organizations.some((organization) => organization.id === DEFAULT_ORGANIZATION_ID)) {
+    await create('organizations', DEFAULT_ORGANIZATION);
+  }
+
   const existingApps = await find('apps');
   const known = new Set(existingApps.map((a) => a.id));
   for (const app of DEFAULT_APPS) {
@@ -152,6 +170,7 @@ export async function seed() {
       email,
       passwordHash: await hashPassword(password),
       role: 'admin',
+      organizationId: DEFAULT_ORGANIZATION_ID,
       status: 'active',
       permissions: null,
       appIds: null,
@@ -189,6 +208,9 @@ async function migrateOrganisationAndTasks(store) {
   const people = await find('users');
   for (const person of people) {
     const patch = {};
+    if (!Object.hasOwn(person, 'organizationId')) {
+      patch.organizationId = DEFAULT_ORGANIZATION_ID;
+    }
     if (!Object.hasOwn(person, 'subteam')) patch.subteam = null;
     if (!Object.hasOwn(person, 'jobRole')) patch.jobRole = null;
     if (Object.keys(patch).length) await store.update('users', person.id, patch);
@@ -205,16 +227,42 @@ async function migrateOrganisationAndTasks(store) {
   for (const task of tasks) {
     const department = task.department ?? DEFAULT_DEPARTMENT;
     const patch = {};
+    if (!Object.hasOwn(task, 'organizationId')) {
+      patch.organizationId = DEFAULT_ORGANIZATION_ID;
+    }
     if (!task.department) patch.department = department;
     const stage = normaliseStageId(department, task.stage);
     if (stage !== task.stage) patch.stage = stage;
     if (!Object.hasOwn(task, 'subteam')) patch.subteam = null;
     if (!Object.hasOwn(task, 'taskDate')) patch.taskDate = task.createdAt?.slice(0, 10) ?? today;
     if (!Object.hasOwn(task, 'notes')) patch.notes = '';
+    if (!Object.hasOwn(task, 'reference')) {
+      patch.reference = `TSK-${String(task.id).slice(0, 8).toUpperCase()}`;
+    }
+    if (!Object.hasOwn(task, 'objective')) patch.objective = '';
+    if (!Object.hasOwn(task, 'definitionOfDone')) patch.definitionOfDone = '';
+    if (!Object.hasOwn(task, 'effortPoints')) patch.effortPoints = null;
+    if (!Object.hasOwn(task, 'estimatedMinutes')) patch.estimatedMinutes = null;
     if (!Object.hasOwn(task, 'score')) patch.score = null;
     if (!Object.hasOwn(task, 'scoreBy')) patch.scoreBy = null;
     if (!Object.hasOwn(task, 'scoredAt')) patch.scoredAt = null;
+    if (!Object.hasOwn(task, 'assignmentStatus')) {
+      patch.assignmentStatus = task.assigneeId ? 'accepted' : 'unassigned';
+    }
+    if (!Object.hasOwn(task, 'assignedAt')) {
+      patch.assignedAt = task.assigneeId ? (task.createdAt ?? null) : null;
+    }
+    if (!Object.hasOwn(task, 'assignedBy')) {
+      patch.assignedBy = task.assigneeId ? (task.createdBy ?? null) : null;
+    }
+    if (!Object.hasOwn(task, 'acceptedAt')) {
+      patch.acceptedAt = task.assigneeId ? (task.startedAt ?? task.createdAt ?? null) : null;
+    }
+    if (!Object.hasOwn(task, 'declinedAt')) patch.declinedAt = null;
+    if (!Object.hasOwn(task, 'assignmentNote')) patch.assignmentNote = '';
+    if (!Object.hasOwn(task, 'proposedDueDate')) patch.proposedDueDate = null;
     const closed = isDoneStage(department, stage);
+    if (!Object.hasOwn(task, 'progress')) patch.progress = closed ? 100 : 0;
     if (closed && !task.completedAt) {
       patch.completedAt = task.updatedAt ?? task.createdAt ?? new Date().toISOString();
     }
@@ -243,5 +291,34 @@ async function migrateOrganisationAndTasks(store) {
     if (task.attachmentCount !== fileCount) patch.attachmentCount = fileCount;
 
     if (Object.keys(patch).length) await store.update('tasks', task.id, patch);
+  }
+
+  // Child records inherit the task's tenant. Notifications and activity inherit
+  // their user's tenant. This one-time backfill closes the cross-tenant hole for
+  // legacy documents without inventing a second organization.
+  const taskOrganizations = new Map(
+    (await find('tasks')).map((task) => [task.id, organizationOf(task)])
+  );
+  const userOrganizations = new Map(
+    (await find('users')).map((user) => [user.id, organizationOf(user)])
+  );
+  for (const collection of ['comments', 'attachments', 'taskAssignments']) {
+    const rows = await find(collection);
+    for (const row of rows) {
+      if (Object.hasOwn(row, 'organizationId')) continue;
+      await store.update(collection, row.id, {
+        organizationId: taskOrganizations.get(row.taskId) ?? DEFAULT_ORGANIZATION_ID,
+      });
+    }
+  }
+  for (const collection of ['notifications', 'activity']) {
+    const rows = await find(collection);
+    for (const row of rows) {
+      if (Object.hasOwn(row, 'organizationId')) continue;
+      await store.update(collection, row.id, {
+        organizationId:
+          userOrganizations.get(row.userId ?? row.actorId) ?? DEFAULT_ORGANIZATION_ID,
+      });
+    }
   }
 }

@@ -37,6 +37,7 @@ import {
   visiblePeople,
 } from '../taskAccess.js';
 import { APP_DATA_EXECUTORS, APP_DATA_LABELS, APP_DATA_TOOLS } from './appData.js';
+import { organizationOf } from '../../shared/organization.js';
 
 const PRIORITY_LABELS = {
   urgent: { ar: 'عاجلة', en: 'Urgent' },
@@ -77,6 +78,7 @@ async function shapeTask(task, lang) {
   const department = dept(task);
   return {
     id: task.id,
+    reference: task.reference ?? null,
     title: task.title,
     description: task.description || null,
     department: departmentLabel(department, lang),
@@ -472,11 +474,28 @@ const EXECUTORS = {
     }
 
     const stage = firstStage(department);
-    const siblings = await find('tasks', (t) => t.department === department && t.stage === stage);
+    const siblings = await find(
+      'tasks',
+      (t) =>
+        organizationOf(t) === organizationOf(user) &&
+        t.department === department &&
+        t.stage === stage
+    );
+    const assignedAt = assigneeId ? new Date().toISOString() : null;
     const task = await create('tasks', {
+      organizationId: organizationOf(user),
+      reference: `TSK-${Date.now().toString(36).toUpperCase()}-${Math.random()
+        .toString(36)
+        .slice(2, 6)
+        .toUpperCase()}`,
       title,
       description: String(input.description || '').trim(),
+      objective: '',
+      definitionOfDone: '',
       notes: '',
+      effortPoints: null,
+      estimatedMinutes: null,
+      progress: 0,
       taskDate: new Date().toISOString().slice(0, 10),
       department,
       subteam: user.department === department ? (user.subteam ?? null) : null,
@@ -485,6 +504,13 @@ const EXECUTORS = {
         ? input.priority
         : 'normal',
       assigneeId,
+      assignmentStatus: assigneeId ? 'pending' : 'unassigned',
+      assignedAt,
+      assignedBy: assigneeId ? user.id : null,
+      acceptedAt: null,
+      declinedAt: null,
+      assignmentNote: '',
+      proposedDueDate: null,
       createdBy: user.id,
       dueDate,
       appId,
@@ -508,9 +534,22 @@ const EXECUTORS = {
       order: Math.min(0, ...siblings.map((t) => t.order ?? 0)) - 1,
     });
 
+    if (assigneeId) {
+      await create('taskAssignments', {
+        organizationId: organizationOf(user),
+        taskId: task.id,
+        actorId: user.id,
+        action: 'assigned',
+        assigneeId,
+        status: 'pending',
+        meta: { via: 'assistant' },
+      });
+    }
+
     if (assigneeId && assigneeId !== user.id) {
       const title2 = { ar: 'مهمة جديدة مُسندة إليك', en: 'A new task is assigned to you' };
       await create('notifications', {
+        organizationId: organizationOf(user),
         userId: assigneeId,
         actorId: user.id,
         type: 'task.assigned',
@@ -537,7 +576,10 @@ const EXECUTORS = {
     if (!can(user, PERMISSIONS.USERS_VIEW)) return { error: DENIED.activity[lang] };
 
     const limit = Math.min(Math.max(Number(input.limit) || 20, 1), 60);
-    const entries = (await find('activity'))
+    const entries = (await find(
+      'activity',
+      (entry) => organizationOf(entry) === organizationOf(user)
+    ))
       .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
       .slice(0, limit);
 

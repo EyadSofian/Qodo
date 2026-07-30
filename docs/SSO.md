@@ -57,6 +57,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
   "name": "أحمد سيد",
   "email": "ahmed@engosoft.com",
   "role": "manager",
+  "organizationId": "engosoft",
   "department": "marketing",
   "subteam": "performance",
   "jobRole": "media_buyer",
@@ -69,6 +70,9 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
 `aud` هو **مُعرّف التطبيق** في المساحة (`sla` / `insights` / `hr` / `support`).
 كل تطبيق **يجب** أن يرفض أي رمز `aud` فيه ليس مُعرّفه — وإلا صار رمز HR صالحاً
 لفتح لوحة المبيعات.
+
+مسار `/api/auth/sso/verify` يتطلب إرسال `audience` صراحةً؛ لا توجد عملية تحقق
+عامة تتجاوز مطابقة التطبيق المقصود.
 
 ---
 

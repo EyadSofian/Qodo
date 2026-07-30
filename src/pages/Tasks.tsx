@@ -200,7 +200,14 @@ export function Tasks() {
       if (scope === 'mine' && task.assigneeId !== user?.id && task.createdBy !== user?.id) return false;
       if (assignee && task.assigneeId !== assignee) return false;
       if (term) {
-        const haystack = `${task.title} ${task.description} ${task.labels.join(' ')}`.toLowerCase();
+        const haystack = [
+          task.reference,
+          task.title,
+          task.description,
+          task.objective,
+          task.definitionOfDone,
+          task.labels.join(' '),
+        ].join(' ').toLowerCase();
         if (!haystack.includes(term)) return false;
       }
       return true;
@@ -1173,6 +1180,8 @@ function emptyMetrics(): PerformanceMetrics {
     firstPassRate: 0,
     averageScore: null,
     scoredTasks: 0,
+    effortPoints: 0,
+    estimatedMinutes: 0,
   };
 }
 

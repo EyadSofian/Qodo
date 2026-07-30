@@ -12,6 +12,7 @@ import {
 } from '../auth.js';
 import { canOpenApp, publicUser } from '../../shared/permissions.js';
 import { visiblePeople } from '../taskAccess.js';
+import { organizationOf } from '../../shared/organization.js';
 
 const router = Router();
 
@@ -130,7 +131,8 @@ router.post('/sso/token', requireAuth, async (req, res) => {
 /** Sibling apps that would rather not carry the JWT library call this. */
 router.post('/sso/verify', async (req, res) => {
   const token = String(req.body?.token || '');
-  const audience = req.body?.audience ? String(req.body.audience) : undefined;
+  const audience = String(req.body?.audience || '').trim();
+  if (!audience) return res.status(400).json({ valid: false, error: 'audience_required' });
   try {
     const payload = await verifySsoToken(token, audience);
     res.json({ valid: true, user: payload });
@@ -149,6 +151,7 @@ router.get('/directory', requireAuth, async (req, res) => {
     users: users
       .map((u) => ({
         id: u.id,
+        organizationId: organizationOf(u),
         name: u.name,
         email: u.email,
         title: u.title ?? null,

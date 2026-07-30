@@ -4,10 +4,19 @@ export type StageType = 'open' | 'active' | 'review' | 'done';
 /** Where a task sits in the assign → deliver → review → approve cycle. */
 export type TaskState = 'assigned' | 'working' | 'submitted' | 'approved';
 export type ReviewDecision = 'approved' | 'changes_requested';
+export type AssignmentStatus =
+  | 'unassigned'
+  | 'pending'
+  | 'accepted'
+  | 'declined'
+  | 'clarification_requested'
+  | 'due_date_proposed'
+  | 'reassignment_requested';
 export type EmbedMode = 'auto' | 'iframe' | 'newtab' | 'internal';
 
 export interface User {
   id: string;
+  organizationId: string;
   name: string;
   email: string;
   role: Role;
@@ -31,6 +40,7 @@ export interface User {
 
 export interface DirectoryUser {
   id: string;
+  organizationId: string;
   name: string;
   email: string;
   title: string | null;
@@ -61,8 +71,12 @@ export interface WorkspaceApp {
 
 export interface Task {
   id: string;
+  organizationId: string;
   title: string;
+  reference: string;
   description: string;
+  objective: string;
+  definitionOfDone: string;
   /** Which department's board this task lives on. */
   department: string;
   /** Optional branch inside the department, e.g. Creative or Performance. */
@@ -76,6 +90,16 @@ export interface Task {
   taskDate: string;
   dueDate: string | null;
   notes: string;
+  effortPoints: 1 | 2 | 3 | 5 | 8 | 13 | null;
+  estimatedMinutes: number | null;
+  progress: number;
+  assignmentStatus: AssignmentStatus;
+  assignedAt: string | null;
+  assignedBy: string | null;
+  acceptedAt: string | null;
+  declinedAt: string | null;
+  assignmentNote: string;
+  proposedDueDate: string | null;
 
   /* ── the lifecycle ──────────────────────────────────────────────
      Written only by the workflow endpoints, never by the edit form. */
@@ -106,6 +130,17 @@ export interface Task {
   completedAt: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface TaskAssignmentEvent {
+  id: string;
+  taskId: string;
+  actorId: string;
+  action: string;
+  assigneeId: string | null;
+  status: AssignmentStatus;
+  meta: Record<string, unknown>;
+  createdAt: string;
 }
 
 export interface TaskComment {
@@ -142,6 +177,8 @@ export interface PerformanceMetrics {
   firstPassRate: number;
   averageScore: number | null;
   scoredTasks: number;
+  effortPoints: number;
+  estimatedMinutes: number;
 }
 
 export interface PerformancePerson extends PerformanceMetrics {

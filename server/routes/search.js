@@ -44,7 +44,16 @@ router.get('/', async (req, res) => {
   if (can(req.user, PERMISSIONS.TASKS_VIEW)) {
     const tasks = await find('tasks', taskPredicate(req.user));
     for (const task of tasks) {
-      if (!matches(task.title, task.description, ...(task.labels || []))) continue;
+      if (
+        !matches(
+          task.reference,
+          task.title,
+          task.description,
+          task.objective,
+          task.definitionOfDone,
+          ...(task.labels || [])
+        )
+      ) continue;
       const department = task.department ?? DEFAULT_DEPARTMENT;
       results.push({
         type: 'task',

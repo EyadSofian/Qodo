@@ -15,7 +15,9 @@ import {
   translateStage,
 } from '../../shared/departments.js';
 import {
+  ASSIGNMENT_ACTIONS,
   canReopen,
+  canRespondToAssignment,
   canReview,
   canStart,
   canSubmit,
@@ -38,10 +40,12 @@ import {
   visiblePeople,
 } from '../taskAccess.js';
 import attachmentRoutes, { syncAttachmentCount } from './taskFiles.js';
+import { organizationOf } from '../../shared/organization.js';
 
 const router = Router();
 
 export const PRIORITIES = ['low', 'normal', 'high', 'urgent'];
+export const EFFORT_POINTS = [1, 2, 3, 5, 8, 13];
 
 router.use(requireAuth);
 
@@ -113,34 +117,42 @@ router.get('/export.csv', requirePermission(PERMISSIONS.TASKS_EXPORT), async (re
     tasks = tasks.filter((task) => (task.department ?? DEFAULT_DEPARTMENT) === requestedDepartment);
   }
 
-  const users = await find('users');
+  const users = visiblePeople(req.user, await find('users'));
   const names = new Map(users.map((user) => [user.id, user.name]));
   const lang = req.query.lang === 'en' ? 'en' : 'ar';
   const headers =
     lang === 'en'
       ? [
-          'Date', 'Team', 'Sub-team', 'Assigned to', 'Task', 'Description', 'Due date', 'Notes',
-          'Status', 'Deliverables', 'Submitted on', 'Reviewed on', 'Reviewed by', 'Times returned',
-          'Score', 'Rating',
+          'Reference', 'Date', 'Team', 'Sub-team', 'Assigned to', 'Task', 'Description',
+          'Objective', 'Definition of done', 'Due date', 'Notes', 'Status', 'Progress',
+          'Effort points', 'Estimated minutes', 'Deliverables', 'Submitted on', 'Reviewed on',
+          'Reviewed by', 'Times returned', 'Score', 'Rating',
         ]
       : [
-          'التاريخ', 'الفريق', 'الفريق الفرعي', 'مسندة إلى', 'المهمة', 'الوصف', 'تاريخ التسليم',
-          'الملاحظات', 'الحالة', 'المرفقات', 'تاريخ التسليم الفعلي', 'تاريخ المراجعة', 'راجعها',
-          'مرات الإعادة', 'التقييم', 'التقدير',
+          'المرجع', 'التاريخ', 'الفريق', 'الفريق الفرعي', 'مسندة إلى', 'المهمة', 'الوصف',
+          'الهدف', 'تعريف الإنجاز', 'تاريخ التسليم', 'الملاحظات', 'الحالة', 'التقدم',
+          'نقاط الجهد', 'الدقائق المقدرة', 'المرفقات', 'تاريخ التسليم الفعلي',
+          'تاريخ المراجعة', 'راجعها', 'مرات الإعادة', 'التقييم', 'التقدير',
         ];
   const rows = tasks.map((task) => {
     const department = task.department ?? DEFAULT_DEPARTMENT;
     const band = scoreBand(task.score);
     return [
+      task.reference ?? '',
       task.taskDate ?? task.createdAt?.slice(0, 10) ?? '',
       departmentLabel(department, lang),
       subteamLabel(department, task.subteam, lang),
       names.get(task.assigneeId) ?? '',
       task.title,
       task.description ?? '',
+      task.objective ?? '',
+      task.definitionOfDone ?? '',
       task.dueDate ?? '',
       task.notes ?? '',
       stageLabel(department, task.stage, lang),
+      task.progress ?? 0,
+      task.effortPoints ?? '',
+      task.estimatedMinutes ?? '',
       task.attachmentCount ?? 0,
       task.submittedAt?.slice(0, 10) ?? '',
       task.reviewedAt?.slice(0, 10) ?? '',
@@ -152,6 +164,13 @@ router.get('/export.csv', requirePermission(PERMISSIONS.TASKS_EXPORT), async (re
   });
   const csv = [headers, ...rows].map((row) => row.map(csvCell).join(',')).join('\r\n');
   const stamp = new Date().toISOString().slice(0, 10);
+  await logActivity({
+    actorId: req.user.id,
+    action: 'task.export',
+    subject: 'task',
+    subjectId: requestedDepartment || 'all',
+    meta: { department: requestedDepartment || null, rows: rows.length, format: 'csv' },
+  });
   res
     .set({
       'Content-Type': 'text/csv; charset=utf-8',
@@ -183,26 +202,47 @@ router.post('/', requirePermission(PERMISSIONS.TASKS_CREATE), async (req, res) =
     return res.status(400).json({ error: 'assignee_team_mismatch' });
   }
   const stage = parsed.value.stage ?? firstStage(department);
-  const siblings = await find('tasks', (t) => t.department === department && t.stage === stage);
+  const siblings = await find(
+    'tasks',
+    (t) =>
+      organizationOf(t) === organizationOf(req.user) &&
+      t.department === department &&
+      t.stage === stage
+  );
 
   const task = await create('tasks', {
+    reference: taskReference(),
     priority: 'normal',
     assigneeId: null,
     dueDate: null,
     appId: null,
     labels: [],
     description: '',
+    objective: '',
+    definitionOfDone: '',
     notes: '',
+    effortPoints: null,
+    estimatedMinutes: null,
+    progress: 0,
     taskDate: new Date().toISOString().slice(0, 10),
     subteam: req.user.department === department ? (req.user.subteam ?? null) : null,
     ...blankLifecycle(),
+    ...assignmentLifecycle(parsed.value.assigneeId ?? null, req.user.id),
     completedAt: isDoneStage(department, stage) ? new Date().toISOString() : null,
     ...parsed.value,
+    organizationId: organizationOf(req.user),
     department,
     stage,
     createdBy: req.user.id,
     order: Math.min(0, ...siblings.map((t) => t.order ?? 0)) - 1,
   });
+
+  if (task.assigneeId) {
+    await recordAssignment(task, req.user, 'assigned', {
+      assigneeId: task.assigneeId,
+      assignedBy: req.user.id,
+    });
+  }
 
   if (task.assigneeId && task.assigneeId !== req.user.id) {
     await notify(task.assigneeId, req.user.id, {
@@ -285,11 +325,38 @@ router.patch('/:id', async (req, res) => {
     patch.scoredAt = patch.score === null ? null : new Date().toISOString();
   }
 
+  const assignmentChanged =
+    Object.hasOwn(patch, 'assigneeId') && patch.assigneeId !== task.assigneeId;
+  if (assignmentChanged) {
+    Object.assign(patch, assignmentLifecycle(patch.assigneeId, req.user.id));
+  } else if (
+    Object.hasOwn(patch, 'dueDate') &&
+    task.assignmentStatus === 'due_date_proposed' &&
+    patch.dueDate === task.proposedDueDate
+  ) {
+    patch.assignmentStatus = 'accepted';
+    patch.acceptedAt = new Date().toISOString();
+  }
+
   const wasDone = isDoneStage(task.department, task.stage);
   const nowDone = isDoneStage(nextDepartment, nextStage);
   if (wasDone !== nowDone) patch.completedAt = nowDone ? new Date().toISOString() : null;
 
   const updated = await store.update('tasks', task.id, patch);
+
+  if (assignmentChanged) {
+    await recordAssignment(updated, req.user, patch.assigneeId ? 'assigned' : 'unassigned', {
+      previousAssigneeId: task.assigneeId ?? null,
+      assigneeId: patch.assigneeId ?? null,
+    });
+  } else if (
+    task.assignmentStatus === 'due_date_proposed' &&
+    updated.assignmentStatus === 'accepted'
+  ) {
+    await recordAssignment(updated, req.user, 'due_date_approved', {
+      dueDate: updated.dueDate,
+    });
+  }
 
   if (patch.assigneeId && patch.assigneeId !== task.assigneeId && patch.assigneeId !== req.user.id) {
     await notify(patch.assigneeId, req.user.id, {
@@ -352,6 +419,89 @@ router.delete('/:id', async (req, res) => {
  * the button says what it does and the board does not have to be dragged to
  * record that somebody picked the task up.
  */
+router.get('/:id/assignments', async (req, res) => {
+  const task = await loadVisible(req, res);
+  if (!task) return;
+  const assignments = (await find('taskAssignments', (event) => event.taskId === task.id))
+    .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
+  res.json({ assignments });
+});
+
+/**
+ * The assignee owns the response to an assignment. Decline and request actions
+ * require a reason so the manager gets an actionable answer rather than a
+ * silent state change.
+ */
+router.post('/:id/assignment', async (req, res) => {
+  const store = await getStore();
+  const task = await loadVisible(req, res);
+  if (!task) return;
+  if (!canRespondToAssignment(req.user, task)) {
+    return res.status(403).json({ error: 'assignment_response_forbidden' });
+  }
+
+  const action = String(req.body?.action || '');
+  if (!ASSIGNMENT_ACTIONS.includes(action)) {
+    return res.status(400).json({ error: 'invalid_assignment_action' });
+  }
+  const note = String(req.body?.note || '').trim().slice(0, 2000);
+  const requiresReason = new Set([
+    'decline',
+    'request_clarification',
+    'request_reassignment',
+  ]);
+  if (requiresReason.has(action) && !note) {
+    return res.status(400).json({ error: 'assignment_reason_required' });
+  }
+
+  const stamp = new Date().toISOString();
+  const patch = { assignmentNote: note };
+  if (action === 'accept') {
+    patch.assignmentStatus = 'accepted';
+    patch.acceptedAt = stamp;
+    patch.declinedAt = null;
+    patch.proposedDueDate = null;
+  } else if (action === 'decline') {
+    patch.assignmentStatus = 'declined';
+    patch.declinedAt = stamp;
+  } else if (action === 'request_clarification') {
+    patch.assignmentStatus = 'clarification_requested';
+  } else if (action === 'request_reassignment') {
+    patch.assignmentStatus = 'reassignment_requested';
+  } else {
+    const proposedDueDate = parseDate(req.body?.dueDate);
+    if (!proposedDueDate) return res.status(400).json({ error: 'invalid_due_date' });
+    patch.assignmentStatus = 'due_date_proposed';
+    patch.proposedDueDate = proposedDueDate;
+  }
+
+  const updated = await store.update('tasks', task.id, patch);
+  await recordAssignment(updated, req.user, action, {
+    note,
+    proposedDueDate: patch.proposedDueDate ?? null,
+  });
+
+  const audience = new Set([task.createdBy, task.assignedBy].filter(Boolean));
+  audience.delete(req.user.id);
+  for (const userId of audience) {
+    await notify(userId, req.user.id, {
+      type: `task.assignment.${action}`,
+      title: assignmentNotificationTitle(action),
+      body: `${task.title}${note ? ` — ${note.slice(0, 80)}` : ''}`,
+      link: `/tasks?task=${task.id}`,
+    });
+  }
+
+  await logActivity({
+    actorId: req.user.id,
+    action: `task.assignment.${action}`,
+    subject: 'task',
+    subjectId: task.id,
+    meta: { note: note || null, proposedDueDate: patch.proposedDueDate ?? null },
+  });
+  res.json({ task: taskForUser(req.user, updated) });
+});
+
 router.post('/:id/start', async (req, res) => {
   const store = await getStore();
   const task = await loadVisible(req, res);
@@ -362,6 +512,7 @@ router.post('/:id/start', async (req, res) => {
   const updated = await store.update('tasks', task.id, {
     stage: stageForState(department, 'working', task.stage),
     startedAt: task.startedAt ?? new Date().toISOString(),
+    progress: Math.max(task.progress ?? 0, 1),
   });
 
   await logActivity({
@@ -400,6 +551,7 @@ router.post('/:id/submit', async (req, res) => {
     // A resubmission answers the last review, so the old verdict stops applying.
     reviewDecision: null,
     completedAt: null,
+    progress: 100,
   });
 
   for (const userId of await reviewAudience(task, req.user.id)) {
@@ -453,6 +605,7 @@ router.post('/:id/review', async (req, res) => {
       reviewedBy: req.user.id,
       reviewNote: note,
       completedAt: stamp,
+      progress: 100,
     });
 
     if (task.assigneeId && task.assigneeId !== req.user.id) {
@@ -485,6 +638,7 @@ router.post('/:id/review', async (req, res) => {
     reworkCount: (task.reworkCount ?? 0) + 1,
     submittedAt: null,
     completedAt: null,
+    progress: Math.min(task.progress ?? 90, 90),
   });
 
   if (task.assigneeId && task.assigneeId !== req.user.id) {
@@ -517,6 +671,7 @@ router.post('/:id/reopen', async (req, res) => {
     stage: stageForState(department, 'working', task.stage),
     reviewDecision: null,
     completedAt: null,
+    progress: Math.min(task.progress ?? 90, 90),
   });
 
   if (task.assigneeId && task.assigneeId !== req.user.id) {
@@ -555,7 +710,14 @@ router.post('/:id/comments', async (req, res) => {
   const body = String(req.body?.body || '').trim();
   if (!body) return res.status(400).json({ error: 'empty_comment' });
 
-  const comment = await create('comments', { taskId: task.id, userId: req.user.id, body });
+  if (body.length > 5000) return res.status(400).json({ error: 'comment_too_long' });
+
+  const comment = await create('comments', {
+    organizationId: organizationOf(task),
+    taskId: task.id,
+    userId: req.user.id,
+    body,
+  });
 
   // Tell the other side of the task — never yourself.
   const audience = new Set([task.assigneeId, task.createdBy].filter(Boolean));
@@ -602,6 +764,45 @@ function blankLifecycle() {
   };
 }
 
+function assignmentLifecycle(assigneeId, actorId) {
+  const assigned = Boolean(assigneeId);
+  return {
+    assignmentStatus: assigned ? 'pending' : 'unassigned',
+    assignedAt: assigned ? new Date().toISOString() : null,
+    assignedBy: assigned ? actorId : null,
+    acceptedAt: null,
+    declinedAt: null,
+    assignmentNote: '',
+    proposedDueDate: null,
+  };
+}
+
+async function recordAssignment(task, actor, action, meta = {}) {
+  return create('taskAssignments', {
+    organizationId: organizationOf(task),
+    taskId: task.id,
+    actorId: actor.id,
+    action,
+    assigneeId: task.assigneeId ?? null,
+    status: task.assignmentStatus,
+    meta,
+  });
+}
+
+function assignmentNotificationTitle(action) {
+  const titles = {
+    accept: { ar: 'تم قبول المهمة', en: 'Task assignment accepted' },
+    decline: { ar: 'تم رفض المهمة', en: 'Task assignment declined' },
+    request_clarification: {
+      ar: 'يوجد طلب توضيح على مهمة',
+      en: 'Task clarification requested',
+    },
+    propose_due_date: { ar: 'تم اقتراح موعد تسليم', en: 'New due date proposed' },
+    request_reassignment: { ar: 'يوجد طلب إعادة إسناد', en: 'Reassignment requested' },
+  };
+  return titles[action];
+}
+
 /**
  * Who should hear that work is waiting. Whoever filed the task, plus every
  * manager who can act on that department — so a submission never sits unseen
@@ -612,6 +813,7 @@ async function reviewAudience(task, actorId) {
   const people = await find('users', (user) => user.status !== 'disabled');
   const audience = new Set();
   for (const person of people) {
+    if (organizationOf(person) !== organizationOf(task)) continue;
     if (!isReviewer(person)) continue;
     const reachesTask =
       can(person, PERMISSIONS.TASKS_VIEW_ALL) ||
@@ -630,7 +832,17 @@ async function reviewAudience(task, actorId) {
  */
 async function notify(userId, actorId, { type, title, body, link }) {
   if (!userId) return;
-  await create('notifications', { userId, actorId, type, title, body, link, read: false });
+  const target = await findOne('users', (user) => user.id === userId);
+  await create('notifications', {
+    organizationId: organizationOf(target),
+    userId,
+    actorId,
+    type,
+    title,
+    body,
+    link,
+    read: false,
+  });
   await notifyUser(userId, { title, body, link });
 }
 
@@ -644,6 +856,12 @@ async function parseTaskInput(body, { partial = false, current = null } = {}) {
     value.title = title;
   }
   if (body?.description !== undefined) value.description = String(body.description || '').trim();
+  if (body?.objective !== undefined) {
+    value.objective = String(body.objective || '').trim().slice(0, 3000);
+  }
+  if (body?.definitionOfDone !== undefined) {
+    value.definitionOfDone = String(body.definitionOfDone || '').trim().slice(0, 3000);
+  }
   if (body?.notes !== undefined) value.notes = String(body.notes || '').trim().slice(0, 5000);
 
   if (body?.department !== undefined) {
@@ -680,6 +898,36 @@ async function parseTaskInput(body, { partial = false, current = null } = {}) {
   if (body?.priority !== undefined) {
     if (!PRIORITIES.includes(body.priority)) return { error: 'invalid_priority' };
     value.priority = body.priority;
+  }
+
+  if (body?.effortPoints !== undefined) {
+    if (body.effortPoints === null || body.effortPoints === '') {
+      value.effortPoints = null;
+    } else {
+      const points = Number(body.effortPoints);
+      if (!EFFORT_POINTS.includes(points)) return { error: 'invalid_effort_points' };
+      value.effortPoints = points;
+    }
+  }
+
+  if (body?.estimatedMinutes !== undefined) {
+    if (body.estimatedMinutes === null || body.estimatedMinutes === '') {
+      value.estimatedMinutes = null;
+    } else {
+      const minutes = Number(body.estimatedMinutes);
+      if (!Number.isInteger(minutes) || minutes < 0 || minutes > 100_000) {
+        return { error: 'invalid_estimate' };
+      }
+      value.estimatedMinutes = minutes;
+    }
+  }
+
+  if (body?.progress !== undefined) {
+    const progress = Number(body.progress);
+    if (!Number.isFinite(progress) || progress < 0 || progress > 100) {
+      return { error: 'invalid_progress' };
+    }
+    value.progress = Math.round(progress);
   }
 
   if (body?.assigneeId !== undefined) {
@@ -744,6 +992,12 @@ function parseDate(input) {
   return text;
 }
 
+function taskReference() {
+  const time = Date.now().toString(36).toUpperCase();
+  const random = Math.random().toString(36).slice(2, 6).toUpperCase();
+  return `TSK-${time}-${random}`;
+}
+
 async function validAssignee(actor, assigneeId, department) {
   const assignee = await findOne('users', (user) => user.id === assigneeId);
   return canAssignUser(actor, assignee, department);
@@ -776,6 +1030,8 @@ function performanceSummary(tasks) {
       !isDoneStage(task.department ?? DEFAULT_DEPARTMENT, task.stage)
   );
   const scored = tasks.filter((task) => Number.isFinite(task.score));
+  const scoreWeight = (task) => task.effortPoints ?? 1;
+  const totalScoreWeight = scored.reduce((sum, task) => sum + scoreWeight(task), 0);
   const withDeadline = completed.filter((task) => task.dueDate && task.completedAt);
   const onTime = withDeadline.filter((task) => task.completedAt.slice(0, 10) <= task.dueDate);
   const awaitingReview = tasks.filter((task) => taskState(task) === 'submitted');
@@ -794,9 +1050,16 @@ function performanceSummary(tasks) {
     onTimeRate: percentage(onTime.length, withDeadline.length),
     firstPassRate: percentage(firstPass.length, completed.length),
     averageScore: scored.length
-      ? Math.round((scored.reduce((sum, task) => sum + task.score, 0) / scored.length) * 10) / 10
+      ? Math.round(
+          (
+            scored.reduce((sum, task) => sum + task.score * scoreWeight(task), 0) /
+            totalScoreWeight
+          ) * 10
+        ) / 10
       : null,
     scoredTasks: scored.length,
+    effortPoints: tasks.reduce((sum, task) => sum + (task.effortPoints ?? 0), 0),
+    estimatedMinutes: tasks.reduce((sum, task) => sum + (task.estimatedMinutes ?? 0), 0),
   };
 }
 

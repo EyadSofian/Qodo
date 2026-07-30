@@ -5,6 +5,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { canAssignUser, canViewTask, visiblePeople } from './taskAccess.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -115,6 +116,38 @@ let creative;
 let managerCookie;
 let creativeCookie;
 let adminCookie;
+
+test('tenant policy rejects cross-organization task and people access', () => {
+  const managerA = {
+    id: 'manager-a',
+    organizationId: 'org-a',
+    department: 'marketing',
+    role: 'manager',
+    status: 'active',
+  };
+  const adminA = { ...managerA, id: 'admin-a', role: 'admin' };
+  const employeeB = {
+    id: 'employee-b',
+    organizationId: 'org-b',
+    department: 'marketing',
+    role: 'member',
+    status: 'active',
+  };
+  const taskB = {
+    id: 'task-b',
+    organizationId: 'org-b',
+    department: 'marketing',
+    createdBy: employeeB.id,
+    assigneeId: employeeB.id,
+  };
+
+  assert.equal(canViewTask(managerA, taskB), false);
+  assert.equal(canViewTask(adminA, taskB), false);
+  assert.equal(canAssignUser(managerA, employeeB, 'marketing'), false);
+  assert.deepEqual(visiblePeople(adminA, [managerA, employeeB]).map((person) => person.id), [
+    managerA.id,
+  ]);
+});
 
 test('team boundaries, performance privacy and export', async () => {
   adminCookie = await login('admin@test.local', 'AdminPass123!');
@@ -242,6 +275,36 @@ test('a score cannot be set before the work has been reviewed', async () => {
   assert.equal(onOpenTask.data.error, 'score_before_review');
 });
 
+test('SSO verification requires the intended application audience', async () => {
+  const issued = await request('/auth/sso/token', {
+    method: 'POST',
+    cookie: adminCookie,
+    body: { appId: 'support' },
+  });
+  assert.equal(issued.status, 200);
+  assert.ok(issued.data.token);
+
+  const missingAudience = await request('/auth/sso/verify', {
+    method: 'POST',
+    body: { token: issued.data.token },
+  });
+  assert.equal(missingAudience.status, 400);
+  assert.equal(missingAudience.data.error, 'audience_required');
+
+  const wrongAudience = await request('/auth/sso/verify', {
+    method: 'POST',
+    body: { token: issued.data.token, audience: 'hr' },
+  });
+  assert.equal(wrongAudience.status, 401);
+
+  const verified = await request('/auth/sso/verify', {
+    method: 'POST',
+    body: { token: issued.data.token, audience: 'support' },
+  });
+  assert.equal(verified.status, 200);
+  assert.equal(verified.data.user.organizationId, 'engosoft');
+});
+
 test('the board cannot be dragged past either gate', async () => {
   const { task } = await create(
     '/tasks',
@@ -297,6 +360,10 @@ test('assign → deliver → review → approve, including the rework loop', asy
     {
       title: 'Ramadan key visual',
       description: 'Three sizes, brand colours',
+      objective: 'Create the launch visual',
+      definitionOfDone: 'Three approved platform sizes',
+      effortPoints: 5,
+      estimatedMinutes: 360,
       department: 'marketing',
       subteam: 'creative',
       stage: 'pending',
@@ -305,6 +372,51 @@ test('assign → deliver → review → approve, including the rework loop', asy
     },
     managerCookie
   );
+
+  const beforeAcceptance = await request(`/tasks/${task.id}/start`, {
+    method: 'POST',
+    cookie: creativeCookie,
+  });
+  assert.equal(beforeAcceptance.status, 403);
+
+  const silentDecline = await request(`/tasks/${task.id}/assignment`, {
+    method: 'POST',
+    cookie: creativeCookie,
+    body: { action: 'decline' },
+  });
+  assert.equal(silentDecline.status, 400);
+  assert.equal(silentDecline.data.error, 'assignment_reason_required');
+
+  const clarification = await request(`/tasks/${task.id}/assignment`, {
+    method: 'POST',
+    cookie: creativeCookie,
+    body: { action: 'request_clarification', note: 'Which brand guideline version?' },
+  });
+  assert.equal(clarification.status, 200);
+  assert.equal(clarification.data.task.assignmentStatus, 'clarification_requested');
+
+  const acceptedAssignment = await request(`/tasks/${task.id}/assignment`, {
+    method: 'POST',
+    cookie: creativeCookie,
+    body: { action: 'accept' },
+  });
+  assert.equal(acceptedAssignment.status, 200);
+  assert.equal(acceptedAssignment.data.task.assignmentStatus, 'accepted');
+  assert.ok(acceptedAssignment.data.task.acceptedAt);
+
+  const assignmentHistory = await request(`/tasks/${task.id}/assignments`, {
+    cookie: creativeCookie,
+  });
+  assert.equal(assignmentHistory.status, 200);
+  assert.deepEqual(
+    assignmentHistory.data.assignments.map((event) => event.action),
+    ['assigned', 'request_clarification', 'accept']
+  );
+  assert.match(task.reference, /^TSK-/);
+  assert.equal(task.objective, 'Create the launch visual');
+  assert.equal(task.definitionOfDone, 'Three approved platform sizes');
+  assert.equal(task.effortPoints, 5);
+  assert.equal(task.estimatedMinutes, 360);
 
   const started = await request(`/tasks/${task.id}/start`, {
     method: 'POST',
