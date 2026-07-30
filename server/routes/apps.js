@@ -7,12 +7,23 @@ import { PERMISSIONS, can, canOpenApp } from '../../shared/permissions.js';
 
 const router = Router();
 
-/** The tiles this user is allowed to see, already ordered for the grid. */
+/**
+ * The tiles this user is allowed to see, already ordered for the grid.
+ *
+ * `?includeHidden=1` returns every app instead, for whoever manages them. The
+ * settings screen needs it: hiding an app used to remove it from this response
+ * too, so the row carrying the "show again" button disappeared along with it and
+ * a hidden built-in module — which cannot be deleted either — was gone for good.
+ */
 router.get('/', async (req, res) => {
-  const apps = await find('apps', (a) => a.enabled !== false);
-  const visible = apps
-    .filter((a) => canOpenApp(req.user, a.id))
-    .filter((a) => !a.requires || can(req.user, a.requires))
+  const managing =
+    ['1', 'true'].includes(String(req.query.includeHidden)) &&
+    can(req.user, PERMISSIONS.APPS_MANAGE);
+
+  const apps = await find('apps');
+  const visible = (managing ? apps : apps.filter((a) => a.enabled !== false))
+    .filter((a) => managing || canOpenApp(req.user, a.id))
+    .filter((a) => managing || !a.requires || can(req.user, a.requires))
     .sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
   res.json({ apps: visible });
 });

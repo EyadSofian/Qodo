@@ -625,6 +625,11 @@ const STRINGS = {
   'settings.showInGrid': { ar: 'إظهار في الشبكة', en: 'Show in the grid' },
   'settings.confirmRemoveApp': { ar: 'إزالة «{name}» من الشبكة؟', en: 'Remove “{name}” from the grid?' },
   'settings.appRemoved': { ar: 'تمت إزالة التطبيق.', en: 'App removed.' },
+  'settings.appHidden': {
+    ar: 'تم إخفاء التطبيق من الشبكة — يفضل هنا لإظهاره وقت ما تحب.',
+    en: 'Hidden from the grid — it stays here so you can bring it back.',
+  },
+  'settings.appShown': { ar: 'رجع التطبيق للشبكة.', en: 'Back in the grid.' },
   'settings.appAdded': { ar: 'تمت إضافة التطبيق للشبكة.', en: 'App added to the grid.' },
   'settings.appUpdated': { ar: 'تم تحديث التطبيق.', en: 'App updated.' },
   'settings.nameAr': { ar: 'الاسم بالعربية', en: 'Arabic name' },

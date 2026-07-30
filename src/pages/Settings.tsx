@@ -67,16 +67,37 @@ export function Settings() {
 /* ── Apps ────────────────────────────────────────────────────────── */
 
 function AppsSettings() {
-  const { apps, reloadApps } = useWorkspace();
+  const { reloadApps } = useWorkspace();
   const { t, lang } = useI18n();
   const { push } = useToast();
   const [editing, setEditing] = useState<WorkspaceApp | null>(null);
   const [open, setOpen] = useState(false);
+  const [apps, setApps] = useState<WorkspaceApp[]>([]);
+
+  /**
+   * Its own list, not the workspace one. The shared list is what the launcher
+   * grid draws, so it is filtered down to what you can open — which is exactly
+   * the wrong list for the screen whose job is to bring a hidden app back.
+   */
+  const load = useCallback(async () => {
+    const data = await api.get<{ apps: WorkspaceApp[] }>('/apps?includeHidden=1');
+    setApps(data.apps);
+  }, []);
+
+  useEffect(() => {
+    load().catch(() => setApps([]));
+  }, [load]);
+
+  // Both lists: this screen keeps the hidden rows, the chrome drops them.
+  const refresh = useCallback(async () => {
+    await Promise.all([load(), reloadApps()]);
+  }, [load, reloadApps]);
 
   const toggle = async (app: WorkspaceApp) => {
     try {
       await api.patch(`/apps/${app.id}`, { enabled: !app.enabled });
-      await reloadApps();
+      await refresh();
+      push(app.enabled ? t('settings.appHidden') : t('settings.appShown'));
     } catch (err) {
       push(errorMessage(err, lang), 'bad');
     }
@@ -86,7 +107,7 @@ function AppsSettings() {
     if (!window.confirm(t('settings.confirmRemoveApp', { name: app.nameAr }))) return;
     try {
       await api.delete(`/apps/${app.id}`);
-      await reloadApps();
+      await refresh();
       push(t('settings.appRemoved'));
     } catch (err) {
       push(errorMessage(err, lang), 'bad');
@@ -119,7 +140,13 @@ function AppsSettings() {
 
       <ul className="grid gap-2">
         {apps.map((app) => (
-          <li key={app.id} className="card flex flex-wrap items-center gap-3 px-4 py-3">
+          <li
+            key={app.id}
+            className={cx(
+              'card flex flex-wrap items-center gap-3 px-4 py-3',
+              !app.enabled && 'opacity-60'
+            )}
+          >
             <ModuleIcon name={app.icon} color={app.color} size={40} />
 
             <div className="min-w-0 flex-1">
@@ -165,8 +192,12 @@ function AppsSettings() {
               <button
                 type="button"
                 onClick={() => toggle(app)}
-                className="btn-quiet !min-h-9 rounded-lg px-2"
+                className={cx(
+                  'btn-quiet !min-h-9 rounded-lg px-2',
+                  !app.enabled && 'text-brand-500 hover:bg-brand-50'
+                )}
                 title={app.enabled ? t('settings.hideFromGrid') : t('settings.showInGrid')}
+                aria-label={app.enabled ? t('settings.hideFromGrid') : t('settings.showInGrid')}
               >
                 {app.enabled ? <Eye size={15} /> : <EyeOff size={15} />}
               </button>
@@ -200,9 +231,7 @@ function AppsSettings() {
         open={open}
         onClose={() => setOpen(false)}
         app={editing}
-        onSaved={async () => {
-          await reloadApps();
-        }}
+        onSaved={refresh}
       />
     </>
   );
