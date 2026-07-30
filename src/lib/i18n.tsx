@@ -475,6 +475,133 @@ const STRINGS = {
   'perm.users.manage': { ar: 'إضافة المستخدمين وتعديلهم', en: 'Add and edit users' },
   'perm.settings.manage': { ar: 'الدخول لإعدادات المساحة', en: 'Access workspace settings' },
 
+  /* ── visibility scope ────────────────────────────────────── */
+  'scope.label': { ar: 'نطاق الرؤية', en: 'Task visibility' },
+  'scope.hint': {
+    ar: 'يضيّق ما يراه هذا الشخص من المهام. لا يمكن أن يوسّع أكثر مما يسمح به دوره.',
+    en: 'Narrows what this person sees. It can never widen beyond what their role allows.',
+  },
+  'scope.role': { ar: 'حسب الدور (الافتراضي)', en: 'Follow the role (default)' },
+  'scope.own': { ar: 'مهامه هو فقط', en: 'Only their own tasks' },
+  'scope.subteam': { ar: 'فريقه الفرعي', en: 'Their sub-team' },
+  'scope.department': { ar: 'القسم كله', en: 'The whole department' },
+  'scope.all': { ar: 'كل الأقسام', en: 'Every department' },
+  'scope.needsSubteam': {
+    ar: 'هذا الشخص ليس له فريق فرعي — نطاق «الفريق الفرعي» سيقصر رؤيته على مهامه هو.',
+    en: 'This person has no sub-team — “sub-team” scope leaves them seeing only their own tasks.',
+  },
+
+  /* ── join / invite links ─────────────────────────────────── */
+  'join.tagline': { ar: 'إنشاء حسابك في مساحة عمل إنجوسوفت', en: 'Create your Engosoft workspace account' },
+  'join.title': { ar: 'إنشاء حساب', en: 'Create your account' },
+  'join.subtitle': { ar: 'املأ بياناتك واختر مكانك في الهيكل.', en: 'Fill in your details and pick where you sit.' },
+  'join.approvalNotice': {
+    ar: 'أنت من تختار كلمة المرور — لن يراها أحد. الحساب يُفعّل بعد موافقة مدير النظام.',
+    en: 'You choose your own password — nobody else sees it. The account activates once an administrator approves it.',
+  },
+  'join.department': { ar: 'القسم', en: 'Department' },
+  'join.departmentHint': { ar: 'اختر القسم الذي تعمل به.', en: 'Pick the department you work in.' },
+  'join.subteam': { ar: 'الفريق الفرعي', en: 'Sub-team' },
+  'join.subteamHint': {
+    ar: 'يحدد الفرع الذي تنتمي له داخل القسم.',
+    en: 'Sets which branch of the department you belong to.',
+  },
+  'join.choose': { ar: 'اختر', en: 'Choose' },
+  'join.confirmPassword': { ar: 'تأكيد كلمة المرور', en: 'Confirm password' },
+  'join.domainHint': { ar: 'هذا الرابط يقبل إيميلات @{domain} فقط.', en: 'This link only accepts @{domain} addresses.' },
+  'join.submit': { ar: 'إنشاء الحساب', en: 'Create account' },
+  'join.creating': { ar: 'جارٍ الإنشاء…', en: 'Creating…' },
+  'join.nameRequired': { ar: 'اكتب اسمك الكامل.', en: 'Enter your full name.' },
+  'join.pickDepartment': { ar: 'اختر القسم الذي تعمل به.', en: 'Pick the department you work in.' },
+  'join.pickSubteam': { ar: 'اختر الفريق الفرعي.', en: 'Pick a sub-team.' },
+  'join.haveAccount': { ar: 'عندك حساب بالفعل؟', en: 'Already have an account?' },
+  'join.linkProblem': { ar: 'رابط الدعوة لا يعمل', en: 'This invite link does not work' },
+  'join.doneTitle': { ar: 'تم إنشاء حسابك', en: 'Your account is created' },
+  'join.doneBody': {
+    ar: 'بياناتك اتسجلت وكلمة المرور اتحفظت مشفّرة.',
+    en: 'Your details are saved and your password is stored encrypted.',
+  },
+  'join.doneWait': {
+    ar: 'الحساب في انتظار موافقة مدير النظام. هيوصلك إشعار أول ما يتفعّل، وبعدها تقدر تسجّل الدخول بنفس الإيميل وكلمة المرور.',
+    en: 'The account is waiting for an administrator to approve it. You will be notified once it is active, then you can sign in with the same email and password.',
+  },
+
+  /* ── invite management ───────────────────────────────────── */
+  'invites.title': { ar: 'روابط الدعوة', en: 'Invite links' },
+  'invites.subtitle': {
+    ar: 'رابط يفتحه الموظف ليُنشئ حسابه بنفسه — ولا يُفعّل إلا بموافقتك.',
+    en: 'A link an employee opens to create their own account — it only activates when you approve it.',
+  },
+  'invites.new': { ar: 'رابط جديد', en: 'New link' },
+  'invites.none': { ar: 'لا توجد روابط دعوة بعد.', en: 'No invite links yet.' },
+  'invites.label': { ar: 'اسم الرابط', en: 'Link name' },
+  'invites.labelHint': { ar: 'للتمييز بينها فقط. مثال: دفعة الماركتنج يوليو', en: 'Just to tell them apart. e.g. Marketing intake, July' },
+  'invites.role': { ar: 'الدور عند الإنشاء', en: 'Role on creation' },
+  'invites.roleHint': {
+    ar: 'الرابط لا يمنح صلاحية مدير — ترفعه يدوياً بعد الموافقة.',
+    en: 'A link cannot grant manager access — promote them after approval.',
+  },
+  'invites.departments': { ar: 'الأقسام المسموح باختيارها', en: 'Departments they may pick' },
+  'invites.departmentsHint': {
+    ar: 'اتركها فارغة ليختار الموظف أي قسم، أو حدّد قسماً واحداً لتثبيته.',
+    en: 'Leave empty to let them pick any, or select one to pin the link to it.',
+  },
+  'invites.emailDomain': { ar: 'نطاق الإيميل المسموح', en: 'Allowed email domain' },
+  'invites.emailDomainHint': { ar: 'اختياري. مثال: engosoft.com', en: 'Optional. e.g. engosoft.com' },
+  'invites.maxUses': { ar: 'أقصى عدد استخدامات', en: 'Maximum uses' },
+  'invites.maxUsesHint': { ar: 'اتركه فارغاً لعدد غير محدود.', en: 'Leave empty for unlimited.' },
+  'invites.expiresInDays': { ar: 'صلاحية الرابط (بالأيام)', en: 'Link expires in (days)' },
+  'invites.created': { ar: 'تم إنشاء الرابط — انسخه وابعته.', en: 'Link created — copy it and send it.' },
+  'invites.copy': { ar: 'نسخ الرابط', en: 'Copy link' },
+  'invites.copied': { ar: 'تم نسخ الرابط.', en: 'Link copied.' },
+  'invites.revoke': { ar: 'إلغاء', en: 'Revoke' },
+  'invites.revoked': { ar: 'تم إلغاء الرابط.', en: 'Link revoked.' },
+  'invites.confirmRevoke': { ar: 'إلغاء هذا الرابط؟ لن يعمل بعدها.', en: 'Revoke this link? It stops working immediately.' },
+  'invites.confirmDelete': { ar: 'حذف هذا الرابط نهائياً؟', en: 'Delete this link permanently?' },
+  'invites.deleted': { ar: 'تم حذف الرابط.', en: 'Link deleted.' },
+  'invites.usage': { ar: '{used} من {max}', en: '{used} of {max}' },
+  'invites.usageUnlimited': { ar: '{used} استخدام', en: '{used} used' },
+  'invites.joinedCount': { ar: '{n} انضموا', en: '{n} joined' },
+  'invites.pendingCount': { ar: '{n} في انتظار الموافقة', en: '{n} awaiting approval' },
+  'invites.expiresOn': { ar: 'ينتهي {when}', en: 'Expires {when}' },
+  'invites.anyDepartment': { ar: 'أي قسم', en: 'Any department' },
+  'invites.state.active': { ar: 'فعّال', en: 'Active' },
+  'invites.state.expired': { ar: 'منتهي', en: 'Expired' },
+  'invites.state.revoked': { ar: 'ملغي', en: 'Revoked' },
+  'invites.state.exhausted': { ar: 'استُنفد', en: 'Used up' },
+
+  /* ── approvals ───────────────────────────────────────────── */
+  'users.pending': { ar: 'في انتظار الموافقة', en: 'Awaiting approval' },
+  'users.pendingBadge': { ar: 'بانتظار الموافقة', en: 'Pending' },
+  'users.approve': { ar: 'موافقة', en: 'Approve' },
+  'users.approveAndEdit': { ar: 'مراجعة الصلاحيات ثم الموافقة', en: 'Review permissions, then approve' },
+  'users.confirmApprove': {
+    ar: 'تفعيل حساب «{name}»؟ هيقدر يسجّل الدخول فوراً بالصلاحيات المحددة له.',
+    en: 'Activate “{name}”? They will be able to sign in immediately with the permissions set for them.',
+  },
+  'users.approved': { ar: 'تم تفعيل الحساب.', en: 'Account activated.' },
+  'users.joinedVia': { ar: 'انضم عبر رابط دعوة', en: 'Joined through an invite link' },
+  'users.pendingHint': {
+    ar: 'أنشأ حسابه بنفسه من رابط دعوة. راجع قسمه وصلاحياته قبل الموافقة.',
+    en: 'They created this account from an invite link. Check their department and permissions before approving.',
+  },
+
+  /* ── the sign-in summary ─────────────────────────────────── */
+  'summary.title': { ar: 'صباح الخير 👋', en: 'Good to see you 👋' },
+  'summary.titleEvening': { ar: 'مساء الخير 👋', en: 'Good to see you 👋' },
+  'summary.open': { ar: 'مهمة مفتوحة', en: 'Open' },
+  'summary.overdue': { ar: 'متأخرة', en: 'Overdue' },
+  'summary.dueToday': { ar: 'تسليمها النهارده', en: 'Due today' },
+  'summary.unanswered': { ar: 'لسه محتاجة ردّك', en: 'Awaiting your answer' },
+  'summary.awaitingMyReview': { ar: 'مستنية مراجعتك', en: 'Awaiting your review' },
+  'summary.clear': {
+    ar: 'مفيش حاجة مفتوحة عليك دلوقتي. يوم هادي.',
+    en: 'Nothing open on your plate. Quiet day.',
+  },
+  'summary.openBoard': { ar: 'افتح لوحة المهام', en: 'Open the board' },
+  'summary.dismiss': { ar: 'مش دلوقتي', en: 'Not now' },
+  'summary.badgeLabel': { ar: '{n} مهمة مفتوحة', en: '{n} open tasks' },
+
   /* ── settings ────────────────────────────────────────────── */
   'settings.title': { ar: 'إعدادات المساحة', en: 'Workspace settings' },
   'settings.subtitle': {
@@ -593,6 +720,11 @@ const STRINGS = {
   'time.days': { ar: 'منذ {n} يوماً', en: '{n} days ago' },
   'time.months': { ar: 'منذ {n} شهراً', en: '{n} months ago' },
   'time.years': { ar: 'منذ {n} سنة', en: '{n} years ago' },
+  'time.expired': { ar: 'انتهى', en: 'expired' },
+  'time.inMinutes': { ar: 'خلال {n} دقيقة', en: 'in {n} min' },
+  'time.inHours': { ar: 'خلال {n} ساعة', en: 'in {n}h' },
+  'time.tomorrow': { ar: 'بكرة', en: 'tomorrow' },
+  'time.inDays': { ar: 'خلال {n} يوم', en: 'in {n} days' },
 } as const;
 
 export type StringKey = keyof typeof STRINGS;

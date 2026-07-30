@@ -31,6 +31,7 @@ const BLOB_DIR = path.join(DATA_DIR, 'uploads');
 export const COLLECTIONS = [
   'organizations',
   'users',
+  'invites',
   'apps',
   'tasks',
   'taskAssignments',

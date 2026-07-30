@@ -10,7 +10,7 @@ import {
   verifyPassword,
   verifySsoToken,
 } from '../auth.js';
-import { canOpenApp, publicUser } from '../../shared/permissions.js';
+import { canOpenApp, isActiveUser, publicUser } from '../../shared/permissions.js';
 import { visiblePeople } from '../taskAccess.js';
 import { organizationOf } from '../../shared/organization.js';
 
@@ -68,7 +68,13 @@ router.post('/login', async (req, res) => {
     recordFailure(key);
     return res.status(401).json({ error: 'invalid_credentials' });
   }
-  if (user.status === 'disabled') {
+  // The password was right, so saying which kind of "not yet" this is leaks
+  // nothing they don't already know — and "waiting for approval" is the one
+  // message that stops them from filing a ticket about a broken login.
+  if (user.status === 'pending') {
+    return res.status(403).json({ error: 'account_pending' });
+  }
+  if (!isActiveUser(user)) {
     return res.status(403).json({ error: 'account_disabled' });
   }
 
@@ -143,10 +149,7 @@ router.post('/sso/verify', async (req, res) => {
 
 /** Who else is in the workspace — used by task assignment pickers. */
 router.get('/directory', requireAuth, async (req, res) => {
-  const users = visiblePeople(
-    req.user,
-    await find('users', (u) => u.status !== 'disabled')
-  );
+  const users = visiblePeople(req.user, await find('users', isActiveUser));
   res.json({
     users: users
       .map((u) => ({

@@ -9,7 +9,15 @@ import {
 } from 'react';
 import { api } from './api';
 import { useAuth } from './auth';
-import type { ActorMap, DirectoryUser, Notification, WorkspaceApp } from './types';
+import type { ActorMap, DirectoryUser, Notification, TaskCounts, WorkspaceApp } from './types';
+
+const NO_TASKS: TaskCounts = {
+  mine: 0,
+  overdue: 0,
+  dueToday: 0,
+  unanswered: 0,
+  awaitingMyReview: 0,
+};
 
 /**
  * Everything the chrome needs on every screen: the app registry (the launcher
@@ -22,10 +30,13 @@ interface WorkspaceState {
   notifications: Notification[];
   actors: ActorMap;
   unread: number;
+  /** Open work on the signed-in person's plate — the nav badge reads this. */
+  taskCounts: TaskCounts;
   loading: boolean;
   reloadApps: () => Promise<void>;
   reloadDirectory: () => Promise<void>;
   reloadNotifications: () => Promise<void>;
+  reloadTaskCounts: () => Promise<void>;
   markRead: (id: string) => Promise<void>;
   markAllRead: () => Promise<void>;
   appById: (id: string | null | undefined) => WorkspaceApp | undefined;
@@ -43,6 +54,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [actors, setActors] = useState<ActorMap>({});
   const [unread, setUnread] = useState(0);
+  const [taskCounts, setTaskCounts] = useState<TaskCounts>(NO_TASKS);
   const [loading, setLoading] = useState(true);
 
   const reloadApps = useCallback(async () => {
@@ -66,27 +78,39 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     setUnread(data.unread);
   }, []);
 
+  const reloadTaskCounts = useCallback(async () => {
+    setTaskCounts(await api.get<TaskCounts>('/tasks/counts'));
+  }, []);
+
   useEffect(() => {
     if (!user) {
       setApps([]);
       setDirectory([]);
       setNotifications([]);
       setUnread(0);
+      setTaskCounts(NO_TASKS);
       setLoading(false);
       return;
     }
     setLoading(true);
-    Promise.allSettled([reloadApps(), reloadDirectory(), reloadNotifications()]).finally(() =>
-      setLoading(false)
-    );
-  }, [user, reloadApps, reloadDirectory, reloadNotifications]);
+    Promise.allSettled([
+      reloadApps(),
+      reloadDirectory(),
+      reloadNotifications(),
+      reloadTaskCounts(),
+    ]).finally(() => setLoading(false));
+  }, [user, reloadApps, reloadDirectory, reloadNotifications, reloadTaskCounts]);
 
-  // Poll the bell, but only while the tab is in front — a workspace left open
-  // on a second monitor shouldn't keep hitting the API all day.
+  // Poll the bell and the badge, but only while the tab is in front — a
+  // workspace left open on a second monitor shouldn't keep hitting the API all
+  // day. Both are cheap counts and stale numbers are the thing being fixed, so
+  // they ride the same timer.
   useEffect(() => {
     if (!user) return;
     const tick = () => {
-      if (document.visibilityState === 'visible') reloadNotifications().catch(() => {});
+      if (document.visibilityState !== 'visible') return;
+      reloadNotifications().catch(() => {});
+      reloadTaskCounts().catch(() => {});
     };
     const timer = setInterval(tick, POLL_MS);
     document.addEventListener('visibilitychange', tick);
@@ -94,7 +118,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       clearInterval(timer);
       document.removeEventListener('visibilitychange', tick);
     };
-  }, [user, reloadNotifications]);
+  }, [user, reloadNotifications, reloadTaskCounts]);
 
   const markRead = useCallback(async (id: string) => {
     setNotifications((list) => list.map((n) => (n.id === id ? { ...n, read: true } : n)));
@@ -115,10 +139,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       notifications,
       actors,
       unread,
+      taskCounts,
       loading,
       reloadApps,
       reloadDirectory,
       reloadNotifications,
+      reloadTaskCounts,
       markRead,
       markAllRead,
       appById: (id) => (id ? apps.find((a) => a.id === id) : undefined),
@@ -130,10 +156,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       notifications,
       actors,
       unread,
+      taskCounts,
       loading,
       reloadApps,
       reloadDirectory,
       reloadNotifications,
+      reloadTaskCounts,
       markRead,
       markAllRead,
     ]

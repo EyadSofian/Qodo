@@ -12,12 +12,27 @@
 An optional per-user permission array replaces role defaults. Every backend
 route re-checks the effective permission and resource scope.
 
+## Account status
+
+`active`, `pending` or `disabled`. Only `active` resolves to a session — the
+check runs on every request, not just at login, so disabling or un-approving an
+account ends the session it already holds. `pending` is an account created
+through an invite link and not yet approved; it fails `can()` for every
+permission and returns `account_pending` on login.
+
+## Visibility scope
+
+Separate from permissions and evaluated after them. `visibilityScope` on a user
+is one of `own`, `subteam`, `department`, `all`, or null to follow the role. It
+narrows only: `visibilityFor` caps it at the ceiling the permissions justify.
+See `docs/organization-structure.md`.
+
 ## Resource policy order
 
 1. authenticated active user;
 2. matching `organizationId`;
 3. permission key;
-4. department/team boundary;
+4. visibility scope (own / sub-team / department / organization);
 5. relationship to the specific task;
 6. action-specific workflow rule.
 

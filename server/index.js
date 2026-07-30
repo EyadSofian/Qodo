@@ -19,6 +19,7 @@ import { startScheduler } from './scheduler.js';
 
 import authRoutes from './routes/auth.js';
 import userRoutes from './routes/users.js';
+import inviteRoutes from './routes/invites.js';
 import appRoutes from './routes/apps.js';
 import taskRoutes from './routes/tasks.js';
 import notificationRoutes from './routes/notifications.js';
@@ -48,6 +49,8 @@ app.use((_req, res, next) => {
 app.use('/api', attachUser);
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
+// Two of these are public by design — the join page has no session yet.
+app.use('/api/invites', inviteRoutes);
 app.use('/api/apps', appRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/notifications', notificationRoutes);

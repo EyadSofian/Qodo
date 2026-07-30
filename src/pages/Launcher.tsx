@@ -12,6 +12,7 @@ import { DEFAULT_DEPARTMENT, getDepartment, isDoneStage, stageLabel } from '@sha
 import { isReviewer, taskState } from '@shared/workflow';
 import { ModuleIcon } from '../components/ModuleIcon';
 import { EmptyState } from '../components/ui';
+import { CountBadge } from '../components/Shell';
 import { DUE_CHIP_CLASS, PRIORITY_META, cx, daysUntil, dueLabel } from '../lib/utils';
 import type { Task, WorkspaceApp } from '../lib/types';
 
@@ -69,6 +70,12 @@ function Greeting({ name }: { name: string }) {
 
 function AppGrid({ apps, onOpen }: { apps: WorkspaceApp[]; onOpen: (app: WorkspaceApp) => void }) {
   const { t, lang } = useI18n();
+  const { taskCounts } = useWorkspace();
+
+  // Only the built-in Tasks tile has a number the hub actually knows. The other
+  // apps own their own data, so guessing a badge for them would be a lie.
+  const badgeFor = (app: WorkspaceApp) =>
+    app.id === 'tasks' ? taskCounts.mine + taskCounts.awaitingMyReview : 0;
 
   return (
     <section aria-label={t('shell.apps')}>
@@ -92,12 +99,17 @@ function AppGrid({ apps, onOpen }: { apps: WorkspaceApp[]; onOpen: (app: Workspa
                 aria-label={t('launcher.externalApp')}
               />
             )}
-            <ModuleIcon
-              name={app.icon}
-              color={app.color}
-              size={54}
-              className="transition-transform duration-200 group-hover:scale-[1.06]"
-            />
+            <span className="relative">
+              <ModuleIcon
+                name={app.icon}
+                color={app.color}
+                size={54}
+                className="transition-transform duration-200 group-hover:scale-[1.06]"
+              />
+              {badgeFor(app) > 0 && (
+                <CountBadge value={badgeFor(app)} urgent={taskCounts.overdue > 0} />
+              )}
+            </span>
             <span className="line-clamp-2 text-[12.5px] font-bold leading-tight text-ink sm:text-[13.5px]">
               {lang === 'en' && app.nameEn ? app.nameEn : app.nameAr}
             </span>

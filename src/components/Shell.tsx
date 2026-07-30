@@ -37,6 +37,7 @@ import { NotificationsMenu } from './NotificationsMenu';
 import { SearchPalette } from './SearchPalette';
 import { ChangePasswordModal } from './ChangePasswordModal';
 import { Assistant } from './Assistant';
+import { TaskSummaryPopup } from './TaskSummaryPopup';
 import { Avatar, useToast } from './ui';
 
 /**
@@ -55,7 +56,7 @@ export function Shell({ children }: { children: ReactNode }) {
 
   const { user, signOut, can } = useAuth();
   const { t, lang, setLang } = useI18n();
-  const { unread } = useWorkspace();
+  const { unread, taskCounts } = useWorkspace();
   const { push: toast } = useToast();
   const openApp = useOpenApp();
   const location = useLocation();
@@ -193,6 +194,32 @@ export function Shell({ children }: { children: ReactNode }) {
           >
             <Search size={19} />
           </button>
+
+          {/* The phone reaches the board from the tab bar; on desktop there was
+              no way in but the launcher grid, which is where the badge belongs
+              least — you see it once, on the way somewhere else. */}
+          {can(PERMISSIONS.TASKS_VIEW) && (
+            <NavLink
+              to="/tasks"
+              className={({ isActive }) =>
+                cx(
+                  'btn !min-h-10 relative hidden shrink-0 gap-1.5 rounded-xl px-2.5 text-[13px] font-semibold md:flex',
+                  isActive ? 'bg-navy text-white' : 'text-ink-muted hover:bg-surface-sunken hover:text-ink'
+                )
+              }
+            >
+              <span className="relative">
+                <ListChecks size={18} />
+                {taskCounts.mine + taskCounts.awaitingMyReview > 0 && (
+                  <CountBadge
+                    value={taskCounts.mine + taskCounts.awaitingMyReview}
+                    urgent={taskCounts.overdue > 0}
+                  />
+                )}
+              </span>
+              <span className="hidden lg:inline">{t('tasks.title')}</span>
+            </NavLink>
+          )}
 
           <button
             type="button"
@@ -344,7 +371,26 @@ export function Shell({ children }: { children: ReactNode }) {
       <SearchPalette open={searchOpen} onClose={() => setSearchOpen(false)} />
       <ChangePasswordModal open={passwordOpen} onClose={() => setPasswordOpen(false)} />
       <Assistant open={assistantOpen} onClose={() => setAssistantOpen(false)} />
+      <TaskSummaryPopup />
     </div>
+  );
+}
+
+/**
+ * The count that rides on an icon. Capped at 99 — past that the exact figure
+ * stops being information and the badge just needs to say "a lot".
+ */
+export function CountBadge({ value, urgent = false }: { value: number; urgent?: boolean }) {
+  return (
+    <span
+      className={cx(
+        'absolute -end-1.5 -top-1.5 grid h-[17px] min-w-[17px] place-items-center rounded-full',
+        'px-1 text-[10px] font-extrabold leading-none tabular-nums text-white ring-2 ring-white',
+        urgent ? 'bg-status-bad' : 'bg-brand-500'
+      )}
+    >
+      {value > 99 ? '99+' : value}
+    </span>
   );
 }
 
@@ -352,21 +398,41 @@ export function Shell({ children }: { children: ReactNode }) {
 function BottomNav({ onOpenSwitcher }: { onOpenSwitcher: () => void }) {
   const { can } = useAuth();
   const { t } = useI18n();
+  const { taskCounts } = useWorkspace();
+  const taskBadge = taskCounts.mine + taskCounts.awaitingMyReview;
 
   const items = [
-    { to: '/', label: t('common.home'), icon: Home, end: true },
+    { to: '/', label: t('common.home'), icon: Home, end: true, badge: 0, urgent: false },
     ...(can(PERMISSIONS.TASKS_VIEW)
-      ? [{ to: '/tasks', label: t('tasks.title'), icon: ListChecks, end: false }]
+      ? [
+          {
+            to: '/tasks',
+            label: t('tasks.title'),
+            icon: ListChecks,
+            end: false,
+            badge: taskBadge,
+            urgent: taskCounts.overdue > 0,
+          },
+        ]
       : []),
     ...(can(PERMISSIONS.USERS_VIEW)
-      ? [{ to: '/users', label: t('shell.team'), icon: ShieldCheck, end: false }]
+      ? [
+          {
+            to: '/users',
+            label: t('shell.team'),
+            icon: ShieldCheck,
+            end: false,
+            badge: 0,
+            urgent: false,
+          },
+        ]
       : []),
   ];
 
   return (
     <nav className="surface-blur fixed inset-x-0 bottom-0 z-30 border-b-0 border-t pb-safe md:hidden">
       <div className="flex items-stretch justify-around px-2">
-        {items.map(({ to, label, icon: Icon, end }) => (
+        {items.map(({ to, label, icon: Icon, end, badge, urgent }) => (
           <NavLink
             key={to}
             to={to}
@@ -378,7 +444,10 @@ function BottomNav({ onOpenSwitcher }: { onOpenSwitcher: () => void }) {
               )
             }
           >
-            <Icon size={20} />
+            <span className="relative">
+              <Icon size={20} />
+              {badge > 0 && <CountBadge value={badge} urgent={urgent} />}
+            </span>
             {label}
           </NavLink>
         ))}

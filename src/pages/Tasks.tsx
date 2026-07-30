@@ -89,7 +89,7 @@ const EDGE = 90;
 export function Tasks() {
   const { user, can } = useAuth();
   const { t, lang, dir } = useI18n();
-  const { directory } = useWorkspace();
+  const { directory, reloadTaskCounts } = useWorkspace();
   const { push } = useToast();
   const [params, setParams] = useSearchParams();
 
@@ -128,8 +128,11 @@ export function Tasks() {
   const load = useCallback(async () => {
     const data = await api.get<{ tasks: Task[] }>('/tasks');
     setTasks(data.tasks);
+    // Every mutation on this page ends here, so this is the one place that
+    // keeps the nav badge from lagging a minute behind the board.
+    reloadTaskCounts().catch(() => {});
     return data.tasks;
-  }, []);
+  }, [reloadTaskCounts]);
 
   useEffect(() => {
     load().catch(() => setTasks([]));

@@ -10,7 +10,7 @@ import nodeCrypto from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { SignJWT, jwtVerify } from 'jose';
 import { findOne, getStore } from './store.js';
-import { can, publicUser } from '../shared/permissions.js';
+import { can, isActiveUser, publicUser } from '../shared/permissions.js';
 import { organizationOf } from '../shared/organization.js';
 
 const SESSION_COOKIE = 'engosoft_session';
@@ -104,7 +104,9 @@ export async function attachUser(req, _res, next) {
   try {
     const { payload } = await jwtVerify(token, sessionSecret(), { issuer: 'engosoft-workspace' });
     const user = await findOne('users', (u) => u.id === payload.sub);
-    if (user && user.status !== 'disabled') req.user = user;
+    // Checked every request, not just at login: disabling or un-approving an
+    // account has to end the session it already holds.
+    if (isActiveUser(user)) req.user = user;
   } catch {
     /* expired or tampered — treated as signed out */
   }

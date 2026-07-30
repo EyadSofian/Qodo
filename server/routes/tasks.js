@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { create, find, findOne, getStore } from '../store.js';
 import { logActivity, requireAuth, requirePermission } from '../auth.js';
-import { PERMISSIONS, can } from '../../shared/permissions.js';
+import { PERMISSIONS, can, isActiveUser } from '../../shared/permissions.js';
 import {
   DEFAULT_DEPARTMENT,
   DEPARTMENT_IDS,
@@ -62,6 +62,43 @@ router.get('/', async (req, res) => {
   res.json({ tasks: tasks.map((task) => taskForUser(req.user, task)), priorities: PRIORITIES });
 });
 
+/**
+ * The numbers behind the nav badge and the sign-in summary.
+ *
+ * Deliberately separate from `/overview`: that endpoint builds per-person
+ * performance tables and is heavy enough that the chrome should not poll it.
+ * This one answers "how much is on my plate", which is what a badge means, and
+ * stays a count of the caller's own work even for administrators — a badge that
+ * shows the whole company's backlog is not actionable.
+ */
+router.get('/counts', async (req, res) => {
+  if (!can(req.user, PERMISSIONS.TASKS_VIEW)) {
+    return res.json({ mine: 0, overdue: 0, dueToday: 0, unanswered: 0, awaitingMyReview: 0 });
+  }
+
+  const visible = await find('tasks', taskPredicate(req.user));
+  const today = new Date().toISOString().slice(0, 10);
+  const isOpen = (task) => !isDoneStage(task.department ?? DEFAULT_DEPARTMENT, task.stage);
+
+  const mine = visible.filter((task) => task.assigneeId === req.user.id && isOpen(task));
+
+  // What a reviewer needs to act on — theirs to clear, not theirs to do.
+  const awaitingMyReview = isReviewer(req.user)
+    ? visible.filter((task) => taskState(task) === 'submitted' && task.assigneeId !== req.user.id)
+        .length
+    : 0;
+
+  res.json({
+    mine: mine.length,
+    overdue: mine.filter((task) => task.dueDate && task.dueDate < today).length,
+    dueToday: mine.filter((task) => task.dueDate === today).length,
+    // Assigned to them and never accepted or declined — the quietest way for
+    // work to stall, so it gets its own number.
+    unanswered: mine.filter((task) => task.assignmentStatus === 'pending').length,
+    awaitingMyReview,
+  });
+});
+
 router.get('/overview', async (req, res) => {
   if (!can(req.user, PERMISSIONS.TASKS_VIEW)) {
     return res.status(403).json({ error: 'forbidden', missing: PERMISSIONS.TASKS_VIEW });
@@ -69,10 +106,7 @@ router.get('/overview', async (req, res) => {
 
   const managesTeam = canManagePerformance(req.user);
   let tasks = await find('tasks', taskPredicate(req.user));
-  let people = visiblePeople(
-    req.user,
-    await find('users', (user) => user.status !== 'disabled')
-  );
+  let people = visiblePeople(req.user, await find('users', isActiveUser));
 
   // Performance is more private than the team task table: employees get only
   // their own figures even when the team's work is visible for collaboration.
@@ -810,7 +844,7 @@ function assignmentNotificationTitle(action) {
  */
 async function reviewAudience(task, actorId) {
   const department = task.department ?? DEFAULT_DEPARTMENT;
-  const people = await find('users', (user) => user.status !== 'disabled');
+  const people = await find('users', isActiveUser);
   const audience = new Set();
   for (const person of people) {
     if (organizationOf(person) !== organizationOf(task)) continue;

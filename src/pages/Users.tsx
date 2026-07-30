@@ -1,11 +1,29 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { KeyRound, Pencil, ShieldCheck, UserMinus, UserPlus, Users2, X } from 'lucide-react';
+import {
+  Check,
+  Copy,
+  KeyRound,
+  Link2,
+  Pencil,
+  ShieldCheck,
+  Trash2,
+  UserMinus,
+  UserPlus,
+  Users2,
+  X,
+} from 'lucide-react';
 import { api, errorMessage } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useI18n, type StringKey } from '../lib/i18n';
 import { useWorkspace } from '../lib/workspace';
-import { ALL_PERMISSIONS, PERMISSIONS, ROLES } from '@shared/permissions';
+import {
+  ALL_PERMISSIONS,
+  PERMISSIONS,
+  ROLES,
+  VISIBILITY_SCOPES,
+  availableScopes,
+} from '@shared/permissions';
 import {
   DEFAULT_DEPARTMENT,
   DEPARTMENTS,
@@ -17,8 +35,8 @@ import {
 } from '@shared/departments';
 import { ModuleIcon } from '../components/ModuleIcon';
 import { Avatar, EmptyState, Field, Modal, Segmented, Spinner, useToast } from '../components/ui';
-import { cx, timeAgo } from '../lib/utils';
-import type { Role, User } from '../lib/types';
+import { cx, timeAgo, timeUntil } from '../lib/utils';
+import type { Invite, Role, User, VisibilityScope } from '../lib/types';
 
 const ROLE_ORDER: Role[] = ['admin', 'manager', 'member', 'viewer'];
 
@@ -30,9 +48,10 @@ export function Users() {
   const [params, setParams] = useSearchParams();
 
   const [users, setUsers] = useState<User[] | null>(null);
-  const [filter, setFilter] = useState<'active' | 'disabled' | 'all'>('active');
+  const [filter, setFilter] = useState<'active' | 'pending' | 'disabled' | 'all'>('active');
   const [editing, setEditing] = useState<User | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [invitesOpen, setInvitesOpen] = useState(false);
 
   const manage = can(PERMISSIONS.USERS_MANAGE);
 
@@ -63,6 +82,9 @@ export function Users() {
       .filter((u) => (filter === 'all' ? true : u.status === filter))
       .sort(
         (a, b) =>
+          // Whoever is waiting on a decision comes first — an approval queue
+          // buried under the staff list is an approval queue nobody works.
+          Number(b.status === 'pending') - Number(a.status === 'pending') ||
           ROLE_ORDER.indexOf(a.role) - ROLE_ORDER.indexOf(b.role) ||
           a.name.localeCompare(b.name, lang === 'en' ? 'en' : 'ar')
       );
@@ -71,11 +93,30 @@ export function Users() {
   const counts = useMemo(
     () => ({
       active: users?.filter((u) => u.status === 'active').length ?? 0,
+      pending: users?.filter((u) => u.status === 'pending').length ?? 0,
       disabled: users?.filter((u) => u.status === 'disabled').length ?? 0,
       all: users?.length ?? 0,
     }),
     [users]
   );
+
+  // Land straight on the queue when there is one — the notification that
+  // brought them here was about a person waiting, not about the staff list.
+  useEffect(() => {
+    if (counts.pending > 0) setFilter((current) => (current === 'active' ? 'pending' : current));
+  }, [counts.pending]);
+
+  const approve = async (target: User) => {
+    if (!window.confirm(t('users.confirmApprove', { name: target.name }))) return;
+    try {
+      await api.patch(`/users/${target.id}`, { status: 'active' });
+      push(t('users.approved'));
+      await load();
+      await reloadDirectory();
+    } catch (err) {
+      push(errorMessage(err, lang), 'bad');
+    }
+  };
 
   const toggleStatus = async (target: User) => {
     const next = target.status === 'active' ? 'disabled' : 'active';
@@ -118,17 +159,27 @@ export function Users() {
           <p className="mt-0.5 text-[13px] text-ink-muted">{t('users.subtitle')}</p>
         </div>
         {manage && (
-          <button
-            type="button"
-            onClick={() => {
-              setEditing(null);
-              setDialogOpen(true);
-            }}
-            className="btn-primary btn-sm gap-1.5"
-          >
-            <UserPlus size={16} />
-            {t('users.new')}
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setInvitesOpen(true)}
+              className="btn-ghost btn-sm gap-1.5"
+            >
+              <Link2 size={16} />
+              {t('invites.title')}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setEditing(null);
+                setDialogOpen(true);
+              }}
+              className="btn-primary btn-sm gap-1.5"
+            >
+              <UserPlus size={16} />
+              {t('users.new')}
+            </button>
+          </div>
         )}
       </header>
 
@@ -138,6 +189,9 @@ export function Users() {
         onChange={setFilter}
         options={[
           { value: 'active', label: t('users.active'), count: counts.active },
+          ...(counts.pending > 0 || filter === 'pending'
+            ? [{ value: 'pending' as const, label: t('users.pending'), count: counts.pending }]
+            : []),
           { value: 'disabled', label: t('users.disabled'), count: counts.disabled },
           { value: 'all', label: t('common.all'), count: counts.all },
         ]}
@@ -164,7 +218,8 @@ export function Users() {
                 key={person.id}
                 className={cx(
                   'card flex flex-wrap items-center gap-3 px-4 py-3',
-                  person.status === 'disabled' && 'opacity-70'
+                  person.status === 'disabled' && 'opacity-70',
+                  person.status === 'pending' && 'ring-1 ring-accent-400'
                 )}
               >
                 <Avatar name={person.name} color={person.avatarColor} size={40} />
@@ -176,12 +231,19 @@ export function Users() {
                     {person.status === 'disabled' && (
                       <span className="chip bg-status-badBg text-status-bad">{t('users.disabledBadge')}</span>
                     )}
+                    {person.status === 'pending' && (
+                      <span className="chip bg-status-warnBg text-accent-600">{t('users.pendingBadge')}</span>
+                    )}
                   </p>
                   <p className="ltr mt-0.5 truncate text-[12px] text-ink-muted">{person.email}</p>
-                  {(jobRole || person.title) && (
-                    <p className="mt-0.5 truncate text-[11.5px] text-ink-faint">
-                      {jobRole ? (lang === 'en' ? jobRole.en : jobRole.ar) : person.title}
-                    </p>
+                  {person.status === 'pending' ? (
+                    <p className="mt-0.5 text-[11.5px] text-accent-600">{t('users.pendingHint')}</p>
+                  ) : (
+                    (jobRole || person.title) && (
+                      <p className="mt-0.5 truncate text-[11.5px] text-ink-faint">
+                        {jobRole ? (lang === 'en' ? jobRole.en : jobRole.ar) : person.title}
+                      </p>
+                    )
                   )}
                 </div>
 
@@ -218,6 +280,16 @@ export function Users() {
 
                 {manage && (
                   <div className="flex items-center gap-1">
+                    {person.status === 'pending' && (
+                      <button
+                        type="button"
+                        onClick={() => approve(person)}
+                        className="btn-primary btn-sm gap-1.5"
+                      >
+                        <Check size={15} />
+                        {t('users.approve')}
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => {
@@ -225,21 +297,23 @@ export function Users() {
                         setDialogOpen(true);
                       }}
                       className="btn-quiet !min-h-9 rounded-lg px-2"
-                      aria-label={t('common.edit')}
-                      title={t('common.edit')}
+                      aria-label={person.status === 'pending' ? t('users.approveAndEdit') : t('common.edit')}
+                      title={person.status === 'pending' ? t('users.approveAndEdit') : t('common.edit')}
                     >
                       <Pencil size={15} />
                     </button>
                     {person.id !== me?.id && (
                       <>
-                        <button
-                          type="button"
-                          onClick={() => toggleStatus(person)}
-                          className="btn-quiet !min-h-9 rounded-lg px-2"
-                          aria-label={person.status === 'active' ? t('users.disabled') : t('users.active')}
-                        >
-                          <UserMinus size={15} />
-                        </button>
+                        {person.status !== 'pending' && (
+                          <button
+                            type="button"
+                            onClick={() => toggleStatus(person)}
+                            className="btn-quiet !min-h-9 rounded-lg px-2"
+                            aria-label={person.status === 'active' ? t('users.disabled') : t('users.active')}
+                          >
+                            <UserMinus size={15} />
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => remove(person)}
@@ -259,15 +333,18 @@ export function Users() {
       )}
 
       {manage && (
-        <UserDialog
-          open={dialogOpen}
-          onClose={() => setDialogOpen(false)}
-          user={editing}
-          onSaved={async () => {
-            await load();
-            await reloadDirectory();
-          }}
-        />
+        <>
+          <UserDialog
+            open={dialogOpen}
+            onClose={() => setDialogOpen(false)}
+            user={editing}
+            onSaved={async () => {
+              await load();
+              await reloadDirectory();
+            }}
+          />
+          <InvitesDialog open={invitesOpen} onClose={() => setInvitesOpen(false)} />
+        </>
       )}
     </div>
   );
@@ -300,6 +377,7 @@ function UserDialog({
   const [jobRole, setJobRole] = useState('');
   const [customPermissions, setCustomPermissions] = useState<string[] | null>(null);
   const [appIds, setAppIds] = useState<string[] | null>(null);
+  const [scope, setScope] = useState<VisibilityScope | ''>('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -316,12 +394,21 @@ function UserDialog({
     setJobRole(user?.jobRole ?? '');
     setCustomPermissions(user?.permissions ?? null);
     setAppIds(user?.appIds ?? null);
+    setScope(user?.visibilityScope ?? '');
   }, [open, user]);
 
   const rolePermissions = ROLES[role]?.permissions ?? [];
   const effective = customPermissions ?? rolePermissions;
   const subteams = getSubteams(department);
   const jobRoles = getJobRoles(department, subteam);
+
+  // The picker reflects the role being edited right now, not the stored one —
+  // demoting someone to viewer has to drop "every department" off the list.
+  const scopeOptions: string[] = availableScopes({
+    role,
+    status: 'active',
+    permissions: customPermissions,
+  });
 
   const togglePermission = (permission: string) => {
     const base = customPermissions ?? rolePermissions;
@@ -352,6 +439,7 @@ function UserDialog({
       jobRole: jobRole || null,
       permissions: customPermissions,
       appIds,
+      visibilityScope: scope || null,
     };
     if (password) payload.password = password;
 
@@ -486,6 +574,28 @@ function UserDialog({
           </p>
         )}
 
+        <Field
+          label={t('scope.label')}
+          hint={
+            scope === 'subteam' && !subteam ? t('scope.needsSubteam') : t('scope.hint')
+          }
+        >
+          <select
+            className="field"
+            value={scope}
+            onChange={(event) => setScope(event.target.value as VisibilityScope | '')}
+          >
+            <option value="">{t('scope.role')}</option>
+            {VISIBILITY_SCOPES.filter((id: string) => scopeOptions.includes(id)).map(
+              (id: string) => (
+                <option key={id} value={id}>
+                  {t(`scope.${id}` as StringKey)}
+                </option>
+              )
+            )}
+          </select>
+        </Field>
+
         {/* Role first: it sets the defaults, and most users never need more. */}
         <fieldset>
           <legend className="label">{t('users.role')}</legend>
@@ -601,6 +711,288 @@ function UserDialog({
           </p>
         )}
       </form>
+    </Modal>
+  );
+}
+
+/* ── Invite links ────────────────────────────────────────────────── */
+
+/**
+ * The link is the whole product here, so the list is built around one action:
+ * copy it. Everything else — who joined, how long it lasts, whether it still
+ * works — is context for deciding whether to send this link or make a new one.
+ */
+function InvitesDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { t, lang } = useI18n();
+  const { push } = useToast();
+
+  const [invites, setInvites] = useState<Invite[] | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [copied, setCopied] = useState('');
+
+  const [label, setLabel] = useState('');
+  const [role, setRole] = useState<'member' | 'viewer'>('member');
+  const [department, setDepartment] = useState('');
+  const [emailDomain, setEmailDomain] = useState('');
+  const [maxUses, setMaxUses] = useState('');
+  const [expiresInDays, setExpiresInDays] = useState('14');
+  const [scope, setScope] = useState<VisibilityScope | ''>('');
+  const [error, setError] = useState('');
+
+  const load = useCallback(async () => {
+    const data = await api.get<{ invites: Invite[] }>('/invites');
+    setInvites(data.invites);
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    setError('');
+    setCopied('');
+    load().catch(() => setInvites([]));
+  }, [open, load]);
+
+  const linkFor = (invite: Invite) => `${window.location.origin}/join/${invite.token}`;
+
+  const copy = async (invite: Invite) => {
+    const url = linkFor(invite);
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      // Clipboard access needs a secure context and can still be refused —
+      // a prompt the user can copy out of beats a silent failure.
+      window.prompt(t('invites.copy'), url);
+    }
+    setCopied(invite.id);
+    push(t('invites.copied'));
+    setTimeout(() => setCopied(''), 2500);
+  };
+
+  const create = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setError('');
+    setCreating(true);
+    try {
+      await api.post('/invites', {
+        label: label.trim(),
+        role,
+        departments: department ? [department] : [],
+        emailDomain: emailDomain.trim(),
+        maxUses: maxUses.trim() === '' ? null : Number(maxUses),
+        expiresInDays: Number(expiresInDays),
+        visibilityScope: scope || null,
+      });
+      setLabel('');
+      setEmailDomain('');
+      setMaxUses('');
+      await load();
+      push(t('invites.created'));
+    } catch (err) {
+      setError(errorMessage(err, lang));
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const revoke = async (invite: Invite) => {
+    if (!window.confirm(t('invites.confirmRevoke'))) return;
+    try {
+      await api.post(`/invites/${invite.id}/revoke`);
+      push(t('invites.revoked'));
+      await load();
+    } catch (err) {
+      push(errorMessage(err, lang), 'bad');
+    }
+  };
+
+  const remove = async (invite: Invite) => {
+    if (!window.confirm(t('invites.confirmDelete'))) return;
+    try {
+      await api.delete(`/invites/${invite.id}`);
+      push(t('invites.deleted'));
+      await load();
+    } catch (err) {
+      push(errorMessage(err, lang), 'bad');
+    }
+  };
+
+  const stateTone: Record<string, string> = {
+    active: 'bg-status-okBg text-status-ok',
+    expired: 'bg-surface-sunken text-ink-faint',
+    revoked: 'bg-status-badBg text-status-bad',
+    exhausted: 'bg-status-warnBg text-accent-600',
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} width="lg" title={t('invites.title')}>
+      <p className="mb-4 text-[13px] leading-relaxed text-ink-muted">{t('invites.subtitle')}</p>
+
+      <form onSubmit={create} className="mb-5 grid gap-3.5 rounded-2xl border border-surface-line p-4">
+        <div className="grid gap-3.5 sm:grid-cols-2">
+          <Field label={t('invites.label')} hint={t('invites.labelHint')}>
+            <input className="field" value={label} onChange={(e) => setLabel(e.target.value)} />
+          </Field>
+          <Field label={t('invites.role')} hint={t('invites.roleHint')}>
+            <select
+              className="field"
+              value={role}
+              onChange={(e) => setRole(e.target.value as 'member' | 'viewer')}
+            >
+              <option value="member">{t('role.member')}</option>
+              <option value="viewer">{t('role.viewer')}</option>
+            </select>
+          </Field>
+          <Field label={t('invites.departments')} hint={t('invites.departmentsHint')}>
+            <select
+              className="field"
+              value={department}
+              onChange={(e) => setDepartment(e.target.value)}
+            >
+              <option value="">— {t('invites.anyDepartment')} —</option>
+              {DEPARTMENTS.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {lang === 'en' ? item.en : item.ar}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label={t('scope.label')} hint={t('scope.hint')}>
+            <select
+              className="field"
+              value={scope}
+              onChange={(e) => setScope(e.target.value as VisibilityScope | '')}
+            >
+              <option value="">{t('scope.role')}</option>
+              <option value="own">{t('scope.own')}</option>
+              <option value="subteam">{t('scope.subteam')}</option>
+              <option value="department">{t('scope.department')}</option>
+            </select>
+          </Field>
+          <Field label={t('invites.emailDomain')} hint={t('invites.emailDomainHint')}>
+            <input
+              className="field ltr text-start"
+              value={emailDomain}
+              onChange={(e) => setEmailDomain(e.target.value)}
+              placeholder="engosoft.com"
+            />
+          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label={t('invites.maxUses')} hint={t('invites.maxUsesHint')}>
+              <input
+                type="number"
+                min={1}
+                max={500}
+                className="field"
+                value={maxUses}
+                onChange={(e) => setMaxUses(e.target.value)}
+              />
+            </Field>
+            <Field label={t('invites.expiresInDays')}>
+              <input
+                type="number"
+                min={1}
+                max={365}
+                className="field"
+                value={expiresInDays}
+                onChange={(e) => setExpiresInDays(e.target.value)}
+              />
+            </Field>
+          </div>
+        </div>
+
+        {error && (
+          <p role="alert" className="rounded-xl bg-status-badBg px-3 py-2 text-[13px] font-semibold text-status-bad">
+            {error}
+          </p>
+        )}
+
+        <button type="submit" className="btn-primary btn-sm w-fit gap-1.5" disabled={creating}>
+          {creating ? <Spinner size={15} /> : <Link2 size={15} />}
+          {t('invites.new')}
+        </button>
+      </form>
+
+      {invites === null ? (
+        <div className="grid gap-2">
+          {Array.from({ length: 2 }).map((_, index) => (
+            <div key={index} className="skeleton h-[86px] rounded-2xl" />
+          ))}
+        </div>
+      ) : invites.length === 0 ? (
+        <EmptyState icon={<Link2 size={24} />} title={t('invites.none')} />
+      ) : (
+        <ul className="grid gap-2">
+          {invites.map((invite) => (
+            <li key={invite.id} className="rounded-2xl border border-surface-line p-3">
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <span className="text-[13.5px] font-bold text-ink">
+                  {invite.label || t('invites.title')}
+                </span>
+                <span className={cx('chip', stateTone[invite.state])}>
+                  {t(`invites.state.${invite.state}` as StringKey)}
+                </span>
+                <span className="chip bg-surface-sunken text-ink-muted">
+                  {t(`role.${invite.role}` as StringKey)}
+                </span>
+                <span className="chip bg-surface-sunken text-ink-muted">
+                  {invite.departments.length
+                    ? getDepartment(invite.departments[0])[lang === 'en' ? 'en' : 'ar']
+                    : t('invites.anyDepartment')}
+                </span>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <code className="ltr min-w-0 flex-1 truncate rounded-lg bg-surface-sunken px-2.5 py-2 text-[11.5px] text-ink-muted">
+                  {linkFor(invite)}
+                </code>
+                <button
+                  type="button"
+                  onClick={() => copy(invite)}
+                  className="btn-ghost btn-sm gap-1.5"
+                  disabled={invite.state !== 'active'}
+                >
+                  {copied === invite.id ? <Check size={15} /> : <Copy size={15} />}
+                  {t('invites.copy')}
+                </button>
+                {invite.state === 'active' && (
+                  <button
+                    type="button"
+                    onClick={() => revoke(invite)}
+                    className="btn-quiet !min-h-9 rounded-lg px-2 text-status-bad hover:bg-status-badBg"
+                    title={t('invites.revoke')}
+                    aria-label={t('invites.revoke')}
+                  >
+                    <X size={15} />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => remove(invite)}
+                  className="btn-quiet !min-h-9 rounded-lg px-2 text-ink-faint hover:bg-surface-sunken"
+                  title={t('common.delete')}
+                  aria-label={t('common.delete')}
+                >
+                  <Trash2 size={15} />
+                </button>
+              </div>
+
+              <p className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11.5px] text-ink-faint">
+                <span>
+                  {invite.maxUses
+                    ? t('invites.usage', { used: invite.useCount, max: invite.maxUses })
+                    : t('invites.usageUnlimited', { used: invite.useCount })}
+                </span>
+                {invite.joined > 0 && <span>{t('invites.joinedCount', { n: invite.joined })}</span>}
+                {invite.pending > 0 && (
+                  <span className="font-semibold text-accent-600">
+                    {t('invites.pendingCount', { n: invite.pending })}
+                  </span>
+                )}
+                <span>{t('invites.expiresOn', { when: timeUntil(invite.expiresAt, t, lang) })}</span>
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
     </Modal>
   );
 }

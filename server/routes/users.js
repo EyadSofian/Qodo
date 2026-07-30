@@ -1,10 +1,14 @@
 import { Router } from 'express';
 import { create, find, findOne, getStore } from '../store.js';
 import { hashPassword, logActivity, requirePermission } from '../auth.js';
+import { notifyUser } from '../push.js';
 import {
   ALL_PERMISSIONS,
   PERMISSIONS,
   ROLE_IDS,
+  USER_STATUSES,
+  VISIBILITY_SCOPES,
+  isActiveUser,
   publicUser,
 } from '../../shared/permissions.js';
 import {
@@ -65,6 +69,8 @@ router.post('/', requirePermission(PERMISSIONS.USERS_MANAGE), async (req, res) =
     department,
     subteam: organisation.subteam,
     jobRole: organisation.jobRole,
+    // null = as wide as the role allows. Anything else narrows it.
+    visibilityScope: normaliseScope(req.body?.visibilityScope),
     title: req.body?.title ? String(req.body.title).trim() : null,
     avatarColor: pickAvatarColor(name),
     lastLoginAt: null,
@@ -154,30 +160,64 @@ router.patch('/:id', requirePermission(PERMISSIONS.USERS_MANAGE), async (req, re
     patch.permissions = normalisePermissions(req.body.permissions);
   }
   if (req.body?.appIds !== undefined) patch.appIds = normaliseAppIds(req.body.appIds);
+  if (req.body?.visibilityScope !== undefined) {
+    patch.visibilityScope = normaliseScope(req.body.visibilityScope);
+  }
   if (req.body?.status !== undefined) {
-    patch.status = req.body.status === 'disabled' ? 'disabled' : 'active';
+    if (!USER_STATUSES.includes(req.body.status)) {
+      return res.status(400).json({ error: 'invalid_status' });
+    }
+    patch.status = req.body.status;
   }
 
-  // An admin must not be able to demote or disable the last way back in.
+  // An admin must not be able to demote or park the last way back in. A pending
+  // admin is not a way back in either — they cannot sign in yet.
   const losingAdmin =
     (patch.role && patch.role !== 'admin' && target.role === 'admin') ||
-    (patch.status === 'disabled' && target.role === 'admin');
+    (patch.status && patch.status !== 'active' && target.role === 'admin');
   if (losingAdmin) {
     const admins = await find(
       'users',
-      (u) => u.role === 'admin' && u.status !== 'disabled' && u.id !== target.id
+      (u) => u.role === 'admin' && isActiveUser(u) && u.id !== target.id
     );
     if (admins.length === 0) return res.status(409).json({ error: 'last_admin' });
   }
 
+  const approving = target.status === 'pending' && patch.status === 'active';
   const updated = await store.update('users', target.id, patch);
   await logActivity({
     actorId: req.user.id,
-    action: 'user.update',
+    action: approving ? 'user.approve' : 'user.update',
     subject: 'user',
     subjectId: target.id,
     meta: { fields: Object.keys(patch).filter((k) => k !== 'passwordHash') },
   });
+
+  // They are already sitting on the "waiting for approval" screen, so the one
+  // thing worth interrupting them for is that it is over.
+  if (approving) {
+    await create('notifications', {
+      userId: target.id,
+      actorId: req.user.id,
+      type: 'account.approved',
+      title: {
+        ar: 'تم تفعيل حسابك',
+        en: 'Your account is active',
+      },
+      body: '',
+      link: '/',
+      read: false,
+    });
+    await notifyUser(target.id, {
+      title: { ar: 'تم تفعيل حسابك', en: 'Your account is active' },
+      body: {
+        ar: 'تقدر تسجّل الدخول لمساحة عمل إنجوسوفت دلوقتي.',
+        en: 'You can sign in to the Engosoft workspace now.',
+      },
+      link: '/',
+    });
+  }
+
   res.json({ user: publicUser(updated) });
 });
 
@@ -193,7 +233,7 @@ router.delete('/:id', requirePermission(PERMISSIONS.USERS_MANAGE), async (req, r
   if (target.role === 'admin') {
     const admins = await find(
       'users',
-      (u) => u.role === 'admin' && u.status !== 'disabled' && u.id !== target.id
+      (u) => u.role === 'admin' && isActiveUser(u) && u.id !== target.id
     );
     if (admins.length === 0) return res.status(409).json({ error: 'last_admin' });
   }
@@ -231,6 +271,15 @@ function normaliseAppIds(value) {
   if (value === null || value === undefined) return null;
   if (!Array.isArray(value)) return null;
   return [...new Set(value.map(String))];
+}
+
+/**
+ * An unrecognised scope becomes null rather than an error: null already means
+ * "follow the role", which is the safe reading of a value we don't understand.
+ * `visibilityFor` caps whatever survives against the user's permissions anyway.
+ */
+function normaliseScope(value) {
+  return VISIBILITY_SCOPES.includes(value) ? value : null;
 }
 
 function parseOrganisation(body, department) {

@@ -12,7 +12,7 @@
  */
 
 import { create, find, findOne } from '../store.js';
-import { PERMISSIONS, can, canOpenApp } from '../../shared/permissions.js';
+import { PERMISSIONS, can, canOpenApp, isActiveUser } from '../../shared/permissions.js';
 import {
   DEFAULT_DEPARTMENT,
   DEPARTMENTS,
@@ -375,10 +375,7 @@ const EXECUTORS = {
     // Without users.view a member still needs names to assign work — so they
     // get the directory (name, title, department), never roles or emails.
     const detailed = can(user, PERMISSIONS.USERS_VIEW);
-    const users = visiblePeople(
-      user,
-      await find('users', (u) => u.status !== 'disabled')
-    );
+    const users = visiblePeople(user, await find('users', isActiveUser));
     return {
       detail: detailed ? 'full' : 'names_only',
       people: users.map((u) => {
@@ -426,7 +423,7 @@ const EXECUTORS = {
       const matches = await find(
         'users',
         (u) =>
-          u.status !== 'disabled' &&
+          isActiveUser(u) &&
           (u.department ?? DEFAULT_DEPARTMENT) === department &&
           u.name.toLowerCase().includes(term)
       );

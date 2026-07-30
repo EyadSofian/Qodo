@@ -558,3 +558,210 @@ test('the overview counts rework, queue depth and first-pass approvals', async (
   assert.equal(row.onTimeRate, 100);
   assert.equal(typeof overview.data.summary.awaitingReview, 'number');
 });
+
+test('a sub-team scope hides the rest of the department but never own work', () => {
+  const designer = {
+    id: 'designer',
+    organizationId: 'engosoft',
+    department: 'marketing',
+    subteam: 'creative',
+    role: 'member',
+    status: 'active',
+    visibilityScope: 'subteam',
+  };
+  const buyer = {
+    id: 'buyer',
+    organizationId: 'engosoft',
+    department: 'marketing',
+    subteam: 'performance',
+    role: 'member',
+    status: 'active',
+  };
+  const base = { organizationId: 'engosoft', department: 'marketing', createdBy: buyer.id };
+
+  const creativeTask = { ...base, id: 't1', subteam: 'creative', assigneeId: null };
+  const performanceTask = { ...base, id: 't2', subteam: 'performance', assigneeId: buyer.id };
+  const assignedAcross = { ...base, id: 't3', subteam: 'performance', assigneeId: designer.id };
+  const departmentWide = { ...base, id: 't4', subteam: null, assigneeId: null };
+
+  assert.equal(canViewTask(designer, creativeTask), true);
+  assert.equal(canViewTask(designer, performanceTask), false);
+  // Work handed to them personally outranks the scope — hiding it would be a bug.
+  assert.equal(canViewTask(designer, assignedAcross), true);
+  assert.equal(canViewTask(designer, departmentWide), false);
+  // The wider colleague is unaffected by the narrower person's setting.
+  assert.equal(canViewTask(buyer, creativeTask), true);
+
+  assert.deepEqual(
+    visiblePeople(designer, [designer, buyer]).map((person) => person.id),
+    [designer.id]
+  );
+  assert.equal(canAssignUser(designer, buyer, 'marketing'), false);
+});
+
+test('a scope can narrow what a role grants but never widen it', () => {
+  const member = {
+    id: 'm',
+    organizationId: 'engosoft',
+    department: 'marketing',
+    role: 'member',
+    status: 'active',
+    // A member has no tasks.view_all, so asking for the company is refused.
+    visibilityScope: 'all',
+  };
+  const otherDepartment = {
+    id: 't',
+    organizationId: 'engosoft',
+    department: 'sales',
+    createdBy: 'someone',
+    assigneeId: 'someone',
+  };
+  assert.equal(canViewTask(member, otherDepartment), false);
+});
+
+test('an invite link creates a pending account that cannot sign in until approved', async () => {
+  const invite = await create(
+    '/invites',
+    {
+      label: 'Marketing intake',
+      role: 'member',
+      departments: ['marketing'],
+      emailDomain: 'test.local',
+      maxUses: 2,
+      expiresInDays: 7,
+      visibilityScope: 'subteam',
+    },
+    adminCookie
+  );
+  assert.equal(invite.invite.state, 'active');
+  const { token } = invite.invite;
+
+  // The public view must not leak what the link will grant.
+  const publicView = await request(`/invites/token/${token}`);
+  assert.equal(publicView.status, 200);
+  assert.equal(publicView.data.invite.requiresApproval, true);
+  assert.equal(publicView.data.invite.departments.length, 1);
+  assert.equal(publicView.data.invite.role, undefined);
+  assert.equal(publicView.data.invite.permissions, undefined);
+  assert.equal(publicView.data.invite.token, undefined);
+
+  const joinBody = {
+    name: 'Video Editor',
+    email: 'editor@test.local',
+    password: 'EditorPass123!',
+    department: 'marketing',
+    subteam: 'creative',
+    jobRole: 'video_editor',
+  };
+  const joined = await request(`/invites/token/${token}/accept`, {
+    method: 'POST',
+    body: joinBody,
+  });
+  assert.equal(joined.status, 201, JSON.stringify(joined.data));
+  assert.equal(joined.data.status, 'pending_approval');
+  // Nothing that could act as a session comes back from a public endpoint.
+  assert.equal(joined.cookie, null);
+
+  // Right password, but the account is not approved yet.
+  const earlyLogin = await request('/auth/login', {
+    method: 'POST',
+    body: { email: 'editor@test.local', password: 'EditorPass123!' },
+  });
+  assert.equal(earlyLogin.status, 403);
+  assert.equal(earlyLogin.data.error, 'account_pending');
+  assert.equal(earlyLogin.cookie, null);
+
+  // The same email cannot be taken twice, by the link or by an administrator.
+  const duplicate = await request(`/invites/token/${token}/accept`, {
+    method: 'POST',
+    body: { ...joinBody, name: 'Impostor' },
+  });
+  assert.equal(duplicate.status, 409);
+  assert.equal(duplicate.data.error, 'email_taken');
+
+  const duplicateByAdmin = await request('/users', {
+    method: 'POST',
+    cookie: adminCookie,
+    body: {
+      name: 'Impostor',
+      email: 'editor@test.local',
+      password: 'Another123!',
+      role: 'member',
+      department: 'marketing',
+    },
+  });
+  assert.equal(duplicateByAdmin.status, 409);
+
+  // The domain rule is enforced server-side, not just in the form.
+  const wrongDomain = await request(`/invites/token/${token}/accept`, {
+    method: 'POST',
+    body: { ...joinBody, email: 'someone@gmail.com' },
+  });
+  assert.equal(wrongDomain.status, 400);
+  assert.equal(wrongDomain.data.error, 'email_domain_mismatch');
+
+  // A department the link does not offer is refused even though it is real.
+  const wrongDepartment = await request(`/invites/token/${token}/accept`, {
+    method: 'POST',
+    body: { ...joinBody, email: 'newbie@test.local', department: 'sales', subteam: null },
+  });
+  assert.equal(wrongDepartment.status, 400);
+  assert.equal(wrongDepartment.data.error, 'invalid_department');
+
+  const pendingUser = (await request('/users', { cookie: adminCookie })).data.users.find(
+    (person) => person.email === 'editor@test.local'
+  );
+  assert.equal(pendingUser.status, 'pending');
+  assert.equal(pendingUser.role, 'member');
+  // Settings came from the invite, not from the join form.
+  assert.equal(pendingUser.visibilityScope, 'subteam');
+  assert.equal(pendingUser.subteam, 'creative');
+
+  const approved = await request(`/users/${pendingUser.id}`, {
+    method: 'PATCH',
+    cookie: adminCookie,
+    body: { status: 'active' },
+  });
+  assert.equal(approved.status, 200);
+  assert.equal(approved.data.user.status, 'active');
+
+  const cookie = await login('editor@test.local', 'EditorPass123!');
+  const counts = await request('/tasks/counts', { cookie });
+  assert.equal(counts.status, 200);
+  assert.equal(typeof counts.data.mine, 'number');
+  // Sub-team scope: the campaign task belongs to creative, and so do they.
+  const theirs = await request('/tasks', { cookie });
+  assert.ok(theirs.data.tasks.every((task) => task.subteam === 'creative'));
+});
+
+test('an invite link cannot grant manager access, and a revoked link is dead', async () => {
+  const escalation = await request('/invites', {
+    method: 'POST',
+    cookie: adminCookie,
+    body: { label: 'Nope', role: 'admin' },
+  });
+  assert.equal(escalation.status, 400);
+  assert.equal(escalation.data.error, 'role_not_invitable');
+
+  const invite = await create('/invites', { label: 'Short lived', role: 'viewer' }, adminCookie);
+  await request(`/invites/${invite.invite.id}/revoke`, { method: 'POST', cookie: adminCookie });
+
+  const afterRevoke = await request(`/invites/token/${invite.invite.token}`);
+  assert.equal(afterRevoke.status, 404);
+  assert.equal(afterRevoke.data.error, 'invite_revoked');
+
+  const blocked = await request(`/invites/token/${invite.invite.token}/accept`, {
+    method: 'POST',
+    body: {
+      name: 'Too late',
+      email: 'toolate@test.local',
+      password: 'TooLate123!',
+      department: 'sales',
+    },
+  });
+  assert.equal(blocked.status, 404);
+
+  // Creating and listing links is administrator-only.
+  const asEmployee = await request('/invites', { cookie: creativeCookie });
+  assert.equal(asEmployee.status, 403);
+});

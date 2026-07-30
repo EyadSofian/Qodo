@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './lib/auth';
 import { I18nProvider } from './lib/i18n';
 import { WorkspaceProvider } from './lib/workspace';
@@ -6,6 +6,7 @@ import { ToastProvider } from './components/ui';
 import { Shell } from './components/Shell';
 import { LogoMark } from './components/Brand';
 import { Login } from './pages/Login';
+import { Join } from './pages/Join';
 import { Launcher } from './pages/Launcher';
 import { AppFrame } from './pages/AppFrame';
 import { Tasks } from './pages/Tasks';
@@ -35,6 +36,17 @@ export default function App() {
  */
 function Gate() {
   const { user, loading } = useAuth();
+  const location = useLocation();
+
+  // Invite links are handed to people who have no account yet, so this screen
+  // has to render before — and regardless of — the session check.
+  if (location.pathname.startsWith('/join/')) {
+    return (
+      <Routes>
+        <Route path="/join/:token" element={<Join />} />
+      </Routes>
+    );
+  }
 
   if (loading) return <Splash />;
   if (!user) return <Login />;

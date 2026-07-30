@@ -108,6 +108,44 @@ const ERRORS: Record<string, { ar: string; en: string }> = {
     ar: 'هذا الحساب موقوف. تواصل مع مدير النظام.',
     en: 'This account is disabled. Contact an administrator.',
   },
+  account_pending: {
+    ar: 'حسابك تم إنشاؤه وفي انتظار موافقة مدير النظام. هيوصلك إشعار أول ما يتفعّل.',
+    en: 'Your account exists and is waiting for an administrator to approve it. You will be notified once it is active.',
+  },
+
+  /* ── invite links ────────────────────────────────────────── */
+  invite_invalid: {
+    ar: 'رابط الدعوة غير صحيح. اطلب رابطاً جديداً من مدير النظام.',
+    en: 'That invite link is not valid. Ask an administrator for a new one.',
+  },
+  invite_expired: {
+    ar: 'انتهت صلاحية رابط الدعوة. اطلب رابطاً جديداً من مدير النظام.',
+    en: 'That invite link has expired. Ask an administrator for a new one.',
+  },
+  invite_revoked: {
+    ar: 'تم إلغاء رابط الدعوة هذا.',
+    en: 'That invite link has been revoked.',
+  },
+  invite_exhausted: {
+    ar: 'رابط الدعوة وصل للحد الأقصى من الاستخدامات.',
+    en: 'That invite link has reached its usage limit.',
+  },
+  email_domain_mismatch: {
+    ar: 'هذا الرابط يقبل إيميلات النطاق المحدد فقط.',
+    en: 'This link only accepts email addresses on the allowed domain.',
+  },
+  subteam_required: {
+    ar: 'اختر الفريق الفرعي الذي تعمل به.',
+    en: 'Choose the sub-team you work in.',
+  },
+  role_not_invitable: {
+    ar: 'رابط الدعوة لا يمنح صلاحية مدير أو مدير نظام — تُمنح يدوياً بعد الموافقة.',
+    en: 'An invite link cannot grant manager or administrator access — grant it after approval.',
+  },
+  invalid_domain: { ar: 'صيغة النطاق غير صحيحة. مثال: engosoft.com', en: 'Invalid domain. Example: engosoft.com' },
+  invalid_max_uses: { ar: 'عدد الاستخدامات يجب أن يكون من ١ إلى ٥٠٠.', en: 'Uses must be between 1 and 500.' },
+  invalid_expiry: { ar: 'مدة الصلاحية يجب أن تكون من يوم إلى ٣٦٥ يوماً.', en: 'Expiry must be between 1 and 365 days.' },
+  invalid_status: { ar: 'حالة الحساب غير معروفة.', en: 'That account status is not recognised.' },
   too_many_attempts: {
     ar: 'محاولات كثيرة. انتظر عشر دقائق ثم أعد المحاولة.',
     en: 'Too many attempts. Wait ten minutes and try again.',

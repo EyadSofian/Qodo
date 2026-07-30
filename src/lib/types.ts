@@ -1,4 +1,8 @@
 export type Role = 'admin' | 'manager' | 'member' | 'viewer';
+/** `pending` signed up through an invite link and is waiting to be approved. */
+export type UserStatus = 'active' | 'pending' | 'disabled';
+/** How wide a person's task view reaches. `null` = as wide as their role allows. */
+export type VisibilityScope = 'own' | 'subteam' | 'department' | 'all';
 export type TaskPriority = 'low' | 'normal' | 'high' | 'urgent';
 export type StageType = 'open' | 'active' | 'review' | 'done';
 /** Where a task sits in the assign → deliver → review → approve cycle. */
@@ -20,7 +24,7 @@ export interface User {
   name: string;
   email: string;
   role: Role;
-  status: 'active' | 'disabled';
+  status: UserStatus;
   title: string | null;
   avatarColor: string;
   /** Department id from shared/departments.js — sets the default board. */
@@ -33,9 +37,71 @@ export interface User {
   permissions: string[] | null;
   /** `null` = every app. An array restricts the launcher to those ids. */
   appIds: string[] | null;
+  /** `null` = follow the role. Anything else narrows what they see. */
+  visibilityScope: VisibilityScope | null;
   effectivePermissions: string[];
+  /** What `visibilityScope` resolves to once capped by the permissions. */
+  effectiveVisibility: VisibilityScope;
+  /** Set when the account came in through an invite link. */
+  inviteId?: string | null;
   lastLoginAt: string | null;
   createdAt: string;
+}
+
+export type InviteState = 'active' | 'expired' | 'revoked' | 'exhausted';
+
+/** An invite link, as the Users page sees it. The token is admin-only. */
+export interface Invite {
+  id: string;
+  token: string;
+  organizationId: string;
+  label: string;
+  role: Role;
+  /** Empty = the person joining may pick any department. */
+  departments: string[];
+  emailDomain: string | null;
+  permissions: string[] | null;
+  appIds: string[] | null;
+  visibilityScope: VisibilityScope | null;
+  /** `0` = unlimited. */
+  maxUses: number;
+  useCount: number;
+  expiresAt: string;
+  revokedAt: string | null;
+  createdBy: string;
+  createdAt: string;
+  state: InviteState;
+  joined: number;
+  pending: number;
+}
+
+/** The trimmed view of an invite the public join page is allowed to load. */
+export interface PublicInvite {
+  label: string;
+  emailDomain: string | null;
+  requiresApproval: boolean;
+  departments: Array<{
+    id: string;
+    ar: string;
+    en: string;
+    color: string;
+    icon: string;
+    subteams: Array<{
+      id: string;
+      ar: string;
+      en: string;
+      roles: Array<{ id: string; ar: string; en: string }>;
+    }>;
+  }>;
+}
+
+/** What the nav badge and the sign-in summary are built from. */
+export interface TaskCounts {
+  mine: number;
+  overdue: number;
+  dueToday: number;
+  unanswered: number;
+  awaitingMyReview: number;
 }
 
 export interface DirectoryUser {

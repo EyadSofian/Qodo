@@ -61,6 +61,27 @@ export function timeAgo(iso: string | null | undefined, t: T) {
   return t('time.years', { n: Math.round(months / 12) });
 }
 
+/**
+ * The other direction. `timeAgo` subtracts from now, so a future timestamp
+ * lands in its "less than a minute" bucket and an invite that lasts a fortnight
+ * reads "just now" — which is how this was found.
+ */
+export function timeUntil(iso: string | null | undefined, t: T, lang: Lang) {
+  if (!iso) return '';
+  const target = new Date(iso).getTime();
+  if (Number.isNaN(target)) return '';
+  const minutes = Math.round((target - Date.now()) / 60000);
+  if (minutes <= 0) return t('time.expired');
+  if (minutes < 60) return t('time.inMinutes', { n: minutes });
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return t('time.inHours', { n: hours });
+  const days = Math.round(hours / 24);
+  if (days === 1) return t('time.tomorrow');
+  if (days <= 30) return t('time.inDays', { n: days });
+  // Past a month a countdown stops meaning anything — give the date.
+  return formatDate(iso, lang);
+}
+
 export function formatDate(value: string | null | undefined, lang: Lang) {
   if (!value) return '—';
   const date = new Date(value);

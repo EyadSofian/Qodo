@@ -71,6 +71,35 @@ export const ROLES = {
 export const ROLE_IDS = Object.keys(ROLES);
 
 /**
+ * Account states.
+ *
+ * `pending` is someone who signed up through an invite link and is waiting for
+ * an administrator to let them in. They have a password and a row, but no
+ * session and no permissions — deliberately indistinguishable from `disabled`
+ * everywhere except the Users page, where an admin can approve them.
+ */
+export const USER_STATUSES = ['active', 'pending', 'disabled'];
+
+export function isActiveUser(user) {
+  // Legacy rows predate the field; absent means active.
+  return Boolean(user) && (user.status ?? 'active') === 'active';
+}
+
+/**
+ * How wide a person's task view reaches, narrowest first. The order is
+ * meaningful — `visibilityFor` compares indexes to cap a request against what
+ * the permissions actually allow.
+ */
+export const VISIBILITY_SCOPES = ['own', 'subteam', 'department', 'all'];
+
+export const VISIBILITY_LABELS = {
+  own: { ar: 'مهامه هو فقط', en: 'Only their own tasks' },
+  subteam: { ar: 'فريقه الفرعي', en: 'Their sub-team' },
+  department: { ar: 'القسم كله', en: 'The whole department' },
+  all: { ar: 'كل الأقسام', en: 'Every department' },
+};
+
+/**
  * A user's effective permissions.
  *
  * `user.permissions` is an explicit override — when an admin ticks individual
@@ -84,8 +113,43 @@ export function permissionsFor(user) {
 }
 
 export function can(user, permission) {
-  if (!user || user.status === 'disabled') return false;
+  if (!isActiveUser(user)) return false;
   return permissionsFor(user).includes(permission);
+}
+
+/**
+ * The widest scope this user's permissions could ever justify. `visibilityScope`
+ * is only allowed to narrow it, never to widen it — otherwise ticking a dropdown
+ * in the user form would be a way to hand out `tasks.view_all` without the
+ * permission that is supposed to gate it.
+ */
+export function visibilityCeiling(user) {
+  if (can(user, PERMISSIONS.TASKS_VIEW_ALL)) return 'all';
+  if (can(user, PERMISSIONS.TASKS_VIEW_TEAM)) return 'department';
+  return 'own';
+}
+
+/**
+ * The scope actually applied to a request.
+ *
+ * `null` (the default, and every user who existed before this field) means
+ * "follow the role" — so adding the field changed nobody's view. An explicit
+ * value narrows: a designer set to `subteam` stops seeing the media buyers'
+ * board without losing anything else the member role grants.
+ */
+export function visibilityFor(user) {
+  const ceiling = visibilityCeiling(user);
+  const requested = user?.visibilityScope;
+  if (!requested || !VISIBILITY_SCOPES.includes(requested)) return ceiling;
+  return VISIBILITY_SCOPES.indexOf(requested) < VISIBILITY_SCOPES.indexOf(ceiling)
+    ? requested
+    : ceiling;
+}
+
+/** Scopes an admin may pick for this user — anything wider is not offered. */
+export function availableScopes(user) {
+  const ceiling = visibilityCeiling(user);
+  return VISIBILITY_SCOPES.slice(0, VISIBILITY_SCOPES.indexOf(ceiling) + 1);
 }
 
 /**
@@ -97,7 +161,7 @@ export function can(user, permission) {
  * admin tiles.
  */
 export function canOpenApp(user, appId) {
-  if (!user || user.status === 'disabled') return false;
+  if (!isActiveUser(user)) return false;
   if (user.role === 'admin') return true;
   if (!Array.isArray(user.appIds)) return true;
   return user.appIds.includes(appId);
@@ -107,5 +171,9 @@ export function canOpenApp(user, appId) {
 export function publicUser(user) {
   if (!user) return null;
   const { passwordHash: _ignored, ...rest } = user;
-  return { ...rest, effectivePermissions: permissionsFor(user) };
+  return {
+    ...rest,
+    effectivePermissions: permissionsFor(user),
+    effectiveVisibility: visibilityFor(user),
+  };
 }

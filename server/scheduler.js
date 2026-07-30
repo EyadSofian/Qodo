@@ -14,7 +14,7 @@
 
 import { create, find, findOne, getStore } from './store.js';
 import { notifyUser, pushConfigured } from './push.js';
-import { PERMISSIONS, can } from '../shared/permissions.js';
+import { PERMISSIONS, can, isActiveUser } from '../shared/permissions.js';
 import { DEFAULT_DEPARTMENT, DEPARTMENTS, isDoneStage } from '../shared/departments.js';
 import { organizationOf } from '../shared/organization.js';
 
@@ -86,7 +86,7 @@ async function buildDigest(organizationId) {
 }
 
 async function sendDigest() {
-  const users = await find('users', (u) => u.status !== 'disabled');
+  const users = await find('users', isActiveUser);
   const digests = new Map();
 
   for (const user of users) {
@@ -95,6 +95,21 @@ async function sendDigest() {
       digests.set(organizationId, await buildDigest(organizationId));
     }
     const digest = digests.get(organizationId);
+
+    /**
+     * A manager's own queue is easy to lose behind the team's totals, so the
+     * team line always ends with their personal count. Nobody manages so much
+     * that they stop having work of their own.
+     */
+    const own = digest.open.filter((task) => task.assigneeId === user.id);
+    const ownLate = own.filter(digest.isOverdue).length;
+    const ownLine = own.length
+      ? {
+          ar: ` · مهامك أنت: ${own.length}${ownLate ? ` (${ownLate} متأخرة)` : ''}`,
+          en: ` · Yours: ${own.length}${ownLate ? ` (${ownLate} late)` : ''}`,
+        }
+      : { ar: '', en: '' };
+
     // Administrators see the company picture. Team managers get their
     // department only; everyone else gets their own workload.
     if (can(user, PERMISSIONS.TASKS_VIEW_ALL)) {
@@ -113,7 +128,10 @@ async function sendDigest() {
           ar: `ملخص اليوم — ${digest.totalOpen} مهمة مفتوحة`,
           en: `Today — ${digest.totalOpen} open task${digest.totalOpen === 1 ? '' : 's'}`,
         },
-        body: { ar: lines.join(' · '), en: linesEn.join(' · ') },
+        body: {
+          ar: lines.join(' · ') + ownLine.ar,
+          en: linesEn.join(' · ') + ownLine.en,
+        },
         link: '/tasks',
       });
       continue;
@@ -132,8 +150,8 @@ async function sendDigest() {
           en: `${label?.en ?? 'Your team'} — ${team.length} open task${team.length === 1 ? '' : 's'}`,
         },
         body: {
-          ar: late ? `منها ${late} متأخرة عن موعدها.` : 'لا توجد مهام متأخرة.',
-          en: late ? `${late} of them are past due.` : 'No overdue tasks.',
+          ar: (late ? `منها ${late} متأخرة عن موعدها.` : 'لا توجد مهام متأخرة.') + ownLine.ar,
+          en: (late ? `${late} of them are past due.` : 'No overdue tasks.') + ownLine.en,
         },
         link: '/tasks',
       });
@@ -198,7 +216,7 @@ async function checkInsights() {
   const leads = t.crmLeads ?? null;
 
   // Only people who can open the app should hear about it.
-  const users = await find('users', (u) => u.status !== 'disabled');
+  const users = await find('users', isActiveUser);
   for (const user of users) {
     const allowed = user.role === 'admin' || !Array.isArray(user.appIds) || user.appIds.includes('insights');
     if (!allowed || !can(user, PERMISSIONS.APPS_VIEW)) continue;
