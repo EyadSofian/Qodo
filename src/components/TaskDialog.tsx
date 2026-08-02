@@ -183,6 +183,11 @@ export function TaskDialog({
     return current.createdBy === user?.id || current.assigneeId === user?.id;
   }, [current, can, user]);
 
+  const planEditable = useMemo(() => {
+    if (!current) return true;
+    return can(PERMISSIONS.TASKS_EDIT_ANY) || current.createdBy === user?.id;
+  }, [current, can, user]);
+
   const deletable = current && (can(PERMISSIONS.TASKS_DELETE_ANY) || current.createdBy === user?.id);
 
   const applyTask = (updated: Task) => {
@@ -253,7 +258,7 @@ export function TaskDialog({
           className="field"
           value={assigneeId}
           onChange={(event) => setAssigneeId(event.target.value)}
-          disabled={!editable}
+          disabled={!planEditable}
         >
           <option value="">— {t('tasks.unassigned')} —</option>
           {assignees.map((person) => (
@@ -281,7 +286,7 @@ export function TaskDialog({
             className="field ltr text-start"
             value={dueDate}
             onChange={(event) => setDueDate(event.target.value)}
-            disabled={!editable}
+            disabled={!planEditable}
           />
         </Field>
       </div>
@@ -351,7 +356,7 @@ export function TaskDialog({
           className="field"
           value={department}
           onChange={(event) => changeDepartment(event.target.value)}
-          disabled={!editable}
+          disabled={!planEditable}
         >
           {availableDepartments.map((d) => (
             <option key={d.id} value={d.id}>
@@ -370,7 +375,7 @@ export function TaskDialog({
               setSubteam(event.target.value);
               setAssigneeId('');
             }}
-            disabled={!editable}
+            disabled={!planEditable}
           >
             <option value="">— {t('tasks.noSubteam')} —</option>
             {subteams.map((team: { id: string; ar: string; en: string }) => (

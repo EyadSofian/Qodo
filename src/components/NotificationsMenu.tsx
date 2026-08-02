@@ -8,13 +8,14 @@ import { Avatar } from './ui';
 import type { LocalisedText } from '../lib/types';
 
 export function NotificationsMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { notifications, actors, unread, markRead, markAllRead } = useWorkspace();
+  const { notifications, actors, unread, reloadNotifications, markRead, markAllRead } = useWorkspace();
   const { t, lang } = useI18n();
   const navigate = useNavigate();
   const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
+    reloadNotifications().catch(() => {});
     const onKey = (event: KeyboardEvent) => event.key === 'Escape' && onClose();
     const onPointer = (event: MouseEvent) => {
       const target = event.target as Node;
@@ -28,7 +29,7 @@ export function NotificationsMenu({ open, onClose }: { open: boolean; onClose: (
       document.removeEventListener('keydown', onKey);
       document.removeEventListener('mousedown', onPointer);
     };
-  }, [open, onClose]);
+  }, [open, onClose, reloadNotifications]);
 
   if (!open) return null;
 

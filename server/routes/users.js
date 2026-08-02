@@ -243,7 +243,27 @@ router.delete('/:id', requirePermission(PERMISSIONS.USERS_MANAGE), async (req, r
     'tasks',
     (t) => t.assigneeId === target.id && organizationOf(t) === organizationOf(target)
   );
-  for (const task of owned) await store.update('tasks', task.id, { assigneeId: null });
+  for (const task of owned) {
+    await store.update('tasks', task.id, {
+      assigneeId: null,
+      assignmentStatus: 'unassigned',
+      assignedAt: null,
+      assignedBy: null,
+      acceptedAt: null,
+      declinedAt: null,
+      assignmentNote: '',
+      proposedDueDate: null,
+    });
+    await create('taskAssignments', {
+      organizationId: organizationOf(task),
+      taskId: task.id,
+      actorId: req.user.id,
+      action: 'unassigned',
+      assigneeId: null,
+      status: 'unassigned',
+      meta: { previousAssigneeId: target.id, reason: 'user_deleted' },
+    });
+  }
 
   await store.remove('users', target.id);
   await logActivity({

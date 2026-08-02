@@ -34,7 +34,9 @@ import {
   canDeleteTask,
   canEditTask,
   canManagePerformance,
+  canManageTaskPlan,
   canUseDepartment,
+  canViewTask,
   taskForUser,
   taskPredicate,
   visiblePeople,
@@ -214,6 +216,17 @@ router.get('/export.csv', requirePermission(PERMISSIONS.TASKS_EXPORT), async (re
     .send(`\uFEFF${csv}`);
 });
 
+/**
+ * Fetch one fresh task for notification/search deep links. The list endpoint is
+ * still used for boards, but a direct link must not depend on the browser's
+ * cached copy already containing a task that may have been assigned seconds ago.
+ */
+router.get('/:id', async (req, res) => {
+  const task = await loadVisible(req, res);
+  if (!task) return;
+  res.json({ task: taskForUser(req.user, task) });
+});
+
 router.post('/', requirePermission(PERMISSIONS.TASKS_CREATE), async (req, res) => {
   const requestedDepartment = req.body?.department ?? req.user.department ?? DEFAULT_DEPARTMENT;
   if (!canUseDepartment(req.user, requestedDepartment)) {
@@ -236,6 +249,16 @@ router.post('/', requirePermission(PERMISSIONS.TASKS_CREATE), async (req, res) =
     return res.status(400).json({ error: 'assignee_team_mismatch' });
   }
   const stage = parsed.value.stage ?? firstStage(department);
+  const initialState = taskState({ department, stage });
+  // Review and completion are events with evidence and a verdict. Accepting a
+  // stage id for either one here would let API callers create work after those
+  // gates without ever performing them.
+  if (initialState === 'submitted') {
+    return res.status(409).json({ error: 'submit_required' });
+  }
+  if (initialState === 'approved') {
+    return res.status(409).json({ error: 'review_required' });
+  }
   const siblings = await find(
     'tasks',
     (t) =>
@@ -303,6 +326,13 @@ router.patch('/:id', async (req, res) => {
   if (!task) return res.status(404).json({ error: 'not_found' });
   if (!taskPredicate(req.user)(task)) return res.status(404).json({ error: 'not_found' });
   if (!canEditTask(req.user, task)) return res.status(403).json({ error: 'forbidden' });
+  // Scores are the outcome of the review action, never a generic editable task
+  // property. Keeping this out of PATCH preserves the reviewer/timestamp trail.
+  if (req.body?.score !== undefined) {
+    return taskState(task) === 'assigned' || taskState(task) === 'working'
+      ? res.status(400).json({ error: 'score_before_review' })
+      : res.status(409).json({ error: 'review_required' });
+  }
 
   const parsed = await parseTaskInput(req.body, { partial: true, current: task });
   if (parsed.error) return res.status(400).json({ error: parsed.error });
@@ -320,44 +350,24 @@ router.patch('/:id', async (req, res) => {
     return res.status(400).json({ error: 'assignee_team_mismatch' });
   }
 
-  /*
-   * The two gates are actions, not fields. A plain stage write that would push
-   * a task into review or into done is refused and pointed at the endpoint that
-   * enforces what those transitions require — a deliverable, or a score. Pulling
-   * work back out of either one is a manager's correction, not an employee's undo.
-   */
+  const planChanged =
+    (Object.hasOwn(patch, 'assigneeId') && patch.assigneeId !== task.assigneeId) ||
+    (Object.hasOwn(patch, 'department') &&
+      patch.department !== (task.department ?? DEFAULT_DEPARTMENT)) ||
+    (Object.hasOwn(patch, 'subteam') && patch.subteam !== (task.subteam ?? null)) ||
+    (Object.hasOwn(patch, 'dueDate') && patch.dueDate !== (task.dueDate ?? null));
+  if (planChanged && !canManageTaskPlan(req.user, task)) {
+    return res.status(403).json({ error: 'task_plan_forbidden' });
+  }
+
+  /* Workflow gates are actions, not fields. A plain stage write cannot bypass
+   * assignment acceptance, submission evidence, manager review or reopening. */
   const verdict = stageWriteVerdict(req.user, task, nextDepartment, nextStage);
+  if (verdict === 'assignment') return res.status(409).json({ error: 'assignment_required' });
   if (verdict === 'submit') return res.status(409).json({ error: 'submit_required' });
   if (verdict === 'review') return res.status(409).json({ error: 'review_required' });
-  if (verdict === 'forbidden') return res.status(403).json({ error: 'review_required' });
-
-  const wasState = taskState(task);
-  const nowState = taskState({ ...task, department: nextDepartment, stage: nextStage });
-  const steppedBack = wasState !== nowState && (wasState === 'submitted' || wasState === 'approved');
-  if (steppedBack && wasState === 'submitted') {
-    // A card dragged out of the review column is a return, so it counts as one.
-    Object.assign(patch, {
-      reviewDecision: 'changes_requested',
-      reviewedAt: new Date().toISOString(),
-      reviewedBy: req.user.id,
-      reworkCount: (task.reworkCount ?? 0) + 1,
-      submittedAt: null,
-    });
-  } else if (steppedBack) {
-    // Dragged back out of done — the same thing /reopen does. The verdict no
-    // longer applies, so it stops being shown; the score stays as the record of
-    // what was actually awarded.
-    patch.reviewDecision = null;
-  }
-
-  if (req.body?.score !== undefined) {
-    if (!canManagePerformance(req.user)) return res.status(403).json({ error: 'score_forbidden' });
-    if (nowState !== 'submitted' && nowState !== 'approved') {
-      return res.status(400).json({ error: 'score_before_review' });
-    }
-    patch.scoreBy = patch.score === null ? null : req.user.id;
-    patch.scoredAt = patch.score === null ? null : new Date().toISOString();
-  }
+  if (verdict === 'reopen') return res.status(409).json({ error: 'reopen_required' });
+  if (verdict === 'forbidden') return res.status(403).json({ error: 'forbidden' });
 
   const assignmentChanged =
     Object.hasOwn(patch, 'assigneeId') && patch.assigneeId !== task.assigneeId;
@@ -400,12 +410,12 @@ router.patch('/:id', async (req, res) => {
       link: `/tasks?task=${updated.id}`,
     });
   }
-  if (steppedBack && wasState === 'submitted' && task.assigneeId !== req.user.id) {
+  if (assignmentChanged && task.assigneeId && task.assigneeId !== req.user.id) {
     await notify(task.assigneeId, req.user.id, {
-      type: 'task.returned',
-      title: { ar: 'مهمة رجعت إليك للتعديل', en: 'A task was sent back to you' },
+      type: 'task.unassigned',
+      title: { ar: 'تم تغيير إسناد مهمة', en: 'A task assignment changed' },
       body: updated.title,
-      link: `/tasks?task=${updated.id}`,
+      link: '/tasks',
     });
   }
 
@@ -843,16 +853,12 @@ function assignmentNotificationTitle(action) {
  * because one person is away.
  */
 async function reviewAudience(task, actorId) {
-  const department = task.department ?? DEFAULT_DEPARTMENT;
   const people = await find('users', isActiveUser);
   const audience = new Set();
   for (const person of people) {
     if (organizationOf(person) !== organizationOf(task)) continue;
     if (!isReviewer(person)) continue;
-    const reachesTask =
-      can(person, PERMISSIONS.TASKS_VIEW_ALL) ||
-      (person.department ?? DEFAULT_DEPARTMENT) === department;
-    if (reachesTask) audience.add(person.id);
+    if (canViewTask(person, task)) audience.add(person.id);
   }
   if (task.createdBy) audience.add(task.createdBy);
   audience.delete(actorId);
@@ -867,6 +873,7 @@ async function reviewAudience(task, actorId) {
 async function notify(userId, actorId, { type, title, body, link }) {
   if (!userId) return;
   const target = await findOne('users', (user) => user.id === userId);
+  if (!target || !isActiveUser(target)) return;
   await create('notifications', {
     organizationId: organizationOf(target),
     userId,

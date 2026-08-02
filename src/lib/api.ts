@@ -201,6 +201,14 @@ const ERRORS: Record<string, { ar: string; en: string }> = {
     ar: 'الموظف المسند إليه فقط يستطيع الرد على هذا الإسناد.',
     en: 'Only the assignee can respond to this assignment.',
   },
+  assignment_required: {
+    ar: 'يجب قبول إسناد المهمة أولاً قبل بدء التنفيذ.',
+    en: 'Accept the task assignment before starting work.',
+  },
+  task_plan_forbidden: {
+    ar: 'المسند إليه يستطيع تنفيذ المهمة، لكن تغيير المسؤول أو الفريق أو الموعد من صلاحية منشئ المهمة أو المدير.',
+    en: 'The assignee can do the work, but only the task creator or a manager can change its owner, team, or due date.',
+  },
   invalid_assignment_action: {
     ar: 'إجراء الإسناد غير معروف.',
     en: 'That assignment action is not supported.',
@@ -248,6 +256,10 @@ const ERRORS: Record<string, { ar: string; en: string }> = {
   review_required: {
     ar: 'اعتماد المهمة من صلاحية المدير، ويتم من خلال المراجعة والتقييم.',
     en: 'Closing a task is the manager’s call, and happens through the review.',
+  },
+  reopen_required: {
+    ar: 'أعد فتح المهمة المعتمدة أولاً قبل تغيير مرحلتها.',
+    en: 'Reopen the approved task before changing its stage.',
   },
   not_submitted: {
     ar: 'هذه المهمة ليست قيد المراجعة.',

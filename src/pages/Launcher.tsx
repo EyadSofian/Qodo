@@ -16,6 +16,8 @@ import { CountBadge } from '../components/Shell';
 import { DUE_CHIP_CLASS, PRIORITY_META, cx, daysUntil, dueLabel } from '../lib/utils';
 import type { Task, WorkspaceApp } from '../lib/types';
 
+const TASK_POLL_MS = 20_000;
+
 /**
  * The home screen: every app the signed-in user is allowed to open, as one
  * grid, plus the work waiting for them underneath it.
@@ -142,10 +144,24 @@ function MyWork() {
   const [tasks, setTasks] = useState<Task[] | null>(null);
 
   useEffect(() => {
-    api
-      .get<{ tasks: Task[] }>('/tasks')
-      .then((data) => setTasks(data.tasks))
-      .catch(() => setTasks([]));
+    let active = true;
+    const refresh = () => {
+      if (!active || document.visibilityState !== 'visible') return;
+      api
+        .get<{ tasks: Task[] }>('/tasks')
+        .then((data) => active && setTasks(data.tasks))
+        .catch(() => active && setTasks((current) => current ?? []));
+    };
+    refresh();
+    const timer = window.setInterval(refresh, TASK_POLL_MS);
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+    };
   }, []);
 
   const mine = useMemo(() => {

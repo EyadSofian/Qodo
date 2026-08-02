@@ -85,6 +85,8 @@ interface DragState {
 const DRAG_THRESHOLD = 6;
 /** How close to the viewport edge a drag has to get before the page scrolls. */
 const EDGE = 90;
+/** Keep an already-open board current when somebody else assigns or edits work. */
+const TASK_POLL_MS = 20_000;
 
 export function Tasks() {
   const { user, can } = useAuth();
@@ -135,7 +137,25 @@ export function Tasks() {
   }, [reloadTaskCounts]);
 
   useEffect(() => {
-    load().catch(() => setTasks([]));
+    let active = true;
+    const refresh = () => {
+      if (!active || document.visibilityState !== 'visible') return;
+      load().catch(() => {
+        // Preserve the last good board during a transient polling failure. Only
+        // the first load needs an empty fallback so the skeleton can finish.
+        setTasks((current) => current ?? []);
+      });
+    };
+    refresh();
+    const timer = window.setInterval(refresh, TASK_POLL_MS);
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+    };
   }, [load]);
 
   useEffect(() => {
@@ -157,18 +177,41 @@ export function Tasks() {
       }));
   }, [view, department]);
 
-  // A ?task=… link from a notification or search opens straight into the card.
+  // A ?task=… link from a notification or search fetches that row directly.
+  // The board list may predate an assignment, so searching only the cached list
+  // makes the notification appear broken and then discards its task id.
   const deepLink = params.get('task');
   useEffect(() => {
-    if (!deepLink || !tasks) return;
-    const match = tasks.find((t) => t.id === deepLink);
-    if (match) {
-      setDialogTask(match);
-      setDialogOpen(true);
-    }
-    params.delete('task');
-    setParams(params, { replace: true });
-  }, [deepLink, tasks, params, setParams]);
+    if (!deepLink) return;
+    let active = true;
+    api
+      .get<{ task: Task }>(`/tasks/${encodeURIComponent(deepLink)}`)
+      .then(({ task: fresh }) => {
+        if (!active) return;
+        setTasks((list) => {
+          const current = list ?? [];
+          return current.some((task) => task.id === fresh.id)
+            ? current.map((task) => (task.id === fresh.id ? fresh : task))
+            : [fresh, ...current];
+        });
+        setDialogTask(fresh);
+        setDialogOpen(true);
+      })
+      .catch((err) => {
+        if (active) push(errorMessage(err, lang), 'bad');
+      })
+      .finally(() => {
+        if (!active) return;
+        setParams((current) => {
+          const next = new URLSearchParams(current);
+          next.delete('task');
+          return next;
+        }, { replace: true });
+      });
+    return () => {
+      active = false;
+    };
+  }, [deepLink, lang, push, setParams]);
 
   /**
    * Columns follow Odoo's model: pick a department and the board becomes that
@@ -681,7 +724,10 @@ export function Tasks() {
                     {byColumn[column.id]?.length ?? 0}
                   </span>
                 </h2>
-                {can(PERMISSIONS.TASKS_CREATE) && department && (
+                {can(PERMISSIONS.TASKS_CREATE) &&
+                  department &&
+                  (stageType(department, column.id) === 'open' ||
+                    stageType(department, column.id) === 'active') && (
                   <button
                     type="button"
                     onClick={() => openNew(column.id)}

@@ -45,7 +45,9 @@ interface WorkspaceState {
 
 const WorkspaceContext = createContext<WorkspaceState | null>(null);
 
-const POLL_MS = 60_000;
+// In-app alerts are the guaranteed channel; web push is optional. Twenty
+// seconds keeps assignment alerts useful without maintaining a realtime server.
+const POLL_MS = 20_000;
 
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();

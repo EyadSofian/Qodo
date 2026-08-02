@@ -424,6 +424,7 @@ const EXECUTORS = {
         'users',
         (u) =>
           isActiveUser(u) &&
+          organizationOf(u) === organizationOf(user) &&
           (u.department ?? DEFAULT_DEPARTMENT) === department &&
           u.name.toLowerCase().includes(term)
       );

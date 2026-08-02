@@ -71,6 +71,18 @@ export function canDeleteTask(user, task) {
   return task.createdBy === user.id;
 }
 
+/**
+ * Assignment and planning belong to whoever filed the task or a manager who
+ * can act on the board. An assignee may update the work itself, but must use the
+ * assignment-response actions to negotiate ownership and due dates.
+ */
+export function canManageTaskPlan(user, task) {
+  if (!canViewTask(user, task)) return false;
+  if (task.createdBy === user.id) return true;
+  if (!can(user, PERMISSIONS.TASKS_EDIT_ANY)) return false;
+  return can(user, PERMISSIONS.TASKS_VIEW_ALL) || sameDepartment(user, task);
+}
+
 export function canManagePerformance(user) {
   return can(user, PERMISSIONS.TASKS_EDIT_ANY);
 }

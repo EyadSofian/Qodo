@@ -203,6 +203,7 @@ export const DEPARTMENTS = [
       { id: 'proposed', type: 'open', ar: 'مقترحة', en: 'Proposed' },
       { id: 'material', type: 'active', ar: 'إعداد المادة', en: 'Material prep' },
       { id: 'scheduled', type: 'active', ar: 'مجدولة', en: 'Scheduled' },
+      { id: 'review', type: 'review', ar: 'قيد المراجعة', en: 'In review' },
       { id: 'delivered', type: 'done', ar: 'تم التنفيذ', en: 'Delivered' },
     ],
   },

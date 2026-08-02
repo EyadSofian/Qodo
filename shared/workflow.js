@@ -209,13 +209,14 @@ export function canMoveTo(user, task, type) {
  * consults before it lets a card land:
  *
  *   'ok'        move it, it crosses nothing
+ *   'assignment' the assignee must answer the assignment before work starts
  *   'submit'    this is a hand-in; it needs a deliverable, so use the submit gate
  *   'review'    this is an approval; it needs a score, so use the review gate
- *   'forbidden' pulling work back out of review or done — managers only
+ *   'reopen'    approved work must be reopened explicitly before it can move
+ *   'forbidden' the caller cannot make this transition
  *
- * The client turns 'submit' and 'review' into the matching dialog rather than
- * an error, which is why dragging a card onto the review column opens the
- * submission sheet instead of silently marking the work delivered.
+ * The client turns every non-'ok' verdict into the matching task action rather
+ * than silently moving the card around the workflow contract.
  */
 export function stageWriteVerdict(user, task, nextDepartment, nextStage) {
   const from = taskState(task);
@@ -223,12 +224,19 @@ export function stageWriteVerdict(user, task, nextDepartment, nextStage) {
   if (from === to) return 'ok';
 
   const forward = TASK_STATES.indexOf(to) > TASK_STATES.indexOf(from);
+  // A pending assignment is a real gate. Without this check, dragging the card
+  // from an open column to an active one bypasses the explicit accept/decline
+  // response even though the dedicated /start action correctly refuses it.
+  if (from === 'assigned' && to === 'working' && task.assigneeId && !assignmentReady(task)) {
+    return isDoer(user, task) || isReviewer(user) ? 'assignment' : 'forbidden';
+  }
   if (to === 'approved') return 'review';
   if (to === 'submitted' && forward) return 'submit';
-  // Sliding between "not started" and "in progress" is just how work goes.
-  // Pulling something back out of review or out of done undoes a decision.
-  const undoesADecision = from === 'submitted' || from === 'approved';
-  if (!forward && undoesADecision && !isReviewer(user)) return 'forbidden';
+  // Returning submitted work requires the review gate because that action owns
+  // the mandatory reason, rework counter and assignee notification. Approved
+  // work similarly has to pass through the explicit reopen action.
+  if (!forward && from === 'submitted') return isReviewer(user) ? 'review' : 'forbidden';
+  if (!forward && from === 'approved') return isReviewer(user) ? 'reopen' : 'forbidden';
   return 'ok';
 }
 

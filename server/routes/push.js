@@ -67,7 +67,7 @@ router.post('/test', async (req, res) => {
 router.post('/unsubscribe', async (req, res) => {
   const endpoint = String(req.body?.endpoint || '');
   if (!endpoint) return res.status(400).json({ error: 'missing_endpoint' });
-  const removed = await removeSubscription(endpoint);
+  const removed = await removeSubscription(req.user.id, endpoint);
   res.json({ ok: true, removed });
 });
 

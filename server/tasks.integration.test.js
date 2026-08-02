@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { canAssignUser, canViewTask, visiblePeople } from './taskAccess.js';
+import { DEPARTMENTS } from '../shared/departments.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -147,6 +148,15 @@ test('tenant policy rejects cross-organization task and people access', () => {
   assert.deepEqual(visiblePeople(adminA, [managerA, employeeB]).map((person) => person.id), [
     managerA.id,
   ]);
+});
+
+test('every department supports the complete task lifecycle', () => {
+  for (const department of DEPARTMENTS) {
+    const types = new Set(department.stages.map((stage) => stage.type));
+    for (const required of ['open', 'active', 'review', 'done']) {
+      assert.ok(types.has(required), `${department.id} is missing a ${required} stage`);
+    }
+  }
 });
 
 test('team boundaries, performance privacy and export', async () => {
@@ -352,6 +362,22 @@ test('the board cannot be dragged past either gate', async () => {
   });
   assert.equal(ordinaryMove.status, 200);
   assert.equal(ordinaryMove.data.task.stage, 'pending');
+
+  const bornInReview = await request('/tasks', {
+    method: 'POST',
+    cookie: managerCookie,
+    body: { title: 'No synthetic submission', department: 'marketing', stage: 'review' },
+  });
+  assert.equal(bornInReview.status, 409);
+  assert.equal(bornInReview.data.error, 'submit_required');
+
+  const bornDone = await request('/tasks', {
+    method: 'POST',
+    cookie: managerCookie,
+    body: { title: 'No synthetic approval', department: 'marketing', stage: 'done' },
+  });
+  assert.equal(bornDone.status, 409);
+  assert.equal(bornDone.data.error, 'review_required');
 });
 
 test('assign → deliver → review → approve, including the rework loop', async () => {
@@ -378,6 +404,39 @@ test('assign → deliver → review → approve, including the rework loop', asy
     cookie: creativeCookie,
   });
   assert.equal(beforeAcceptance.status, 403);
+
+  // Dragging is not a second route around the assignment response gate.
+  const draggedBeforeAcceptance = await request(`/tasks/${task.id}`, {
+    method: 'PATCH',
+    cookie: creativeCookie,
+    body: { stage: 'working' },
+  });
+  assert.equal(draggedBeforeAcceptance.status, 409);
+  assert.equal(draggedBeforeAcceptance.data.error, 'assignment_required');
+
+  // The assignee may do the work, but cannot silently unassign themselves or
+  // approve their own due-date proposal through the generic edit endpoint.
+  const changedPlan = await request(`/tasks/${task.id}`, {
+    method: 'PATCH',
+    cookie: creativeCookie,
+    body: { dueDate: '2099-02-01' },
+  });
+  assert.equal(changedPlan.status, 403);
+  assert.equal(changedPlan.data.error, 'task_plan_forbidden');
+
+  // Assignment creates both a directly fetchable task and an in-app alert for
+  // the recipient; this is the contract used by fresh notification deep links.
+  const direct = await request(`/tasks/${task.id}`, { cookie: creativeCookie });
+  assert.equal(direct.status, 200);
+  assert.equal(direct.data.task.assigneeId, creative.user.id);
+  const alerts = await request('/notifications', { cookie: creativeCookie });
+  assert.equal(alerts.status, 200);
+  assert.ok(
+    alerts.data.notifications.some(
+      (notification) =>
+        notification.type === 'task.assigned' && notification.link === `/tasks?task=${task.id}`
+    )
+  );
 
   const silentDecline = await request(`/tasks/${task.id}/assignment`, {
     method: 'POST',
@@ -450,6 +509,14 @@ test('assign → deliver → review → approve, including the rework loop', asy
   assert.ok(submitted.data.task.submittedAt);
   assert.equal(submitted.data.task.submittedBy, creative.user.id);
 
+  const draggedOutOfReview = await request(`/tasks/${task.id}`, {
+    method: 'PATCH',
+    cookie: managerCookie,
+    body: { stage: 'rework' },
+  });
+  assert.equal(draggedOutOfReview.status, 409);
+  assert.equal(draggedOutOfReview.data.error, 'review_required');
+
   // The employee cannot review their own submission into approval.
   const selfApprove = await request(`/tasks/${task.id}/review`, {
     method: 'POST',
@@ -506,6 +573,22 @@ test('assign → deliver → review → approve, including the rework loop', asy
   assert.equal(approved.data.task.reviewedBy, manager.user.id);
   assert.equal(approved.data.task.reviewDecision, 'approved');
   assert.ok(approved.data.task.completedAt);
+
+  const directScoreEdit = await request(`/tasks/${task.id}`, {
+    method: 'PATCH',
+    cookie: managerCookie,
+    body: { score: 99 },
+  });
+  assert.equal(directScoreEdit.status, 409);
+  assert.equal(directScoreEdit.data.error, 'review_required');
+
+  const draggedOutOfDone = await request(`/tasks/${task.id}`, {
+    method: 'PATCH',
+    cookie: managerCookie,
+    body: { stage: 'working' },
+  });
+  assert.equal(draggedOutOfDone.status, 409);
+  assert.equal(draggedOutOfDone.data.error, 'reopen_required');
 
   // The assignee sees their own score and the feedback written for them.
   const mine = await request('/tasks', { cookie: creativeCookie });

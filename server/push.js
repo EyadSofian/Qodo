@@ -61,9 +61,12 @@ export async function saveSubscription(userId, subscription) {
   });
 }
 
-export async function removeSubscription(endpoint) {
+export async function removeSubscription(userId, endpoint) {
   const store = await getStore();
-  const rows = await find('pushSubscriptions', (s) => s.endpoint === endpoint);
+  const rows = await find(
+    'pushSubscriptions',
+    (s) => s.userId === userId && s.endpoint === endpoint
+  );
   for (const row of rows) await store.remove('pushSubscriptions', row.id);
   return rows.length;
 }
