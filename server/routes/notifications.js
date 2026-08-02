@@ -3,9 +3,33 @@ import { find, findOne, getStore } from '../store.js';
 import { requireAuth } from '../auth.js';
 import { PERMISSIONS, can } from '../../shared/permissions.js';
 import { organizationOf } from '../../shared/organization.js';
+import { subscribeToNotifications } from '../notificationStream.js';
 
 const router = Router();
 router.use(requireAuth);
+
+/**
+ * Live signal for open tabs. The payload only carries an id; the client then
+ * reloads the authenticated notification list, so visibility and tenant rules
+ * stay in the ordinary API instead of being duplicated in the stream.
+ */
+router.get('/stream', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+  res.write('event: ready\ndata: {}\n\n');
+
+  const unsubscribe = subscribeToNotifications(req.user.id, res);
+  const heartbeat = setInterval(() => {
+    if (!res.writableEnded && !res.destroyed) res.write(': keep-alive\n\n');
+  }, 25_000);
+  req.on('close', () => {
+    clearInterval(heartbeat);
+    unsubscribe();
+  });
+});
 
 router.get('/', async (req, res) => {
   const mine = (await find('notifications', (n) => n.userId === req.user.id))

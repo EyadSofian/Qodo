@@ -1,13 +1,23 @@
 import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BellOff, CheckCheck } from 'lucide-react';
+import { BellOff, BellRing, CheckCheck } from 'lucide-react';
 import { useI18n } from '../lib/i18n';
 import { useWorkspace } from '../lib/workspace';
 import { cx, timeAgo } from '../lib/utils';
 import { Avatar } from './ui';
 import type { LocalisedText } from '../lib/types';
 
-export function NotificationsMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function NotificationsMenu({
+  open,
+  onClose,
+  showPushSetup = false,
+  onEnablePush,
+}: {
+  open: boolean;
+  onClose: () => void;
+  showPushSetup?: boolean;
+  onEnablePush?: () => void;
+}) {
   const { notifications, actors, unread, reloadNotifications, markRead, markAllRead } = useWorkspace();
   const { t, lang } = useI18n();
   const navigate = useNavigate();
@@ -37,6 +47,8 @@ export function NotificationsMenu({ open, onClose }: { open: boolean; onClose: (
   // {ar, en} because the reader's language isn't known at write time.
   const titleOf = (title: LocalisedText | string) =>
     typeof title === 'string' ? title : (title[lang] ?? title.ar);
+  const bodyOf = (body: LocalisedText | string) =>
+    typeof body === 'string' ? body : (body[lang] ?? body.ar);
 
   return (
     <>
@@ -61,6 +73,26 @@ export function NotificationsMenu({ open, onClose }: { open: boolean; onClose: (
             </button>
           )}
         </header>
+
+        {showPushSetup && onEnablePush && (
+          <button
+            type="button"
+            onClick={onEnablePush}
+            className="m-3 flex w-[calc(100%_-_1.5rem)] items-center gap-3 rounded-xl border border-brand-200 bg-brand-50 px-3 py-3 text-start transition-colors hover:bg-brand-100"
+          >
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white text-brand-600 shadow-sm">
+              <BellRing size={17} />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-[12.5px] font-extrabold text-ink">
+                {t('shell.enableNotifications')}
+              </span>
+              <span className="mt-0.5 block text-[11.5px] leading-relaxed text-ink-muted">
+                {t('shell.enableNotificationsHint')}
+              </span>
+            </span>
+          </button>
+        )}
 
         <div className="max-h-[60dvh] overflow-y-auto overscroll-contain">
           {notifications.length === 0 && (
@@ -93,7 +125,9 @@ export function NotificationsMenu({ open, onClose }: { open: boolean; onClose: (
                 )}
                 <span className="min-w-0 flex-1">
                   <span className="block text-[13px] font-bold text-ink">{titleOf(item.title)}</span>
-                  <span className="mt-0.5 block truncate text-[12.5px] text-ink-muted">{item.body}</span>
+                  <span className="mt-0.5 block truncate text-[12.5px] text-ink-muted">
+                    {bodyOf(item.body)}
+                  </span>
                   <span className="mt-1 block text-[11px] text-ink-faint">
                     {actor ? `${actor.name} · ` : ''}
                     {timeAgo(item.createdAt, t)}

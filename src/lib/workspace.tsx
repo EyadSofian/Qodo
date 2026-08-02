@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -28,6 +29,7 @@ interface WorkspaceState {
   apps: WorkspaceApp[];
   directory: DirectoryUser[];
   notifications: Notification[];
+  incomingNotification: Notification | null;
   actors: ActorMap;
   unread: number;
   /** Open work on the signed-in person's plate — the nav badge reads this. */
@@ -39,14 +41,15 @@ interface WorkspaceState {
   reloadTaskCounts: () => Promise<void>;
   markRead: (id: string) => Promise<void>;
   markAllRead: () => Promise<void>;
+  dismissIncomingNotification: () => void;
   appById: (id: string | null | undefined) => WorkspaceApp | undefined;
   userById: (id: string | null | undefined) => DirectoryUser | undefined;
 }
 
 const WorkspaceContext = createContext<WorkspaceState | null>(null);
 
-// In-app alerts are the guaranteed channel; web push is optional. Twenty
-// seconds keeps assignment alerts useful without maintaining a realtime server.
+// The live stream is the fast path; this timer is the reliable fallback after
+// a reconnect, a backgrounded tab or a multi-instance deployment.
 const POLL_MS = 20_000;
 
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
@@ -54,10 +57,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [apps, setApps] = useState<WorkspaceApp[]>([]);
   const [directory, setDirectory] = useState<DirectoryUser[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [incomingNotification, setIncomingNotification] = useState<Notification | null>(null);
   const [actors, setActors] = useState<ActorMap>({});
   const [unread, setUnread] = useState(0);
   const [taskCounts, setTaskCounts] = useState<TaskCounts>(NO_TASKS);
   const [loading, setLoading] = useState(true);
+  const seenNotificationIds = useRef<Set<string> | null>(null);
 
   const reloadApps = useCallback(async () => {
     const { apps: list } = await api.get<{ apps: WorkspaceApp[] }>('/apps');
@@ -75,6 +80,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       actors: ActorMap;
       unread: number;
     }>('/notifications');
+    const currentIds = new Set(data.notifications.map((notification) => notification.id));
+    if (seenNotificationIds.current) {
+      const fresh = data.notifications.find(
+        (notification) => !notification.read && !seenNotificationIds.current?.has(notification.id)
+      );
+      if (fresh) setIncomingNotification(fresh);
+    }
+    seenNotificationIds.current = currentIds;
     setNotifications(data.notifications);
     setActors(data.actors);
     setUnread(data.unread);
@@ -89,6 +102,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       setApps([]);
       setDirectory([]);
       setNotifications([]);
+      setIncomingNotification(null);
+      seenNotificationIds.current = null;
       setUnread(0);
       setTaskCounts(NO_TASKS);
       setLoading(false);
@@ -122,6 +137,23 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     };
   }, [user, reloadNotifications, reloadTaskCounts]);
 
+  // The server emits only a lightweight signal; the ordinary authenticated
+  // endpoints remain the source of truth. EventSource reconnects by itself,
+  // while the timer above is the cross-instance/offline fallback.
+  useEffect(() => {
+    if (!user || typeof EventSource === 'undefined') return;
+    const stream = new EventSource('/api/notifications/stream');
+    const refresh = () => {
+      reloadNotifications().catch(() => {});
+      reloadTaskCounts().catch(() => {});
+    };
+    stream.addEventListener('notification', refresh);
+    return () => {
+      stream.removeEventListener('notification', refresh);
+      stream.close();
+    };
+  }, [user, reloadNotifications, reloadTaskCounts]);
+
   const markRead = useCallback(async (id: string) => {
     setNotifications((list) => list.map((n) => (n.id === id ? { ...n, read: true } : n)));
     setUnread((count) => Math.max(0, count - 1));
@@ -134,11 +166,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     await api.post('/notifications/read-all').catch(() => {});
   }, []);
 
+  const dismissIncomingNotification = useCallback(() => setIncomingNotification(null), []);
+
   const value = useMemo<WorkspaceState>(
     () => ({
       apps,
       directory,
       notifications,
+      incomingNotification,
       actors,
       unread,
       taskCounts,
@@ -149,6 +184,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       reloadTaskCounts,
       markRead,
       markAllRead,
+      dismissIncomingNotification,
       appById: (id) => (id ? apps.find((a) => a.id === id) : undefined),
       userById: (id) => (id ? directory.find((u) => u.id === id) : undefined),
     }),
@@ -156,6 +192,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       apps,
       directory,
       notifications,
+      incomingNotification,
       actors,
       unread,
       taskCounts,
@@ -166,6 +203,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       reloadTaskCounts,
       markRead,
       markAllRead,
+      dismissIncomingNotification,
     ]
   );
 

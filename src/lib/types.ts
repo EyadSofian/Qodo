@@ -281,7 +281,7 @@ export interface Notification {
   actorId?: string;
   type: string;
   title: LocalisedText | string;
-  body: string;
+  body: LocalisedText | string;
   link: string;
   read: boolean;
   createdAt: string;

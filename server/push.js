@@ -88,7 +88,7 @@ export async function notifyUser(userId, { title, body, link }) {
 
   const payload = JSON.stringify({
     title: typeof title === 'string' ? { ar: title, en: title } : title,
-    body,
+    body: typeof body === 'string' ? { ar: body, en: body } : body,
     link: link ?? '/',
   });
 

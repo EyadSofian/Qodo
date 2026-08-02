@@ -29,6 +29,7 @@ import {
   taskState,
 } from '../../shared/workflow.js';
 import { notifyUser } from '../push.js';
+import { publishNotification } from '../notificationStream.js';
 import {
   canAssignUser,
   canDeleteTask,
@@ -601,8 +602,11 @@ router.post('/:id/submit', async (req, res) => {
   for (const userId of await reviewAudience(task, req.user.id)) {
     await notify(userId, req.user.id, {
       type: 'task.submitted',
-      title: { ar: 'مهمة بانتظار مراجعتك', en: 'A task is waiting for your review' },
-      body: `${updated.title} — ${req.user.name}`,
+      title: { ar: 'تم تسليم مهمة للمراجعة', en: 'Task completed and submitted' },
+      body: {
+        ar: `${req.user.name} أنهى «${updated.title}» وسلّمها للمراجعة.`,
+        en: `${req.user.name} completed “${updated.title}” and submitted it for review.`,
+      },
       link: `/tasks?task=${updated.id}`,
     });
   }
@@ -874,7 +878,7 @@ async function notify(userId, actorId, { type, title, body, link }) {
   if (!userId) return;
   const target = await findOne('users', (user) => user.id === userId);
   if (!target || !isActiveUser(target)) return;
-  await create('notifications', {
+  const notification = await create('notifications', {
     organizationId: organizationOf(target),
     userId,
     actorId,
@@ -884,6 +888,7 @@ async function notify(userId, actorId, { type, title, body, link }) {
     link,
     read: false,
   });
+  publishNotification(userId, notification.id);
   await notifyUser(userId, { title, body, link });
 }
 

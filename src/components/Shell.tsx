@@ -38,6 +38,7 @@ import { SearchPalette } from './SearchPalette';
 import { ChangePasswordModal } from './ChangePasswordModal';
 import { Assistant } from './Assistant';
 import { TaskSummaryPopup } from './TaskSummaryPopup';
+import { IncomingNotificationPopup } from './IncomingNotificationPopup';
 import { Avatar, useToast } from './ui';
 
 /**
@@ -249,7 +250,12 @@ export function Shell({ children }: { children: ReactNode }) {
                 </span>
               )}
             </button>
-            <NotificationsMenu open={bellOpen} onClose={() => setBellOpen(false)} />
+            <NotificationsMenu
+              open={bellOpen}
+              onClose={() => setBellOpen(false)}
+              showPushSetup={push === 'off'}
+              onEnablePush={togglePush}
+            />
           </div>
 
           <div className="relative shrink-0">
@@ -372,6 +378,7 @@ export function Shell({ children }: { children: ReactNode }) {
       <ChangePasswordModal open={passwordOpen} onClose={() => setPasswordOpen(false)} />
       <Assistant open={assistantOpen} onClose={() => setAssistantOpen(false)} />
       <TaskSummaryPopup />
+      <IncomingNotificationPopup />
     </div>
   );
 }

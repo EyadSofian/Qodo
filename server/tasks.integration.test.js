@@ -499,6 +499,20 @@ test('assign → deliver → review → approve, including the rework loop', asy
   assert.equal(uploaded.data.attachmentCount, 1);
   assert.equal(uploaded.data.attachment.name, 'كي فيجوال.pdf');
 
+  // An open manager tab gets a live signal; the durable notification endpoint
+  // remains the source of the title, body and deep link.
+  const streamController = new AbortController();
+  const stream = await fetch(`${ORIGIN}/api/notifications/stream`, {
+    headers: { Cookie: managerCookie },
+    signal: streamController.signal,
+  });
+  assert.equal(stream.status, 200);
+  assert.match(stream.headers.get('content-type') ?? '', /text\/event-stream/);
+  const streamReader = stream.body.getReader();
+  const decoder = new TextDecoder();
+  const readyEvent = decoder.decode((await streamReader.read()).value);
+  assert.match(readyEvent, /event: ready/);
+
   const submitted = await request(`/tasks/${task.id}/submit`, {
     method: 'POST',
     cookie: creativeCookie,
@@ -508,6 +522,28 @@ test('assign → deliver → review → approve, including the rework loop', asy
   assert.equal(submitted.data.task.stage, 'review');
   assert.ok(submitted.data.task.submittedAt);
   assert.equal(submitted.data.task.submittedBy, creative.user.id);
+
+  const liveEvent = await Promise.race([
+    streamReader.read(),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('notification stream did not publish')), 2_000)
+    ),
+  ]);
+  assert.match(decoder.decode(liveEvent.value), /event: notification/);
+  streamController.abort();
+
+  const reviewerAlerts = await request('/notifications', { cookie: managerCookie });
+  const completionAlert = reviewerAlerts.data.notifications.find(
+    (notification) =>
+      notification.type === 'task.submitted' && notification.link === `/tasks?task=${task.id}`
+  );
+  assert.ok(completionAlert);
+  assert.deepEqual(completionAlert.title, {
+    ar: 'تم تسليم مهمة للمراجعة',
+    en: 'Task completed and submitted',
+  });
+  assert.match(completionAlert.body.ar, new RegExp(creative.user.name));
+  assert.match(completionAlert.body.en, /completed/);
 
   const draggedOutOfReview = await request(`/tasks/${task.id}`, {
     method: 'PATCH',

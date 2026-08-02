@@ -23,10 +23,14 @@ self.addEventListener('push', (event) => {
     typeof payload.title === 'string'
       ? payload.title
       : payload.title?.[lang] || payload.title?.ar || 'إنجوسوفت';
+  const body =
+    typeof payload.body === 'string'
+      ? payload.body
+      : payload.body?.[lang] || payload.body?.ar || '';
 
   event.waitUntil(
     self.registration.showNotification(title, {
-      body: payload.body || '',
+      body,
       icon: '/logo.png',
       dir: lang === 'en' ? 'ltr' : 'rtl',
       lang,

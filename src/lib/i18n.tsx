@@ -72,6 +72,7 @@ const STRINGS = {
   'shell.notificationsWithCount': { ar: 'الإشعارات ({n} جديدة)', en: 'Notifications ({n} new)' },
   'shell.markAllRead': { ar: 'تعليم الكل كمقروء', en: 'Mark all as read' },
   'shell.noNotifications': { ar: 'لا توجد إشعارات حالياً.', en: 'No notifications right now.' },
+  'shell.openNotification': { ar: 'فتح المهمة', en: 'Open task' },
   'shell.account': { ar: 'حسابي', en: 'My account' },
   'shell.workspaceSettings': { ar: 'إعدادات المساحة', en: 'Workspace settings' },
   'shell.assistant': { ar: 'المساعد', en: 'Assistant' },
@@ -79,6 +80,10 @@ const STRINGS = {
   'shell.noAppsForYou': { ar: 'لا توجد تطبيقات متاحة لحسابك.', en: 'No apps are available to your account.' },
   'shell.language': { ar: 'اللغة', en: 'Language' },
   'shell.enableNotifications': { ar: 'تفعيل إشعارات الهاتف', en: 'Enable phone notifications' },
+  'shell.enableNotificationsHint': {
+    ar: 'استقبل تنبيهات تسليم المهام حتى عندما تكون المساحة مغلقة.',
+    en: 'Get task delivery alerts even while the workspace is closed.',
+  },
   'shell.notificationsEnabled': { ar: 'إشعارات الهاتف مفعّلة', en: 'Phone notifications on' },
   'shell.testNotification': { ar: 'إرسال إشعار تجريبي', en: 'Send a test notification' },
   'push.testSent': { ar: 'أُرسل الإشعار — تحقّق من جهازك.', en: 'Sent — check your device.' },
