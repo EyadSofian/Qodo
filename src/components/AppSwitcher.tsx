@@ -69,8 +69,8 @@ export function AppSwitcher({
         role="menu"
         aria-label={t('shell.allApps')}
         className={cx(
-          'fixed inset-x-0 bottom-0 z-50 max-h-[78dvh] overflow-y-auto rounded-t-3xl bg-white p-4 pb-safe shadow-panel animate-fade-up',
-          'sm:absolute sm:inset-x-auto sm:bottom-auto sm:end-0 sm:top-[calc(100%+10px)] sm:w-[26rem] sm:rounded-2xl sm:border sm:border-surface-line sm:p-3'
+          'fixed inset-x-0 bottom-0 z-50 max-h-[78dvh] overflow-y-auto overscroll-contain rounded-t-3xl bg-white p-4 pb-safe shadow-panel animate-fade-up',
+          'sm:absolute sm:inset-x-auto sm:bottom-auto sm:start-0 sm:top-[calc(100%+10px)] sm:w-[26rem] sm:max-w-[calc(100vw-1.5rem)] sm:max-h-[calc(100dvh-var(--topbar-h)-var(--sat)-1rem)] sm:rounded-2xl sm:border sm:border-surface-line sm:p-3'
         )}
       >
         <div className="mb-3 flex items-center justify-between px-1">
