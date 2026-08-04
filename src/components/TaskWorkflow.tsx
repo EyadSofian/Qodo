@@ -864,6 +864,18 @@ function ReviewGate({
   const [note, setNote] = useState('');
   const band = scoreBand(score);
 
+  /**
+   * The score and the decision are one judgement, so the form says so.
+   *
+   * Below the rubric's bottom band the work is, by the reviewer's own number,
+   * not what was asked for — and approving it anyway closes the task, pays the
+   * assignee a poor score and gives them no chance to fix it. So the gate leads
+   * with "إعادة عمل" instead. It is a recommendation and not a rule: the manager
+   * may still approve, because a score can be low for reasons that have nothing
+   * to do with whether the task should stay open.
+   */
+  const weak = band?.id === 'weak';
+
   const approve = async () => {
     if (await onDecide('review', { decision: 'approved', score, note })) {
       push(t('flow.approved.toast'));
@@ -923,6 +935,15 @@ function ReviewGate({
         </div>
       </div>
 
+      {weak && (
+        <p
+          role="status"
+          className="rounded-xl bg-amber-50 px-3 py-2.5 text-[12.5px] font-semibold leading-relaxed text-amber-800"
+        >
+          {t('flow.weakScoreHint')}
+        </p>
+      )}
+
       <Field label={t('flow.reviewNote')}>
         <textarea
           className="field min-h-[76px] resize-y"
@@ -932,16 +953,29 @@ function ReviewGate({
         />
       </Field>
 
+      {/* Two ways out of review, and the buttons name where the card lands
+          rather than what the verdict is called. Which one leads is the score's
+          answer, not a fixed layout. */}
       <div className="flex flex-wrap items-center justify-end gap-2">
         <button type="button" onClick={onCancel} className="btn-quiet btn-sm me-auto">
           {t('common.cancel')}
         </button>
-        <button type="button" onClick={sendBack} disabled={busy} className="btn-ghost btn-sm gap-1.5">
-          <RotateCcw size={15} />
+        <button
+          type="button"
+          onClick={sendBack}
+          disabled={busy}
+          className={cx('btn-sm gap-1.5', weak ? 'btn-primary' : 'btn-ghost')}
+        >
+          {busy && weak ? <Spinner size={15} /> : <RotateCcw size={15} />}
           {t('flow.requestChanges')}
         </button>
-        <button type="button" onClick={approve} disabled={busy} className="btn-primary btn-sm gap-1.5">
-          {busy ? <Spinner size={15} /> : <ShieldCheck size={16} />}
+        <button
+          type="button"
+          onClick={approve}
+          disabled={busy}
+          className={cx('btn-sm gap-1.5', weak ? 'btn-ghost' : 'btn-primary')}
+        >
+          {busy && !weak ? <Spinner size={15} /> : <ShieldCheck size={16} />}
           {t('flow.approve')}
         </button>
       </div>

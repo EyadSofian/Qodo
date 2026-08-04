@@ -141,6 +141,12 @@ export const DEPARTMENTS = [
         ],
       },
       {
+        id: 'moderation',
+        ar: 'المودريشن',
+        en: 'Moderation',
+        roles: [{ id: 'moderator', ar: 'مودريتور', en: 'Moderator' }],
+      },
+      {
         id: 'website',
         ar: 'الويب سايت',
         en: 'Website & e-commerce',
@@ -168,9 +174,21 @@ export const DEPARTMENTS = [
         roles: [{ id: 'media_buyer', ar: 'ميديا باير', en: 'Media buyer' }],
       },
     ],
+    /**
+     * The board reads left to right as the work actually travels: filed,
+     * picked up, handed in, sent back, parked, finished.
+     *
+     * There used to be a "معتمدة" column sitting second, between "قيد الانتظار"
+     * and "قيد العمل". It was an `open` stage, so approving never landed there
+     * and nothing in the lifecycle ever moved a task into it — but its name
+     * said the opposite, and being the same canonical type as "قيد الانتظار"
+     * meant an employee could drop their own card into a column that read as
+     * "approved". A column that no action can reach and every rule has to work
+     * around is not a stage; it is a trap. Approval is the review gate's
+     * verdict, and "منجزة" is where it lands.
+     */
     stages: [
       { id: 'pending', type: 'open', ar: 'قيد الانتظار', en: 'Pending' },
-      { id: 'approved', type: 'open', ar: 'معتمدة', en: 'Approved' },
       { id: 'working', type: 'active', ar: 'قيد العمل', en: 'Working' },
       { id: 'review', type: 'review', ar: 'قيد المراجعة', en: 'In review' },
       { id: 'rework', type: 'active', ar: 'إعادة عمل', en: 'Rework' },
@@ -243,6 +261,11 @@ export const DEFAULT_DEPARTMENT = 'general';
  * Old marketing cards used four content-production stages. Keeping the alias
  * table next to the workflow lets the boot migration move them without losing
  * their meaning.
+ *
+ * `approved` is here for the same reason: it was an `open` column, so anything
+ * parked in it was work that had not started, and "قيد الانتظار" is what that
+ * means on the board today. Reading it through the alias keeps old cards
+ * showing up even before the boot migration rewrites them.
  */
 export const STAGE_ALIASES = {
   marketing: {
@@ -250,6 +273,7 @@ export const STAGE_ALIASES = {
     production: 'working',
     approval: 'review',
     live: 'done',
+    approved: 'pending',
   },
 };
 

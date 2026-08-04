@@ -27,7 +27,6 @@ import {
   DEPARTMENTS,
   firstStage,
   getDepartment,
-  getStages,
   getSubteams,
   translateStage,
 } from '@shared/departments';
@@ -70,7 +69,7 @@ export function TaskDialog({
 }: Props) {
   const { user, can } = useAuth();
   const { t, lang } = useI18n();
-  const { directory, apps } = useWorkspace();
+  const { directory } = useWorkspace();
   const { push } = useToast();
 
   const [title, setTitle] = useState('');
@@ -83,11 +82,9 @@ export function TaskDialog({
   const [stage, setStage] = useState('');
   const [priority, setPriority] = useState<TaskPriority>('normal');
   const [assigneeId, setAssigneeId] = useState('');
-  const [appId, setAppId] = useState('');
   const [taskDate, setTaskDate] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [effortPoints, setEffortPoints] = useState('');
-  const [estimatedHours, setEstimatedHours] = useState('');
   const [progress, setProgress] = useState(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -111,15 +108,9 @@ export function TaskDialog({
     setStage(task?.stage ?? defaultStage ?? firstStage(nextDepartment));
     setPriority(task?.priority ?? 'normal');
     setAssigneeId(task?.assigneeId ?? '');
-    setAppId(task?.appId ?? '');
     setTaskDate(task?.taskDate ?? new Date().toISOString().slice(0, 10));
     setDueDate(task?.dueDate ?? '');
     setEffortPoints(task?.effortPoints ? String(task.effortPoints) : '');
-    setEstimatedHours(
-      task?.estimatedMinutes !== null && task?.estimatedMinutes !== undefined
-        ? String(Math.round((task.estimatedMinutes / 60) * 10) / 10)
-        : ''
-    );
     setProgress(task?.progress ?? 0);
   }, [open, task, defaultDepartment, defaultStage]);
 
@@ -160,24 +151,6 @@ export function TaskDialog({
   const assignees = directory.filter(
     (person) =>
       person.department === department && (!subteam || !person.subteam || person.subteam === subteam)
-  );
-
-  /**
-   * The stage picker offers only the columns a reviewer may move between
-   * freely. Reaching review means submitting, and reaching done means being
-   * approved — both are buttons with requirements attached, so neither belongs
-   * in a dropdown that would quietly skip them. For the person doing the work
-   * there is no free column at all: they start and they submit, and both are
-   * actions, so all they see here is where the task already is.
-   */
-  const selectableStages = useMemo(
-    () =>
-      getStages(department).filter((item: { id: string; type: string }) =>
-        isReviewer(user)
-          ? item.type === 'open' || item.type === 'active' || item.id === stage
-          : item.id === stage
-      ),
-    [department, stage, user]
   );
 
   const editable = useMemo(() => {
@@ -230,11 +203,9 @@ export function TaskDialog({
           stage,
           priority,
           assigneeId: assigneeId || null,
-          appId: appId || null,
           taskDate,
           dueDate: dueDate || null,
           effortPoints: effortPoints ? Number(effortPoints) : null,
-          estimatedMinutes: estimatedHours ? Math.round(Number(estimatedHours) * 60) : null,
         }
       : work;
 
@@ -308,22 +279,25 @@ export function TaskDialog({
         </Field>
       </div>
 
-      <Field label={t('tasks.priority')}>
-        <select
-          className="field"
-          value={priority}
-          onChange={(event) => setPriority(event.target.value as TaskPriority)}
-          disabled={!planEditable}
-        >
-          {PRIORITY_ORDER.map((key) => (
-            <option key={key} value={key}>
-              {t(PRIORITY_META[key].key)}
-            </option>
-          ))}
-        </select>
-      </Field>
-
+      {/* Priority pairs with effort points, and effort points are now the only
+          size estimate. Asking for hours as well was two units for one
+          judgement, and the two had to survive a round-trip through the form or
+          an ordinary save came back as a rejected plan change. */}
       <div className="grid grid-cols-2 gap-3">
+        <Field label={t('tasks.priority')}>
+          <select
+            className="field"
+            value={priority}
+            onChange={(event) => setPriority(event.target.value as TaskPriority)}
+            disabled={!planEditable}
+          >
+            {PRIORITY_ORDER.map((key) => (
+              <option key={key} value={key}>
+                {t(PRIORITY_META[key].key)}
+              </option>
+            ))}
+          </select>
+        </Field>
         <Field label={t('tasks.effortPoints')}>
           <select
             className="field"
@@ -338,18 +312,6 @@ export function TaskDialog({
               </option>
             ))}
           </select>
-        </Field>
-        <Field label={t('tasks.estimatedHours')}>
-          <input
-            type="number"
-            min={0}
-            max={1666}
-            step={0.5}
-            className="field ltr text-start"
-            value={estimatedHours}
-            onChange={(event) => setEstimatedHours(event.target.value)}
-            disabled={!planEditable}
-          />
         </Field>
       </div>
 
@@ -404,36 +366,10 @@ export function TaskDialog({
         </Field>
       )}
 
-      <Field label={t('tasks.stage')}>
-        <select
-          className="field"
-          value={stage}
-          onChange={(event) => setStage(event.target.value)}
-          disabled={!editable}
-        >
-          {selectableStages.map((s: { id: string; ar: string; en: string }) => (
-            <option key={s.id} value={s.id}>
-              {lang === 'en' ? s.en : s.ar}
-            </option>
-          ))}
-        </select>
-      </Field>
-
-      <Field label={t('tasks.relatedApp')}>
-        <select
-          className="field"
-          value={appId}
-          onChange={(event) => setAppId(event.target.value)}
-          disabled={!planEditable}
-        >
-          <option value="">— {t('tasks.noRelatedApp')} —</option>
-          {apps.map((app) => (
-            <option key={app.id} value={app.id}>
-              {lang === 'en' && app.nameEn ? app.nameEn : app.nameAr}
-            </option>
-          ))}
-        </select>
-      </Field>
+      {/* No stage picker. The stage is the result of an action — start it, hand
+          it in, review it — and the tracker above already says where the task
+          is. For the person doing the work the dropdown listed exactly one
+          option, which is a field that can only ever say what you already know. */}
     </div>
   );
 

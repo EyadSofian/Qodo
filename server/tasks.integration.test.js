@@ -15,7 +15,8 @@ import {
 } from './taskAccess.js';
 import { PERMISSIONS, can, visibilityFor } from '../shared/permissions.js';
 import { canApproveWork, canReopen, canReview, canScoreWork } from '../shared/workflow.js';
-import { DEPARTMENTS } from '../shared/departments.js';
+import { DEPARTMENTS, getStage, getSubteam, stageType } from '../shared/departments.js';
+import { stageForReturn, stageForState } from '../shared/workflow.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -166,6 +167,34 @@ test('every department supports the complete task lifecycle', () => {
       assert.ok(types.has(required), `${department.id} is missing a ${required} stage`);
     }
   }
+});
+
+test('no column exists that the lifecycle can never move a task into', () => {
+  // A stage a gate lands on is reachable, and so is anything a reviewer can drag
+  // to. What must not exist is a *second* column of a type whose name promises
+  // a lifecycle event — marketing's old "معتمدة" sat in the `open` group beside
+  // "قيد الانتظار", so approving never put anything there while its label said
+  // it had. The board is the record; a column that lies about the record is worse
+  // than no column.
+  const marketing = DEPARTMENTS.find((department) => department.id === 'marketing');
+  assert.deepEqual(
+    marketing.stages.map((stage) => stage.id),
+    ['pending', 'working', 'review', 'rework', 'blocked', 'done']
+  );
+  assert.equal(marketing.stages.filter((stage) => stage.type === 'open').length, 1);
+  assert.equal(marketing.stages.filter((stage) => stage.type === 'done').length, 1);
+
+  // Approving lands on "منجزة", and returned work on "إعادة عمل".
+  assert.equal(stageForState('marketing', 'approved', null), 'done');
+  assert.equal(stageForState('marketing', 'submitted', null), 'review');
+  assert.equal(stageForReturn('marketing', null), 'rework');
+
+  // A card left in the retired column still reads as the unstarted work it was.
+  assert.equal(getStage('marketing', 'approved').id, 'pending');
+  assert.equal(stageType('marketing', 'approved'), 'open');
+
+  // Marketing gained a moderation sub-team; the tree is what staffing reads.
+  assert.equal(getSubteam('marketing', 'moderation')?.en, 'Moderation');
 });
 
 test('team boundaries, performance privacy and export', async () => {
@@ -386,9 +415,9 @@ test('the board cannot be dragged past either gate', async () => {
   assert.equal(employeeBackwards.data.error, 'forbidden');
 
   // Nor sideways within the same canonical type. In marketing that is the move
-  // out of "إعادة عمل" — where a manager put it — back into "قيد العمل", and
-  // into a column named "معتمدة" that is an `open` stage.
-  for (const stage of ['rework', 'blocked', 'approved']) {
+  // out of "إعادة عمل" — where a manager put it — back into "قيد العمل", or
+  // parking it in "متوقفة" to stop the clock on their own.
+  for (const stage of ['rework', 'blocked']) {
     const sideways = await request(`/tasks/${task.id}`, {
       method: 'PATCH',
       cookie: creativeCookie,

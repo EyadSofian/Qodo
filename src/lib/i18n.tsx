@@ -186,7 +186,6 @@ const STRINGS = {
   'tasks.stage': { ar: 'المرحلة', en: 'Stage' },
   'tasks.priority': { ar: 'الأولوية', en: 'Priority' },
   'tasks.effortPoints': { ar: 'نقاط الجهد', en: 'Effort points' },
-  'tasks.estimatedHours': { ar: 'الساعات المقدرة', en: 'Estimated hours' },
   'tasks.progress': { ar: 'نسبة التقدم', en: 'Progress' },
   'tasks.assignee': { ar: 'المسؤول', en: 'Assignee' },
   'tasks.unassigned': { ar: 'غير مُسندة', en: 'Unassigned' },
@@ -203,9 +202,6 @@ const STRINGS = {
     ar: 'المهمة تُسند لشخص واحد ويصله إشعار ليقبلها أو يطلب تعديل الإسناد. التقييم يأتي لاحقاً — بعد أن يسلّم عمله وتراجعه.',
     en: 'A task goes to one person, who can accept or request an assignment change. The score comes later — after delivery and review.',
   },
-  'tasks.relatedApp': { ar: 'التطبيق المرتبط', en: 'Related app' },
-  'tasks.relatedAppHint': { ar: 'اربط المهمة بالتطبيق ذي الصلة.', en: 'Link the task to the app it relates to.' },
-  'tasks.noRelatedApp': { ar: 'غير مرتبطة بتطبيق', en: 'Not linked to an app' },
   'tasks.comments': { ar: 'التعليقات', en: 'Comments' },
   'tasks.noComments': { ar: 'لا توجد تعليقات بعد.', en: 'No comments yet.' },
   'tasks.commentPlaceholder': { ar: 'اكتب تعليقاً…', en: 'Write a comment…' },
@@ -272,8 +268,10 @@ const STRINGS = {
   'flow.start': { ar: 'ابدأ العمل', en: 'Start work' },
   'flow.submit': { ar: 'تسليم للمراجعة', en: 'Submit for review' },
   'flow.resubmit': { ar: 'إعادة التسليم', en: 'Resubmit' },
-  'flow.approve': { ar: 'اعتماد وتقييم', en: 'Approve & score' },
-  'flow.requestChanges': { ar: 'إرجاع للتعديل', en: 'Send back' },
+  // Both buttons name the column the card lands in, so a reviewer reads the
+  // choice as "where does this go" rather than as two words for a verdict.
+  'flow.approve': { ar: 'اعتماد ← منجزة', en: 'Approve → Done' },
+  'flow.requestChanges': { ar: 'إرجاع ← إعادة عمل', en: 'Send back → Rework' },
   'flow.reopen': { ar: 'إعادة فتح المهمة', en: 'Reopen task' },
   'flow.confirmReopen': { ar: 'إعادة فتح «{title}»؟ سيرجع للموظف من جديد.', en: 'Reopen “{title}”? It goes back to the assignee.' },
 
@@ -314,8 +312,12 @@ const STRINGS = {
 
   'flow.reviewTitle': { ar: 'المراجعة والتقييم', en: 'Review & score' },
   'flow.reviewHint': {
-    ar: 'افتح المرفقات، ثم اعتمد بتقييم من ١٠٠، أو أرجعها مع سبب واضح يعرف منه الموظف ما المطلوب.',
-    en: 'Open the deliverables, then approve with a score out of 100, or send it back with a reason they can act on.',
+    ar: 'افتح المرفقات، حدّد التقييم، ثم اختر: تروح «منجزة» ولا ترجع «إعادة عمل» مع سبب واضح.',
+    en: 'Open the deliverables, set the score, then choose: it goes to Done, or back to Rework with a clear reason.',
+  },
+  'flow.weakScoreHint': {
+    ar: 'التقييم ده «دون المتوقع» — الأنسب ترجّعها «إعادة عمل» مع السبب بدل ما تقفلها بتقييم ضعيف.',
+    en: 'That score is “below expectations” — better to send it back to Rework with a reason than to close it on a poor score.',
   },
   'flow.submittedBy': { ar: 'سلّمها {name} · {when}', en: 'Submitted by {name} · {when}' },
   'flow.onTime': { ar: 'سُلّمت في الموعد', en: 'Delivered on time' },
