@@ -309,6 +309,39 @@ test('the webhook is a secret away from being anybody at all', async () => {
   assert.equal(preExtracted.data.items[0].status, 'todo');
 });
 
+/**
+ * The Botpress bot lives outside this repository and outside the SLA one, so
+ * nothing in a deploy would tell us we had broken it. These four assertions are
+ * the exact shape of what it already sends and reads: get any of them wrong and
+ * the first person to type a message after the move gets a 401 and no idea why.
+ */
+test('the bot that already exists keeps working, header and all', async () => {
+  // It sends `x-engosoft-secret`, not the header names a fresh integration
+  // would have picked.
+  const filed = await request('/management/ingest', {
+    method: 'POST',
+    headers: { 'x-engosoft-secret': WEBHOOK_SECRET },
+    body: { text: 'اجتماع مع المورد', sender: 'عياد', chat_id: '77', message_id: '5' },
+  });
+  assert.equal(filed.status, 200);
+  assert.equal(filed.data.count, 1);
+  // It reads `reply` and prints it straight into the chat.
+  assert.ok(filed.data.reply, 'the bot prints `reply` back to the person');
+
+  // It asks for the agenda with no session at all — a bot has none — and with
+  // `day_offset`, not `day`.
+  const agenda = await request('/management/agenda?day_offset=0', {
+    headers: { 'x-engosoft-secret': WEBHOOK_SECRET },
+  });
+  assert.equal(agenda.status, 200);
+  // And it prints `text`, because a chat has no screen to lay rows out on.
+  assert.equal(typeof agenda.data.text, 'string');
+  assert.ok(agenda.data.text.length > 0);
+
+  // Without the secret the same call is still just an anonymous request.
+  assert.equal((await request('/management/agenda?day_offset=0')).status, 401);
+});
+
 test('the agenda answers "what is today", late work included', async () => {
   const today = new Date();
   const iso = (date) => date.toISOString();

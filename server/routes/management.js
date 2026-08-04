@@ -20,10 +20,12 @@ import { organizationOf } from '../../shared/organization.js';
 import {
   ManagementError,
   agenda,
+  agendaText,
   checkWebhookSecret,
   createItem,
   deleteItem,
   handleTelegramUpdate,
+  hasWebhookSecret,
   ingest,
   isAiEnabled,
   isTelegramEnabled,
@@ -84,6 +86,29 @@ router.post('/ingest', async (req, res) => {
   }
 });
 
+/**
+ * The agenda has two audiences and answers both on the same path.
+ *
+ * A bot asking «إيه أجندة النهاردة» has no session and never will, so a valid
+ * shared secret is served here, before the auth wall, and gets `text` — the
+ * whole thing rendered as one Arabic message, because a chat has no screen to
+ * lay rows out on. Anything without the secret falls through to the signed-in
+ * version below.
+ *
+ * `day_offset` is the parameter name the bot already sends; `day` is accepted
+ * too so the board and the bot are not obliged to disagree.
+ */
+router.get('/agenda', async (req, res, next) => {
+  if (!hasWebhookSecret(req.headers)) return next();
+  try {
+    const offset = Number(req.query.day_offset ?? req.query.day) || 0;
+    const data = await agenda(WEBHOOK_ORGANIZATION, offset);
+    res.json({ ...data, text: agendaText(data) });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
 /* ── people ──────────────────────────────────────────────────────── */
 
 router.use(requireAuth);
@@ -108,8 +133,9 @@ router.get('/items', async (req, res) => {
 
 router.get('/agenda', async (req, res) => {
   try {
-    const offset = Number(req.query.day);
-    res.json(await agenda(organizationOf(req.user), Number.isFinite(offset) ? offset : 0));
+    const offset = Number(req.query.day ?? req.query.day_offset) || 0;
+    const data = await agenda(organizationOf(req.user), offset);
+    res.json({ ...data, text: agendaText(data) });
   } catch (err) {
     fail(res, err);
   }

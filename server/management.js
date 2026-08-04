@@ -472,6 +472,12 @@ function safeEqual(a, b) {
   return diff === 0;
 }
 
+/**
+ * `x-engosoft-secret` is first because it is the header the Botpress bot has
+ * been sending all along. Renaming it here would have been a silent 401 on the
+ * first message somebody typed after the move — the bot lives outside both
+ * repositories, so nothing in a deploy would have told us.
+ */
 export function checkWebhookSecret(headers, expected = WEBHOOK_SECRET) {
   if (!expected) {
     throw new ManagementError(
@@ -481,10 +487,21 @@ export function checkWebhookSecret(headers, expected = WEBHOOK_SECRET) {
     );
   }
   const sent =
+    headers['x-engosoft-secret'] ??
     headers['x-telegram-bot-api-secret-token'] ??
     headers['x-webhook-secret'] ??
     String(headers.authorization ?? '').replace(/^Bearer\s+/i, '');
   if (!safeEqual(sent, expected)) throw new ManagementError('غير مصرّح.', 401);
+}
+
+/** True when the caller carries a valid shared secret — a bot, not a person. */
+export function hasWebhookSecret(headers) {
+  try {
+    checkWebhookSecret(headers);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function findMember(chatId) {
@@ -771,7 +788,15 @@ async function sendTelegram(chatId, text) {
   }
 }
 
-function agendaText({ due, overdue }) {
+/**
+ * The agenda as one Arabic message.
+ *
+ * The bot has no screen — it answers «/اجندة» by printing this straight into
+ * the chat, and reads it off `text` in the response. Rendering it here rather
+ * than in the caller is what keeps the phrasing the same whether it came from
+ * Telegram, from n8n, or from the board.
+ */
+export function agendaText({ due, overdue }) {
   if (!due.length && !overdue.length) return 'مفيش حاجة على أجندة النهاردة.';
   const line = (row) =>
     `• ${row.dueAt ? timeFmt.format(new Date(row.dueAt)) : '—'} ${row.title}${row.ownerName ? ` (${row.ownerName})` : ''}`;
