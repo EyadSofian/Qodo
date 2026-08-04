@@ -17,11 +17,14 @@ import { notifyUser, pushConfigured } from './push.js';
 import { PERMISSIONS, can, isActiveUser } from '../shared/permissions.js';
 import { DEFAULT_DEPARTMENT, DEPARTMENTS, isDoneStage } from '../shared/departments.js';
 import { organizationOf } from '../shared/organization.js';
+import { remindDueSoon } from './management.js';
 
 const TICK_MS = 60 * 1000;
 const DIGEST_HOUR = Number(process.env.DIGEST_HOUR ?? 9);
 const TIMEZONE = process.env.DIGEST_TIMEZONE || 'Africa/Cairo';
 const INSIGHTS_POLL_MINUTES = Number(process.env.INSIGHTS_POLL_MINUTES ?? 30);
+/** How far ahead a management item is warned about. */
+const DESK_REMINDER_MINUTES = Number(process.env.MANAGEMENT_REMINDER_MINUTES ?? 60);
 
 /* ── tiny persisted key/value ────────────────────────────────────── */
 
@@ -181,18 +184,35 @@ async function sendDigest() {
 
 /* ── job 2: the Insights Hub watcher ─────────────────────────────── */
 
+/** First and last day of the month we are currently in, as `YYYY-MM-DD`. */
+function monthBounds(date = new Date()) {
+  const { day } = localParts(date);
+  const [year, month] = day.split('-');
+  const last = new Date(Date.UTC(Number(year), Number(month), 0)).getUTCDate();
+  return { from: `${year}-${month}-01`, to: `${year}-${month}-${String(last).padStart(2, '0')}` };
+}
+
 async function checkInsights() {
   const app = await findOne('apps', (a) => a.id === 'insights');
   if (!app?.url || app.enabled === false) return;
 
+  /**
+   * Scoped to the month we are in rather than everything the dashboard holds.
+   *
+   * The unscoped total covers the whole year, so it moves by a fraction of a
+   * percent on any given sync — a number that large stops being news and starts
+   * being wallpaper. "This month" is the figure somebody can actually act on,
+   * and it is the one they would have gone to the dashboard to filter for.
+   */
+  const { from, to } = monthBounds();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 20_000);
   let data;
   try {
-    const response = await fetch(`${app.url.replace(/\/$/, '')}/api/overview`, {
-      signal: controller.signal,
-      headers: { Accept: 'application/json' },
-    });
+    const response = await fetch(
+      `${app.url.replace(/\/$/, '')}/api/overview?from=${from}&to=${to}`,
+      { signal: controller.signal, headers: { Accept: 'application/json' } }
+    );
     if (!response.ok) return;
     data = await response.json();
   } catch {
@@ -214,8 +234,28 @@ async function checkInsights() {
   if (!previous) return;
 
   const t = data.totals ?? {};
-  const spend = typeof t.spend === 'number' ? Math.round(t.spend).toLocaleString('en-US') : null;
-  const leads = t.crmLeads ?? null;
+  const money = (value) =>
+    typeof value === 'number' ? Math.round(value).toLocaleString('en-US') : null;
+  const spend = money(t.spend);
+  // `accountingRevenue` is what the books say was invoiced; `revenue` is its
+  // alias on this dashboard. Falling back keeps the line honest if they diverge.
+  const revenue = money(t.accountingRevenue ?? t.revenue);
+  const invoices = typeof t.invoicedOrders === 'number' ? t.invoicedOrders : null;
+
+  const monthName = new Intl.DateTimeFormat('ar-EG', { timeZone: TIMEZONE, month: 'long' }).format(
+    new Date()
+  );
+
+  const arabic = [
+    spend ? `إنفاق ${spend}` : null,
+    revenue ? `إيراد ${revenue}` : null,
+    invoices ? `${invoices} فاتورة` : null,
+  ].filter(Boolean);
+  const english = [
+    spend ? `Spend ${spend}` : null,
+    revenue ? `revenue ${revenue}` : null,
+    invoices ? `${invoices} invoices` : null,
+  ].filter(Boolean);
 
   // Only people who can open the app should hear about it.
   const users = await find('users', isActiveUser);
@@ -225,10 +265,13 @@ async function checkInsights() {
 
     await notifyAndRecord(user.id, {
       type: 'insights.updated',
-      title: { ar: 'تحديث جديد في التسويق والمبيعات', en: 'Insights Hub has new data' },
+      title: {
+        ar: `التسويق والمبيعات — ${monthName}`,
+        en: 'Insights Hub has new data',
+      },
       body: {
-        ar: spend ? `الإنفاق ${spend} · العملاء المحتملون ${leads ?? '—'}` : 'تم تحديث البيانات.',
-        en: spend ? `Spend ${spend} · leads ${leads ?? '—'}` : 'The data has been refreshed.',
+        ar: arabic.length ? arabic.join(' · ') : 'تم تحديث البيانات.',
+        en: english.length ? english.join(' · ') : 'The data has been refreshed.',
       },
       link: '/app/insights',
     });
@@ -268,7 +311,8 @@ export function startScheduler() {
 
   console.log(
     `[scheduler] daily digest at ${DIGEST_HOUR}:00 ${TIMEZONE}; ` +
-      `Insights checked every ${INSIGHTS_POLL_MINUTES} min`
+      `Insights checked every ${INSIGHTS_POLL_MINUTES} min; ` +
+      `management reminders ${DESK_REMINDER_MINUTES} min ahead`
   );
 
   let lastInsightsCheck = 0;
@@ -288,6 +332,14 @@ export function startScheduler() {
       if (Date.now() - lastInsightsCheck >= INSIGHTS_POLL_MINUTES * 60 * 1000) {
         lastInsightsCheck = Date.now();
         await checkInsights();
+      }
+
+      // Every tick, because a meeting an hour away is only useful news for the
+      // hour before it. The item itself records that it has been warned about,
+      // so running this a minute later never sends the same reminder twice.
+      for (const organization of await find('organizations')) {
+        const sent = await remindDueSoon(organization.id, DESK_REMINDER_MINUTES);
+        if (sent) console.log(`[scheduler] ${sent} management reminder(s) sent`);
       }
     } catch (err) {
       console.error('[scheduler]', err);

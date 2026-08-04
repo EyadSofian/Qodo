@@ -346,10 +346,16 @@ test('the agenda answers "what is today", late work included', async () => {
   const today = new Date();
   const iso = (date) => date.toISOString();
 
+  // Ask the server which day it thinks it is rather than assuming, then aim at
+  // noon UTC on that day. "Three hours from now" looks reasonable and is not:
+  // run the suite late enough in Cairo and it lands on tomorrow, so the test
+  // passes all afternoon and fails at night.
+  const day = (await request('/management/agenda', { cookie: deskCookie })).data.day;
+
   await request('/management/items', {
     method: 'POST',
     cookie: deskCookie,
-    body: { title: 'بند النهاردة', dueAt: iso(new Date(today.getTime() + 3 * 3600_000)) },
+    body: { title: 'بند النهاردة', dueAt: `${day}T12:00:00.000Z` },
   });
   await request('/management/items', {
     method: 'POST',
@@ -367,6 +373,62 @@ test('the agenda answers "what is today", late work included', async () => {
   // Tomorrow is a different question and carries no overdue tail.
   const tomorrow = await request('/management/agenda?day=1', { cookie: deskCookie });
   assert.deepEqual(tomorrow.data.overdue, []);
+});
+
+test('filing tells the desk, and a deadline warns once', async () => {
+  const inbox = async (cookie) =>
+    (await request('/notifications', { cookie })).data.notifications ?? [];
+
+  const observerCookie = await login('observer@test.local', 'Observe1!');
+  // Count before, because items filed from chat earlier in this run legitimately
+  // announced themselves to everyone — including this desk.
+  const deskBefore = (await inbox(deskCookie)).length;
+  const observerBefore = (await inbox(observerCookie)).length;
+
+  // The observer files nothing, but is on the desk — so they hear about it.
+  const filed = await request('/management/items', {
+    method: 'POST',
+    cookie: deskCookie,
+    body: {
+      kind: 'meeting',
+      title: 'اجتماع مع المصنع',
+      dueAt: new Date(Date.now() + 30 * 60_000).toISOString(),
+    },
+  });
+  assert.equal(filed.status, 201);
+
+  const observerHeard = (await inbox(observerCookie)).filter((n) => n.type === 'management.filed');
+  assert.equal((await inbox(observerCookie)).length, observerBefore + 1);
+  assert.match(observerHeard[0].body, /اجتماع مع المصنع/);
+
+  // The person who filed it is not told about their own action.
+  assert.equal((await inbox(deskCookie)).length, deskBefore, 'no self-notification');
+
+  // A reminder is sent once, which is tracked on the item itself so a redeploy
+  // cannot resend it. Moving the deadline has to clear that mark, or pushing a
+  // meeting to next week means nobody is ever told when next week arrives.
+  const item = filed.data.item;
+  assert.equal(item.remindedAt, null);
+
+  const marked = await request(`/management/items/${item.id}`, {
+    method: 'PATCH',
+    cookie: deskCookie,
+    body: { needsReview: true },
+  });
+  assert.equal(marked.data.item.remindedAt, null, 'an unrelated edit leaves the mark alone');
+
+  const moved = await request(`/management/items/${item.id}`, {
+    method: 'PATCH',
+    cookie: deskCookie,
+    body: { dueAt: new Date(Date.now() + 7 * 86400_000).toISOString() },
+  });
+  assert.equal(moved.status, 200);
+  assert.equal(moved.data.item.remindedAt, null, 'a moved deadline is remindable again');
+
+  // The manager holds every task authority there is and still hears nothing —
+  // the desk audience is the permission, not seniority.
+  const managerHeard = (await inbox(managerCookie)).filter((n) => n.type === 'management.filed');
+  assert.equal(managerHeard.length, 0);
 });
 
 test('one desk cannot read another tenant, and deleting needs the grant', async () => {

@@ -30,6 +30,9 @@ import Anthropic from '@anthropic-ai/sdk';
 import { create, find, findOne, getStore } from './store.js';
 import { DEPARTMENT_IDS } from '../shared/departments.js';
 import { organizationOf } from '../shared/organization.js';
+import { PERMISSIONS, can, isActiveUser } from '../shared/permissions.js';
+import { notifyUser } from './push.js';
+import { publishNotification } from './notificationStream.js';
 
 /* ── configuration ───────────────────────────────────────────────── */
 
@@ -314,6 +317,7 @@ async function normalizeItem(input, defaults = {}) {
     aiConfidence: Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : null,
     needsReview: Boolean(needsReview),
     doneAt: null,
+    remindedAt: null,
     ...defaults,
   };
 }
@@ -340,7 +344,13 @@ async function normalizePatch(input, current) {
     patch.departmentLabel = DEPARTMENT_IDS.includes(department) ? null : department;
   }
   if (input?.location !== undefined) patch.location = str(input.location, 200);
-  if (input?.dueAt !== undefined) patch.dueAt = toTimestamp(input.dueAt);
+  if (input?.dueAt !== undefined) {
+    patch.dueAt = toTimestamp(input.dueAt);
+    // Moving a deadline makes any warning already sent about the old one stale,
+    // so the item becomes eligible to remind about again. Without this, pushing
+    // a meeting to next week means nobody is ever told when next week arrives.
+    if (patch.dueAt !== (current.dueAt ?? null)) patch.remindedAt = null;
+  }
   if (input?.durationMin !== undefined) patch.durationMin = toInt(input.durationMin, 60 * 24);
   if (input?.attendees !== undefined) patch.attendees = toList(input.attendees, 20, 80);
   if (input?.tags !== undefined) patch.tags = toList(input.tags, 3, 40);
@@ -630,6 +640,9 @@ export async function ingest({
 
   const saved = [];
   for (const row of rows) saved.push(await create('managementItems', { ...row, ingestId: log.id }));
+  // Something filed from a chat is the case where the desk most needs telling:
+  // the person who wrote it is looking at Telegram, not at the board.
+  for (const item of saved) await announceItem(item, null);
 
   return {
     ok: !error,
@@ -733,6 +746,110 @@ export async function listInbox(organizationId, query = {}) {
   const rows = await find('managementIngest', inOrganization(organizationId));
   rows.sort((a, b) => String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')));
   return rows.slice(0, limit);
+}
+
+/* ── telling people ──────────────────────────────────────────────── */
+
+/**
+ * Who hears about the desk: everybody holding `management.view`.
+ *
+ * The audience is the permission rather than a list of ids on purpose. The
+ * whole point of the desk is that its membership is granted one person at a
+ * time, so the notification list has to be derived from that same grant or the
+ * two drift apart the first time somebody is added.
+ */
+async function deskAudience(organizationId, exceptUserId = null) {
+  const users = await find('users', isActiveUser);
+  return users.filter(
+    (user) =>
+      user.id !== exceptUserId &&
+      organizationOf(user) === organizationOf({ organizationId }) &&
+      can(user, PERMISSIONS.MANAGEMENT_VIEW)
+  );
+}
+
+async function notify(userId, actorId, { type, title, body, link }) {
+  if (!userId) return;
+  const target = await findOne('users', (user) => user.id === userId);
+  if (!target || !isActiveUser(target)) return;
+  const notification = await create('notifications', {
+    organizationId: organizationOf(target),
+    userId,
+    actorId,
+    type,
+    title,
+    body,
+    link,
+    read: false,
+  });
+  publishNotification(userId, notification.id);
+  await notifyUser(userId, { title, body, link });
+}
+
+const whenLabel = (item) =>
+  item.dueAt ? `${dateFmt.format(new Date(item.dueAt))} ${timeFmt.format(new Date(item.dueAt))}` : '';
+
+/** A new item on the desk — everybody on it should know without being told. */
+export async function announceItem(item, actorId) {
+  const when = whenLabel(item);
+  const audience = await deskAudience(item.organizationId, actorId);
+  for (const user of audience) {
+    await notify(user.id, actorId, {
+      type: 'management.filed',
+      title: {
+        ar: `${KIND_LABEL[item.kind] ?? 'بند'} جديد على لوحة الإدارة`,
+        en: 'A new item on the management desk',
+      },
+      body: [item.title, when, item.ownerName].filter(Boolean).join(' · '),
+      link: '/management',
+    });
+  }
+}
+
+/**
+ * Items whose time is about to arrive.
+ *
+ * `remindedAt` is stamped on the item rather than kept in a scheduler variable,
+ * so a redeploy cannot resend a reminder somebody already got — the record of
+ * having warned about a thing belongs with the thing.
+ */
+export async function remindDueSoon(organizationId, withinMinutes = 60) {
+  const now = Date.now();
+  const horizon = new Date(now + withinMinutes * 60_000).toISOString();
+  const rows = await find(
+    'managementItems',
+    (item) =>
+      inOrganization(organizationId)(item) &&
+      (item.status === 'todo' || item.status === 'doing') &&
+      !item.remindedAt &&
+      item.dueAt &&
+      item.dueAt <= horizon &&
+      new Date(item.dueAt).getTime() > now
+  );
+  if (!rows.length) return 0;
+
+  const store = await getStore();
+  const audience = await deskAudience(organizationId);
+
+  for (const item of rows) {
+    // Work that resolved to a real person is that person's to be reminded of.
+    // Everything else is the desk's, because an item nobody owns is exactly the
+    // one that gets missed.
+    const targets = item.ownerId ? [{ id: item.ownerId }] : audience;
+    for (const target of targets) {
+      await notify(target.id, null, {
+        type: 'management.due_soon',
+        title: {
+          ar: `${KIND_LABEL[item.kind] ?? 'بند'} قرّب معاده`,
+          en: 'Something on the desk is due shortly',
+        },
+        body: [item.title, whenLabel(item)].filter(Boolean).join(' · '),
+        link: '/management',
+      });
+    }
+    await store.update('managementItems', item.id, { remindedAt: new Date().toISOString() });
+  }
+  return rows.length;
 }
 
 /* ── writes ──────────────────────────────────────────────────────── */

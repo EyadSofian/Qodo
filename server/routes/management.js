@@ -21,6 +21,7 @@ import {
   ManagementError,
   agenda,
   agendaText,
+  announceItem,
   checkWebhookSecret,
   createItem,
   deleteItem,
@@ -163,6 +164,7 @@ router.post('/items', async (req, res) => {
       actorId: req.user.id,
       reporter: req.user.name,
     });
+    await announceItem(item, req.user.id);
     await logActivity({
       actorId: req.user.id,
       action: 'management.create',
