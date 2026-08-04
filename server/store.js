@@ -41,6 +41,15 @@ export const COLLECTIONS = [
   'activity',
   'pushSubscriptions',
   'settings',
+  // The management desk — the executive's own tasks, meetings, appointments,
+  // reminders and decisions. Separate from `tasks` on purpose: a task is a
+  // contract assigned to somebody and measured, while these are the diary of
+  // the people doing the assigning. `managementIngest` keeps every inbound
+  // Telegram message whether or not the extraction worked, and
+  // `managementMembers` is which chats are allowed to file at all.
+  'managementItems',
+  'managementIngest',
+  'managementMembers',
 ];
 
 export const newId = () => crypto.randomUUID();

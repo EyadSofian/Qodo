@@ -25,6 +25,7 @@ import taskRoutes from './routes/tasks.js';
 import notificationRoutes from './routes/notifications.js';
 import searchRoutes from './routes/search.js';
 import assistantRoutes from './routes/assistant.js';
+import managementRoutes from './routes/management.js';
 import pushRoutes from './routes/push.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -56,6 +57,9 @@ app.use('/api/tasks', taskRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/assistant', assistantRoutes);
+// The two webhook routes inside are the only unauthenticated ones — a Telegram
+// bot has no session. They carry a shared secret instead.
+app.use('/api/management', managementRoutes);
 app.use('/api/push', pushRoutes);
 
 app.get('/api/health', async (_req, res) => {

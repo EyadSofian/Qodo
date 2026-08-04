@@ -4,6 +4,7 @@ import {
   Bell,
   BellRing,
   Bot,
+  Briefcase,
   ChevronDown,
   Home,
   KeyRound,
@@ -222,6 +223,23 @@ export function Shell({ children }: { children: ReactNode }) {
             </NavLink>
           )}
 
+          {/* Only the people actually on the management desk ever see this —
+              no role carries the key, it is granted one person at a time. */}
+          {can(PERMISSIONS.MANAGEMENT_VIEW) && (
+            <NavLink
+              to="/management"
+              className={({ isActive }) =>
+                cx(
+                  'btn !min-h-10 hidden shrink-0 gap-1.5 rounded-xl px-2.5 text-[13px] font-semibold md:flex',
+                  isActive ? 'bg-navy text-white' : 'text-ink-muted hover:bg-surface-sunken hover:text-ink'
+                )
+              }
+            >
+              <Briefcase size={18} />
+              <span className="hidden lg:inline">{t('management.title')}</span>
+            </NavLink>
+          )}
+
           <button
             type="button"
             onClick={() => setAssistantOpen(true)}
@@ -419,6 +437,18 @@ function BottomNav({ onOpenSwitcher }: { onOpenSwitcher: () => void }) {
             end: false,
             badge: taskBadge,
             urgent: taskCounts.overdue > 0,
+          },
+        ]
+      : []),
+    ...(can(PERMISSIONS.MANAGEMENT_VIEW)
+      ? [
+          {
+            to: '/management',
+            label: t('management.title'),
+            icon: Briefcase,
+            end: false,
+            badge: 0,
+            urgent: false,
           },
         ]
       : []),

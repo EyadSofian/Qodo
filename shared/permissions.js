@@ -21,6 +21,8 @@ export const PERMISSIONS = {
   TASKS_ARCHIVE: 'tasks.archive',
   TASKS_DELETE_ANY: 'tasks.delete_any',
   TASKS_EXPORT: 'tasks.export',
+  MANAGEMENT_VIEW: 'management.view',
+  MANAGEMENT_MANAGE: 'management.manage',
   USERS_VIEW: 'users.view',
   USERS_MANAGE: 'users.manage',
   SETTINGS_MANAGE: 'settings.manage',
@@ -44,6 +46,18 @@ const AUTHORITY_PERMISSIONS = [
   PERMISSIONS.TASKS_APPROVE,
   PERMISSIONS.TASKS_SCORE,
 ];
+
+/**
+ * The management desk is deliberately absent from every role below, including
+ * `manager`.
+ *
+ * `management.view` and `management.manage` open the executive's own diary —
+ * who the board is meeting, what was decided, what the owner owes this week.
+ * That is not "what a manager does", it is "which particular people are on the
+ * management desk", and no role can express that. So both keys are granted one
+ * person at a time through the permission override, and only `admin` carries
+ * them by virtue of holding everything.
+ */
 
 /**
  * A task is a contract between two people: one side commissions the work, the

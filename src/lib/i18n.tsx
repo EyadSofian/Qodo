@@ -494,6 +494,12 @@ const STRINGS = {
   'perm.tasks.review': { ar: 'مراجعة المسلَّم وإرجاعه', en: 'Review deliverables and send back' },
   'perm.tasks.approve': { ar: 'اعتماد المهام وإعادة فتحها', en: 'Approve and reopen tasks' },
   'perm.tasks.score': { ar: 'تقييم الأداء ورؤية تقييمات الفريق', en: 'Score work and see team scores' },
+  'management.title': { ar: 'الإدارة', en: 'Management' },
+  'perm.management.view': { ar: 'فتح لوحة الإدارة', en: 'Open the management desk' },
+  'perm.management.manage': {
+    ar: 'تسجيل وتعديل بنود الإدارة',
+    en: 'File and edit management items',
+  },
   'perm.tasks.archive': { ar: 'أرشفة المهام وإعادتها', en: 'Archive tasks and restore them' },
   'perm.tasks.delete_any': { ar: 'حذف المؤرشف نهائياً', en: 'Permanently delete archived tasks' },
   'perm.tasks.export': { ar: 'تصدير مهام الفريق', en: 'Export team tasks' },

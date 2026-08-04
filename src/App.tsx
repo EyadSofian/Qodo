@@ -10,6 +10,7 @@ import { Join } from './pages/Join';
 import { Launcher } from './pages/Launcher';
 import { AppFrame } from './pages/AppFrame';
 import { Tasks } from './pages/Tasks';
+import { Management } from './pages/Management';
 import { Users } from './pages/Users';
 import { Settings } from './pages/Settings';
 
@@ -57,6 +58,10 @@ function Gate() {
         <Route path="/" element={<Launcher />} />
         <Route path="/app/:appId" element={<AppFrame />} />
         <Route path="/tasks" element={<Tasks />} />
+        {/* The route exists for everybody; the API is what refuses. Hiding it
+            from the router instead would mean a bookmarked link lands on the
+            launcher with no explanation. */}
+        <Route path="/management" element={<Management />} />
         <Route path="/users" element={<Users />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="*" element={<Navigate to="/" replace />} />
