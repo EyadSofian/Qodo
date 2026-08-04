@@ -274,6 +274,12 @@ async function migrateOrganisationAndTasks(store) {
      * produces. Reading that as an approval keeps the old board's numbers
      * meaningful instead of showing every finished task as never reviewed.
      */
+    // Everything that already exists is on a board, so it archives as null. The
+    // field has to be present rather than merely absent because it is what
+    // `livePredicate` reads on every listing.
+    if (!Object.hasOwn(task, 'archivedAt')) patch.archivedAt = null;
+    if (!Object.hasOwn(task, 'archivedBy')) patch.archivedBy = null;
+    if (!Object.hasOwn(task, 'archiveReason')) patch.archiveReason = '';
     if (!Object.hasOwn(task, 'startedAt')) patch.startedAt = null;
     if (!Object.hasOwn(task, 'submittedAt')) patch.submittedAt = null;
     if (!Object.hasOwn(task, 'submittedBy')) patch.submittedBy = null;

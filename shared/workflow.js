@@ -122,13 +122,34 @@ export function stageForReturn(department, fallback) {
 /* ── who is who ──────────────────────────────────────────────────── */
 
 /**
- * A reviewer is anyone who may edit other people's tasks — managers and
- * administrators. Deliberately reusing `tasks.edit_any` rather than minting a
- * new permission: users can carry an explicit permission override, so a new key
- * would silently strip the ability from everyone who has one.
+ * The commissioning side of the contract, one authority per key.
+ *
+ * These four used to be a single `tasks.edit_any`, which made "may edit a
+ * colleague's task" indistinguishable from "may close it and put a number on
+ * someone's performance record". They are separate so a team lead can be given
+ * assignment without approval, or a reviewer without the power to re-plan the
+ * work they are reviewing. `permissionsFor` back-fills them for anyone whose
+ * stored override predates the split.
  */
+export function canAssignWork(user) {
+  return can(user, PERMISSIONS.TASKS_ASSIGN);
+}
+
+export function canReviewWork(user) {
+  return can(user, PERMISSIONS.TASKS_REVIEW);
+}
+
+export function canApproveWork(user) {
+  return can(user, PERMISSIONS.TASKS_APPROVE);
+}
+
+export function canScoreWork(user) {
+  return can(user, PERMISSIONS.TASKS_SCORE);
+}
+
+/** A reviewer is whoever may pass judgement on submitted work. */
 export function isReviewer(user) {
-  return can(user, PERMISSIONS.TASKS_EDIT_ANY);
+  return canReviewWork(user);
 }
 
 /**
@@ -138,7 +159,7 @@ export function isReviewer(user) {
 export function isDoer(user, task) {
   if (!user || !task) return false;
   if (task.assigneeId) return task.assigneeId === user.id;
-  return task.createdBy === user.id || isReviewer(user);
+  return task.createdBy === user.id || canAssignWork(user);
 }
 
 /** A named assignee must explicitly accept before execution starts. */
@@ -164,7 +185,7 @@ export function canStart(user, task) {
   return (
     taskState(task) === 'assigned' &&
     ((isDoer(user, task) && assignmentReady(task)) ||
-      (isReviewer(user) && !task.assigneeId))
+      (canAssignWork(user) && !task.assigneeId))
   );
 }
 
@@ -173,71 +194,86 @@ export function canSubmit(user, task) {
   return (
     (state === 'assigned' || state === 'working') &&
     ((isDoer(user, task) && assignmentReady(task)) ||
-      (isReviewer(user) && !task.assigneeId))
+      (canAssignWork(user) && !task.assigneeId))
   );
 }
 
 export function canReview(user, task) {
-  return taskState(task) === 'submitted' && isReviewer(user);
+  return taskState(task) === 'submitted' && canReviewWork(user);
 }
 
 /** Reopening an approved task is a manager's correction, not an employee's undo. */
 export function canReopen(user, task) {
-  return taskState(task) === 'approved' && isReviewer(user);
+  return taskState(task) === 'approved' && canApproveWork(user);
 }
 
 export function canScore(user) {
-  return isReviewer(user);
-}
-
-/**
- * Whether a drag may drop a card into a column of this canonical type.
- *
- * `review` and `done` are the two gates, so a drop onto them is not a move —
- * the client turns it into the submit or review dialog, and the API refuses a
- * bare stage write that would cross either one.
- */
-export function canMoveTo(user, task, type) {
-  if (!user || !task) return false;
-  if (type === 'done') return isReviewer(user);
-  if (type === 'review') return isDoer(user, task) || isReviewer(user);
-  return isDoer(user, task) || isReviewer(user) || task.createdBy === user.id;
+  return canScoreWork(user);
 }
 
 /**
  * What a plain stage write means — the one rule the API enforces and the board
  * consults before it lets a card land:
  *
- *   'ok'        move it, it crosses nothing
+ *   'ok'         move it; this caller may rearrange the board freely
  *   'assignment' the assignee must answer the assignment before work starts
- *   'submit'    this is a hand-in; it needs a deliverable, so use the submit gate
- *   'review'    this is an approval; it needs a score, so use the review gate
- *   'reopen'    approved work must be reopened explicitly before it can move
- *   'forbidden' the caller cannot make this transition
+ *   'start'      this is picking the work up, so use the start action
+ *   'submit'     this is a hand-in; it needs a deliverable, so use the submit gate
+ *   'review'     this is an approval; it needs a score, so use the review gate
+ *   'reopen'     approved work must be reopened explicitly before it can move
+ *   'forbidden'  the caller cannot make this transition
  *
  * The client turns every non-'ok' verdict into the matching task action rather
  * than silently moving the card around the workflow contract.
+ *
+ * The asymmetry at the bottom is deliberate and is the rule the whole board
+ * rests on: **for the person doing the work a stage is the result of an action,
+ * never a drag.** They have exactly two moves — pick the work up, and hand it
+ * in — and both go through an action that records who, when and with what. Only
+ * a reviewer may push a card around for any other reason.
+ *
+ * Without that, an employee could drag their own card between two columns of
+ * the same canonical type, which in a department like marketing means moving it
+ * out of "إعادة عمل" — where a manager put it — back into "قيد العمل", or into
+ * a column literally named "معتمدة". Same type, so the old rule read it as an
+ * ordinary move and allowed it.
  */
 export function stageWriteVerdict(user, task, nextDepartment, nextStage) {
   const from = taskState(task);
   const to = STATE_BY_STAGE_TYPE[stageType(nextDepartment, nextStage)] ?? 'assigned';
-  if (from === to) return 'ok';
+  // Not a stage change at all — a reorder inside a column, or a patch that never
+  // mentioned the stage. Both sides are read through `departmentOfTask` so a
+  // task stored without a department compares equal to the default rather than
+  // looking like a move to a different board.
+  const sameStage =
+    nextStage === task.stage &&
+    departmentOfTask({ department: nextDepartment }) === departmentOfTask(task);
+  if (sameStage) return 'ok';
 
   const forward = TASK_STATES.indexOf(to) > TASK_STATES.indexOf(from);
+  const reviewer = canReviewWork(user);
+  const doer = isDoer(user, task);
+
   // A pending assignment is a real gate. Without this check, dragging the card
   // from an open column to an active one bypasses the explicit accept/decline
   // response even though the dedicated /start action correctly refuses it.
   if (from === 'assigned' && to === 'working' && task.assigneeId && !assignmentReady(task)) {
-    return isDoer(user, task) || isReviewer(user) ? 'assignment' : 'forbidden';
+    return doer || reviewer ? 'assignment' : 'forbidden';
   }
-  if (to === 'approved') return 'review';
-  if (to === 'submitted' && forward) return 'submit';
+  if (to === 'approved') return canApproveWork(user) ? 'review' : 'forbidden';
+  if (to === 'submitted' && forward) {
+    return doer || reviewer ? 'submit' : 'forbidden';
+  }
   // Returning submitted work requires the review gate because that action owns
   // the mandatory reason, rework counter and assignee notification. Approved
   // work similarly has to pass through the explicit reopen action.
-  if (!forward && from === 'submitted') return isReviewer(user) ? 'review' : 'forbidden';
-  if (!forward && from === 'approved') return isReviewer(user) ? 'reopen' : 'forbidden';
-  return 'ok';
+  if (from === 'submitted' && to !== from) return reviewer ? 'review' : 'forbidden';
+  if (from === 'approved' && to !== from) return canApproveWork(user) ? 'reopen' : 'forbidden';
+  // Picking the work up is the doer's other legitimate move, and it belongs to
+  // the start action so `startedAt` is stamped and the board is not the record.
+  if (from === 'assigned' && to === 'working' && doer && !reviewer) return 'start';
+
+  return reviewer ? 'ok' : 'forbidden';
 }
 
 /* ── reading a task's history ────────────────────────────────────── */

@@ -16,9 +16,11 @@ import {
 } from '../../shared/departments.js';
 import {
   ASSIGNMENT_ACTIONS,
+  canApproveWork,
   canReopen,
   canRespondToAssignment,
   canReview,
+  canScoreWork,
   canStart,
   canSubmit,
   isReviewer,
@@ -31,6 +33,7 @@ import {
 import { notifyUser } from '../push.js';
 import { publishNotification } from '../notificationStream.js';
 import {
+  canArchiveTask,
   canAssignUser,
   canDeleteTask,
   canEditTask,
@@ -38,6 +41,8 @@ import {
   canManageTaskPlan,
   canUseDepartment,
   canViewTask,
+  isArchived,
+  livePredicate,
   taskForUser,
   taskPredicate,
   visiblePeople,
@@ -59,7 +64,7 @@ router.get('/', async (req, res) => {
   if (!can(req.user, PERMISSIONS.TASKS_VIEW)) {
     return res.status(403).json({ error: 'forbidden', missing: PERMISSIONS.TASKS_VIEW });
   }
-  const tasks = (await find('tasks', taskPredicate(req.user))).sort(
+  const tasks = (await find('tasks', livePredicate(req.user))).sort(
     (a, b) => (a.order ?? 0) - (b.order ?? 0)
   );
   res.json({ tasks: tasks.map((task) => taskForUser(req.user, task)), priorities: PRIORITIES });
@@ -79,7 +84,7 @@ router.get('/counts', async (req, res) => {
     return res.json({ mine: 0, overdue: 0, dueToday: 0, unanswered: 0, awaitingMyReview: 0 });
   }
 
-  const visible = await find('tasks', taskPredicate(req.user));
+  const visible = await find('tasks', livePredicate(req.user));
   const today = new Date().toISOString().slice(0, 10);
   const isOpen = (task) => !isDoneStage(task.department ?? DEFAULT_DEPARTMENT, task.stage);
 
@@ -108,7 +113,7 @@ router.get('/overview', async (req, res) => {
   }
 
   const managesTeam = canManagePerformance(req.user);
-  let tasks = await find('tasks', taskPredicate(req.user));
+  let tasks = await find('tasks', livePredicate(req.user));
   let people = visiblePeople(req.user, await find('users', isActiveUser));
 
   // Performance is more private than the team task table: employees get only
@@ -142,7 +147,7 @@ router.get('/overview', async (req, res) => {
 });
 
 router.get('/export.csv', requirePermission(PERMISSIONS.TASKS_EXPORT), async (req, res) => {
-  let tasks = await find('tasks', taskPredicate(req.user));
+  let tasks = await find('tasks', livePredicate(req.user));
   const requestedDepartment = String(req.query.department || '');
   if (requestedDepartment) {
     if (!DEPARTMENT_IDS.includes(requestedDepartment)) {
@@ -326,6 +331,7 @@ router.patch('/:id', async (req, res) => {
   const task = await findOne('tasks', (t) => t.id === req.params.id);
   if (!task) return res.status(404).json({ error: 'not_found' });
   if (!taskPredicate(req.user)(task)) return res.status(404).json({ error: 'not_found' });
+  if (isArchived(task)) return res.status(409).json({ error: 'task_archived' });
   if (!canEditTask(req.user, task)) return res.status(403).json({ error: 'forbidden' });
   // Scores are the outcome of the review action, never a generic editable task
   // property. Keeping this out of PATCH preserves the reviewer/timestamp trail.
@@ -347,24 +353,32 @@ router.patch('/:id', async (req, res) => {
     return res.status(403).json({ error: 'forbidden_team' });
   }
   const nextAssignee = patch.assigneeId !== undefined ? patch.assigneeId : task.assigneeId;
-  if (nextAssignee && !(await validAssignee(req.user, nextAssignee, nextDepartment))) {
+  // Only re-check the assignment when it is actually being decided: the person
+  // is changing, or the team is moving under them. An assignee editing their own
+  // progress is not assigning anybody, and asking them to prove they *could*
+  // have assigned the person already on the card would fail every ordinary edit
+  // now that assigning is a manager's authority.
+  const assignmentDecided =
+    nextAssignee !== (task.assigneeId ?? null) ||
+    nextDepartment !== (task.department ?? DEFAULT_DEPARTMENT);
+  if (
+    nextAssignee &&
+    assignmentDecided &&
+    !(await validAssignee(req.user, nextAssignee, nextDepartment))
+  ) {
     return res.status(400).json({ error: 'assignee_team_mismatch' });
   }
 
-  const planChanged =
-    (Object.hasOwn(patch, 'assigneeId') && patch.assigneeId !== task.assigneeId) ||
-    (Object.hasOwn(patch, 'department') &&
-      patch.department !== (task.department ?? DEFAULT_DEPARTMENT)) ||
-    (Object.hasOwn(patch, 'subteam') && patch.subteam !== (task.subteam ?? null)) ||
-    (Object.hasOwn(patch, 'dueDate') && patch.dueDate !== (task.dueDate ?? null));
-  if (planChanged && !canManageTaskPlan(req.user, task)) {
+  if (changesPlan(patch, task) && !canManageTaskPlan(req.user, task)) {
     return res.status(403).json({ error: 'task_plan_forbidden' });
   }
 
   /* Workflow gates are actions, not fields. A plain stage write cannot bypass
-   * assignment acceptance, submission evidence, manager review or reopening. */
+   * assignment acceptance, picking the work up, submission evidence, manager
+   * review or reopening. */
   const verdict = stageWriteVerdict(req.user, task, nextDepartment, nextStage);
   if (verdict === 'assignment') return res.status(409).json({ error: 'assignment_required' });
+  if (verdict === 'start') return res.status(409).json({ error: 'start_required' });
   if (verdict === 'submit') return res.status(409).json({ error: 'submit_required' });
   if (verdict === 'review') return res.status(409).json({ error: 'review_required' });
   if (verdict === 'reopen') return res.status(409).json({ error: 'reopen_required' });
@@ -430,6 +444,78 @@ router.patch('/:id', async (req, res) => {
   res.json({ task: taskForUser(req.user, updated) });
 });
 
+/**
+ * Take a task off the board without destroying it.
+ *
+ * This is what used to be DELETE. The record — who asked for the work, who did
+ * it, what was handed in, what it scored — outlives the card, so a task that
+ * went badly can be cleared away without also being erased.
+ */
+router.post('/:id/archive', async (req, res) => {
+  const store = await getStore();
+  const task = await loadLive(req, res);
+  if (!task) return;
+  if (!canArchiveTask(req.user, task)) return res.status(403).json({ error: 'archive_forbidden' });
+
+  const reason = String(req.body?.reason || '').trim().slice(0, 500);
+  const updated = await store.update('tasks', task.id, {
+    archivedAt: new Date().toISOString(),
+    archivedBy: req.user.id,
+    archiveReason: reason,
+  });
+
+  // The person who was carrying the work needs to know it stopped being theirs.
+  if (task.assigneeId && task.assigneeId !== req.user.id) {
+    await notify(task.assigneeId, req.user.id, {
+      type: 'task.archived',
+      title: { ar: 'أُرشفت مهمة كانت لديك', en: 'A task of yours was archived' },
+      body: task.title,
+      link: '/tasks',
+    });
+  }
+
+  await logActivity({
+    actorId: req.user.id,
+    action: 'task.archive',
+    subject: 'task',
+    subjectId: task.id,
+    meta: { title: task.title, reason },
+  });
+  res.json({ task: taskForUser(req.user, updated) });
+});
+
+/** Put an archived task back on the board — the same authority, undone. */
+router.post('/:id/restore', async (req, res) => {
+  const store = await getStore();
+  const task = await loadVisible(req, res);
+  if (!task) return;
+  if (!canArchiveTask(req.user, task)) return res.status(403).json({ error: 'archive_forbidden' });
+  if (!isArchived(task)) return res.status(409).json({ error: 'not_archived' });
+
+  const updated = await store.update('tasks', task.id, {
+    archivedAt: null,
+    archivedBy: null,
+    archiveReason: '',
+  });
+
+  await logActivity({
+    actorId: req.user.id,
+    action: 'task.restore',
+    subject: 'task',
+    subjectId: task.id,
+    meta: { title: task.title },
+  });
+  res.json({ task: taskForUser(req.user, updated) });
+});
+
+/**
+ * The permanent purge, and the only operation in the app that destroys history:
+ * the comments and the uploaded deliverables go with the task.
+ *
+ * Administrators only, and only for work that is already archived — so removing
+ * a task is always two deliberate steps by two different kinds of authority,
+ * with the archive standing in between as the chance to notice.
+ */
 router.delete('/:id', async (req, res) => {
   const store = await getStore();
   const task = await findOne('tasks', (t) => t.id === req.params.id);
@@ -437,6 +523,7 @@ router.delete('/:id', async (req, res) => {
   if (!taskPredicate(req.user)(task)) return res.status(404).json({ error: 'not_found' });
 
   if (!canDeleteTask(req.user, task)) return res.status(403).json({ error: 'forbidden' });
+  if (!isArchived(task)) return res.status(409).json({ error: 'archive_required' });
 
   const comments = await find('comments', (c) => c.taskId === task.id);
   for (const comment of comments) await store.remove('comments', comment.id);
@@ -479,7 +566,7 @@ router.get('/:id/assignments', async (req, res) => {
  */
 router.post('/:id/assignment', async (req, res) => {
   const store = await getStore();
-  const task = await loadVisible(req, res);
+  const task = await loadLive(req, res);
   if (!task) return;
   if (!canRespondToAssignment(req.user, task)) {
     return res.status(403).json({ error: 'assignment_response_forbidden' });
@@ -549,7 +636,7 @@ router.post('/:id/assignment', async (req, res) => {
 
 router.post('/:id/start', async (req, res) => {
   const store = await getStore();
-  const task = await loadVisible(req, res);
+  const task = await loadLive(req, res);
   if (!task) return;
   if (!canStart(req.user, task)) return res.status(403).json({ error: 'forbidden' });
 
@@ -578,7 +665,7 @@ router.post('/:id/start', async (req, res) => {
  */
 router.post('/:id/submit', async (req, res) => {
   const store = await getStore();
-  const task = await loadVisible(req, res);
+  const task = await loadLive(req, res);
   if (!task) return;
   if (!canSubmit(req.user, task)) return res.status(403).json({ error: 'forbidden' });
 
@@ -588,9 +675,13 @@ router.post('/:id/submit', async (req, res) => {
 
   const department = task.department ?? DEFAULT_DEPARTMENT;
   const note = String(req.body?.note || '').trim().slice(0, 2000);
+  const now = new Date().toISOString();
   const updated = await store.update('tasks', task.id, {
     stage: stageForState(department, 'submitted', task.stage),
-    submittedAt: new Date().toISOString(),
+    // A task handed in without ever being started leaves no cycle time to
+    // measure, so the hand-in stands in for the moment work began.
+    startedAt: task.startedAt ?? now,
+    submittedAt: now,
     submittedBy: req.user.id,
     submissionNote: note,
     // A resubmission answers the last review, so the old verdict stops applying.
@@ -628,9 +719,9 @@ router.post('/:id/submit', async (req, res) => {
  */
 router.post('/:id/review', async (req, res) => {
   const store = await getStore();
-  const task = await loadVisible(req, res);
+  const task = await loadLive(req, res);
   if (!task) return;
-  if (!isReviewer(req.user)) return res.status(403).json({ error: 'score_forbidden' });
+  if (!isReviewer(req.user)) return res.status(403).json({ error: 'review_forbidden' });
   if (!canReview(req.user, task)) return res.status(409).json({ error: 'not_submitted' });
 
   const decision = req.body?.decision;
@@ -639,6 +730,10 @@ router.post('/:id/review', async (req, res) => {
   const stamp = new Date().toISOString();
 
   if (decision === 'approved') {
+    // Closing the task and putting a number on somebody's record are separate
+    // authorities from being allowed to read the work and send it back.
+    if (!canApproveWork(req.user)) return res.status(403).json({ error: 'approve_forbidden' });
+    if (!canScoreWork(req.user)) return res.status(403).json({ error: 'score_forbidden' });
     const score = Number(req.body?.score);
     if (!Number.isFinite(score) || score < 0 || score > 100) {
       return res.status(400).json({ error: 'invalid_score' });
@@ -710,7 +805,7 @@ router.post('/:id/review', async (req, res) => {
 /** Undo an approval — a manager correcting their own call, never an employee's. */
 router.post('/:id/reopen', async (req, res) => {
   const store = await getStore();
-  const task = await loadVisible(req, res);
+  const task = await loadLive(req, res);
   if (!task) return;
   if (!canReopen(req.user, task)) return res.status(403).json({ error: 'forbidden' });
 
@@ -754,6 +849,7 @@ router.get('/:id/comments', async (req, res) => {
 router.post('/:id/comments', async (req, res) => {
   const task = await findOne('tasks', (t) => t.id === req.params.id);
   if (!task || !taskPredicate(req.user)(task)) return res.status(404).json({ error: 'not_found' });
+  if (isArchived(task)) return res.status(409).json({ error: 'task_archived' });
 
   const body = String(req.body?.body || '').trim();
   if (!body) return res.status(400).json({ error: 'empty_comment' });
@@ -793,9 +889,60 @@ async function loadVisible(req, res) {
   return task;
 }
 
+/**
+ * The same lookup for the routes that change something.
+ *
+ * Archiving takes a task out of play — nobody starts, submits, reviews or
+ * comments on work that is no longer on a board — so every write stops here.
+ * Restoring is the one exception, which is why it loads the task itself.
+ */
+async function loadLive(req, res) {
+  const task = await loadVisible(req, res);
+  if (!task) return null;
+  if (isArchived(task)) {
+    res.status(409).json({ error: 'task_archived' });
+    return null;
+  }
+  return task;
+}
+
+/**
+ * The fields that make up the brief and the plan, as opposed to the work.
+ *
+ * A task is a contract: one side states what is wanted, for whom, and by when;
+ * the other side does it and reports on it. Everything in this list belongs to
+ * the first side, so an assignee editing their own task can move `progress`,
+ * `notes` and `labels` but cannot rewrite what they were asked to deliver, hand
+ * it to a colleague, or move their own deadline.
+ */
+const PLAN_FIELDS = {
+  title: (task) => task.title,
+  description: (task) => task.description ?? '',
+  objective: (task) => task.objective ?? '',
+  definitionOfDone: (task) => task.definitionOfDone ?? '',
+  assigneeId: (task) => task.assigneeId ?? null,
+  department: (task) => task.department ?? DEFAULT_DEPARTMENT,
+  subteam: (task) => task.subteam ?? null,
+  dueDate: (task) => task.dueDate ?? null,
+  taskDate: (task) => task.taskDate ?? null,
+  priority: (task) => task.priority ?? 'normal',
+  effortPoints: (task) => task.effortPoints ?? null,
+  estimatedMinutes: (task) => task.estimatedMinutes ?? null,
+  appId: (task) => task.appId ?? null,
+};
+
+function changesPlan(patch, task) {
+  return Object.entries(PLAN_FIELDS).some(
+    ([field, currentValue]) => Object.hasOwn(patch, field) && patch[field] !== currentValue(task)
+  );
+}
+
 /** The lifecycle fields a brand-new task starts with — nothing has happened yet. */
 function blankLifecycle() {
   return {
+    archivedAt: null,
+    archivedBy: null,
+    archiveReason: '',
     startedAt: null,
     submittedAt: null,
     submittedBy: null,
@@ -812,13 +959,22 @@ function blankLifecycle() {
   };
 }
 
+/**
+ * Assigning work to somebody opens a question they have to answer, which is why
+ * a new assignment starts `pending`. Taking a task yourself answers it in the
+ * same breath — there is no second party to wait for — so it is recorded as
+ * accepted rather than leaving a pending response you would then grant
+ * yourself.
+ */
 function assignmentLifecycle(assigneeId, actorId) {
   const assigned = Boolean(assigneeId);
+  const selfAssigned = assigned && assigneeId === actorId;
+  const stamp = new Date().toISOString();
   return {
-    assignmentStatus: assigned ? 'pending' : 'unassigned',
-    assignedAt: assigned ? new Date().toISOString() : null,
+    assignmentStatus: assigned ? (selfAssigned ? 'accepted' : 'pending') : 'unassigned',
+    assignedAt: assigned ? stamp : null,
     assignedBy: assigned ? actorId : null,
-    acceptedAt: null,
+    acceptedAt: selfAssigned ? stamp : null,
     declinedAt: null,
     assignmentNote: '',
     proposedDueDate: null,

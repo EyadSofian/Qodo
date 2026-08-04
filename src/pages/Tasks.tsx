@@ -295,13 +295,14 @@ export function Tasks() {
       .sort((a, b) => (a.submittedAt ?? '').localeCompare(b.submittedAt ?? ''));
   }, [tasks, department]);
 
-  const canMove = useCallback(
-    (task: Task) =>
-      can(PERMISSIONS.TASKS_EDIT_ANY) ||
-      task.assigneeId === user?.id ||
-      task.createdBy === user?.id,
-    [can, user]
-  );
+  /**
+   * Who may pick a card up at all. For the person doing the work a stage is the
+   * result of an action — start it, hand it in — so dragging is a reviewer's
+   * tool. Letting an employee drag would only ever end in a refusal from the
+   * API, and a card that springs back is a worse answer than one that never
+   * lifted.
+   */
+  const canMove = useCallback((_task: Task) => isReviewer(user), [user]);
 
   /**
    * Move optimistically so the card lands where it was dropped immediately,
@@ -333,10 +334,13 @@ export function Tasks() {
       if (targetStage === task.stage && here === index) return;
 
       const verdict = stageWriteVerdict(user, task, taskDepartment, targetStage);
-      if (verdict === 'forbidden' || (verdict === 'review' && !isReviewer(user))) {
+      if (verdict === 'forbidden') {
         push(t('flow.managerOnly'), 'bad');
         return;
       }
+      // Every other non-'ok' verdict names an action with something to collect —
+      // an answer to the assignment, a deliverable, a score — so the task opens
+      // on whichever gate is asking rather than the card moving on its own.
       if (verdict !== 'ok') {
         openTask(task);
         return;

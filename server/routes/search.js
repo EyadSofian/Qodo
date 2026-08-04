@@ -3,7 +3,7 @@ import { find } from '../store.js';
 import { requireAuth } from '../auth.js';
 import { PERMISSIONS, can, canOpenApp } from '../../shared/permissions.js';
 import { DEFAULT_DEPARTMENT, stageLabel } from '../../shared/departments.js';
-import { taskPredicate, visiblePeople } from '../taskAccess.js';
+import { livePredicate, visiblePeople } from '../taskAccess.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -42,7 +42,7 @@ router.get('/', async (req, res) => {
   }
 
   if (can(req.user, PERMISSIONS.TASKS_VIEW)) {
-    const tasks = await find('tasks', taskPredicate(req.user));
+    const tasks = await find('tasks', livePredicate(req.user));
     for (const task of tasks) {
       if (
         !matches(

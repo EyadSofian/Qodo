@@ -170,6 +170,10 @@ export interface Task {
   /* ── the lifecycle ──────────────────────────────────────────────
      Written only by the workflow endpoints, never by the edit form. */
 
+  /** Set when the task is taken off the board. The record outlives the card. */
+  archivedAt: string | null;
+  archivedBy: string | null;
+  archiveReason: string;
   startedAt: string | null;
   /** Set when the assignee hands the work in; cleared if it is sent back. */
   submittedAt: string | null;

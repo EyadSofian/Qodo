@@ -33,7 +33,7 @@ import {
   canAssignUser,
   canManagePerformance,
   canUseDepartment,
-  taskPredicate,
+  livePredicate,
   visiblePeople,
 } from '../taskAccess.js';
 import { APP_DATA_EXECUTORS, APP_DATA_LABELS, APP_DATA_TOOLS } from './appData.js';
@@ -59,7 +59,7 @@ const dept = (task) => task.department ?? DEFAULT_DEPARTMENT;
 
 /** The tasks this user is allowed to see — same rule the board uses. */
 async function visibleTasks(user) {
-  return find('tasks', taskPredicate(user));
+  return find('tasks', livePredicate(user));
 }
 
 function taskScope(user) {
@@ -480,6 +480,11 @@ const EXECUTORS = {
         t.stage === stage
     );
     const assignedAt = assigneeId ? new Date().toISOString() : null;
+    // Assigning work opens a question the other person has to answer. Taking it
+    // yourself answers it in the same breath, so it is recorded as accepted
+    // instead of leaving a pending response you would then grant yourself —
+    // the same rule `assignmentLifecycle` applies on the REST path.
+    const selfAssigned = Boolean(assigneeId) && assigneeId === user.id;
     const task = await create('tasks', {
       organizationId: organizationOf(user),
       reference: `TSK-${Date.now().toString(36).toUpperCase()}-${Math.random()
@@ -502,10 +507,10 @@ const EXECUTORS = {
         ? input.priority
         : 'normal',
       assigneeId,
-      assignmentStatus: assigneeId ? 'pending' : 'unassigned',
+      assignmentStatus: assigneeId ? (selfAssigned ? 'accepted' : 'pending') : 'unassigned',
       assignedAt,
       assignedBy: assigneeId ? user.id : null,
-      acceptedAt: null,
+      acceptedAt: selfAssigned ? assignedAt : null,
       declinedAt: null,
       assignmentNote: '',
       proposedDueDate: null,
@@ -515,6 +520,9 @@ const EXECUTORS = {
       labels: [],
       // The lifecycle starts empty: nothing has been delivered, so nothing has
       // been reviewed and there is no score. Only the review gate writes these.
+      archivedAt: null,
+      archivedBy: null,
+      archiveReason: '',
       startedAt: null,
       submittedAt: null,
       submittedBy: null,
@@ -539,7 +547,7 @@ const EXECUTORS = {
         actorId: user.id,
         action: 'assigned',
         assigneeId,
-        status: 'pending',
+        status: selfAssigned ? 'accepted' : 'pending',
         meta: { via: 'assistant' },
       });
     }

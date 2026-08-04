@@ -206,8 +206,8 @@ const ERRORS: Record<string, { ar: string; en: string }> = {
     en: 'Accept the task assignment before starting work.',
   },
   task_plan_forbidden: {
-    ar: 'المسند إليه يستطيع تنفيذ المهمة، لكن تغيير المسؤول أو الفريق أو الموعد من صلاحية منشئ المهمة أو المدير.',
-    en: 'The assignee can do the work, but only the task creator or a manager can change its owner, team, or due date.',
+    ar: 'المسند إليه ينفّذ المهمة ويحدّث تقدمها وملاحظاتها، أما وصف المهمة والمسؤول عنها والفريق والموعد فمن صلاحية المدير.',
+    en: 'The assignee does the work and updates its progress and notes; the brief, its owner, team and due date belong to a manager.',
   },
   invalid_assignment_action: {
     ar: 'إجراء الإسناد غير معروف.',
@@ -234,8 +234,16 @@ const ERRORS: Record<string, { ar: string; en: string }> = {
     en: 'That comment is too long. The maximum is 5,000 characters.',
   },
   score_forbidden: {
-    ar: 'تقييم الأداء متاح للمدير فقط.',
-    en: 'Only a manager can set performance scores.',
+    ar: 'تقييم الأداء متاح لمن يملك صلاحية التقييم فقط.',
+    en: 'Only someone with the scoring permission can set performance scores.',
+  },
+  review_forbidden: {
+    ar: 'مراجعة المهام المسلَّمة متاحة لمن يملك صلاحية المراجعة فقط.',
+    en: 'Only someone with the review permission can review submitted work.',
+  },
+  approve_forbidden: {
+    ar: 'اعتماد المهمة وإغلاقها متاح لمن يملك صلاحية الاعتماد فقط.',
+    en: 'Only someone with the approval permission can close a task.',
   },
   invalid_score: {
     ar: 'التقييم يجب أن يكون رقماً من ٠ إلى ١٠٠.',
@@ -248,6 +256,10 @@ const ERRORS: Record<string, { ar: string; en: string }> = {
   deliverable_required: {
     ar: 'أرفق ملف التسليم أولاً قبل إرسال المهمة للمراجعة.',
     en: 'Attach what you produced before sending the task for review.',
+  },
+  start_required: {
+    ar: 'ابدأ المهمة من زر «ابدأ العمل» — المرحلة تتغير بالفعل لا بالسحب.',
+    en: 'Use “Start work” — the stage follows the action, not the drag.',
   },
   submit_required: {
     ar: 'المهمة تدخل المراجعة عن طريق «تسليم للمراجعة» مع إرفاق العمل.',
@@ -264,6 +276,22 @@ const ERRORS: Record<string, { ar: string; en: string }> = {
   not_submitted: {
     ar: 'هذه المهمة ليست قيد المراجعة.',
     en: 'This task is not waiting for review.',
+  },
+  archive_forbidden: {
+    ar: 'أرشفة المهام من صلاحية المدير — المهمة المسندة إليك لا تُرفع من اللوحة بقرارك.',
+    en: 'Archiving is a manager’s call — work assigned to you is not yours to take off the board.',
+  },
+  task_archived: {
+    ar: 'هذه المهمة مؤرشفة. أعِدها إلى اللوحة أولاً قبل أي تعديل عليها.',
+    en: 'This task is archived. Restore it to the board before changing anything.',
+  },
+  not_archived: {
+    ar: 'هذه المهمة موجودة على اللوحة أصلاً.',
+    en: 'This task is already on the board.',
+  },
+  archive_required: {
+    ar: 'الحذف النهائي يبدأ بالأرشفة — أرشف المهمة أولاً.',
+    en: 'Permanent deletion starts with the archive — archive the task first.',
   },
   invalid_decision: { ar: 'قرار المراجعة غير معروف.', en: 'That review decision is not recognised.' },
   review_note_required: {

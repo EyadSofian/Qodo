@@ -5,7 +5,16 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { canAssignUser, canViewTask, visiblePeople } from './taskAccess.js';
+import {
+  canArchiveTask,
+  canAssignUser,
+  canDeleteTask,
+  canManageTaskPlan,
+  canViewTask,
+  visiblePeople,
+} from './taskAccess.js';
+import { PERMISSIONS, can, visibilityFor } from '../shared/permissions.js';
+import { canApproveWork, canReopen, canReview, canScoreWork } from '../shared/workflow.js';
 import { DEPARTMENTS } from '../shared/departments.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -236,12 +245,22 @@ test('team boundaries, performance privacy and export', async () => {
   assert.equal(creativeOverview.data.people.length, 1);
   assert.equal(creativeOverview.data.people[0].user.id, creative.user.id);
 
+  // Filing work is the commissioning half of the contract, so an employee has
+  // no route to it — not in another department and not in their own either.
   const crossTeam = await request('/tasks', {
     method: 'POST',
     cookie: creativeCookie,
     body: { title: 'Should fail', department: 'sales', stage: 'lead' },
   });
   assert.equal(crossTeam.status, 403);
+
+  const ownTeam = await request('/tasks', {
+    method: 'POST',
+    cookie: creativeCookie,
+    body: { title: 'A task for myself', department: 'marketing', stage: 'pending' },
+  });
+  assert.equal(ownTeam.status, 403);
+  assert.equal(ownTeam.data.missing, 'tasks.create');
 
   managerCookie = await login('manager@test.local', 'Manager123!');
   const managerOverview = await request('/tasks/overview?department=marketing', {
@@ -327,14 +346,15 @@ test('the board cannot be dragged past either gate', async () => {
     managerCookie
   );
 
-  // Employee drags it to "done": that is an approval, and not theirs to make.
+  // Employee drags it to "done": approving is not an authority they hold, so
+  // this is not "use the review gate", it is simply refused.
   const employeeToDone = await request(`/tasks/${task.id}`, {
     method: 'PATCH',
     cookie: creativeCookie,
     body: { stage: 'done' },
   });
-  assert.equal(employeeToDone.status, 409);
-  assert.equal(employeeToDone.data.error, 'review_required');
+  assert.equal(employeeToDone.status, 403);
+  assert.equal(employeeToDone.data.error, 'forbidden');
 
   // A manager cannot skip the score either — approving is an action, not a field.
   const managerToDone = await request(`/tasks/${task.id}`, {
@@ -354,10 +374,33 @@ test('the board cannot be dragged past either gate', async () => {
   assert.equal(straightToReview.status, 409);
   assert.equal(straightToReview.data.error, 'submit_required');
 
-  // Moving between the open and active columns stays an ordinary drag.
-  const ordinaryMove = await request(`/tasks/${task.id}`, {
+  // For the person doing the work a stage is the result of an action, never a
+  // drag — so pushing their own card backwards out of the active column is not
+  // an "ordinary move", it is refused outright.
+  const employeeBackwards = await request(`/tasks/${task.id}`, {
     method: 'PATCH',
     cookie: creativeCookie,
+    body: { stage: 'pending' },
+  });
+  assert.equal(employeeBackwards.status, 403);
+  assert.equal(employeeBackwards.data.error, 'forbidden');
+
+  // Nor sideways within the same canonical type. In marketing that is the move
+  // out of "إعادة عمل" — where a manager put it — back into "قيد العمل", and
+  // into a column named "معتمدة" that is an `open` stage.
+  for (const stage of ['rework', 'blocked', 'approved']) {
+    const sideways = await request(`/tasks/${task.id}`, {
+      method: 'PATCH',
+      cookie: creativeCookie,
+      body: { stage },
+    });
+    assert.equal(sideways.status, 403, `employee moved the card to ${stage}`);
+  }
+
+  // The manager rearranging the board is exactly what dragging is for.
+  const ordinaryMove = await request(`/tasks/${task.id}`, {
+    method: 'PATCH',
+    cookie: managerCookie,
     body: { stage: 'pending' },
   });
   assert.equal(ordinaryMove.status, 200);
@@ -423,6 +466,27 @@ test('assign → deliver → review → approve, including the rework loop', asy
   });
   assert.equal(changedPlan.status, 403);
   assert.equal(changedPlan.data.error, 'task_plan_forbidden');
+
+  // But the work itself is theirs, and saying so has to keep working: reporting
+  // progress must not be read as re-planning just because the form round-trips
+  // the brief alongside it.
+  const reportedProgress = await request(`/tasks/${task.id}`, {
+    method: 'PATCH',
+    cookie: creativeCookie,
+    body: {
+      progress: 40,
+      notes: 'شغال على المقاسات',
+      // Unchanged plan values, exactly as the dialog echoes them back.
+      title: 'Ramadan key visual',
+      dueDate: '2099-01-01',
+      assigneeId: creative.user.id,
+      department: 'marketing',
+      subteam: 'creative',
+    },
+  });
+  assert.equal(reportedProgress.status, 200);
+  assert.equal(reportedProgress.data.task.progress, 40);
+  assert.equal(reportedProgress.data.task.dueDate, '2099-01-01');
 
   // Assignment creates both a directly fetchable task and an in-app alert for
   // the recipient; this is the contract used by fresh notification deep links.
@@ -664,6 +728,94 @@ test('assign → deliver → review → approve, including the rework loop', asy
   assert.equal(await download.text(), 'demo');
 });
 
+test('clearing a task away is an archive, and the purge is two authorities deep', async () => {
+  const { task } = await create(
+    '/tasks',
+    {
+      title: 'Filed by mistake',
+      department: 'marketing',
+      subteam: 'creative',
+      stage: 'pending',
+      assigneeId: creative.user.id,
+    },
+    managerCookie
+  );
+
+  // The assignee cannot make the work they are measured on go away, by either
+  // door — not the archive, and not the delete that used to be open to them.
+  const employeeArchive = await request(`/tasks/${task.id}/archive`, {
+    method: 'POST',
+    cookie: creativeCookie,
+  });
+  assert.equal(employeeArchive.status, 403);
+  assert.equal(employeeArchive.data.error, 'archive_forbidden');
+
+  const employeeDelete = await request(`/tasks/${task.id}`, {
+    method: 'DELETE',
+    cookie: creativeCookie,
+  });
+  assert.equal(employeeDelete.status, 403);
+
+  const archived = await request(`/tasks/${task.id}/archive`, {
+    method: 'POST',
+    cookie: managerCookie,
+    body: { reason: 'مكررة' },
+  });
+  assert.equal(archived.status, 200);
+  assert.equal(archived.data.task.archivedBy, manager.user.id);
+  assert.equal(archived.data.task.archiveReason, 'مكررة');
+
+  // Off the board for everyone, but not gone: the record is still fetchable by
+  // id, which is the whole difference between archiving and deleting.
+  const board = await request('/tasks', { cookie: managerCookie });
+  assert.equal(board.data.tasks.some((item) => item.id === task.id), false);
+  const employeeBoard = await request('/tasks', { cookie: creativeCookie });
+  assert.equal(employeeBoard.data.tasks.some((item) => item.id === task.id), false);
+  const stillThere = await request(`/tasks/${task.id}`, { cookie: managerCookie });
+  assert.equal(stillThere.status, 200);
+  assert.equal(stillThere.data.task.title, 'Filed by mistake');
+
+  // Nothing carries on inside the archive — no edits, no lifecycle, no comments.
+  for (const [pathname, options] of [
+    [`/tasks/${task.id}`, { method: 'PATCH', body: { progress: 40 } }],
+    [`/tasks/${task.id}/start`, { method: 'POST' }],
+    [`/tasks/${task.id}/comments`, { method: 'POST', body: { body: 'hello' } }],
+  ]) {
+    const blocked = await request(pathname, { ...options, cookie: creativeCookie });
+    assert.equal(blocked.status, 409, `${pathname} should be closed while archived`);
+    assert.equal(blocked.data.error, 'task_archived');
+  }
+
+  // Destroying the record is an administrator's retention call, not the
+  // department manager's — even for work they archived themselves.
+  const managerPurge = await request(`/tasks/${task.id}`, {
+    method: 'DELETE',
+    cookie: managerCookie,
+  });
+  assert.equal(managerPurge.status, 403);
+
+  const restored = await request(`/tasks/${task.id}/restore`, {
+    method: 'POST',
+    cookie: managerCookie,
+  });
+  assert.equal(restored.status, 200);
+  assert.equal(restored.data.task.archivedAt, null);
+  const backOnBoard = await request('/tasks', { cookie: creativeCookie });
+  assert.equal(backOnBoard.data.tasks.some((item) => item.id === task.id), true);
+
+  // A live task cannot be purged even by an administrator: the archive is the
+  // step in between where somebody still gets the chance to notice.
+  const purgeLive = await request(`/tasks/${task.id}`, { method: 'DELETE', cookie: adminCookie });
+  assert.equal(purgeLive.status, 409);
+  assert.equal(purgeLive.data.error, 'archive_required');
+
+  await request(`/tasks/${task.id}/archive`, { method: 'POST', cookie: adminCookie });
+  const purged = await request(`/tasks/${task.id}`, { method: 'DELETE', cookie: adminCookie });
+  assert.equal(purged.status, 200);
+  const afterPurge = await request(`/tasks/${task.id}`, { cookie: adminCookie });
+  assert.equal(afterPurge.status, 404);
+});
+
 test('the overview counts rework, queue depth and first-pass approvals', async () => {
   const overview = await request('/tasks/overview?department=marketing', { cookie: managerCookie });
   assert.equal(overview.status, 200);
@@ -696,7 +848,10 @@ test('a sub-team scope hides the rest of the department but never own work', () 
     role: 'member',
     status: 'active',
   };
-  const base = { organizationId: 'engosoft', department: 'marketing', createdBy: buyer.id };
+  // Filing work is a manager's act now, so no employee is the author of their
+  // own card — which is what makes the sub-team rule the thing under test here
+  // rather than the "always see your own work" fallback.
+  const base = { organizationId: 'engosoft', department: 'marketing', createdBy: 'lead' };
 
   const creativeTask = { ...base, id: 't1', subteam: 'creative', assigneeId: null };
   const performanceTask = { ...base, id: 't2', subteam: 'performance', assigneeId: buyer.id };
@@ -708,14 +863,124 @@ test('a sub-team scope hides the rest of the department but never own work', () 
   // Work handed to them personally outranks the scope — hiding it would be a bug.
   assert.equal(canViewTask(designer, assignedAcross), true);
   assert.equal(canViewTask(designer, departmentWide), false);
-  // The wider colleague is unaffected by the narrower person's setting.
-  assert.equal(canViewTask(buyer, creativeTask), true);
+  // The colleague who set nothing gets the same sub-team default from their
+  // role, so the creative board is not their business either.
+  assert.equal(canViewTask(buyer, creativeTask), false);
+  assert.equal(canViewTask(buyer, performanceTask), true);
 
   assert.deepEqual(
     visiblePeople(designer, [designer, buyer]).map((person) => person.id),
     [designer.id]
   );
   assert.equal(canAssignUser(designer, buyer, 'marketing'), false);
+});
+
+test('the sub-team default falls through where no sub-team exists', () => {
+  // Sales declares no sub-teams at all, so a sub-team default would have left
+  // its staff seeing nothing but their own rows. The default degrades to the
+  // department; an explicit choice made by an administrator never does.
+  const seller = {
+    id: 'seller',
+    organizationId: 'engosoft',
+    department: 'sales',
+    role: 'member',
+    status: 'active',
+  };
+  const colleagueTask = {
+    id: 's1',
+    organizationId: 'engosoft',
+    department: 'sales',
+    createdBy: 'someone',
+    assigneeId: 'someone',
+  };
+
+  assert.equal(visibilityFor(seller), 'department');
+  assert.equal(canViewTask(seller, colleagueTask), true);
+  assert.equal(visibilityFor({ ...seller, visibilityScope: 'subteam' }), 'subteam');
+  assert.equal(canViewTask({ ...seller, visibilityScope: 'subteam' }, colleagueTask), false);
+});
+
+test('each authority is its own key, and legacy overrides keep all four', () => {
+  const base = {
+    id: 'x',
+    organizationId: 'engosoft',
+    department: 'marketing',
+    status: 'active',
+  };
+  const employee = { ...base, role: 'member' };
+  const boss = { ...base, role: 'manager' };
+  const task = {
+    id: 'k',
+    organizationId: 'engosoft',
+    department: 'marketing',
+    createdBy: employee.id,
+    assigneeId: employee.id,
+    stage: 'review',
+  };
+
+  // Nothing on the commissioning side of the contract reaches an employee, and
+  // having filed the task grants none of it back.
+  for (const permission of [
+    PERMISSIONS.TASKS_CREATE,
+    PERMISSIONS.TASKS_ASSIGN,
+    PERMISSIONS.TASKS_REVIEW,
+    PERMISSIONS.TASKS_APPROVE,
+    PERMISSIONS.TASKS_SCORE,
+    PERMISSIONS.TASKS_ARCHIVE,
+  ]) {
+    assert.equal(can(employee, permission), false, `member should not hold ${permission}`);
+    assert.equal(can(boss, permission), true, `manager should hold ${permission}`);
+  }
+  assert.equal(canManageTaskPlan(employee, task), false);
+  assert.equal(canReview(employee, task), false);
+  assert.equal(canReopen(employee, { ...task, stage: 'done' }), false);
+
+  // Clearing the board and destroying the record are different powers. A manager
+  // archives; only an administrator purges, so a department manager can never be
+  // the one who makes a task's history stop existing.
+  const archived = { ...task, archivedAt: '2026-01-01T00:00:00.000Z' };
+  assert.equal(canArchiveTask(employee, task), false);
+  assert.equal(canArchiveTask(boss, task), true);
+  assert.equal(can(boss, PERMISSIONS.TASKS_DELETE_ANY), false);
+  assert.equal(canDeleteTask(employee, archived), false);
+  assert.equal(canDeleteTask(boss, archived), false);
+  assert.equal(canDeleteTask({ ...base, role: 'admin' }, archived), true);
+
+  // The keys are genuinely independent: a reviewer who may send work back need
+  // not be able to close it or put a number on anyone's record.
+  const readOnlyReviewer = {
+    ...base,
+    role: 'member',
+    permissions: [PERMISSIONS.TASKS_VIEW, PERMISSIONS.TASKS_VIEW_TEAM, PERMISSIONS.TASKS_REVIEW],
+  };
+  assert.equal(canReview(readOnlyReviewer, task), true);
+  assert.equal(canApproveWork(readOnlyReviewer), false);
+  assert.equal(canScoreWork(readOnlyReviewer), false);
+
+  // An override saved before the split carries the old key alone, and must not
+  // silently lose the three authorities that used to be bundled into it.
+  const legacy = {
+    ...base,
+    role: 'member',
+    permissions: [
+      PERMISSIONS.TASKS_VIEW,
+      PERMISSIONS.TASKS_VIEW_TEAM,
+      PERMISSIONS.TASKS_EDIT_ANY,
+    ],
+  };
+  for (const permission of [
+    PERMISSIONS.TASKS_ASSIGN,
+    PERMISSIONS.TASKS_REVIEW,
+    PERMISSIONS.TASKS_APPROVE,
+    PERMISSIONS.TASKS_SCORE,
+  ]) {
+    assert.equal(can(legacy, permission), true, `legacy override lost ${permission}`);
+  }
+  // A deliberately narrowed override is left exactly as the administrator saved
+  // it — the back-fill only applies where none of the new keys were chosen.
+  const narrowed = { ...legacy, permissions: [...legacy.permissions, PERMISSIONS.TASKS_REVIEW] };
+  assert.equal(can(narrowed, PERMISSIONS.TASKS_REVIEW), true);
+  assert.equal(can(narrowed, PERMISSIONS.TASKS_APPROVE), false);
 });
 
 test('a scope can narrow what a role grants but never widen it', () => {

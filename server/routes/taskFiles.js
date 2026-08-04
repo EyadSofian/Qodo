@@ -17,7 +17,7 @@
 import express, { Router } from 'express';
 import { create, find, findOne, getBlob, getStore, putBlob, removeBlob } from '../store.js';
 import { logActivity } from '../auth.js';
-import { taskPredicate } from '../taskAccess.js';
+import { isArchived, taskPredicate } from '../taskAccess.js';
 import {
   MAX_ATTACHMENTS_PER_TASK,
   MAX_ATTACHMENT_BYTES,
@@ -55,12 +55,18 @@ async function loadTask(req, res) {
 
 /** Who may add evidence: the person doing the work, whoever filed it, or a manager. */
 function canAttach(user, task) {
+  if (isArchived(task)) return false;
   if (taskState(task) === 'approved' && !isReviewer(user)) return false;
   return isDoer(user, task) || isReviewer(user) || task.createdBy === user.id;
 }
 
-/** Uploaders can take back their own file until the task is closed; managers always can. */
+/**
+ * Uploaders can take back their own file until the task is closed; managers
+ * always can. Nobody edits the contents of an archive — the deliverables are
+ * the record of what was handed in.
+ */
 function canRemove(user, task, attachment) {
+  if (isArchived(task)) return false;
   if (isReviewer(user)) return true;
   if (taskState(task) === 'approved') return false;
   return attachment.userId === user.id;

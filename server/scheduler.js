@@ -137,7 +137,9 @@ async function sendDigest() {
       continue;
     }
 
-    if (can(user, PERMISSIONS.TASKS_EDIT_ANY)) {
+    // The team digest is supervision, so it follows the reviewing authority
+    // rather than the ability to edit a colleague's card.
+    if (can(user, PERMISSIONS.TASKS_REVIEW)) {
       const department = user.department ?? DEFAULT_DEPARTMENT;
       const team = digest.open.filter((task) => dept(task) === department);
       if (team.length === 0) continue;

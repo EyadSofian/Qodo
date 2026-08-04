@@ -13,7 +13,12 @@ export const PERMISSIONS = {
   TASKS_VIEW_TEAM: 'tasks.view_team',
   TASKS_VIEW_ALL: 'tasks.view_all',
   TASKS_CREATE: 'tasks.create',
+  TASKS_ASSIGN: 'tasks.assign',
   TASKS_EDIT_ANY: 'tasks.edit_any',
+  TASKS_REVIEW: 'tasks.review',
+  TASKS_APPROVE: 'tasks.approve',
+  TASKS_SCORE: 'tasks.score',
+  TASKS_ARCHIVE: 'tasks.archive',
   TASKS_DELETE_ANY: 'tasks.delete_any',
   TASKS_EXPORT: 'tasks.export',
   USERS_VIEW: 'users.view',
@@ -23,6 +28,35 @@ export const PERMISSIONS = {
 
 export const ALL_PERMISSIONS = Object.values(PERMISSIONS);
 
+/**
+ * The authority keys that used to hide inside `tasks.edit_any`.
+ *
+ * One key meant "edit someone else's task" *and* "review it", "approve it",
+ * "score it" and "own its plan" — so there was no way to appoint a reviewer who
+ * is not also a planner, and no way to let a team lead assign work without also
+ * handing them the power to close it and score it. Splitting them is the whole
+ * point of the four names below; `deriveLegacyAuthority` keeps the people who
+ * already carry the old key from losing anything on the way.
+ */
+const AUTHORITY_PERMISSIONS = [
+  PERMISSIONS.TASKS_ASSIGN,
+  PERMISSIONS.TASKS_REVIEW,
+  PERMISSIONS.TASKS_APPROVE,
+  PERMISSIONS.TASKS_SCORE,
+];
+
+/**
+ * A task is a contract between two people: one side commissions the work, the
+ * other side does it. Nobody may play both parts, which is why creating,
+ * assigning, planning, reviewing, approving and scoring all sit on the
+ * commissioning side and none of them reach the `member` role by default.
+ *
+ * `defaultVisibility` is the scope the role starts at, and it is deliberately
+ * *not* the same thing as the ceiling the permissions justify: an employee
+ * starts at their own sub-team, but an administrator can still widen one
+ * person to the whole department because `tasks.view_team` allows it. See
+ * `visibilityFor`.
+ */
 export const ROLES = {
   admin: {
     id: 'admin',
@@ -30,41 +64,48 @@ export const ROLES = {
     nameEn: 'Administrator',
     descAr: 'صلاحية كاملة: المستخدمين، التطبيقات، الإعدادات، وكل المهام.',
     permissions: ALL_PERMISSIONS,
+    defaultVisibility: 'all',
   },
   manager: {
     id: 'manager',
     nameAr: 'مدير',
     nameEn: 'Manager',
-    descAr: 'يرى مهام قسمه ويعدّلها، ويتابع أداء فريقه ويصدّر تقاريره.',
+    descAr: 'يكلّف فريقه بالمهام، ويراجعها ويعتمدها ويقيّمها، ويصدّر تقاريره.',
     permissions: [
       PERMISSIONS.APPS_VIEW,
       PERMISSIONS.TASKS_VIEW,
       PERMISSIONS.TASKS_VIEW_TEAM,
       PERMISSIONS.TASKS_CREATE,
+      PERMISSIONS.TASKS_ASSIGN,
       PERMISSIONS.TASKS_EDIT_ANY,
-      PERMISSIONS.TASKS_DELETE_ANY,
+      PERMISSIONS.TASKS_REVIEW,
+      PERMISSIONS.TASKS_APPROVE,
+      PERMISSIONS.TASKS_SCORE,
+      PERMISSIONS.TASKS_ARCHIVE,
       PERMISSIONS.TASKS_EXPORT,
       PERMISSIONS.USERS_VIEW,
     ],
+    defaultVisibility: 'department',
   },
   member: {
     id: 'member',
     nameAr: 'موظف',
     nameEn: 'Member',
-    descAr: 'يرى لوحة قسمه، ويعدّل مهامه، ويرى أداءه هو فقط.',
+    descAr: 'ينفّذ المهام المسندة إليه ويسلّمها للمراجعة، ويرى أداءه هو فقط.',
     permissions: [
       PERMISSIONS.APPS_VIEW,
       PERMISSIONS.TASKS_VIEW,
       PERMISSIONS.TASKS_VIEW_TEAM,
-      PERMISSIONS.TASKS_CREATE,
     ],
+    defaultVisibility: 'subteam',
   },
   viewer: {
     id: 'viewer',
     nameAr: 'مشاهدة فقط',
     nameEn: 'Viewer',
-    descAr: 'يفتح التطبيقات المسموح بها ويقرأ لوحة قسمه دون تعديل.',
+    descAr: 'يفتح التطبيقات المسموح بها ويقرأ لوحة فريقه دون تعديل.',
     permissions: [PERMISSIONS.APPS_VIEW, PERMISSIONS.TASKS_VIEW, PERMISSIONS.TASKS_VIEW_TEAM],
+    defaultVisibility: 'subteam',
   },
 };
 
@@ -108,8 +149,38 @@ export const VISIBILITY_LABELS = {
  */
 export function permissionsFor(user) {
   if (!user) return [];
-  if (Array.isArray(user.permissions)) return user.permissions;
+  if (Array.isArray(user.permissions)) return deriveLegacyAuthority(user.permissions);
   return ROLES[user.role]?.permissions ?? [];
+}
+
+/**
+ * Stored overrides are frozen copies of the permission list as it was the day
+ * an administrator ticked the boxes, so splitting `tasks.edit_any` into four
+ * keys would silently strip review, approval and scoring from every one of
+ * them. An override that predates the split is recognised by carrying the old
+ * key and none of the new ones, and is read as still meaning all four.
+ *
+ * The moment an administrator saves that user again the array is rewritten with
+ * explicit keys and this branch stops applying to them.
+ */
+function deriveLegacyAuthority(permissions) {
+  let derived = permissions;
+  if (
+    derived.includes(PERMISSIONS.TASKS_EDIT_ANY) &&
+    !derived.some((permission) => AUTHORITY_PERMISSIONS.includes(permission))
+  ) {
+    derived = [...derived, ...AUTHORITY_PERMISSIONS];
+  }
+  // `tasks.delete_any` used to be the only way to take a task off a board, and
+  // it now means the permanent purge. Reading it as archiving too is what keeps
+  // a manager's override from ending up unable to remove anything at all.
+  if (
+    derived.includes(PERMISSIONS.TASKS_DELETE_ANY) &&
+    !derived.includes(PERMISSIONS.TASKS_ARCHIVE)
+  ) {
+    derived = [...derived, PERMISSIONS.TASKS_ARCHIVE];
+  }
+  return derived;
 }
 
 export function can(user, permission) {
@@ -132,18 +203,29 @@ export function visibilityCeiling(user) {
 /**
  * The scope actually applied to a request.
  *
- * `null` (the default, and every user who existed before this field) means
- * "follow the role" — so adding the field changed nobody's view. An explicit
- * value narrows: a designer set to `subteam` stops seeing the media buyers'
- * board without losing anything else the member role grants.
+ * `null` — the normal case, and every user who predates the field — means
+ * "follow the role", which for an employee is their own sub-team: a designer
+ * sees the creative board, not the media buyers'. An administrator may set an
+ * explicit scope to move a single person up to the department or down to their
+ * own work, and it is still capped by `visibilityCeiling` so the dropdown can
+ * never hand out reach the permissions do not justify.
+ *
+ * A sub-team default only means something to somebody who is in one. Sales and
+ * operations declare no sub-teams at all, so for their staff the default falls
+ * through to the department — otherwise adding this default would have quietly
+ * emptied every board outside marketing. An *explicit* `subteam` choice is
+ * never widened this way: an administrator who picked it meant it.
  */
 export function visibilityFor(user) {
   const ceiling = visibilityCeiling(user);
-  const requested = user?.visibilityScope;
-  if (!requested || !VISIBILITY_SCOPES.includes(requested)) return ceiling;
-  return VISIBILITY_SCOPES.indexOf(requested) < VISIBILITY_SCOPES.indexOf(ceiling)
-    ? requested
-    : ceiling;
+  const explicit = VISIBILITY_SCOPES.includes(user?.visibilityScope)
+    ? user.visibilityScope
+    : null;
+
+  let scope = explicit ?? ROLES[user?.role]?.defaultVisibility ?? ceiling;
+  if (!explicit && scope === 'subteam' && !user?.subteam) scope = 'department';
+
+  return VISIBILITY_SCOPES.indexOf(scope) < VISIBILITY_SCOPES.indexOf(ceiling) ? scope : ceiling;
 }
 
 /** Scopes an admin may pick for this user — anything wider is not offered. */

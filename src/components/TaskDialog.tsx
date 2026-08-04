@@ -16,7 +16,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { CalendarClock, MessageSquare, Send, Trash2, UserRound } from 'lucide-react';
+import { Archive, CalendarClock, MessageSquare, Send, UserRound } from 'lucide-react';
 import { api, errorMessage } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useI18n } from '../lib/i18n';
@@ -163,18 +163,21 @@ export function TaskDialog({
   );
 
   /**
-   * The stage picker offers only the columns anyone may move between freely.
-   * Reaching review means submitting, and reaching done means being approved —
-   * both are buttons with requirements attached, so neither belongs in a
-   * dropdown that would quietly skip them.
+   * The stage picker offers only the columns a reviewer may move between
+   * freely. Reaching review means submitting, and reaching done means being
+   * approved — both are buttons with requirements attached, so neither belongs
+   * in a dropdown that would quietly skip them. For the person doing the work
+   * there is no free column at all: they start and they submit, and both are
+   * actions, so all they see here is where the task already is.
    */
   const selectableStages = useMemo(
     () =>
-      getStages(department).filter(
-        (item: { id: string; type: string }) =>
-          item.type === 'open' || item.type === 'active' || item.id === stage
+      getStages(department).filter((item: { id: string; type: string }) =>
+        isReviewer(user)
+          ? item.type === 'open' || item.type === 'active' || item.id === stage
+          : item.id === stage
       ),
-    [department, stage]
+    [department, stage, user]
   );
 
   const editable = useMemo(() => {
@@ -183,12 +186,17 @@ export function TaskDialog({
     return current.createdBy === user?.id || current.assigneeId === user?.id;
   }, [current, can, user]);
 
-  const planEditable = useMemo(() => {
-    if (!current) return true;
-    return can(PERMISSIONS.TASKS_EDIT_ANY) || current.createdBy === user?.id;
-  }, [current, can, user]);
+  // The brief and the plan are the commissioning side of the contract. Having
+  // filed the task grants nothing here — only `tasks.assign` does.
+  const planEditable = useMemo(
+    () => !current || can(PERMISSIONS.TASKS_ASSIGN),
+    [current, can]
+  );
 
-  const deletable = current && (can(PERMISSIONS.TASKS_DELETE_ANY) || current.createdBy === user?.id);
+  // Clearing a task away is archiving, not deleting: the card leaves the board
+  // and the record of it stays. Permanent deletion is an administrator's
+  // retention decision and does not belong on this dialog at all.
+  const archivable = Boolean(current) && can(PERMISSIONS.TASKS_ARCHIVE);
 
   const applyTask = (updated: Task) => {
     setLive(updated);
@@ -202,26 +210,33 @@ export function TaskDialog({
 
     setSaving(true);
     setError('');
-    const payload = {
-      title: title.trim(),
-      description: description.trim(),
-      objective: objective.trim(),
-      definitionOfDone: definitionOfDone.trim(),
-      notes: notes.trim(),
-      department,
-      subteam: subteam || null,
-      stage,
-      priority,
-      assigneeId: assigneeId || null,
-      appId: appId || null,
-      taskDate,
-      dueDate: dueDate || null,
-      effortPoints: effortPoints ? Number(effortPoints) : null,
-      estimatedMinutes: estimatedHours
-        ? Math.round(Number(estimatedHours) * 60)
-        : null,
-      progress,
-    };
+    // The server splits the brief from the work, and so does this form: someone
+    // who cannot re-plan the task sends back only what is theirs to move.
+    //
+    // Posting the whole form regardless would fail on nothing worse than a
+    // rounding wobble — 350 minutes is shown as 5.8 hours and would come back as
+    // 348 — and the assignee would be told the plan is not theirs to change when
+    // all they touched was their own progress.
+    const work = { notes: notes.trim(), progress };
+    const payload = planEditable
+      ? {
+          ...work,
+          title: title.trim(),
+          description: description.trim(),
+          objective: objective.trim(),
+          definitionOfDone: definitionOfDone.trim(),
+          department,
+          subteam: subteam || null,
+          stage,
+          priority,
+          assigneeId: assigneeId || null,
+          appId: appId || null,
+          taskDate,
+          dueDate: dueDate || null,
+          effortPoints: effortPoints ? Number(effortPoints) : null,
+          estimatedMinutes: estimatedHours ? Math.round(Number(estimatedHours) * 60) : null,
+        }
+      : work;
 
     try {
       const result = current
@@ -238,13 +253,15 @@ export function TaskDialog({
     }
   };
 
-  const remove = async () => {
+  const archive = async () => {
     if (!current) return;
-    if (!window.confirm(t('tasks.confirmDelete', { title: current.title }))) return;
+    if (!window.confirm(t('tasks.confirmArchive', { title: current.title }))) return;
     try {
-      await api.delete(`/tasks/${current.id}`);
+      await api.post(`/tasks/${current.id}/archive`, {});
+      // The board only carries live work, so the card goes — but unlike the old
+      // delete this is reversible, and the toast says so.
       onDeleted(current.id);
-      push(t('tasks.deleted'));
+      push(t('tasks.archived'));
       onClose();
     } catch (err) {
       push(errorMessage(err, lang), 'bad');
@@ -276,7 +293,7 @@ export function TaskDialog({
             className="field ltr text-start"
             value={taskDate}
             onChange={(event) => setTaskDate(event.target.value)}
-            disabled={!editable}
+            disabled={!planEditable}
             required
           />
         </Field>
@@ -296,7 +313,7 @@ export function TaskDialog({
           className="field"
           value={priority}
           onChange={(event) => setPriority(event.target.value as TaskPriority)}
-          disabled={!editable}
+          disabled={!planEditable}
         >
           {PRIORITY_ORDER.map((key) => (
             <option key={key} value={key}>
@@ -312,7 +329,7 @@ export function TaskDialog({
             className="field"
             value={effortPoints}
             onChange={(event) => setEffortPoints(event.target.value)}
-            disabled={!editable}
+            disabled={!planEditable}
           >
             <option value="">—</option>
             {[1, 2, 3, 5, 8, 13].map((points) => (
@@ -331,7 +348,7 @@ export function TaskDialog({
             className="field ltr text-start"
             value={estimatedHours}
             onChange={(event) => setEstimatedHours(event.target.value)}
-            disabled={!editable}
+            disabled={!planEditable}
           />
         </Field>
       </div>
@@ -407,7 +424,7 @@ export function TaskDialog({
           className="field"
           value={appId}
           onChange={(event) => setAppId(event.target.value)}
-          disabled={!editable}
+          disabled={!planEditable}
         >
           <option value="">— {t('tasks.noRelatedApp')} —</option>
           {apps.map((app) => (
@@ -437,10 +454,10 @@ export function TaskDialog({
       title={current ? t('tasks.detail') : t('tasks.new')}
       footer={
         <>
-          {deletable && (
-            <button type="button" onClick={remove} className="btn-danger btn-sm me-auto">
-              <Trash2 size={15} />
-              {t('common.delete')}
+          {archivable && (
+            <button type="button" onClick={archive} className="btn-danger btn-sm me-auto">
+              <Archive size={15} />
+              {t('tasks.archive')}
             </button>
           )}
           <button type="button" onClick={onClose} className="btn-ghost btn-sm">
@@ -465,10 +482,13 @@ export function TaskDialog({
         // `min-w-0` throughout: a grid track sizes to its widest child by
         // default, and one wide row would push the whole dialog sideways.
         <div className="grid min-w-0 gap-5">
+          {/* The title is what the task *asks for*, so it belongs to the brief
+              and not to whoever is carrying it — same rule the server applies
+              through `PLAN_FIELDS`. */}
           <TaskHeading
             task={current}
             title={title}
-            editable={editable}
+            editable={planEditable}
             onTitle={setTitle}
           />
 
@@ -491,7 +511,7 @@ export function TaskDialog({
                   value={description}
                   onChange={(event) => setDescription(event.target.value)}
                   placeholder={t('tasks.descPlaceholder')}
-                  disabled={!editable}
+                  disabled={!planEditable}
                 />
               </Field>
 
@@ -501,7 +521,7 @@ export function TaskDialog({
                   value={objective}
                   onChange={(event) => setObjective(event.target.value)}
                   placeholder={t('tasks.objectivePlaceholder')}
-                  disabled={!editable}
+                  disabled={!planEditable}
                 />
               </Field>
 
@@ -511,7 +531,7 @@ export function TaskDialog({
                   value={definitionOfDone}
                   onChange={(event) => setDefinitionOfDone(event.target.value)}
                   placeholder={t('tasks.definitionOfDonePlaceholder')}
-                  disabled={!editable}
+                  disabled={!planEditable}
                 />
               </Field>
 
