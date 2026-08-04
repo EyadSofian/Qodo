@@ -19,10 +19,12 @@ import {
   CircleHelp,
   Clock3,
   Download,
+  ExternalLink,
   File as FileIcon,
   FileImage,
   FileSpreadsheet,
   FileText,
+  Link2 as LinkIcon,
   Paperclip,
   Play,
   RotateCcw,
@@ -189,6 +191,15 @@ export function WorkflowTracker({ task }: { task: Task }) {
 
 /* ── deliverables ────────────────────────────────────────────────── */
 
+/** A link's host is the part that tells you what it is: a sheet, a drive, a post. */
+function hostOf(url: string | null) {
+  try {
+    return new URL(url ?? '').hostname.replace(/^www\./, '');
+  } catch {
+    return '';
+  }
+}
+
 function iconFor(type: string) {
   if (type.startsWith('image/')) return FileImage;
   if (type.includes('spreadsheet') || type.includes('excel') || type === 'text/csv') {
@@ -242,6 +253,28 @@ export function Deliverables({
     }
   };
 
+  /**
+   * Much of this company's output lives at an address rather than in a file —
+   * the campaign sheet, the Drive folder, the post that went live. Pasting the
+   * link satisfies the same gate an upload does.
+   */
+  const sendLink = async () => {
+    const url = window.prompt(t('flow.linkPrompt'))?.trim();
+    if (!url) return;
+    setBusy(true);
+    try {
+      const { attachment } = await api.post<{ attachment: TaskAttachment }>(
+        `/tasks/${task.id}/attachments/link`,
+        { url }
+      );
+      onChanged([...(attachments ?? []), attachment]);
+    } catch (err) {
+      push(errorMessage(err, lang), 'bad');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const remove = async (attachment: TaskAttachment) => {
     if (!window.confirm(t('flow.confirmRemoveFile', { name: attachment.name }))) return;
     try {
@@ -274,7 +307,8 @@ export function Deliverables({
       ) : (
         <ul className="grid gap-2">
           {attachments.map((attachment) => {
-            const Icon = iconFor(attachment.type);
+            const link = attachment.kind === 'link' && attachment.url;
+            const Icon = link ? LinkIcon : iconFor(attachment.type);
             const owner = userById(attachment.userId);
             return (
               <li
@@ -289,19 +323,23 @@ export function Deliverables({
                     {attachment.name}
                   </span>
                   <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-ink-faint">
-                    <span className="ltr">{formatBytes(attachment.size)}</span>
+                    <span className="ltr truncate">
+                      {link ? hostOf(attachment.url) : formatBytes(attachment.size)}
+                    </span>
                     <span>{t('flow.uploadedBy', { name: owner?.name ?? t('common.removedUser') })}</span>
                     <span>{timeAgo(attachment.createdAt, t)}</span>
                   </span>
                 </span>
+                {/* A deliverable link points wherever the employee pasted it,
+                    so `noopener` keeps it from getting a handle on this tab. */}
                 <a
-                  href={`/api/tasks/${task.id}/attachments/${attachment.id}`}
+                  href={link ? attachment.url! : `/api/tasks/${task.id}/attachments/${attachment.id}`}
                   target="_blank"
-                  rel="noreferrer"
+                  rel="noopener noreferrer"
                   className="btn-quiet !min-h-9 shrink-0 rounded-lg px-2"
                   aria-label={attachment.name}
                 >
-                  <Download size={16} />
+                  {link ? <ExternalLink size={16} /> : <Download size={16} />}
                 </a>
                 {canAttach && (
                   <button
@@ -337,15 +375,26 @@ export function Deliverables({
           )}
         >
           <span className="text-[11.5px] text-ink-faint">{t('flow.fileLimit')}</span>
-          <button
-            type="button"
-            onClick={() => picker.current?.click()}
-            disabled={busy}
-            className="btn-ghost btn-sm gap-1.5"
-          >
-            {busy ? <Spinner size={15} /> : <Upload size={15} />}
-            {busy ? t('flow.uploading') : t('flow.addFile')}
-          </button>
+          <span className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void sendLink()}
+              disabled={busy}
+              className="btn-ghost btn-sm gap-1.5"
+            >
+              <LinkIcon size={15} />
+              {t('flow.addLink')}
+            </button>
+            <button
+              type="button"
+              onClick={() => picker.current?.click()}
+              disabled={busy}
+              className="btn-ghost btn-sm gap-1.5"
+            >
+              {busy ? <Spinner size={15} /> : <Upload size={15} />}
+              {busy ? t('flow.uploading') : t('flow.addFile')}
+            </button>
+          </span>
           <input
             ref={picker}
             type="file"

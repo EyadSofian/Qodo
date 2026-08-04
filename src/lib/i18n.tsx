@@ -279,13 +279,18 @@ const STRINGS = {
 
   'flow.deliverables': { ar: 'ملفات التسليم', en: 'Deliverables' },
   'flow.deliverablesHint': {
-    ar: 'أرفق ما أنجزته فعلاً — ملف، صورة، أو تقرير. هذا ما سيراجعه المدير قبل الاعتماد.',
-    en: 'Attach what you actually produced — a file, an image, a report. This is what the manager reviews before approving.',
+    ar: 'أرفق ما أنجزته فعلاً — ملف أو صورة أو تقرير، أو رابط الشيت أو الفولدر أو البوست. هذا ما سيراجعه المدير قبل الاعتماد.',
+    en: 'Attach what you actually produced — a file, an image, a report, or the link to the sheet, folder or post. This is what the manager reviews before approving.',
   },
   'flow.noDeliverables': { ar: 'لا توجد مرفقات بعد.', en: 'Nothing attached yet.' },
   'flow.addFile': { ar: 'إرفاق ملف', en: 'Attach a file' },
+  'flow.addLink': { ar: 'إرفاق رابط', en: 'Attach a link' },
+  'flow.linkPrompt': {
+    ar: 'الصق رابط التسليم — شيت أو فولدر درايف أو فيجما أو بوست منشور:',
+    en: 'Paste the deliverable link — a sheet, a Drive folder, Figma, a live post:',
+  },
   'flow.uploading': { ar: 'جارٍ الرفع…', en: 'Uploading…' },
-  'flow.fileLimit': { ar: 'حتى ١٠ ميجابايت للملف الواحد.', en: 'Up to 10 MB per file.' },
+  'flow.fileLimit': { ar: 'ملف حتى ١٠ ميجابايت، أو رابط.', en: 'A file up to 10 MB, or a link.' },
   'flow.removeFile': { ar: 'إزالة المرفق', en: 'Remove attachment' },
   'flow.confirmRemoveFile': { ar: 'إزالة «{name}»؟', en: 'Remove “{name}”?' },
   'flow.uploadedBy': { ar: 'رفعه {name}', en: 'by {name}' },
@@ -300,7 +305,10 @@ const STRINGS = {
     ar: 'مثال: التصميمات الثلاثة النهائية بعد تعديلات البراند…',
     en: 'e.g. the three final designs after the brand revisions…',
   },
-  'flow.needDeliverable': { ar: 'أرفق ملف التسليم أولاً.', en: 'Attach the deliverable first.' },
+  'flow.needDeliverable': {
+    ar: 'أرفق التسليم أولاً — ملف أو رابط.',
+    en: 'Attach the deliverable first — a file or a link.',
+  },
   'flow.submitted.toast': { ar: 'تم التسليم — المهمة الآن عند المدير.', en: 'Submitted — it is with your manager now.' },
   'flow.started.toast': { ar: 'بدأ العمل على المهمة.', en: 'Work started.' },
 

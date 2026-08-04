@@ -728,6 +728,75 @@ test('assign → deliver → review → approve, including the rework loop', asy
   assert.equal(await download.text(), 'demo');
 });
 
+test('a link satisfies the deliverable gate, and only http(s) links do', async () => {
+  const { task } = await create(
+    '/tasks',
+    {
+      title: 'Q3 campaign sheet',
+      department: 'marketing',
+      subteam: 'creative',
+      stage: 'pending',
+      assigneeId: creative.user.id,
+    },
+    managerCookie
+  );
+  await request(`/tasks/${task.id}/assignment`, {
+    method: 'POST',
+    cookie: creativeCookie,
+    body: { action: 'accept' },
+  });
+
+  // Nothing attached, so the gate holds even though the note is full of text.
+  const bare = await request(`/tasks/${task.id}/submit`, {
+    method: 'POST',
+    cookie: creativeCookie,
+    body: { note: 'https://docs.google.com/spreadsheets/d/abc/edit' },
+  });
+  assert.equal(bare.status, 400);
+  assert.equal(bare.data.error, 'deliverable_required');
+
+  // A URL comes back out as an href, so anything that could execute is refused.
+  for (const url of ['javascript:alert(1)', 'data:text/html,<script>x</script>', 'not a url', '']) {
+    const bad = await request(`/tasks/${task.id}/attachments/link`, {
+      method: 'POST',
+      cookie: creativeCookie,
+      body: { url },
+    });
+    assert.equal(bad.status, 400, `accepted ${url}`);
+    assert.equal(bad.data.error, 'invalid_link');
+  }
+
+  const linked = await request(`/tasks/${task.id}/attachments/link`, {
+    method: 'POST',
+    cookie: creativeCookie,
+    body: { url: 'https://docs.google.com/spreadsheets/d/abc/edit?gid=1004542274' },
+  });
+  assert.equal(linked.status, 201, JSON.stringify(linked.data));
+  assert.equal(linked.data.attachmentCount, 1);
+  assert.equal(linked.data.attachment.kind, 'link');
+  // Unnamed, so it is called after its host — the part that says what it is.
+  assert.equal(linked.data.attachment.name, 'docs.google.com');
+  assert.match(linked.data.attachment.url, /^https:\/\/docs\.google\.com\//);
+
+  // There are no bytes behind a link, and this endpoint must not turn into an
+  // open redirect to wherever the employee pasted.
+  const asFile = await request(
+    `/tasks/${task.id}/attachments/${linked.data.attachment.id}`,
+    { cookie: managerCookie }
+  );
+  assert.equal(asFile.status, 400);
+  assert.equal(asFile.data.error, 'link_deliverable');
+
+  // Same gate, now satisfied.
+  const submitted = await request(`/tasks/${task.id}/submit`, {
+    method: 'POST',
+    cookie: creativeCookie,
+    body: { note: 'الشيت جاهز' },
+  });
+  assert.equal(submitted.status, 200, JSON.stringify(submitted.data));
+  assert.equal(submitted.data.task.stage, 'review');
+});
+
 test('clearing a task away is an archive, and the purge is two authorities deep', async () => {
   const { task } = await create(
     '/tasks',

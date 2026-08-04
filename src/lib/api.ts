@@ -253,6 +253,14 @@ const ERRORS: Record<string, { ar: string; en: string }> = {
     ar: 'التقييم يأتي بعد تسليم العمل ومراجعته — لا يمكن وضعه عند إنشاء المهمة.',
     en: 'A score comes after the work is delivered and reviewed — not when the task is created.',
   },
+  invalid_link: {
+    ar: 'الرابط غير صالح. لازم يبدأ بـ http:// أو https://',
+    en: 'That link is not valid. It must start with http:// or https://',
+  },
+  link_deliverable: {
+    ar: 'هذا التسليم رابط — افتحه مباشرة، لا يوجد ملف لتنزيله.',
+    en: 'This deliverable is a link — open it directly; there is no file to download.',
+  },
   deliverable_required: {
     ar: 'أرفق ملف التسليم أولاً قبل إرسال المهمة للمراجعة.',
     en: 'Attach what you produced before sending the task for review.',

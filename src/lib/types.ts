@@ -229,6 +229,9 @@ export interface TaskAttachment {
   name: string;
   size: number;
   type: string;
+  /** `link` deliverables carry a URL instead of bytes — a sheet, a folder, a live post. */
+  kind: 'file' | 'link';
+  url: string | null;
   createdAt: string;
 }
 
