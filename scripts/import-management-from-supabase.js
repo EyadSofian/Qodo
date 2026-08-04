@@ -107,6 +107,66 @@ function toItem(row, people) {
   };
 }
 
+/**
+ * Which Telegram chats are allowed to file.
+ *
+ * Easy to overlook and the most disruptive thing to lose: enrolment is what
+ * makes a chat trusted, so leaving these behind means every person already
+ * using the bot silently stops being able to file and has to be told to send
+ * the join code again. The items are the visible half of the migration; this is
+ * the half somebody notices at 9am.
+ */
+async function importMembers(store) {
+  const [rows, existing] = await Promise.all([fetchAll('mgmt_member'), find('managementMembers')]);
+  const known = new Set(existing.map((row) => row.chatId));
+  let added = 0;
+
+  for (const row of rows) {
+    if (!row.chat_id || known.has(String(row.chat_id))) continue;
+    if (!DRY_RUN) {
+      await create('managementMembers', {
+        organizationId: ORGANIZATION,
+        chatId: String(row.chat_id),
+        displayName: row.display_name ?? null,
+        source: row.source ?? 'telegram',
+        createdAt: row.created_at ?? new Date().toISOString(),
+      });
+    }
+    added += 1;
+  }
+  console.log(`members: ${rows.length} in supabase  ·  ${added} added  ·  ${known.size} already here`);
+}
+
+/** The audit log of what arrived from chat. History, not state — but it is the
+ *  only record of a message that failed to parse, so it comes too. */
+async function importIngest() {
+  const [rows, existing] = await Promise.all([fetchAll('mgmt_ingest'), find('managementIngest')]);
+  const known = new Set(existing.filter((row) => row.importedFrom).map((row) => row.importedFrom));
+  let added = 0;
+
+  for (const row of rows) {
+    if (known.has(row.id)) continue;
+    if (!DRY_RUN) {
+      await create('managementIngest', {
+        organizationId: ORGANIZATION,
+        importedFrom: row.id,
+        source: row.source ?? 'telegram',
+        chatId: row.chat_id ?? null,
+        messageId: row.message_id ?? null,
+        sender: row.sender ?? null,
+        rawText: row.raw_text ?? '',
+        itemCount: row.item_count ?? 0,
+        status: row.status ?? 'ok',
+        error: row.error ?? null,
+        model: row.model ?? null,
+        createdAt: row.created_at ?? new Date().toISOString(),
+      });
+    }
+    added += 1;
+  }
+  console.log(`ingest log: ${rows.length} in supabase  ·  ${added} added`);
+}
+
 async function main() {
   const store = await getStore();
   console.log(`store: ${store.kind}  ·  organization: ${ORGANIZATION}${DRY_RUN ? '  ·  DRY RUN' : ''}`);
@@ -144,12 +204,15 @@ async function main() {
     }
   }
 
-  console.log(`created: ${created}  ·  updated: ${updated}`);
+  console.log(`items: created ${created}  ·  updated ${updated}`);
   if (unresolved) {
     console.log(
       `note: ${unresolved} items name an owner who is not a workspace user — the name is kept, the link is not.`
     );
   }
+
+  await importMembers(store);
+  await importIngest();
 }
 
 main().catch((err) => {

@@ -51,8 +51,12 @@ const TEAM = splitList(process.env.MANAGEMENT_TEAM);
  * Extraction is a short, structured, high-volume job on messages that are a
  * sentence long, so it runs on Sonnet rather than Opus — same understanding of
  * Egyptian Arabic, a fraction of the latency the person in the chat waits for.
+ *
+ * `ANTHROPIC_MODEL` is read as well as `MANAGEMENT_MODEL` because that is the
+ * name already set in the deployment. A variable somebody has deliberately
+ * configured and which is then silently ignored is worse than no variable.
  */
-const MODEL = process.env.MANAGEMENT_MODEL || 'claude-sonnet-5';
+const MODEL = process.env.MANAGEMENT_MODEL || process.env.ANTHROPIC_MODEL || 'claude-sonnet-5';
 const TIMEZONE = process.env.MANAGEMENT_TIMEZONE || 'Africa/Cairo';
 
 const MAX_TEXT_CHARS = 4000;
