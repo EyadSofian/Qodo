@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   BarChart3,
   CalendarClock,
@@ -1176,7 +1176,12 @@ function PerformanceRow({
   return (
     <tr className="text-[12px] text-ink">
       <td className="px-4 py-3">
-        <div className="flex items-center gap-2.5">
+        {/* The row is a summary; the profile is where the tasks behind these
+            numbers actually are. */}
+        <Link
+          to={`/people/${person.user.id}`}
+          className="flex items-center gap-2.5 rounded-lg transition-colors hover:text-brand-600"
+        >
           <span
             className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[11px] font-bold text-white"
             style={{ background: person.user.avatarColor }}
@@ -1191,7 +1196,7 @@ function PerformanceRow({
               </span>
             )}
           </span>
-        </div>
+        </Link>
       </td>
       <MetricCell value={person.total} />
       <MetricCell value={person.completed} className="text-status-ok" />

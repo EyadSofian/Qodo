@@ -79,11 +79,19 @@ export default {
         shimmer: {
           '100%': { transform: 'translateX(100%)' },
         },
+        // Width rather than scaleX so the bar empties towards the reader's own
+        // start edge in both directions without a per-direction origin.
+        drain: {
+          from: { width: '100%' },
+          to: { width: '0%' },
+        },
       },
       animation: {
         'fade-up': 'fade-up 260ms cubic-bezier(0.22,1,0.36,1) both',
         'pop-in': 'pop-in 200ms cubic-bezier(0.22,1,0.36,1) both',
         shimmer: 'shimmer 1.6s infinite',
+        // Matches AUTO_DISMISS_MS in IncomingNotificationPopup.
+        drain: 'drain 9s linear forwards',
       },
     },
   },

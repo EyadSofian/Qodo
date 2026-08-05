@@ -12,6 +12,7 @@ import { AppFrame } from './pages/AppFrame';
 import { Tasks } from './pages/Tasks';
 import { Management } from './pages/Management';
 import { Users } from './pages/Users';
+import { Profile } from './pages/Profile';
 import { Settings } from './pages/Settings';
 
 export default function App() {
@@ -63,6 +64,9 @@ function Gate() {
             launcher with no explanation. */}
         <Route path="/management" element={<Management />} />
         <Route path="/users" element={<Users />} />
+        {/* Reachable by anybody who can see the person at all — the endpoints
+            behind it are what decide how much of them is shown. */}
+        <Route path="/people/:id" element={<Profile />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

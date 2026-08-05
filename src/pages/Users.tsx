@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   Check,
   Copy,
@@ -226,7 +226,19 @@ export function Users() {
 
                 <div className="min-w-0 flex-1">
                   <p className="flex flex-wrap items-center gap-2">
-                    <span className="text-[14px] font-bold text-ink">{person.name}</span>
+                    {/* A pending account has no work and no figures yet, so the
+                        name only becomes a link once there is a page worth
+                        opening. */}
+                    {person.status === 'pending' ? (
+                      <span className="text-[14px] font-bold text-ink">{person.name}</span>
+                    ) : (
+                      <Link
+                        to={`/people/${person.id}`}
+                        className="text-[14px] font-bold text-ink hover:text-brand-600 hover:underline"
+                      >
+                        {person.name}
+                      </Link>
+                    )}
                     {person.id === me?.id && <span className="chip bg-brand-50 text-brand-600">{t('common.you')}</span>}
                     {person.status === 'disabled' && (
                       <span className="chip bg-status-badBg text-status-bad">{t('users.disabledBadge')}</span>

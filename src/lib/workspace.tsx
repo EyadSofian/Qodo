@@ -29,7 +29,13 @@ interface WorkspaceState {
   apps: WorkspaceApp[];
   directory: DirectoryUser[];
   notifications: Notification[];
-  incomingNotification: Notification | null;
+  /**
+   * Live alerts waiting to be seen, newest first. A queue rather than a single
+   * slot because two notifications arriving in the same poll used to mean the
+   * second silently overwrote the first — the one case where the popup was
+   * least excusable to lose, since a burst is exactly when things are busy.
+   */
+  incomingNotifications: Notification[];
   actors: ActorMap;
   unread: number;
   /** Open work on the signed-in person's plate — the nav badge reads this. */
@@ -41,7 +47,7 @@ interface WorkspaceState {
   reloadTaskCounts: () => Promise<void>;
   markRead: (id: string) => Promise<void>;
   markAllRead: () => Promise<void>;
-  dismissIncomingNotification: () => void;
+  dismissIncomingNotification: (id: string) => void;
   appById: (id: string | null | undefined) => WorkspaceApp | undefined;
   userById: (id: string | null | undefined) => DirectoryUser | undefined;
 }
@@ -52,12 +58,15 @@ const WorkspaceContext = createContext<WorkspaceState | null>(null);
 // a reconnect, a backgrounded tab or a multi-instance deployment.
 const POLL_MS = 20_000;
 
+/** How many live alerts may stack before the rest wait in the bell alone. */
+const MAX_LIVE_ALERTS = 3;
+
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const [apps, setApps] = useState<WorkspaceApp[]>([]);
   const [directory, setDirectory] = useState<DirectoryUser[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [incomingNotification, setIncomingNotification] = useState<Notification | null>(null);
+  const [incomingNotifications, setIncomingNotifications] = useState<Notification[]>([]);
   const [actors, setActors] = useState<ActorMap>({});
   const [unread, setUnread] = useState(0);
   const [taskCounts, setTaskCounts] = useState<TaskCounts>(NO_TASKS);
@@ -82,10 +91,15 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     }>('/notifications');
     const currentIds = new Set(data.notifications.map((notification) => notification.id));
     if (seenNotificationIds.current) {
-      const fresh = data.notifications.find(
+      const fresh = data.notifications.filter(
         (notification) => !notification.read && !seenNotificationIds.current?.has(notification.id)
       );
-      if (fresh) setIncomingNotification(fresh);
+      // Capped so a backlog arriving at once — a scheduler run, a reconnect
+      // after the laptop wakes — announces itself without burying the screen.
+      // The bell still holds every one of them.
+      if (fresh.length > 0) {
+        setIncomingNotifications((queue) => [...fresh, ...queue].slice(0, MAX_LIVE_ALERTS));
+      }
     }
     seenNotificationIds.current = currentIds;
     setNotifications(data.notifications);
@@ -102,7 +116,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       setApps([]);
       setDirectory([]);
       setNotifications([]);
-      setIncomingNotification(null);
+      setIncomingNotifications([]);
       seenNotificationIds.current = null;
       setUnread(0);
       setTaskCounts(NO_TASKS);
@@ -154,26 +168,34 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     };
   }, [user, reloadNotifications, reloadTaskCounts]);
 
+  // Reading a notification anywhere — the bell, the popup itself — retires the
+  // live alert too. Being told twice about something already dealt with is the
+  // other half of "the popup is noisy".
   const markRead = useCallback(async (id: string) => {
     setNotifications((list) => list.map((n) => (n.id === id ? { ...n, read: true } : n)));
+    setIncomingNotifications((queue) => queue.filter((n) => n.id !== id));
     setUnread((count) => Math.max(0, count - 1));
     await api.post(`/notifications/${id}/read`).catch(() => {});
   }, []);
 
   const markAllRead = useCallback(async () => {
     setNotifications((list) => list.map((n) => ({ ...n, read: true })));
+    setIncomingNotifications([]);
     setUnread(0);
     await api.post('/notifications/read-all').catch(() => {});
   }, []);
 
-  const dismissIncomingNotification = useCallback(() => setIncomingNotification(null), []);
+  const dismissIncomingNotification = useCallback(
+    (id: string) => setIncomingNotifications((queue) => queue.filter((n) => n.id !== id)),
+    []
+  );
 
   const value = useMemo<WorkspaceState>(
     () => ({
       apps,
       directory,
       notifications,
-      incomingNotification,
+      incomingNotifications,
       actors,
       unread,
       taskCounts,
@@ -192,7 +214,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       apps,
       directory,
       notifications,
-      incomingNotification,
+      incomingNotifications,
       actors,
       unread,
       taskCounts,

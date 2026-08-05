@@ -79,12 +79,25 @@ const STRINGS = {
   'shell.team': { ar: 'الفريق', en: 'Team' },
   'shell.noAppsForYou': { ar: 'لا توجد تطبيقات متاحة لحسابك.', en: 'No apps are available to your account.' },
   'shell.language': { ar: 'اللغة', en: 'Language' },
-  'shell.enableNotifications': { ar: 'تفعيل إشعارات الهاتف', en: 'Enable phone notifications' },
+  // Deliberately "this device": a push subscription belongs to one browser on
+  // one machine, so enabling it on the laptop does nothing for the phone. The
+  // old wording said "phone" and left desktop users assuming it wasn't for them.
+  'shell.enableNotifications': {
+    ar: 'تفعيل الإشعارات على هذا الجهاز',
+    en: 'Enable notifications on this device',
+  },
   'shell.enableNotificationsHint': {
     ar: 'استقبل تنبيهات تسليم المهام حتى عندما تكون المساحة مغلقة.',
     en: 'Get task delivery alerts even while the workspace is closed.',
   },
-  'shell.notificationsEnabled': { ar: 'إشعارات الهاتف مفعّلة', en: 'Phone notifications on' },
+  'shell.notificationsEnabled': {
+    ar: 'الإشعارات مفعّلة على هذا الجهاز',
+    en: 'Notifications on for this device',
+  },
+  'shell.notificationsNoKeys': {
+    ar: 'الإشعارات الفورية متوقفة: مفاتيح VAPID غير مضبوطة على الخادم.',
+    en: 'Push is off: the server has no VAPID keys set.',
+  },
   'shell.testNotification': { ar: 'إرسال إشعار تجريبي', en: 'Send a test notification' },
   'push.testSent': { ar: 'أُرسل الإشعار — تحقّق من جهازك.', en: 'Sent — check your device.' },
   'push.testFailed': { ar: 'تعذّر إرسال الإشعار التجريبي.', en: 'Could not send the test notification.' },
@@ -404,6 +417,23 @@ const STRINGS = {
   'performance.active': { ar: 'مفتوحة', en: 'Open' },
   'performance.noData': { ar: 'لا توجد بيانات أداء بعد.', en: 'No performance data yet.' },
   'performance.statusMix': { ar: 'توزيع الحالات', en: 'Status mix' },
+
+  'profile.viewProfile': { ar: 'الملف الشخصي', en: 'Profile' },
+  'profile.notFound': {
+    ar: 'هذا الموظف غير موجود، أو ليس ضمن من يمكنك الاطلاع عليهم.',
+    en: 'No such employee, or they are outside what you may see.',
+  },
+  'profile.remaining': { ar: 'مهام فاضلة', en: 'Still open' },
+  'profile.done': { ar: 'مهام منجزة', en: 'Finished' },
+  'profile.noOpen': { ar: 'لا توجد مهام مفتوحة.', en: 'Nothing open right now.' },
+  'profile.noDone': { ar: 'لم تُنجز أي مهمة بعد.', en: 'Nothing finished yet.' },
+  'profile.metricsPrivate': {
+    ar: 'أرقام الأداء والتقييم خاصة بصاحبها ومديره.',
+    en: 'Performance figures stay between this person and their manager.',
+  },
+  'profile.self': { ar: 'ملفك الشخصي', en: 'Your profile' },
+  'profile.lastSeen': { ar: 'آخر دخول {when}', en: 'Last signed in {when}' },
+  'profile.neverSignedIn': { ar: 'لم يسجّل دخوله بعد', en: 'Never signed in' },
   'priority.urgent': { ar: 'عاجلة', en: 'Urgent' },
   'priority.high': { ar: 'مهمة', en: 'High' },
   'priority.normal': { ar: 'عادية', en: 'Normal' },
@@ -736,7 +766,7 @@ const STRINGS = {
   'assistant.suggest4': { ar: 'لخّص لي أعمال هذا الأسبوع', en: 'Summarise this week’s work' },
 
   /* ── push ────────────────────────────────────────────────── */
-  'push.enabled': { ar: 'تم تفعيل إشعارات الهاتف.', en: 'Phone notifications enabled.' },
+  'push.enabled': { ar: 'تم تفعيل الإشعارات على هذا الجهاز.', en: 'Notifications enabled on this device.' },
   'push.denied': {
     ar: 'المتصفح رفض الإشعارات. فعّلها من إعدادات الموقع ثم أعد المحاولة.',
     en: 'The browser blocked notifications. Allow them in site settings and try again.',
@@ -747,7 +777,7 @@ const STRINGS = {
     en: 'Notifications are not configured on the server (VAPID).',
   },
   'push.failed': { ar: 'تعذّر تفعيل الإشعارات.', en: 'Could not enable notifications.' },
-  'push.disabled': { ar: 'تم إيقاف إشعارات الهاتف.', en: 'Phone notifications turned off.' },
+  'push.disabled': { ar: 'تم إيقاف الإشعارات على هذا الجهاز.', en: 'Notifications turned off on this device.' },
 
   /* ── time ────────────────────────────────────────────────── */
   'time.now': { ar: 'الآن', en: 'just now' },

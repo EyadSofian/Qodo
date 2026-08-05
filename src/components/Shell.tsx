@@ -134,8 +134,15 @@ export function Shell({ children }: { children: ReactNode }) {
   const isFramed = location.pathname.startsWith('/app/');
   // On iPhone, web push only exists once the site is on the home screen — so a
   // plain Safari tab reports unsupported and the row is hidden rather than
-  // offering a button that cannot work.
+  // offering a button that cannot work. Every desktop browser that matters
+  // supports it outright, which is why nothing here is phone-specific.
   const showPushRow = push === 'off' || push === 'on' || (isIos() && !isStandalone() ? false : push === 'denied');
+
+  // `unconfigured` means the server has no VAPID keys, so the button would do
+  // nothing for anybody. Silently hiding the row left the one person who can
+  // fix that with no way to discover it — they see a disabled row saying so,
+  // and everybody else still sees nothing to be confused by.
+  const showPushMissingKeys = push === 'unconfigured' && can(PERMISSIONS.SETTINGS_MANAGE);
 
   return (
     <div className="flex min-h-[100dvh] flex-col">
@@ -332,6 +339,13 @@ export function Shell({ children }: { children: ReactNode }) {
                       <BellRing size={15} className={push === 'on' ? 'text-status-ok' : undefined} />
                       {push === 'on' ? t('shell.notificationsEnabled') : t('shell.enableNotifications')}
                     </button>
+                  )}
+
+                  {showPushMissingKeys && (
+                    <span className="flex w-full items-start gap-2 rounded-lg px-3 py-2.5 text-[12px] leading-relaxed text-ink-faint">
+                      <BellRing size={15} className="mt-0.5 shrink-0" />
+                      {t('shell.notificationsNoKeys')}
+                    </span>
                   )}
 
                   {/* Normal alerts skip the person who caused them, so this is
