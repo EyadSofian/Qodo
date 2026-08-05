@@ -29,6 +29,7 @@ import {
   patchItem,
   removeItem,
   sortItems,
+  uploadFile,
   type MgmtDraft,
   type MgmtItem,
   type MgmtKind,
@@ -117,7 +118,7 @@ export function Management() {
   const applyItem = (updated: MgmtItem) =>
     setItems((rows) => (rows ?? []).map((row) => (row.id === updated.id ? updated : row)));
 
-  const save = async (values: MgmtDraft) => {
+  const save = async (values: MgmtDraft, files: File[]) => {
     setBusy(true);
     try {
       if (editing) {
@@ -125,8 +126,19 @@ export function Management() {
         push('اتحدّث.');
       } else {
         const created = await createItem(values);
-        setItems((rows) => [created, ...(rows ?? [])]);
-        push('اتسجّل.');
+        // The pictures were picked before the item had an id, so they go up now
+        // that it does. A failure here is reported without losing the item —
+        // it is already filed, and the card can take the files afterwards.
+        let attachmentCount = 0;
+        try {
+          for (const file of files) {
+            ({ attachmentCount } = await uploadFile(created.id, file));
+          }
+        } catch {
+          push('اتسجّل، بس فيه صورة ما اترفعتش — جرّب من الكارت.', 'bad');
+        }
+        setItems((rows) => [{ ...created, attachmentCount }, ...(rows ?? [])]);
+        if (files.length === 0 || attachmentCount === files.length) push('اتسجّل.');
       }
       setDraft(null);
       setEditing(null);
@@ -275,6 +287,8 @@ export function Management() {
         {draft && (
           <ItemForm
             initial={draft}
+            itemId={editing?.id}
+            canManage={canManage}
             busy={busy}
             onCancel={() => {
               setDraft(null);

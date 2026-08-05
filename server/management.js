@@ -27,7 +27,7 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
-import { create, find, findOne, getStore } from './store.js';
+import { create, find, findOne, getStore, removeBlob } from './store.js';
 import { DEPARTMENT_IDS } from '../shared/departments.js';
 import { organizationOf } from '../shared/organization.js';
 import { PERMISSIONS, can, isActiveUser } from '../shared/permissions.js';
@@ -888,6 +888,15 @@ export async function updateItem(id, body, organizationId) {
 export async function deleteItem(id, organizationId) {
   const store = await getStore();
   const item = await loadItem(id, organizationId);
+
+  // The rows would go with the item either way, but the bytes live in the blob
+  // half and nothing else references them — dropping the item without this
+  // leaves them on disk forever, unreachable and uncountable.
+  for (const file of await find('attachments', (row) => row.itemId === item.id)) {
+    await store.remove('attachments', file.id);
+    await removeBlob(file.id);
+  }
+
   await store.remove('managementItems', item.id);
   return { ok: true };
 }

@@ -6,7 +6,7 @@
  * than "what did we file". Everything else is a chip.
  */
 
-import { AlertTriangle, Clock, MapPin, Radio, Trash2, UserRound } from 'lucide-react';
+import { AlertTriangle, Clock, MapPin, Paperclip, Radio, Trash2, UserRound } from 'lucide-react';
 import {
   KIND_LABEL,
   PRIORITY_LABEL,
@@ -130,6 +130,20 @@ export function ItemCard({
         <span className="rounded-lg bg-surface-sunken px-2 py-1 font-semibold text-ink-muted">
           {lang === 'en' ? KIND_LABEL[item.kind].en : KIND_LABEL[item.kind].ar}
         </span>
+
+        {/* Read off the item's own count, so a board of thirty cards costs no
+            extra requests to know which ones carry evidence. */}
+        {Boolean(item.attachmentCount) && (
+          <button
+            type="button"
+            onClick={() => onEdit(item)}
+            className="inline-flex items-center gap-1 rounded-lg bg-surface-sunken px-2 py-1 font-semibold text-ink-muted transition-colors hover:bg-brand-50 hover:text-brand-600"
+            title="عرض المرفقات"
+          >
+            <Paperclip size={12} />
+            {item.attachmentCount}
+          </button>
+        )}
 
         {/* Where the row came from. A card filed from a chat message reads
             differently from one somebody sat down and typed, and the raw text

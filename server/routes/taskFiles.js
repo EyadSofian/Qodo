@@ -26,21 +26,9 @@ import {
   taskState,
 } from '../../shared/workflow.js';
 import { organizationOf } from '../../shared/organization.js';
+import { attachmentErrors, cleanType, safeName, sendBlob } from '../attachments.js';
 
 const router = Router({ mergeParams: true });
-
-/**
- * Types the browser may render in place. Everything else is forced to download
- * as an opaque octet-stream: an uploaded .html or .svg served inline would run
- * its own script on this origin, which is the classic stored-XSS-by-upload.
- */
-const INLINE_TYPES = new Set([
-  'image/png',
-  'image/jpeg',
-  'image/gif',
-  'image/webp',
-  'application/pdf',
-]);
 
 /* ── helpers ─────────────────────────────────────────────────────── */
 
@@ -70,36 +58,6 @@ function canRemove(user, task, attachment) {
   if (isReviewer(user)) return true;
   if (taskState(task) === 'approved') return false;
   return attachment.userId === user.id;
-}
-
-/**
- * A filename arrives from someone else's computer, so it is treated as text,
- * never as a path: separators, quotes and control characters are flattened to
- * spaces. The bytes are stored under the id we generated, so this only affects
- * what the name looks like coming back out.
- */
-function safeName(raw) {
-  let name = String(raw || '');
-  try {
-    name = decodeURIComponent(name);
-  } catch {
-    /* not percent-encoded — take it literally */
-  }
-  const flattened = [...name]
-    .map((character) => {
-      const code = character.codePointAt(0);
-      const unsafe = character === '"' || character === '/' || character === '\\';
-      return unsafe || code < 0x20 || code === 0x7f ? ' ' : character;
-    })
-    .join('')
-    .replace(/\s+/g, ' ')
-    .trim();
-  return (flattened || 'file').slice(0, 180);
-}
-
-function cleanType(raw) {
-  const type = String(raw || '').split(';')[0].trim().toLowerCase();
-  return /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/.test(type) ? type : 'application/octet-stream';
 }
 
 /**
@@ -267,18 +225,7 @@ router.get('/:fileId', async (req, res) => {
   const bytes = await getBlob(row.id);
   if (!bytes) return res.status(404).json({ error: 'not_found' });
 
-  const inline = INLINE_TYPES.has(row.type);
-  res
-    .set({
-      'Content-Type': inline ? row.type : 'application/octet-stream',
-      'Content-Length': String(bytes.length),
-      // RFC 5987 encoding — an Arabic filename is not header-safe otherwise.
-      'Content-Disposition': `${inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(row.name)}`,
-      // Belt and braces around anything that slipped past the type allowlist.
-      'Content-Security-Policy': "default-src 'none'; sandbox",
-      'Cache-Control': 'private, max-age=300',
-    })
-    .send(bytes);
+  sendBlob(res, row, bytes);
 });
 
 router.delete('/:fileId', async (req, res) => {
@@ -297,16 +244,6 @@ router.delete('/:fileId', async (req, res) => {
   res.json({ ok: true, attachmentCount: count });
 });
 
-/**
- * Body-parser rejections surface here as thrown errors carrying a `type`.
- * Without this they would reach the global handler and be reported as a server
- * fault, when in fact the user simply picked a file that is too big.
- */
-// eslint-disable-next-line no-unused-vars -- Express identifies error handlers by arity.
-router.use((err, _req, res, _next) => {
-  if (err?.type === 'entity.too.large') return res.status(413).json({ error: 'file_too_large' });
-  console.error('[attachments]', err);
-  res.status(500).json({ error: 'server_error' });
-});
+router.use(attachmentErrors('attachments'));
 
 export default router;

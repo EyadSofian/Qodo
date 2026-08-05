@@ -44,6 +44,19 @@ export interface MgmtItem {
   createdAt: string;
   updatedAt: string;
   doneAt: string | null;
+  /** Kept on the item so a board of cards costs no extra requests. */
+  attachmentCount?: number;
+}
+
+/** A picture or document hanging off an item. */
+export interface MgmtFile {
+  id: string;
+  itemId: string;
+  userId: string;
+  name: string;
+  size: number;
+  type: string;
+  createdAt: string;
 }
 
 /** Editable subset — what the form sends on create and on edit. */
@@ -105,6 +118,31 @@ export const patchItem = (id: string, patch: Partial<MgmtDraft> | Record<string,
   api.patch<{ item: MgmtItem }>(`/management/items/${id}`, patch).then((r) => r.item);
 
 export const removeItem = (id: string) => api.delete(`/management/items/${id}`);
+
+/* ── files on an item ────────────────────────────────────────────── */
+
+const filesPath = (itemId: string) => `/management/items/${itemId}/attachments`;
+
+export const fetchFiles = (itemId: string) =>
+  api.get<{ attachments: MgmtFile[] }>(filesPath(itemId)).then((r) => r.attachments);
+
+export const uploadFile = (itemId: string, file: File) =>
+  api.upload<{ attachment: MgmtFile; attachmentCount: number }>(filesPath(itemId), file);
+
+export const removeFile = (itemId: string, fileId: string) =>
+  api.delete<{ attachmentCount: number }>(`${filesPath(itemId)}/${fileId}`);
+
+/**
+ * The bytes come back from the API under the session cookie, so this is a plain
+ * href — no token to mint and nothing to expire.
+ */
+export const fileUrl = (itemId: string, fileId: string) => `/api${filesPath(itemId)}/${fileId}`;
+
+/** What the browser will render in place rather than force a download of. */
+export const isImage = (file: MgmtFile) => file.type.startsWith('image/');
+
+export const MAX_FILE_BYTES = 10 * 1024 * 1024;
+export const MAX_FILES_PER_ITEM = 8;
 
 /**
  * A `datetime-local` value is what the person picked in their own clock, so it

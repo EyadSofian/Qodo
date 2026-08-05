@@ -34,6 +34,7 @@ import {
   listItems,
   updateItem,
 } from '../management.js';
+import itemFileRoutes from './managementFiles.js';
 
 const router = Router();
 
@@ -114,6 +115,14 @@ router.get('/agenda', async (req, res, next) => {
 
 router.use(requireAuth);
 router.use(requirePermission(PERMISSIONS.MANAGEMENT_VIEW));
+
+/**
+ * Files hang off an item, so they are the same resource one level down. Mounted
+ * here rather than below the `management.manage` gate because looking at the
+ * photo attached to a meeting is reading the meeting; the sub-router puts the
+ * manage requirement on the two routes that write.
+ */
+router.use('/items/:id/attachments', itemFileRoutes);
 
 /** What the board needs to know before it draws anything. */
 router.get('/meta', (req, res) => {
