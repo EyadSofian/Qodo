@@ -202,7 +202,48 @@ export const DEPARTMENTS = [
     en: 'Human resources',
     color: '#7C3AED',
     icon: 'people',
-    // Mirrors the recruitment funnel already used in the HR dashboard.
+    /**
+     * Three branches doing genuinely different work: hiring people, paying
+     * them, and the personnel side that outlives both. Same separation as
+     * marketing's — this says where someone sits in HR, not what they may do.
+     *
+     * `hr_management` is deliberately not `management`: the management desk is
+     * a permission (`management.view`) belonging to the executive's own diary,
+     * and a sub-team id that reads like it would be a trap for the next person.
+     */
+    subteams: [
+      {
+        id: 'recruitment',
+        ar: 'الركرومنت',
+        en: 'Recruitment',
+        roles: [{ id: 'recruiter', ar: 'أخصائي توظيف', en: 'Recruiter' }],
+      },
+      {
+        // No titles yet — payroll is one job here, so the sub-team is already
+        // the whole answer and an empty list means the form stops asking.
+        id: 'payroll',
+        ar: 'البايرول',
+        en: 'Payroll',
+        roles: [],
+      },
+      {
+        id: 'hr_management',
+        ar: 'المناجمينت',
+        en: 'HR management',
+        roles: [
+          { id: 'hr_specialist', ar: 'أخصائي موارد', en: 'HR specialist' },
+          { id: 'admin_manager', ar: 'مدير إدارة', en: 'Administration manager' },
+        ],
+      },
+    ],
+    /**
+     * Left as the recruitment funnel the HR dashboard already uses. Payroll and
+     * HR management therefore file work onto hiring columns, and returned work
+     * lands in "فرز المتقدمين" because there is no `rework` column to catch it
+     * (see `stageForReturn`). A deliberate choice to keep the recruitment board
+     * intact, not an oversight — generic stages are the fix when it starts to
+     * bite.
+     */
     stages: [
       { id: 'request', type: 'open', ar: 'طلب توظيف', en: 'Request' },
       { id: 'screening', type: 'active', ar: 'فرز المتقدمين', en: 'Screening' },

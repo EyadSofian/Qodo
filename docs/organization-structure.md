@@ -2,8 +2,19 @@
 
 ## Implemented hierarchy
 
+Marketing and HR are the only departments with a sub-team tree. The other seven
+are flat: their staff carry a department and no sub-team, which `visibilityFor`
+reads as department-wide rather than as an empty branch.
+
 ```text
 Organization: Engosoft
+├── Department: Human resources
+│   ├── Recruitment
+│   │   └── Recruiter
+│   ├── Payroll            (no job titles — the sub-team is the whole answer)
+│   └── HR Management
+│       ├── HR Specialist
+│       └── Administration Manager
 └── Department: Marketing
     ├── Creative
     │   ├── Designer
@@ -15,6 +26,8 @@ Organization: Engosoft
     │   ├── Digital Marketing Specialist
     │   ├── Marketing Coordinator
     │   └── Digital Marketing Coordinator
+    ├── Moderation
+    │   └── Moderator
     ├── Website & E-commerce
     │   ├── E-commerce Manager
     │   ├── E-commerce Specialist

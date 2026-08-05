@@ -275,7 +275,9 @@ export function Join() {
                 </Field>
               )}
 
-              {subteams.length > 0 && (
+              {/* A sub-team that names no job titles — payroll — would
+                  otherwise render a dropdown whose only entry is "none". */}
+              {subteams.length > 0 && (!subteam || jobRoles.length > 0) && (
                 <Field label={t('users.jobRole')}>
                   <select
                     className="field"
