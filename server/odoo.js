@@ -143,6 +143,41 @@ export async function searchRead(model, domain, fields, options = {}) {
 }
 
 /**
+ * Aggregation, done by Postgres.
+ *
+ * The alternative — reading every row and counting in JavaScript — means pulling
+ * a thousand courses across the wire to learn five numbers. `read_group` is how
+ * Odoo's own graph views do it.
+ */
+export async function readGroup(model, domain, groupBy, fields = groupBy) {
+  if (!odooConfigured()) throw new OdooError('odoo_not_configured', 503);
+  const { db, apiKey } = CONFIG();
+  const user = await uid();
+  return rpc('object', 'execute_kw', [
+    db,
+    user,
+    apiKey,
+    model,
+    'read_group',
+    [domain, fields, groupBy],
+    { lazy: false },
+  ]);
+}
+
+/**
+ * Which of these fields the live database actually has.
+ *
+ * Written because `is_zoom_meet` exists in the customisation's source and not on
+ * the server: a module can be a version behind what is deployed, and asking for
+ * a field that is not there fails the whole query rather than one column. Any
+ * reader over a model we do not control should intersect its wishlist with this.
+ */
+export async function existingFields(model, wanted) {
+  const known = await fieldsOf(model);
+  return wanted.filter((name) => Object.hasOwn(known, name));
+}
+
+/**
  * Field discovery, used by the diagnostics endpoint rather than the page.
  *
  * The customisation is somebody else's module and may move; being able to ask

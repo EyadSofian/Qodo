@@ -1,8 +1,20 @@
-# Odoo — the courses page
+# Odoo — الإيفينت and التعلّم الإلكتروني
 
-The workspace reads Engosoft's training out of Odoo 17 and shows it as
-**الكورسات**. Read-only: courses are run in Odoo, and a second system quietly
-editing them is how two sources of truth start disagreeing.
+The workspace reads Engosoft's training out of Odoo 17 as **two** apps.
+Read-only: courses are run in Odoo, and a second system quietly editing them is
+how two sources of truth start disagreeing.
+
+They are separate because they are different things wearing the same word:
+
+| App | Odoo model | Is | Has |
+|---|---|---|---|
+| **الإيفينت** | `event.event` + `event.track` | training with a date | lectures at a time, a room, a register, an instructor |
+| **التعلّم الإلكتروني** | `slide.channel` | recorded content | lessons, enrolment, a completion percentage, no schedule |
+
+Merging them would leave every second column blank whichever row you looked at:
+a video has no attendance and a lecture has no completion rate. Each app has its
+own **تحليل** tab and its own Allowed-apps tile, so somebody who may see the
+training calendar is not automatically able to see who finished which video.
 
 ## Setup
 
@@ -61,9 +73,32 @@ curl -s -X POST "$ODOO_URL/jsonrpc" -H 'Content-Type: application/json' -d '{
   {"attributes":["string","type","relation"]}]},"id":1}'
 ```
 
+## The eLearning reader is defensive on purpose
+
+`server/elearning.js` asks Odoo which fields `slide.channel` actually has and
+requests only those. That is not paranoia — `is_zoom_meet` is in the
+customisation's source and is **not** on the server, and asking for a field that
+does not exist fails the whole query rather than one column. The page then hides
+the tiles it cannot fill rather than drawing zeroes and calling them data.
+
+The eLearning half has not been verified against the live database: the API key
+was rotated mid-build, and the account it belonged to was refused
+`slide.channel` before that. When a key exists again, open **التعلّم الإلكتروني**
+and check the numbers against Odoo — and note the account needs read access to
+**eLearning** as well as Events, which are separate groups.
+
+## Charts
+
+Every chart is one hue, darker for more. They compare magnitudes — courses per
+stage, members per course — and that is a sequential job; giving each bar its own
+colour would claim the categories differ in kind rather than in size. The single
+categorical pair (online/in-person, published/draft) is the validated blue and
+orange, adjacent CVD ΔE 24.7, and both segments carry a label so colour is never
+the only carrier.
+
 ## Who sees it
 
-Access is the app tile, not a new permission: an administrator ticks **الكورسات**
-under Allowed apps on the user form. `server/routes/events.js` enforces the same
-`canOpenApp` check the launcher draws with, so the tile and the API can never
-disagree about who is allowed in.
+Access is the app tile, not a new permission: an administrator ticks **الإيفينت**
+or **التعلّم الإلكتروني** under Allowed apps on the user form.
+`server/routes/events.js` enforces the same `canOpenApp` check the launcher draws
+with, so the tile and the API can never disagree about who is allowed in.

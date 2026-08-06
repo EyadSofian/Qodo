@@ -26,6 +26,7 @@ import {
 import { errorMessage } from '../lib/api';
 import {
   attendeesLabel,
+  fetchAnalytics,
   fetchCourse,
   fetchCourses,
   fetchStatus,
@@ -42,11 +43,13 @@ import {
   type Course,
   type CourseDetail,
   type CoursesOverview,
+  type EventsAnalytics,
 } from '../lib/events';
+import { BarList, ChartCard, ColumnChart, SplitBar, StatTile } from '../components/Charts';
 import { EmptyState, Modal, Segmented, Spinner, useToast } from '../components/ui';
 import { cx } from '../lib/utils';
 
-type Lane = 'today' | 'running' | 'upcoming';
+type Lane = 'today' | 'running' | 'upcoming' | 'analysis';
 
 export function Events() {
   const { push } = useToast();
@@ -96,9 +99,9 @@ export function Events() {
     <div className="mx-auto w-full max-w-[1600px] px-4 py-6 sm:px-6">
       <header className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-[26px] font-extrabold text-ink">الكورسات</h1>
+          <h1 className="text-[26px] font-extrabold text-ink">الإيفينت</h1>
           <p className="mt-0.5 text-[13px] text-ink-muted">
-            اللي شغال دلوقتي، ومحاضرات النهاردة، ومين المدرّب — جاية من أودو على طول.
+            التدريب اللي بميعاد — محاضرات النهاردة، الكورسات الشغالة، والمدرّبين.
           </p>
         </div>
         <button
@@ -156,6 +159,7 @@ export function Events() {
                 { value: 'today', label: 'النهاردة', count: data.today.length },
                 { value: 'running', label: 'شغّالة', count: data.running.length },
                 { value: 'upcoming', label: 'جاية', count: data.upcoming.length },
+                { value: 'analysis', label: 'تحليل' },
               ]}
             />
           </div>
@@ -163,6 +167,7 @@ export function Events() {
           {lane === 'today' && <TodayLane sessions={data.today} onOpen={setOpenId} />}
           {lane === 'running' && <CourseGrid courses={data.running} onOpen={setOpenId} running />}
           {lane === 'upcoming' && <CourseGrid courses={data.upcoming} onOpen={setOpenId} />}
+          {lane === 'analysis' && <EventsAnalysis />}
         </>
       )}
 
@@ -369,6 +374,97 @@ function CourseCard({
         </div>
       )}
     </button>
+  );
+}
+
+/**
+ * The analysis tab.
+ *
+ * Every chart here compares sizes — how many courses sit in each stage, which
+ * instructors carry the most — so they are all one hue, darker for more. Giving
+ * each bar its own colour would claim the categories differ in kind rather than
+ * in size, and would bury whichever bar is actually the point.
+ *
+ * Loaded only when the tab is opened: it is four `read_group` calls against
+ * Odoo and nobody should pay for them to look at today's lectures.
+ */
+function EventsAnalysis() {
+  const [data, setData] = useState<EventsAnalytics | null>(null);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchAnalytics()
+      .then((rows) => !cancelled && setData(rows))
+      .catch((err) => !cancelled && setError(errorMessage(err, 'ar')));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (error) {
+    return (
+      <p className="flex items-center gap-2 rounded-xl bg-status-badBg px-3 py-2.5 text-[13px] font-semibold text-status-bad">
+        <AlertCircle size={16} />
+        {error}
+      </p>
+    );
+  }
+  if (!data) {
+    return (
+      <div className="grid gap-3 md:grid-cols-2">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <div key={index} className="skeleton h-56 rounded-2xl" />
+        ))}
+      </div>
+    );
+  }
+
+  const fill = data.seats > 0 ? Math.round((data.students / data.seats) * 100) : null;
+
+  return (
+    <div className="grid gap-3">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <StatTile label="كورسات شغالة" value={data.runningCount} icon={<GraduationCap size={17} />} />
+        <StatTile label="طلاب في الكورسات الشغالة" value={data.students} icon={<Users size={17} />} />
+        <StatTile
+          label="أماكن متاحة"
+          value={Math.max(0, data.seats - data.students)}
+          hint={data.seats ? `من ${data.seats} مكان` : undefined}
+          icon={<CalendarClock size={17} />}
+        />
+        <StatTile
+          label="نسبة الإشغال"
+          value={fill === null ? '—' : `${fill}٪`}
+          hint={fill === null ? 'مفيش حد أقصى مسجّل' : undefined}
+          tone={fill !== null && fill >= 70 ? 'good' : 'plain'}
+          icon={<Users size={17} />}
+        />
+      </div>
+
+      <div className="grid gap-3 lg:grid-cols-2">
+        <ChartCard title="الكورسات حسب المرحلة" hint="كل الكورسات المسجّلة على النظام">
+          <BarList
+            data={data.byStage.map((row) => ({ ...row, label: stageLabel(row.label) }))}
+          />
+        </ChartCard>
+
+        <ChartCard
+          title="أكتر المدرّبين تحميلاً"
+          hint={`عدد الكورسات في آخر ${data.months} شهور`}
+        >
+          <BarList data={data.byInstructor} />
+        </ChartCard>
+
+        <ChartCard title="الكورسات شهر بشهر" hint={`بداية الكورسات في آخر ${data.months} شهور`}>
+          <ColumnChart data={data.byMonth} />
+        </ChartCard>
+
+        <ChartCard title="أونلاين ولا حضوري" hint={`آخر ${data.months} شهور`}>
+          <SplitBar parts={data.byMode} />
+        </ChartCard>
+      </div>
+    </div>
   );
 }
 

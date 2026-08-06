@@ -20,7 +20,7 @@
  * that gets the workspace throttled.
  */
 
-import { OdooError, odooConfigured, searchRead } from './odoo.js';
+import { OdooError, odooConfigured, readGroup, searchRead } from './odoo.js';
 
 const CACHE_MS = 60_000;
 const cache = new Map();
@@ -306,6 +306,76 @@ export async function courseDetail(id) {
       sessionsTotal: sessions.length,
       sessionsLeft: sessions.filter((session) => session.at && new Date(session.at) >= now).length,
       nextSession: sessions.find((session) => session.at && new Date(session.at) >= now) ?? null,
+    };
+  });
+}
+
+/**
+ * The numbers behind the analysis tab.
+ *
+ * Counted with `read_group`, which is Odoo doing the aggregation in Postgres
+ * rather than us pulling a thousand rows across the wire to count them here.
+ * That is the difference between a tab that opens and one that times out.
+ */
+export async function eventsAnalytics({ months = 6 } = {}) {
+  if (!odooConfigured()) throw new OdooError('odoo_not_configured', 503);
+
+  return cached(`analytics:${months}`, async () => {
+    const stageList = await stages();
+    const since = new Date();
+    since.setMonth(since.getMonth() - months);
+
+    const [byStage, byMode, byInstructor, byMonth] = await Promise.all([
+      readGroup('event.event', [], ['stage_id'], ['stage_id']),
+      readGroup('event.event', [['date_begin', '>=', odooDate(since)]], ['attendance_method'], [
+        'attendance_method',
+      ]),
+      readGroup(
+        'event.event',
+        [
+          ['date_begin', '>=', odooDate(since)],
+          ['instructor_id', '!=', false],
+        ],
+        ['instructor_id'],
+        ['instructor_id']
+      ),
+      readGroup('event.event', [['date_begin', '>=', odooDate(since)]], ['date_begin:month'], [
+        'date_begin:month',
+      ]),
+    ]);
+
+    const runningIds = stageList.filter((stage) => stage.running).map((stage) => stage.id);
+    // Seats only mean something for courses that are actually selling, so the
+    // fill rate is measured over the running ones rather than all 1,100.
+    const running = runningIds.length
+      ? await searchRead('event.event', [['stage_id', 'in', runningIds]], ['seats_taken', 'seats_max'], {
+          limit: 200,
+        })
+      : [];
+
+    const seatsTaken = running.reduce((sum, row) => sum + (row.seats_taken || 0), 0);
+    const seatsMax = running.reduce((sum, row) => sum + (row.seats_max || 0), 0);
+
+    return {
+      months,
+      byStage: byStage
+        .map((row) => ({ label: nameOf(row.stage_id) ?? 'بدون مرحلة', value: row.__count ?? 0 }))
+        .sort((a, b) => b.value - a.value),
+      byMode: byMode.map((row) => ({
+        label: row.attendance_method === 'online' ? 'أونلاين' : row.attendance_method === 'offline' ? 'حضوري' : 'مش محدد',
+        value: row.__count ?? 0,
+      })),
+      byInstructor: byInstructor
+        .map((row) => ({ label: nameOf(row.instructor_id) ?? '—', value: row.__count ?? 0 }))
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 8),
+      byMonth: byMonth.map((row) => ({
+        label: String(row['date_begin:month'] ?? '').split(' ')[0] || '—',
+        value: row.__count ?? 0,
+      })),
+      students: seatsTaken,
+      seats: seatsMax,
+      runningCount: running.length,
     };
   });
 }

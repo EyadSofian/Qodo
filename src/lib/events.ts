@@ -69,6 +69,79 @@ export const fetchCourse = (id: number) =>
 
 export const refreshCourses = () => api.post<CoursesOverview>('/events/refresh');
 
+/* ── the analysis tab ────────────────────────────────────────────── */
+
+export interface Bar {
+  label: string;
+  value: number;
+  display?: string;
+}
+
+export interface EventsAnalytics {
+  months: number;
+  byStage: Bar[];
+  byMode: Bar[];
+  byInstructor: Bar[];
+  byMonth: Bar[];
+  students: number;
+  seats: number;
+  runningCount: number;
+}
+
+export const fetchAnalytics = () => api.get<EventsAnalytics>('/events/analytics');
+
+/* ── eLearning ───────────────────────────────────────────────────── */
+
+export interface ElearningCourse {
+  id: number;
+  name: string;
+  summary: string | null;
+  kind: string | null;
+  lessons: number;
+  hours: number;
+  members: number;
+  completed: number;
+  completionRate: number | null;
+  published: boolean;
+  owner: string | null;
+}
+
+export interface ElearningOverview {
+  courses: ElearningCourse[];
+  /** Which fields this Odoo actually exposes — the page says so rather than lying. */
+  available: string[];
+  fetchedAt: string;
+}
+
+export interface ElearningAnalytics {
+  totals: {
+    courses: number;
+    published: number;
+    draft: number;
+    members: number;
+    completed: number;
+    lessons: number;
+    hours: number;
+    completionRate: number | null;
+  };
+  byKind: Bar[];
+  topByMembers: Bar[];
+  topByCompletion: Bar[];
+  biggest: Bar[];
+  available: string[];
+}
+
+export const fetchElearning = () => api.get<ElearningOverview>('/events/elearning');
+export const fetchElearningAnalytics = () =>
+  api.get<ElearningAnalytics>('/events/elearning/analytics');
+export const refreshElearning = () => api.post<ElearningOverview>('/events/elearning/refresh');
+
+export function elearningKindLabel(kind: string | null): string {
+  if (kind === 'training') return 'مسار تدريبي';
+  if (kind === 'documentation') return 'مكتبة محتوى';
+  return 'كورس';
+}
+
 /* ── saying it in Arabic ─────────────────────────────────────────── */
 
 const CAIRO = 'Africa/Cairo';

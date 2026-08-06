@@ -12,6 +12,7 @@ import { AppFrame } from './pages/AppFrame';
 import { Tasks } from './pages/Tasks';
 import { Management } from './pages/Management';
 import { Events } from './pages/Events';
+import { Elearning } from './pages/Elearning';
 import { Users } from './pages/Users';
 import { Profile } from './pages/Profile';
 import { Settings } from './pages/Settings';
@@ -65,6 +66,7 @@ function Gate() {
             launcher with no explanation. */}
         <Route path="/management" element={<Management />} />
         <Route path="/events" element={<Events />} />
+        <Route path="/elearning" element={<Elearning />} />
         <Route path="/users" element={<Users />} />
         {/* Reachable by anybody who can see the person at all — the endpoints
             behind it are what decide how much of them is shown. */}

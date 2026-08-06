@@ -10,18 +10,30 @@
 import { Router } from 'express';
 import { requireAuth } from '../auth.js';
 import { canOpenApp } from '../../shared/permissions.js';
-import { clearEventsCache, courseDetail, coursesOverview } from '../events.js';
+import { clearEventsCache, courseDetail, coursesOverview, eventsAnalytics } from '../events.js';
+import {
+  clearElearningCache,
+  elearningAnalytics,
+  elearningOverview,
+} from '../elearning.js';
 import { OdooError, odooConfigured, odooMissingConfig } from '../odoo.js';
 
 const router = Router();
 
 export const EVENTS_APP_ID = 'events';
+export const ELEARNING_APP_ID = 'elearning';
 
 router.use(requireAuth);
-router.use((req, res, next) => {
-  if (!canOpenApp(req.user, EVENTS_APP_ID)) return res.status(403).json({ error: 'forbidden' });
+
+/**
+ * Two tiles, two answers. Somebody allowed to see the training calendar is not
+ * automatically allowed to see who finished which video, so the eLearning
+ * routes check their own app rather than riding on the events one.
+ */
+const gate = (appId) => (req, res, next) => {
+  if (!canOpenApp(req.user, appId)) return res.status(403).json({ error: 'forbidden' });
   next();
-});
+};
 
 function fail(res, error) {
   if (error instanceof OdooError) {
@@ -38,6 +50,46 @@ function fail(res, error) {
  */
 router.get('/status', (req, res) => {
   res.json({ configured: odooConfigured(), missing: odooMissingConfig() });
+});
+
+/* ── eLearning ───────────────────────────────────────────────────── */
+
+router.get('/elearning', gate(ELEARNING_APP_ID), async (req, res) => {
+  try {
+    res.json(await elearningOverview());
+  } catch (error) {
+    fail(res, error);
+  }
+});
+
+router.get('/elearning/analytics', gate(ELEARNING_APP_ID), async (req, res) => {
+  try {
+    res.json(await elearningAnalytics());
+  } catch (error) {
+    fail(res, error);
+  }
+});
+
+router.post('/elearning/refresh', gate(ELEARNING_APP_ID), async (req, res) => {
+  clearElearningCache();
+  try {
+    res.json(await elearningOverview());
+  } catch (error) {
+    fail(res, error);
+  }
+});
+
+/* ── events ──────────────────────────────────────────────────────── */
+
+router.use(gate(EVENTS_APP_ID));
+
+router.get('/analytics', async (req, res) => {
+  try {
+    const months = Math.min(Math.max(Number(req.query.months) || 6, 1), 24);
+    res.json(await eventsAnalytics({ months }));
+  } catch (error) {
+    fail(res, error);
+  }
 });
 
 router.get('/', async (req, res) => {
