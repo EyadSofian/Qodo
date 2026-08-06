@@ -509,14 +509,22 @@ const EXECUTORS = {
       priority: ['low', 'normal', 'high', 'urgent'].includes(input.priority)
         ? input.priority
         : 'normal',
-      assigneeId,
-      assignmentStatus: assigneeId ? (selfAssigned ? 'accepted' : 'pending') : 'unassigned',
+      assigneeIds: assigneeId ? [assigneeId] : [],
+      assignments: assigneeId
+        ? [
+            {
+              userId: assigneeId,
+              // Assigning yourself is the request and the answer at once.
+              status: selfAssigned ? 'accepted' : 'pending',
+              note: '',
+              acceptedAt: selfAssigned ? assignedAt : null,
+              declinedAt: null,
+              proposedDueDate: null,
+            },
+          ]
+        : [],
       assignedAt,
       assignedBy: assigneeId ? user.id : null,
-      acceptedAt: selfAssigned ? assignedAt : null,
-      declinedAt: null,
-      assignmentNote: '',
-      proposedDueDate: null,
       createdBy: user.id,
       dueDate,
       appId,

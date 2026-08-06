@@ -14,7 +14,15 @@ import {
   visiblePeople,
 } from './taskAccess.js';
 import { PERMISSIONS, can, visibilityFor } from '../shared/permissions.js';
-import { canApproveWork, canReopen, canReview, canScoreWork } from '../shared/workflow.js';
+import {
+  canApproveWork,
+  canReopen,
+  canReview,
+  canScoreWork,
+  canStart,
+  canSubmit,
+  isDoer,
+} from '../shared/workflow.js';
 import { DEPARTMENTS, getStage, getSubteam, stageType } from '../shared/departments.js';
 import {
   hasSignoffStage,
@@ -1311,6 +1319,33 @@ test('an invite link cannot grant manager access, and a revoked link is dead', a
   // Creating and listing links is administrator-only.
   const asEmployee = await request('/invites', { cookie: creativeCookie });
   assert.equal(asEmployee.status, 403);
+});
+
+test('a task with owners is not free for a manager to pick up', () => {
+  // The "nobody owns this, so an assigner may start it" branch used to read the
+  // legacy single field. Every task written since the split leaves that field
+  // absent, so a shared task read as unowned and any assigner could start or
+  // hand in work that belonged to two other people.
+  const manager = { id: 'm', role: 'manager', status: 'active' };
+  const owner = { id: 'w', role: 'member', status: 'active' };
+  const base = { department: 'marketing', stage: 'pending', createdBy: 'm' };
+  const shared = {
+    ...base,
+    assigneeIds: ['w', 'x'],
+    assignments: [
+      { userId: 'w', status: 'accepted' },
+      { userId: 'x', status: 'pending' },
+    ],
+  };
+
+  assert.equal(canStart(manager, shared), false, 'a manager may not start owned work');
+  assert.equal(canSubmit(manager, shared), false, 'nor hand it in for them');
+  assert.equal(isDoer(manager, shared), false);
+  assert.equal(canStart(owner, shared), true, 'the partner who accepted still can');
+
+  // Genuinely unowned work stays pickup-able, which is the point of the branch.
+  const unowned = { ...base, assigneeIds: [], assignments: [] };
+  assert.equal(canStart(manager, unowned), true);
 });
 
 test('two people can own one task, and both carry its score', async () => {

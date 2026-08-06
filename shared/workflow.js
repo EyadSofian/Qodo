@@ -284,7 +284,7 @@ export function canStart(user, task) {
   return (
     taskState(task) === 'assigned' &&
     ((isDoer(user, task) && assignmentReady(task, user)) ||
-      (canAssignWork(user) && !task.assigneeId))
+      (canAssignWork(user) && assigneesOf(task).length === 0))
   );
 }
 
@@ -293,7 +293,7 @@ export function canSubmit(user, task) {
   return (
     (state === 'assigned' || state === 'working') &&
     ((isDoer(user, task) && assignmentReady(task, user)) ||
-      (canAssignWork(user) && !task.assigneeId))
+      (canAssignWork(user) && assigneesOf(task).length === 0))
   );
 }
 

@@ -19,7 +19,7 @@ import {
 } from '../../shared/departments.js';
 import { canUseDepartment, visiblePeople } from '../taskAccess.js';
 import { organizationOf } from '../../shared/organization.js';
-import { assigneesOf } from '../../shared/workflow.js';
+import { assigneesOf, assignmentRows } from '../../shared/workflow.js';
 
 const router = Router();
 
@@ -245,23 +245,21 @@ router.delete('/:id', requirePermission(PERMISSIONS.USERS_MANAGE), async (req, r
     (t) => assigneesOf(t).includes(target.id) && organizationOf(t) === organizationOf(target)
   );
   for (const task of owned) {
+    // Only this person comes off. A task they shared stays with its other
+    // partners rather than being emptied because one of them left.
+    const remaining = assigneesOf(task).filter((id) => id !== target.id);
     await store.update('tasks', task.id, {
+      assigneeIds: remaining,
+      assignments: assignmentRows(task).filter((row) => row.userId !== target.id),
       assigneeId: null,
-      assignmentStatus: 'unassigned',
-      assignedAt: null,
-      assignedBy: null,
-      acceptedAt: null,
-      declinedAt: null,
-      assignmentNote: '',
-      proposedDueDate: null,
+      ...(remaining.length === 0 ? { assignedAt: null, assignedBy: null } : {}),
     });
     await create('taskAssignments', {
       organizationId: organizationOf(task),
       taskId: task.id,
       actorId: req.user.id,
       action: 'unassigned',
-      assigneeId: null,
-      status: 'unassigned',
+      assigneeIds: remaining,
       meta: { previousAssigneeId: target.id, reason: 'user_deleted' },
     });
   }

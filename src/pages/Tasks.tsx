@@ -49,6 +49,7 @@ import type {
   PerformanceMetrics,
   PerformanceOverview,
   PerformancePerson,
+  DirectoryUser,
   StageType,
   Task,
 } from '../lib/types';
@@ -857,7 +858,10 @@ function TaskTable({ tasks, onOpen }: { tasks: Task[]; onOpen: (task: Task) => v
           <tbody className="divide-y divide-surface-line">
             {tasks.map((task) => {
               const department = getDepartment(task.department ?? DEFAULT_DEPARTMENT);
-              const assignee = userById(task.assigneeId);
+              const owners: DirectoryUser[] = assigneesOf(task).flatMap((id: string) => {
+                const person = userById(id);
+                return person ? [person] : [];
+              });
               const type = stageType(task.department ?? DEFAULT_DEPARTMENT, task.stage) as StageType;
               const due = dueLabel(task.dueDate, t, lang);
               const stage = getStages(task.department ?? DEFAULT_DEPARTMENT).find(
@@ -883,15 +887,22 @@ function TaskTable({ tasks, onOpen }: { tasks: Task[]; onOpen: (task: Task) => v
                     )}
                   </td>
                   <td className="px-3 py-3 text-[12px] text-ink">
-                    {assignee ? (
-                      <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                        <span
-                          className="grid h-6 w-6 place-items-center rounded-full text-[9px] font-bold text-white"
-                          style={{ background: assignee.avatarColor }}
-                        >
-                          {assignee.name.slice(0, 1)}
-                        </span>
-                        {assignee.name}
+                    {owners.length > 0 ? (
+                      <span className="grid gap-1">
+                        {owners.map((person: DirectoryUser) => (
+                          <span
+                            key={person.id}
+                            className="inline-flex items-center gap-1.5 whitespace-nowrap"
+                          >
+                            <span
+                              className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-[9px] font-bold text-white"
+                              style={{ background: person.avatarColor }}
+                            >
+                              {person.name.slice(0, 1)}
+                            </span>
+                            {person.name}
+                          </span>
+                        ))}
                       </span>
                     ) : (
                       <span className="text-ink-faint">{t('tasks.unassigned')}</span>
@@ -988,7 +999,10 @@ function ReviewQueue({ tasks, onOpen }: { tasks: Task[]; onOpen: (task: Task) =>
       <p className="mb-3 text-[12.5px] text-ink-muted">{t('flow.reviewQueueHint')}</p>
       <ul className="grid gap-2.5">
         {tasks.map((task) => {
-          const assignee = userById(task.assigneeId);
+          const owners: DirectoryUser[] = assigneesOf(task).flatMap((id: string) => {
+            const person = userById(id);
+            return person ? [person] : [];
+          });
           const department = getDepartment(task.department ?? DEFAULT_DEPARTMENT);
           const due = dueLabel(task.dueDate, t, lang);
           return (
@@ -999,11 +1013,17 @@ function ReviewQueue({ tasks, onOpen }: { tasks: Task[]; onOpen: (task: Task) =>
                 className="flex w-full flex-wrap items-center gap-3 rounded-2xl border border-surface-line bg-white px-4 py-3.5 text-start shadow-sm transition-shadow hover:shadow-card"
                 style={{ borderInlineStartWidth: 3, borderInlineStartColor: department.color }}
               >
-                {assignee && <Avatar name={assignee.name} color={assignee.avatarColor} size={34} />}
+                {owners[0] && (
+                  <Avatar name={owners[0].name} color={owners[0].avatarColor} size={34} />
+                )}
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[13.5px] font-bold text-ink">{task.title}</span>
                   <span className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11.5px] text-ink-faint">
-                    <span>{assignee?.name ?? t('tasks.unassigned')}</span>
+                    <span>
+                      {owners.length === 0
+                        ? t('tasks.unassigned')
+                        : owners.map((person: DirectoryUser) => person.name).join('، ')}
+                    </span>
                     <span style={{ color: department.color }}>
                       {lang === 'en' ? department.en : department.ar}
                     </span>
