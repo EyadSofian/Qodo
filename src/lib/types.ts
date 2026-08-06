@@ -6,7 +6,7 @@ export type VisibilityScope = 'own' | 'subteam' | 'department' | 'all';
 export type TaskPriority = 'low' | 'normal' | 'high' | 'urgent';
 export type StageType = 'open' | 'active' | 'review' | 'done';
 /** Where a task sits in the assign → deliver → review → approve cycle. */
-export type TaskState = 'assigned' | 'working' | 'submitted' | 'approved';
+export type TaskState = 'assigned' | 'working' | 'submitted' | 'signed_off' | 'approved';
 export type ReviewDecision = 'approved' | 'changes_requested';
 export type AssignmentStatus =
   | 'unassigned'

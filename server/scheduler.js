@@ -15,7 +15,7 @@
 import { create, find, findOne, getStore } from './store.js';
 import { notifyUser, pushConfigured } from './push.js';
 import { PERMISSIONS, can, isActiveUser } from '../shared/permissions.js';
-import { DEFAULT_DEPARTMENT, DEPARTMENTS, isDoneStage } from '../shared/departments.js';
+import { DEFAULT_DEPARTMENT, DEPARTMENTS, isSettledStage } from '../shared/departments.js';
 import { organizationOf } from '../shared/organization.js';
 import { remindDueSoon } from './management.js';
 
@@ -67,7 +67,7 @@ async function buildDigest(organizationId) {
     'tasks',
     (task) => organizationOf(task) === organizationId
   );
-  const open = tasks.filter((t) => !isDoneStage(dept(t), t.stage));
+  const open = tasks.filter((t) => !isSettledStage(dept(t), t.stage));
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);

@@ -9,7 +9,7 @@ import {
   firstStage,
   getSubteam,
   getStage,
-  isDoneStage,
+  isSettledStage,
   stageLabel,
   subteamLabel,
   translateStage,
@@ -17,14 +17,17 @@ import {
 import {
   ASSIGNMENT_ACTIONS,
   canApproveWork,
+  canPublish,
   canReopen,
   canRespondToAssignment,
   canReview,
   canScoreWork,
   canStart,
   canSubmit,
+  isDoer,
   isReviewer,
   scoreBand,
+  stageForApproval,
   stageForReturn,
   stageForState,
   stageWriteVerdict,
@@ -86,7 +89,7 @@ router.get('/counts', async (req, res) => {
 
   const visible = await find('tasks', livePredicate(req.user));
   const today = new Date().toISOString().slice(0, 10);
-  const isOpen = (task) => !isDoneStage(task.department ?? DEFAULT_DEPARTMENT, task.stage);
+  const isOpen = (task) => !isSettledStage(task.department ?? DEFAULT_DEPARTMENT, task.stage);
 
   const mine = visible.filter((task) => task.assigneeId === req.user.id && isOpen(task));
 
@@ -291,7 +294,7 @@ router.post('/', requirePermission(PERMISSIONS.TASKS_CREATE), async (req, res) =
     subteam: req.user.department === department ? (req.user.subteam ?? null) : null,
     ...blankLifecycle(),
     ...assignmentLifecycle(parsed.value.assigneeId ?? null, req.user.id),
-    completedAt: isDoneStage(department, stage) ? new Date().toISOString() : null,
+    completedAt: isSettledStage(department, stage) ? new Date().toISOString() : null,
     ...parsed.value,
     organizationId: organizationOf(req.user),
     department,
@@ -382,6 +385,7 @@ router.patch('/:id', async (req, res) => {
   if (verdict === 'submit') return res.status(409).json({ error: 'submit_required' });
   if (verdict === 'review') return res.status(409).json({ error: 'review_required' });
   if (verdict === 'reopen') return res.status(409).json({ error: 'reopen_required' });
+  if (verdict === 'publish') return res.status(409).json({ error: 'publish_required' });
   if (verdict === 'forbidden') return res.status(403).json({ error: 'forbidden' });
 
   const assignmentChanged =
@@ -397,8 +401,10 @@ router.patch('/:id', async (req, res) => {
     patch.acceptedAt = new Date().toISOString();
   }
 
-  const wasDone = isDoneStage(task.department, task.stage);
-  const nowDone = isDoneStage(nextDepartment, nextStage);
+  // Settled rather than delivered: the work is finished the moment it is
+  // approved, and publishing it later must not restamp the completion date.
+  const wasDone = isSettledStage(task.department, task.stage);
+  const nowDone = isSettledStage(nextDepartment, nextStage);
   if (wasDone !== nowDone) patch.completedAt = nowDone ? new Date().toISOString() : null;
 
   const updated = await store.update('tasks', task.id, patch);
@@ -739,7 +745,9 @@ router.post('/:id/review', async (req, res) => {
       return res.status(400).json({ error: 'invalid_score' });
     }
     const updated = await store.update('tasks', task.id, {
-      stage: stageForState(department, 'approved', task.stage),
+      // Marketing parks approved work in "معتمدة" until it is actually
+      // published; every other board closes it outright.
+      stage: stageForApproval(department, task.stage),
       score: Math.round(score * 10) / 10,
       scoreBy: req.user.id,
       scoredAt: stamp,
@@ -795,6 +803,49 @@ router.post('/:id/review', async (req, res) => {
   await logActivity({
     actorId: req.user.id,
     action: 'task.return',
+    subject: 'task',
+    subjectId: task.id,
+    meta: { title: task.title },
+  });
+  res.json({ task: taskForUser(req.user, updated) });
+});
+
+/**
+ * The move out of "معتمدة": approved work has actually gone out.
+ *
+ * Deliberately not a gate. The judgement happened at review and the score is
+ * already on the record — this only records delivery, so it asks for nothing
+ * and the person who does the work may do it themselves. `completedAt` is left
+ * alone on purpose: the work was finished when it was approved, and restamping
+ * it here would make every scheduled post look late by however long it sat
+ * waiting for its slot.
+ */
+router.post('/:id/publish', async (req, res) => {
+  const store = await getStore();
+  const task = await loadLive(req, res);
+  if (!task) return;
+  if (!canPublish(req.user, task)) return res.status(403).json({ error: 'forbidden' });
+
+  const department = task.department ?? DEFAULT_DEPARTMENT;
+  const stamp = new Date().toISOString();
+  const updated = await store.update('tasks', task.id, {
+    stage: stageForState(department, 'approved', task.stage),
+    publishedAt: stamp,
+    publishedBy: req.user.id,
+  });
+
+  // The reviewer who approved it is the one waiting to hear it went out.
+  if (task.reviewedBy && task.reviewedBy !== req.user.id) {
+    await notify(task.reviewedBy, req.user.id, {
+      type: 'task.published',
+      title: { ar: 'تم نشر مهمة معتمدة', en: 'Approved work went out' },
+      body: updated.title,
+      link: `/tasks?task=${updated.id}`,
+    });
+  }
+  await logActivity({
+    actorId: req.user.id,
+    action: 'task.publish',
     subject: 'task',
     subjectId: task.id,
     meta: { title: task.title },
@@ -951,6 +1002,8 @@ function blankLifecycle() {
     reviewedBy: null,
     reviewNote: '',
     reviewDecision: null,
+    publishedAt: null,
+    publishedBy: null,
     reworkCount: 0,
     attachmentCount: 0,
     score: null,
@@ -1222,14 +1275,14 @@ function performanceFor(person, tasks) {
 
 function performanceSummary(tasks) {
   const completed = tasks.filter((task) =>
-    isDoneStage(task.department ?? DEFAULT_DEPARTMENT, task.stage)
+    isSettledStage(task.department ?? DEFAULT_DEPARTMENT, task.stage)
   );
   const today = new Date().toISOString().slice(0, 10);
   const overdue = tasks.filter(
     (task) =>
       task.dueDate &&
       task.dueDate < today &&
-      !isDoneStage(task.department ?? DEFAULT_DEPARTMENT, task.stage)
+      !isSettledStage(task.department ?? DEFAULT_DEPARTMENT, task.stage)
   );
   const scored = tasks.filter((task) => Number.isFinite(task.score));
   const scoreWeight = (task) => task.effortPoints ?? 1;

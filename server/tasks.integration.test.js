@@ -16,7 +16,12 @@ import {
 import { PERMISSIONS, can, visibilityFor } from '../shared/permissions.js';
 import { canApproveWork, canReopen, canReview, canScoreWork } from '../shared/workflow.js';
 import { DEPARTMENTS, getStage, getSubteam, stageType } from '../shared/departments.js';
-import { stageForReturn, stageForState } from '../shared/workflow.js';
+import {
+  hasSignoffStage,
+  stageForApproval,
+  stageForReturn,
+  stageForState,
+} from '../shared/workflow.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -172,26 +177,42 @@ test('every department supports the complete task lifecycle', () => {
 test('no column exists that the lifecycle can never move a task into', () => {
   // A stage a gate lands on is reachable, and so is anything a reviewer can drag
   // to. What must not exist is a *second* column of a type whose name promises
-  // a lifecycle event — marketing's old "معتمدة" sat in the `open` group beside
+  // a lifecycle event — marketing's first "معتمدة" sat in the `open` group beside
   // "قيد الانتظار", so approving never put anything there while its label said
   // it had. The board is the record; a column that lies about the record is worse
   // than no column.
+  //
+  // The column is back, and this test is what says it is back *correctly*: it
+  // carries its own canonical type, the approval gate lands on it, and the
+  // publish action is the way out. Those three facts are the difference between
+  // this and the trap that was removed.
   const marketing = DEPARTMENTS.find((department) => department.id === 'marketing');
   assert.deepEqual(
     marketing.stages.map((stage) => stage.id),
-    ['pending', 'working', 'review', 'rework', 'blocked', 'done']
+    ['pending', 'working', 'review', 'approved', 'rework', 'blocked', 'done']
   );
   assert.equal(marketing.stages.filter((stage) => stage.type === 'open').length, 1);
+  assert.equal(marketing.stages.filter((stage) => stage.type === 'signoff').length, 1);
   assert.equal(marketing.stages.filter((stage) => stage.type === 'done').length, 1);
 
-  // Approving lands on "منجزة", and returned work on "إعادة عمل".
+  // Approving lands on "معتمدة", publishing on "منجزة", rework on "إعادة عمل".
+  assert.equal(stageForApproval('marketing', null), 'approved');
   assert.equal(stageForState('marketing', 'approved', null), 'done');
   assert.equal(stageForState('marketing', 'submitted', null), 'review');
   assert.equal(stageForReturn('marketing', null), 'rework');
 
-  // A card left in the retired column still reads as the unstarted work it was.
-  assert.equal(getStage('marketing', 'approved').id, 'pending');
-  assert.equal(stageType('marketing', 'approved'), 'open');
+  // Every other board is untouched: no sign-off column, so approving still
+  // closes the task outright.
+  assert.equal(hasSignoffStage('marketing'), true);
+  for (const id of ['general', 'sales', 'operations', 'complaints', 'hr', 'training', 'finance', 'it']) {
+    assert.equal(hasSignoffStage(id), false, `${id} should not declare a sign-off column`);
+    assert.equal(stageForApproval(id, null), stageForState(id, 'approved', null), id);
+  }
+
+  // The id was freed when the old column was retired, and reusing it must not
+  // resurrect the alias that sent those cards back to the top of the board.
+  assert.equal(getStage('marketing', 'approved').id, 'approved');
+  assert.equal(stageType('marketing', 'approved'), 'signoff');
 
   // Marketing gained a moderation sub-team; the tree is what staffing reads.
   assert.equal(getSubteam('marketing', 'moderation')?.en, 'Moderation');
@@ -697,11 +718,16 @@ test('assign → deliver → review → approve, including the rework loop', asy
     body: { decision: 'approved', score: 88, note: 'تمام بعد التعديل' },
   });
   assert.equal(approved.status, 200);
-  assert.equal(approved.data.task.stage, 'done');
+  // Marketing separates "the manager said yes" from "it went out", so approving
+  // parks the card in "معتمدة" rather than closing it.
+  assert.equal(approved.data.task.stage, 'approved');
   assert.equal(approved.data.task.score, 88);
   assert.equal(approved.data.task.reviewedBy, manager.user.id);
   assert.equal(approved.data.task.reviewDecision, 'approved');
+  // The work was finished when it was approved — waiting for a publishing slot
+  // is not the employee still owing something.
   assert.ok(approved.data.task.completedAt);
+  assert.equal(approved.data.task.publishedAt, null);
 
   const directScoreEdit = await request(`/tasks/${task.id}`, {
     method: 'PATCH',
@@ -710,6 +736,38 @@ test('assign → deliver → review → approve, including the rework loop', asy
   });
   assert.equal(directScoreEdit.status, 409);
   assert.equal(directScoreEdit.data.error, 'review_required');
+
+  const draggedOutOfSignoff = await request(`/tasks/${task.id}`, {
+    method: 'PATCH',
+    cookie: managerCookie,
+    body: { stage: 'working' },
+  });
+  assert.equal(draggedOutOfSignoff.status, 409);
+  assert.equal(draggedOutOfSignoff.data.error, 'reopen_required');
+
+  // Dragging it to "منجزة" is the publish step and has its own action, so the
+  // plain stage write is refused the same way every other gate is.
+  const draggedToDone = await request(`/tasks/${task.id}`, {
+    method: 'PATCH',
+    cookie: managerCookie,
+    body: { stage: 'done' },
+  });
+  assert.equal(draggedToDone.status, 409);
+  assert.equal(draggedToDone.data.error, 'publish_required');
+
+  // Publishing is not a gate: the assignee may record that their own approved
+  // work went out, and it asks for nothing because the score already exists.
+  const published = await request(`/tasks/${task.id}/publish`, {
+    method: 'POST',
+    cookie: creativeCookie,
+  });
+  assert.equal(published.status, 200);
+  assert.equal(published.data.task.stage, 'done');
+  assert.ok(published.data.task.publishedAt);
+  assert.equal(published.data.task.publishedBy, creative.user.id);
+  // Publishing must not restamp completion, or a post that waited a week for
+  // its slot would read as delivered a week late.
+  assert.equal(published.data.task.completedAt, approved.data.task.completedAt);
 
   const draggedOutOfDone = await request(`/tasks/${task.id}`, {
     method: 'PATCH',

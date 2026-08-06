@@ -23,7 +23,7 @@ import {
   firstStage,
   getStage,
   getStages,
-  isDoneStage,
+  isSettledStage,
   stageLabel,
   stageType,
 } from '../../shared/departments.js';
@@ -298,7 +298,7 @@ const EXECUTORS = {
 
     if (input.overdueOnly) {
       tasks = tasks.filter(
-        (t) => !isDoneStage(dept(t), t.stage) && (daysUntil(t.dueDate) ?? 99999) < 0
+        (t) => !isSettledStage(dept(t), t.stage) && (daysUntil(t.dueDate) ?? 99999) < 0
       );
     }
     if (typeof input.dueWithinDays === 'number') {
@@ -329,7 +329,7 @@ const EXECUTORS = {
     const tasks = canManagePerformance(user)
       ? visible
       : visible.filter((task) => task.assigneeId === user.id);
-    const open = tasks.filter((t) => !isDoneStage(dept(t), t.stage));
+    const open = tasks.filter((t) => !isSettledStage(dept(t), t.stage));
     const weekAgo = Date.now() - 7 * 86_400_000;
 
     const perPerson = {};
@@ -536,7 +536,7 @@ const EXECUTORS = {
       score: null,
       scoreBy: null,
       scoredAt: null,
-      completedAt: isDoneStage(department, stage) ? new Date().toISOString() : null,
+      completedAt: isSettledStage(department, stage) ? new Date().toISOString() : null,
       order: Math.min(0, ...siblings.map((t) => t.order ?? 0)) - 1,
     });
 

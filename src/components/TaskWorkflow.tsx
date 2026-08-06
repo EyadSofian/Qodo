@@ -41,11 +41,13 @@ import { useWorkspace } from '../lib/workspace';
 import {
   MAX_ATTACHMENT_BYTES,
   SCORE_BANDS,
+  canPublish,
   canReopen,
   canReview,
   canRespondToAssignment,
   canStart,
   canSubmit,
+  hasSignoffStage,
   isDoer,
   isReviewer,
   scoreBand,
@@ -61,10 +63,21 @@ const STATE_LABEL: Record<TaskState, StringKey> = {
   assigned: 'flow.assigned',
   working: 'flow.working',
   submitted: 'flow.submitted',
+  signed_off: 'flow.signedOff',
   approved: 'flow.approved',
 };
 
-const STATE_ORDER: TaskState[] = ['assigned', 'working', 'submitted', 'approved'];
+/**
+ * The steps the tracker draws. `signed_off` is dropped on boards that have no
+ * sign-off column, so a sales task still shows four steps rather than a fifth
+ * one it can never reach.
+ */
+const STATE_ORDER: TaskState[] = ['assigned', 'working', 'submitted', 'signed_off', 'approved'];
+
+const orderFor = (task: Task): TaskState[] =>
+  hasSignoffStage(task.department ?? 'general')
+    ? STATE_ORDER
+    : STATE_ORDER.filter((state) => state !== 'signed_off');
 
 export function stateOf(task: Task): TaskState {
   return taskState(task) as TaskState;
@@ -112,6 +125,14 @@ export function StateBadge({ task, forReviewer }: { task: Task; forReviewer?: bo
       </span>
     );
   }
+  if (state === 'signed_off') {
+    return (
+      <span className="chip bg-status-okBg text-status-ok">
+        <ShieldCheck size={12} />
+        {t('flow.signedOff')}
+      </span>
+    );
+  }
   if (state === 'approved') {
     return (
       <span className="chip bg-status-okBg text-status-ok">
@@ -133,19 +154,24 @@ export function returnedLabel(count: number, t: (key: StringKey, vars?: Record<s
 /* ── the tracker ─────────────────────────────────────────────────── */
 
 /**
- * Four dots and three lines. It exists because "which column is it in" answers
- * where the card is, not who is holding it up — the tracker names the holder at
- * every step, including the return arrow when work has come back.
+ * Four dots and three lines — five on a board that separates sign-off from
+ * delivery. It exists because "which column is it in" answers where the card
+ * is, not who is holding it up: the tracker names the holder at every step,
+ * including the return arrow when work has come back.
  */
 export function WorkflowTracker({ task }: { task: Task }) {
   const { t } = useI18n();
   const state = stateOf(task);
-  const reached = STATE_ORDER.indexOf(state);
-  const returned = task.reviewDecision === 'changes_requested' && state !== 'approved';
+  const steps = orderFor(task);
+  const reached = steps.indexOf(state);
+  const returned =
+    task.reviewDecision === 'changes_requested' &&
+    state !== 'approved' &&
+    state !== 'signed_off';
 
   return (
     <ol className="flex w-full items-start gap-0" aria-label={t('flow.timeline')}>
-      {STATE_ORDER.map((step, index) => {
+      {steps.map((step, index) => {
         const done = index < reached;
         const current = index === reached;
         return (
@@ -159,9 +185,15 @@ export function WorkflowTracker({ task }: { task: Task }) {
                 )}
               />
             )}
-            {/* Four fixed-width steps have to fit a 375px phone, connectors and
-                all, so the labels wrap rather than the rail overflowing. */}
-            <span className="flex w-[4.25rem] shrink-0 flex-col items-center gap-1.5 sm:w-24">
+            {/* The steps have to fit a 375px phone, connectors and all, so the
+                labels wrap rather than the rail overflowing — and they get
+                narrower when a board declares the fifth one. */}
+            <span
+              className={cx(
+                'flex shrink-0 flex-col items-center gap-1.5',
+                steps.length > 4 ? 'w-[3.4rem] sm:w-20' : 'w-[4.25rem] sm:w-24'
+              )}
+            >
               <span
                 className={cx(
                   'grid h-7 w-7 place-items-center rounded-full border-2 text-[11px] font-extrabold transition-colors',
@@ -545,6 +577,37 @@ export function WorkflowActions({
     if (!window.confirm(t('flow.confirmReopen', { title: task.title }))) return;
     if (await act('reopen')) push(t('flow.reopened.toast'));
   };
+
+  const publish = async () => {
+    if (await act('publish')) push(t('flow.published.toast'));
+  };
+
+  /**
+   * Approved, and waiting to go out. The publish button is the primary action
+   * here because it is the only thing left to do — reopening is the correction,
+   * so it stays quiet beside it.
+   */
+  if (state === 'signed_off') {
+    return (
+      <div className="grid gap-3">
+        <ReviewVerdict task={task} />
+        <div className="flex flex-wrap items-center gap-2">
+          {canPublish(user, task) && (
+            <button type="button" onClick={publish} disabled={busy} className="btn-primary btn-sm gap-1.5">
+              {busy ? <Spinner size={15} /> : <Send size={15} />}
+              {t('flow.publish')}
+            </button>
+          )}
+          {canReopen(user, task) && (
+            <button type="button" onClick={reopen} disabled={busy} className="btn-ghost btn-sm gap-1.5">
+              <RotateCcw size={15} />
+              {t('flow.reopen')}
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   if (state === 'approved') {
     return (

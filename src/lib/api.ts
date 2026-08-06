@@ -277,6 +277,10 @@ const ERRORS: Record<string, { ar: string; en: string }> = {
     ar: 'اعتماد المهمة من صلاحية المدير، ويتم من خلال المراجعة والتقييم.',
     en: 'Closing a task is the manager’s call, and happens through the review.',
   },
+  publish_required: {
+    ar: 'المهمة معتمدة — استخدم زر «تم النشر» بدل سحب الكارت.',
+    en: 'This is approved — use the publish button rather than dragging the card.',
+  },
   reopen_required: {
     ar: 'أعد فتح المهمة المعتمدة أولاً قبل تغيير مرحلتها.',
     en: 'Reopen the approved task before changing its stage.',

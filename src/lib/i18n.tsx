@@ -245,7 +245,8 @@ const STRINGS = {
   'flow.assigned': { ar: 'مُسندة', en: 'Assigned' },
   'flow.working': { ar: 'قيد التنفيذ', en: 'In progress' },
   'flow.submitted': { ar: 'بانتظار المراجعة', en: 'In review' },
-  'flow.approved': { ar: 'معتمدة', en: 'Approved' },
+  'flow.approved': { ar: 'منجزة', en: 'Done' },
+  'flow.signedOff': { ar: 'معتمدة', en: 'Approved' },
 
   'assignment.title': { ar: 'مطلوب ردك على الإسناد', en: 'Respond to this assignment' },
   'assignment.hint': {
@@ -286,6 +287,7 @@ const STRINGS = {
   'flow.approve': { ar: 'اعتماد ← منجزة', en: 'Approve → Done' },
   'flow.requestChanges': { ar: 'إرجاع ← إعادة عمل', en: 'Send back → Rework' },
   'flow.reopen': { ar: 'إعادة فتح المهمة', en: 'Reopen task' },
+  'flow.publish': { ar: 'تم النشر', en: 'Mark as published' },
   'flow.confirmReopen': { ar: 'إعادة فتح «{title}»؟ سيرجع للموظف من جديد.', en: 'Reopen “{title}”? It goes back to the assignee.' },
 
   'flow.deliverables': { ar: 'ملفات التسليم', en: 'Deliverables' },
@@ -350,6 +352,7 @@ const STRINGS = {
   'flow.approved.toast': { ar: 'تم اعتماد المهمة وتسجيل التقييم.', en: 'Approved, and the score is recorded.' },
   'flow.returned.toast': { ar: 'رجعت المهمة للموظف مع ملاحظاتك.', en: 'Sent back with your notes.' },
   'flow.reopened.toast': { ar: 'أُعيد فتح المهمة.', en: 'Task reopened.' },
+  'flow.published.toast': { ar: 'اتسجّل إنها اتنشرت.', en: 'Recorded as published.' },
 
   'flow.awaitingYou': { ar: 'بانتظار مراجعتك', en: 'Waiting for your review' },
   'flow.awaitingManager': { ar: 'عند المدير للمراجعة', en: 'With the manager' },

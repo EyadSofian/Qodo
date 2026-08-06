@@ -285,6 +285,10 @@ async function migrateOrganisationAndTasks(store) {
     if (!Object.hasOwn(task, 'submittedBy')) patch.submittedBy = null;
     if (!Object.hasOwn(task, 'submissionNote')) patch.submissionNote = '';
     if (!Object.hasOwn(task, 'reviewNote')) patch.reviewNote = '';
+    // The sign-off column is newer than every stored task, so nothing that
+    // exists can have been published through it.
+    if (!Object.hasOwn(task, 'publishedAt')) patch.publishedAt = null;
+    if (!Object.hasOwn(task, 'publishedBy')) patch.publishedBy = null;
     if (!Object.hasOwn(task, 'reworkCount')) patch.reworkCount = 0;
     if (!Object.hasOwn(task, 'reviewedAt')) {
       const scored = Number.isFinite(task.score);

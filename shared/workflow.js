@@ -16,6 +16,16 @@
  *                               can submit, and
  *                               only with proof
  *
+ * A board may insert one optional stop between the gate and the end:
+ *
+ *   submitted ──▶ signed_off ──▶ approved
+ *                 (manager said   (and it actually
+ *                  yes, scored)     went out)
+ *
+ * Only departments that declare a `signoff` column ever see it — marketing
+ * does, because approving a post and posting it are different days. Everywhere
+ * else the review gate still lands straight on the done column.
+ *
  * The gates are the whole point. Before this existed, anyone who could edit a
  * task could drag it to "done" and type a score into the same form the task was
  * created in — so a score was just another field, and "finished" was an opinion.
@@ -31,13 +41,22 @@
 import { PERMISSIONS, can } from './permissions.js';
 import { DEFAULT_DEPARTMENT, getStages, stageType } from './departments.js';
 
-/** The lifecycle, in order. Maps 1:1 onto the canonical stage types. */
-export const TASK_STATES = ['assigned', 'working', 'submitted', 'approved'];
+/**
+ * The lifecycle, in order. Maps 1:1 onto the canonical stage types.
+ *
+ * `signed_off` is optional and most departments never see it: it exists only
+ * where a board declares a `signoff` column, and the review gate falls straight
+ * through to `approved` everywhere else. Note that `approved` still means "in a
+ * done column" — the new state was inserted before it rather than renaming it,
+ * so every rule that already asked "is this finished" kept its answer.
+ */
+export const TASK_STATES = ['assigned', 'working', 'submitted', 'signed_off', 'approved'];
 
 const STATE_BY_STAGE_TYPE = {
   open: 'assigned',
   active: 'working',
   review: 'submitted',
+  signoff: 'signed_off',
   done: 'approved',
 };
 
@@ -45,6 +64,7 @@ const STAGE_TYPE_BY_STATE = {
   assigned: 'open',
   working: 'active',
   submitted: 'review',
+  signed_off: 'signoff',
   approved: 'done',
 };
 
@@ -105,6 +125,23 @@ export function stageForState(department, state, fallback) {
   const type = STAGE_TYPE_BY_STATE[state];
   const match = getStages(department).find((stage) => stage.type === type);
   return match?.id ?? fallback;
+}
+
+/**
+ * Where an approval lands: the sign-off column when the department has one,
+ * and the done column when it does not.
+ *
+ * This is the whole of the opt-in. Marketing declares "معتمدة" and approved
+ * work waits there to be published; sales, IT and the rest declare no such
+ * column and approving closes the task outright, exactly as before.
+ */
+export function stageForApproval(department, fallback) {
+  return stageForState(department, 'signed_off', null) ?? stageForState(department, 'approved', fallback);
+}
+
+/** Does this board separate "signed off" from "delivered" at all? */
+export function hasSignoffStage(department) {
+  return getStages(department).some((stage) => stage.type === 'signoff');
 }
 
 /**
@@ -202,9 +239,26 @@ export function canReview(user, task) {
   return taskState(task) === 'submitted' && canReviewWork(user);
 }
 
-/** Reopening an approved task is a manager's correction, not an employee's undo. */
+/**
+ * Publishing is the one move out of sign-off, and it is deliberately not a
+ * gate: the judgement already happened at review and the score is already on
+ * the record. This only says the approved thing is now out in the world, which
+ * is usually the person who does the work — the media buyer posts the post —
+ * so the doer may do it as well as a reviewer.
+ */
+export function canPublish(user, task) {
+  return taskState(task) === 'signed_off' && (isDoer(user, task) || isReviewer(user));
+}
+
+/**
+ * Reopening is a manager's correction, not an employee's undo. It reaches back
+ * from sign-off too: work approved this morning and not yet published is the
+ * easiest thing to pull back, and refusing there would mean publishing it first
+ * just to be allowed to take it back.
+ */
 export function canReopen(user, task) {
-  return taskState(task) === 'approved' && canApproveWork(user);
+  const state = taskState(task);
+  return (state === 'approved' || state === 'signed_off') && canApproveWork(user);
 }
 
 export function canScore(user) {
@@ -260,15 +314,28 @@ export function stageWriteVerdict(user, task, nextDepartment, nextStage) {
   if (from === 'assigned' && to === 'working' && task.assigneeId && !assignmentReady(task)) {
     return doer || reviewer ? 'assignment' : 'forbidden';
   }
-  if (to === 'approved') return canApproveWork(user) ? 'review' : 'forbidden';
+  // Sign-off to done is the publish step, and the only move that is allowed to
+  // leave the sign-off column without a manager: the decision was already made
+  // and scored, this just records that the approved thing went out.
+  if (from === 'signed_off' && to === 'approved') {
+    return doer || reviewer ? 'publish' : 'forbidden';
+  }
+  // Landing in either terminal column is the review gate's verdict. On a board
+  // with a sign-off column that is where approving lands, so both are named.
+  if (to === 'signed_off' || to === 'approved') {
+    return canApproveWork(user) ? 'review' : 'forbidden';
+  }
   if (to === 'submitted' && forward) {
     return doer || reviewer ? 'submit' : 'forbidden';
   }
   // Returning submitted work requires the review gate because that action owns
-  // the mandatory reason, rework counter and assignee notification. Approved
-  // work similarly has to pass through the explicit reopen action.
+  // the mandatory reason, rework counter and assignee notification. Work that
+  // is already approved — signed off or delivered — has to pass through the
+  // explicit reopen action.
   if (from === 'submitted' && to !== from) return reviewer ? 'review' : 'forbidden';
-  if (from === 'approved' && to !== from) return canApproveWork(user) ? 'reopen' : 'forbidden';
+  if ((from === 'approved' || from === 'signed_off') && to !== from) {
+    return canApproveWork(user) ? 'reopen' : 'forbidden';
+  }
   // Picking the work up is the doer's other legitimate move, and it belongs to
   // the start action so `startedAt` is stamped and the board is not the record.
   if (from === 'assigned' && to === 'working' && doer && !reviewer) return 'start';
@@ -286,7 +353,12 @@ export function submittedOnTime(task) {
   return stamp.slice(0, 10) <= task.dueDate;
 }
 
-/** Approved the first time it was submitted — the cleanest signal of a clear brief. */
+/**
+ * Approved the first time it was submitted — the cleanest signal of a clear
+ * brief. Sign-off counts: the manager already said yes, and whether the post
+ * has gone out yet says nothing about how clear the brief was.
+ */
 export function approvedFirstPass(task) {
-  return taskState(task) === 'approved' && (task.reworkCount ?? 0) === 0;
+  const state = taskState(task);
+  return (state === 'approved' || state === 'signed_off') && (task.reworkCount ?? 0) === 0;
 }

@@ -24,13 +24,22 @@
  * other three dashboards and the fact that Engosoft is a training company.
  */
 
-/** The canonical spine every stage maps onto. Never shown as a column itself. */
-export const STAGE_TYPES = ['open', 'active', 'review', 'done'];
+/**
+ * The canonical spine every stage maps onto. Never shown as a column itself.
+ *
+ * `signoff` sits between review and done for the one case where "the manager
+ * said yes" and "the work is out the door" are different days: a post can be
+ * approved on Sunday and scheduled for Thursday. A department that does not
+ * declare a `signoff` column never sees the state — approving lands straight
+ * on `done` there, exactly as it always has.
+ */
+export const STAGE_TYPES = ['open', 'active', 'review', 'signoff', 'done'];
 
 export const STAGE_TYPE_LABELS = {
   open: { ar: 'لم تبدأ', en: 'Not started' },
   active: { ar: 'قيد التنفيذ', en: 'In progress' },
   review: { ar: 'قيد المراجعة', en: 'In review' },
+  signoff: { ar: 'معتمدة', en: 'Approved' },
   done: { ar: 'منجزة', en: 'Done' },
 };
 
@@ -176,21 +185,27 @@ export const DEPARTMENTS = [
     ],
     /**
      * The board reads left to right as the work actually travels: filed,
-     * picked up, handed in, sent back, parked, finished.
+     * picked up, handed in, approved, published — with the two side columns
+     * for work sent back and work parked.
      *
-     * There used to be a "معتمدة" column sitting second, between "قيد الانتظار"
-     * and "قيد العمل". It was an `open` stage, so approving never landed there
-     * and nothing in the lifecycle ever moved a task into it — but its name
-     * said the opposite, and being the same canonical type as "قيد الانتظار"
-     * meant an employee could drop their own card into a column that read as
-     * "approved". A column that no action can reach and every rule has to work
-     * around is not a stage; it is a trap. Approval is the review gate's
-     * verdict, and "منجزة" is where it lands.
+     * "معتمدة" is here on its second attempt, and the difference is the whole
+     * lesson. It used to sit *second*, between "قيد الانتظار" and "قيد العمل",
+     * typed `open` — so approving never landed there, nothing in the lifecycle
+     * could move a task into it, and being the same type as "قيد الانتظار"
+     * meant an employee could drag their own card into a column that read as
+     * "approved". It was retired for that.
+     *
+     * It now sits after review and carries its own canonical type, so it is
+     * where the review gate actually lands and the only way out of it is the
+     * publish action. Marketing is the department that needs it: approving a
+     * post and posting it are genuinely different days, and collapsing them
+     * meant the board could not show what was signed off and still waiting.
      */
     stages: [
       { id: 'pending', type: 'open', ar: 'قيد الانتظار', en: 'Pending' },
       { id: 'working', type: 'active', ar: 'قيد العمل', en: 'Working' },
       { id: 'review', type: 'review', ar: 'قيد المراجعة', en: 'In review' },
+      { id: 'approved', type: 'signoff', ar: 'معتمدة', en: 'Approved' },
       { id: 'rework', type: 'active', ar: 'إعادة عمل', en: 'Rework' },
       { id: 'blocked', type: 'active', ar: 'متوقفة', en: 'Blocked' },
       { id: 'done', type: 'done', ar: 'منجزة', en: 'Done' },
@@ -303,10 +318,12 @@ export const DEFAULT_DEPARTMENT = 'general';
  * table next to the workflow lets the boot migration move them without losing
  * their meaning.
  *
- * `approved` is here for the same reason: it was an `open` column, so anything
- * parked in it was work that had not started, and "قيد الانتظار" is what that
- * means on the board today. Reading it through the alias keeps old cards
- * showing up even before the boot migration rewrites them.
+ * `approved` is deliberately *not* aliased any more. It used to map to
+ * "قيد الانتظار", because back then the column called "معتمدة" was an `open`
+ * one and anything sitting in it was work that had not started. The boot
+ * migration rewrote those cards on the first deploy after that change, so the
+ * id is free — and it now names the real sign-off column. Re-adding the alias
+ * would send every newly approved card back to the top of the board.
  */
 export const STAGE_ALIASES = {
   marketing: {
@@ -314,7 +331,6 @@ export const STAGE_ALIASES = {
     production: 'working',
     approval: 'review',
     live: 'done',
-    approved: 'pending',
   },
 };
 
@@ -379,8 +395,23 @@ export function stageType(departmentId, stageId) {
   return getStage(departmentId, stageId).type;
 }
 
+/** Delivered — it actually went out. The narrow question. */
 export function isDoneStage(departmentId, stageId) {
   return stageType(departmentId, stageId) === 'done';
+}
+
+/**
+ * Nobody owes any more work on it — approved, whether or not it has shipped.
+ *
+ * This is the question almost every counter is really asking. A post signed off
+ * this morning and scheduled for Thursday is not "still open": nagging its
+ * owner about the deadline, or counting it against them as overdue, would be
+ * telling them off for work a manager already approved and scored. `isDoneStage`
+ * stays for the places that genuinely mean delivered.
+ */
+export function isSettledStage(departmentId, stageId) {
+  const type = stageType(departmentId, stageId);
+  return type === 'done' || type === 'signoff';
 }
 
 /**
