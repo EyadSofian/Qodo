@@ -20,16 +20,10 @@
 
 import { OdooError, existingFields, odooConfigured, readGroup, searchRead } from './odoo.js';
 
-const CACHE_MS = 60_000;
-const cache = new Map();
+import { makeCache } from './cache.js';
 
-async function cached(key, load) {
-  const hit = cache.get(key);
-  if (hit && Date.now() - hit.at < CACHE_MS) return hit.value;
-  const value = await load();
-  cache.set(key, { at: Date.now(), value });
-  return value;
-}
+const cache = makeCache(5 * 60_000);
+const cached = (key, load) => cache.get(key, load);
 
 const nameOf = (pair) => (Array.isArray(pair) ? pair[1] : null);
 const text = (value) => (typeof value === 'string' && value ? value : null);
@@ -47,13 +41,17 @@ const CHANNEL_WISHLIST = [
   'channel_type',
   'total_slides',
   'total_time',
+  'total_views',
   'members_count',
-  'completed_count',
+  // Odoo 17 names these `members_*`, not `completed_count`. Getting it wrong is
+  // what the probe below is meant to catch — and it did, silently, by leaving
+  // every completion at zero until somebody looked at the page and said so.
+  'members_completed_count',
+  'members_engaged_count',
   'is_published',
   'user_id',
   'visibility',
   'enroll',
-  'tag_ids',
 ];
 
 let channelFieldsCache = null;
@@ -64,7 +62,7 @@ async function channelFields() {
 
 function shapeChannel(row) {
   const members = row.members_count ?? 0;
-  const completed = row.completed_count ?? 0;
+  const completed = row.members_completed_count ?? 0;
   return {
     id: row.id,
     name: text(row.name) ?? 'بدون اسم',
@@ -75,6 +73,10 @@ function shapeChannel(row) {
     lessons: row.total_slides ?? 0,
     // Odoo keeps this in hours as a float.
     hours: Number(row.total_time ?? 0),
+    views: row.total_views ?? 0,
+    // Enrolled and actually doing something, which on this data is most of them
+    // — the gap that matters here is engaged→completed, not enrolled→engaged.
+    engaged: row.members_engaged_count ?? 0,
     members,
     completed,
     completionRate: members > 0 ? Math.round((completed / members) * 100) : null,
@@ -119,7 +121,7 @@ export async function elearningAnalytics() {
     // configuration is reported rather than assumed.
     let byKind = [];
     if (has('channel_type')) {
-      const groups = await readGroup('slide.channel', [], ['channel_type'], ['channel_type']);
+      const groups = await readGroup('slide.channel', [], ['channel_type']);
       byKind = groups.map((row) => ({
         label:
           row.channel_type === 'training'
@@ -140,7 +142,14 @@ export async function elearningAnalytics() {
         completed,
         lessons,
         hours: Math.round(hours),
-        completionRate: members > 0 ? Math.round((completed / members) * 100) : null,
+        engaged: courses.reduce((sum, course) => sum + course.engaged, 0),
+        completionRate:
+          // Only a rate when the number behind it exists. Reporting 0% because a
+          // field is missing is worse than reporting nothing: one is a fact
+          // about the courses and the other is a fact about the integration.
+          has('members_completed_count') && members > 0
+            ? Math.round((completed / members) * 100)
+            : null,
       },
       byKind,
       topByMembers: courses

@@ -20,6 +20,7 @@ import {
   Clock,
   Layers,
   RefreshCw,
+  Search,
   Users,
 } from 'lucide-react';
 import { errorMessage } from '../lib/api';
@@ -28,7 +29,9 @@ import {
   fetchElearning,
   fetchElearningAnalytics,
   fetchStatus,
+  matches,
   refreshElearning,
+  staleLabel,
   type ElearningAnalytics,
   type ElearningCourse,
   type ElearningOverview,
@@ -44,6 +47,7 @@ export function Elearning() {
   const [data, setData] = useState<ElearningOverview | null>(null);
   const [problem, setProblem] = useState<{ message: string; missing: string[] } | null>(null);
   const [tab, setTab] = useState<Tab>('courses');
+  const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -143,7 +147,27 @@ export function Elearning() {
             />
           </div>
 
-          {tab === 'courses' && <CourseList courses={data.courses} />}
+          {tab === 'courses' && (
+            <>
+              <div className="relative mb-3">
+                <Search
+                  size={16}
+                  className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-ink-faint"
+                />
+                <input
+                  className="field ps-9"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="دوّر باسم الكورس أو صاحبه…"
+                />
+              </div>
+              <CourseList
+                courses={data.courses.filter((course) =>
+                  matches(query, course.name, course.owner, course.summary)
+                )}
+              />
+            </>
+          )}
           {tab === 'analysis' && <ElearningAnalysis />}
         </>
       )}
@@ -254,13 +278,23 @@ function ElearningAnalysis() {
 
   return (
     <div className="grid gap-3">
+      {data.stale && (
+        <p className="mb-3 flex items-center gap-2 rounded-xl bg-status-warnBg px-3.5 py-2.5 text-[12.5px] font-semibold text-accent-600">
+          <AlertCircle size={15} />
+          أودو مارِدّش دلوقتي — دي آخر أرقام وصلت {staleLabel(data.fetchedAt)}.
+        </p>
+      )}
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <StatTile label="كورسات" value={totals.courses} hint={`${totals.published} منشور`} icon={<BookOpen size={17} />} />
         <StatTile label="مشتركين" value={totals.members} icon={<Users size={17} />} />
         <StatTile
-          label="خلّصوا"
+          label="خلّصوا الكورس"
           value={totals.completed}
-          hint={totals.completionRate === null ? undefined : `${totals.completionRate}٪ من المشتركين`}
+          hint={
+            totals.completionRate === null
+              ? 'النسخة دي مش بتوفّر الرقم'
+              : `${totals.completionRate}٪ من المشتركين`
+          }
           tone={totals.completionRate !== null && totals.completionRate >= 50 ? 'good' : 'plain'}
           icon={<CheckCircle2 size={17} />}
         />
@@ -306,7 +340,7 @@ function ElearningAnalysis() {
 
       {/* Said out loud rather than drawn as zeroes: a chart of a field this Odoo
           does not have is a chart that lies quietly. */}
-      {!has('completed_count') && (
+      {!has('members_completed_count') && (
         <p className={cx('rounded-xl bg-status-warnBg px-3.5 py-2.5 text-[12.5px] text-accent-600')}>
           نسخة أودو دي مش بتوفّر عدد اللي خلّصوا الكورس، فنسب الإكمال مش ظاهرة.
         </p>

@@ -52,6 +52,7 @@ export interface CourseDetail extends Course {
 }
 
 export interface CoursesOverview {
+  stale?: boolean;
   running: Course[];
   upcoming: Course[];
   today: CourseSession[];
@@ -79,6 +80,9 @@ export interface Bar {
 
 export interface EventsAnalytics {
   months: number;
+  /** True when Odoo failed and this is the last answer that worked. */
+  stale?: boolean;
+  fetchedAt?: string;
   byStage: Bar[];
   byMode: Bar[];
   byInstructor: Bar[];
@@ -101,12 +105,15 @@ export interface ElearningCourse {
   hours: number;
   members: number;
   completed: number;
+  engaged: number;
+  views: number;
   completionRate: number | null;
   published: boolean;
   owner: string | null;
 }
 
 export interface ElearningOverview {
+  stale?: boolean;
   courses: ElearningCourse[];
   /** Which fields this Odoo actually exposes — the page says so rather than lying. */
   available: string[];
@@ -114,6 +121,8 @@ export interface ElearningOverview {
 }
 
 export interface ElearningAnalytics {
+  stale?: boolean;
+  fetchedAt?: string;
   totals: {
     courses: number;
     published: number;
@@ -122,6 +131,7 @@ export interface ElearningAnalytics {
     completed: number;
     lessons: number;
     hours: number;
+    engaged: number;
     completionRate: number | null;
   };
   byKind: Bar[];
@@ -135,6 +145,46 @@ export const fetchElearning = () => api.get<ElearningOverview>('/events/elearnin
 export const fetchElearningAnalytics = () =>
   api.get<ElearningAnalytics>('/events/elearning/analytics');
 export const refreshElearning = () => api.post<ElearningOverview>('/events/elearning/refresh');
+
+/**
+ * One search box over data that is already loaded.
+ *
+ * Client-side because it is: fifty-five courses on the events page and a couple
+ * of hundred on eLearning are all in memory the moment the tab opens, and a
+ * round trip to Odoo per keystroke would make typing feel like waiting.
+ *
+ * Arabic is normalised on both sides — أ إ آ all become ا, ة becomes ه, and the
+ * tatweel and diacritics are dropped — because somebody hunting for "التصميم"
+ * should not miss "التصميــم", and nobody types hamzas consistently.
+ */
+export function normaliseArabic(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[\u064B-\u0652\u0640]/g, '')
+    .replace(/[أإآٱ]/g, 'ا')
+    .replace(/ى/g, 'ي')
+    .replace(/ة/g, 'ه')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function matches(query: string, ...fields: (string | null | undefined)[]): boolean {
+  const needle = normaliseArabic(query);
+  if (!needle) return true;
+  const haystack = normaliseArabic(fields.filter(Boolean).join(' '));
+  // Every word has to appear, in any order: "revit احمد" finds the Revit course
+  // Ahmed teaches without caring which was typed first.
+  return needle.split(' ').every((word) => haystack.includes(word));
+}
+
+/** "من ٣ دقايق" — how old a stale answer is, said the way somebody would. */
+export function staleLabel(iso: string | undefined): string {
+  if (!iso) return 'من شوية';
+  const minutes = Math.max(1, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+  if (minutes < 60) return `من ${minutes} دقيقة`;
+  const hours = Math.round(minutes / 60);
+  return hours === 1 ? 'من ساعة' : `من ${hours} ساعات`;
+}
 
 export function elearningKindLabel(kind: string | null): string {
   if (kind === 'training') return 'مسار تدريبي';

@@ -19,6 +19,7 @@ import {
   GraduationCap,
   MapPin,
   RefreshCw,
+  Search,
   Users,
   Video,
   X,
@@ -32,11 +33,13 @@ import {
   fetchStatus,
   groupByDay,
   kindLabel,
+  matches,
   placeLabel,
   progressOf,
   refreshCourses,
   sessionsLeftLabel,
   stageLabel,
+  staleLabel,
   shortDate,
   timeOf,
   whenLabel,
@@ -51,12 +54,17 @@ import { cx } from '../lib/utils';
 
 type Lane = 'today' | 'running' | 'upcoming' | 'analysis';
 
+/** A course matches on anything somebody would plausibly remember about it. */
+const hits = (query: string) => (course: Course) =>
+  matches(query, course.name, course.code, course.instructor, course.branch, course.venue);
+
 export function Events() {
   const { push } = useToast();
   const [data, setData] = useState<CoursesOverview | null>(null);
   const [problem, setProblem] = useState<{ message: string; missing: string[] } | null>(null);
   const [lane, setLane] = useState<Lane>('today');
   const [openId, setOpenId] = useState<number | null>(null);
+  const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -164,9 +172,35 @@ export function Events() {
             />
           </div>
 
-          {lane === 'today' && <TodayLane sessions={data.today} onOpen={setOpenId} />}
-          {lane === 'running' && <CourseGrid courses={data.running} onOpen={setOpenId} running />}
-          {lane === 'upcoming' && <CourseGrid courses={data.upcoming} onOpen={setOpenId} />}
+          {/* Not on the analysis tab: there is nothing there to search, and a
+              box that does nothing is worse than no box. */}
+          {lane !== 'analysis' && (
+            <div className="relative mb-3">
+              <Search
+                size={16}
+                className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-ink-faint"
+              />
+              <input
+                className="field ps-9"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="دوّر بالاسم أو الكود أو المدرّب…"
+              />
+            </div>
+          )}
+
+          {lane === 'today' && (
+            <TodayLane
+              sessions={data.today.filter((session) => matches(query, session.eventName, session.name))}
+              onOpen={setOpenId}
+            />
+          )}
+          {lane === 'running' && (
+            <CourseGrid courses={data.running.filter(hits(query))} onOpen={setOpenId} running />
+          )}
+          {lane === 'upcoming' && (
+            <CourseGrid courses={data.upcoming.filter(hits(query))} onOpen={setOpenId} />
+          )}
           {lane === 'analysis' && <EventsAnalysis />}
         </>
       )}
@@ -424,6 +458,12 @@ function EventsAnalysis() {
 
   return (
     <div className="grid gap-3">
+      {data.stale && (
+        <p className="mb-3 flex items-center gap-2 rounded-xl bg-status-warnBg px-3.5 py-2.5 text-[12.5px] font-semibold text-accent-600">
+          <AlertCircle size={15} />
+          أودو مارِدّش دلوقتي — دي آخر أرقام وصلت {staleLabel(data.fetchedAt)}.
+        </p>
+      )}
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <StatTile label="كورسات شغالة" value={data.runningCount} icon={<GraduationCap size={17} />} />
         <StatTile label="طلاب في الكورسات الشغالة" value={data.students} icon={<Users size={17} />} />

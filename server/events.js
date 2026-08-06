@@ -22,16 +22,13 @@
 
 import { OdooError, odooConfigured, readGroup, searchRead } from './odoo.js';
 
-const CACHE_MS = 60_000;
-const cache = new Map();
+import { makeCache } from './cache.js';
 
-async function cached(key, load) {
-  const hit = cache.get(key);
-  if (hit && Date.now() - hit.at < CACHE_MS) return hit.value;
-  const value = await load();
-  cache.set(key, { at: Date.now(), value });
-  return value;
-}
+const cache = makeCache(60_000);
+/** Aggregates change by the day, not the minute, and cost far more to fetch. */
+const slowCache = makeCache(10 * 60_000);
+
+const cached = (key, load) => cache.get(key, load);
 
 /** Odoo hands back naive UTC; anything downstream deserves a real instant. */
 const asInstant = (value) =>
@@ -55,16 +52,22 @@ const EVENT_FIELDS = [
   'instructor_id',
   'total_lectures_number',
   'session_duration',
-  'seats_taken',
+  // `seats_taken` is deliberately absent. It is a *computed, non-stored* field:
+  // reading it makes Odoo count registrations per course in Python, which
+  // measured 18 seconds for fifteen courses against this database. The same
+  // number comes out of `registrationCounts` below in about one second, because
+  // counting rows in a real table is what Postgres is for. `seats_max` is an
+  // ordinary stored column and stays.
   'seats_max',
   'address_id',
 ];
 
-const TRACK_FIELDS = [
-  'name',
-  'date',
-  'duration',
-  'event_id',
+/** Enough to place a lecture on a calendar. Cheap: all stored columns. */
+const TRACK_FIELDS = ['name', 'date', 'duration', 'event_id'];
+
+/** Today's rows only — everything above plus the computed joining link. */
+const TODAY_FIELDS = [
+  ...TRACK_FIELDS,
   // The Zoom integration spreads the joining link over several fields and then
   // names the winner in `join_live_url_source`. All of them are read because
   // the resolved one is empty more often than the raw ones are.
@@ -147,9 +150,30 @@ function shapeEvent(row) {
     instructor: nameOf(row.instructor_id),
     plannedSessions: row.total_lectures_number || 0,
     sessionHours: row.session_duration || 0,
-    attendees: row.seats_taken || 0,
+    // Filled in by the caller from `registrationCounts` — see EVENT_FIELDS.
+    attendees: 0,
     seats: row.seats_max || 0,
   };
+}
+
+/**
+ * How many people are registered on each of these courses.
+ *
+ * One grouped count over `event.registration` rather than reading the computed
+ * `seats_taken` off every course. Cancelled registrations are excluded, which is
+ * what "taken" is supposed to mean.
+ */
+async function registrationCounts(eventIds) {
+  if (eventIds.length === 0) return new Map();
+  const rows = await readGroup(
+    'event.registration',
+    [
+      ['event_id', 'in', eventIds],
+      ['state', 'in', ['open', 'done']],
+    ],
+    ['event_id']
+  );
+  return new Map(rows.map((row) => [idOf(row.event_id), row.__count ?? 0]));
 }
 
 function shapeTrack(row) {
@@ -171,6 +195,32 @@ function shapeTrack(row) {
 }
 
 const odooDate = (date) => date.toISOString().slice(0, 19).replace('T', ' ');
+
+/**
+ * Odoo groups dates into English labels ("February 2026") regardless of the
+ * caller's language, because the grouping happens in SQL rather than through a
+ * translated field. The column chart has room for a short month and nothing
+ * else, so the year is dropped too.
+ */
+const MONTHS_AR = {
+  january: 'يناير',
+  february: 'فبراير',
+  march: 'مارس',
+  april: 'أبريل',
+  may: 'مايو',
+  june: 'يونيو',
+  july: 'يوليو',
+  august: 'أغسطس',
+  september: 'سبتمبر',
+  october: 'أكتوبر',
+  november: 'نوفمبر',
+  december: 'ديسمبر',
+};
+
+function arabicMonth(label) {
+  const [month] = label.split(' ');
+  return MONTHS_AR[month?.toLowerCase()] ?? label ?? '—';
+}
 
 /**
  * Everything the courses page needs, in one answer.
@@ -209,34 +259,50 @@ export async function coursesOverview({ days = 14 } = {}) {
       { limit: 40, order: 'date_begin' }
     );
 
-    // Sessions for the running courses, plus anything scheduled inside the
-    // window — a course can have a lecture today while its stage still says
-    // planned, and the person waiting for it does not care which.
-    const courseIds = [...new Set([...running, ...upcoming].map((row) => row.id))];
-    const tracks = courseIds.length
-      ? await searchRead(
-          'event.track',
-          [
-            '|',
-            ['event_id', 'in', courseIds],
-            '&',
-            ['date', '>=', odooDate(now)],
-            ['date', '<=', odooDate(horizon)],
-          ],
-          TRACK_FIELDS,
-          { limit: 800, order: 'date' }
-        )
-      : [];
+    /*
+     * Two narrow queries rather than one broad one, and the reason is cost.
+     *
+     * The join link lives in computed fields — reading `active_join_live_url`
+     * makes Odoo resolve it per row, measured at 2.5s per 300 tracks — so it is
+     * asked for only over today, which is a couple of dozen rows. Progress on a
+     * running course needs dates and nothing else, and an upcoming course needs
+     * no sessions at all: its `total_lectures_number` already says how many are
+     * planned, and none of them have happened.
+     *
+     * The single wide query these replace pulled every session of all 55
+     * courses with the computed fields attached, and did not return inside 45
+     * seconds.
+     */
+    const runningCourseIds = running.map((row) => row.id);
+    const [scheduleRows, todayRows] = await Promise.all([
+      runningCourseIds.length
+        ? searchRead('event.track', [['event_id', 'in', runningCourseIds]], TRACK_FIELDS, {
+            limit: 600,
+            order: 'date',
+          })
+        : [],
+      searchRead(
+        'event.track',
+        [
+          ['date', '>=', odooDate(now)],
+          ['date', '<=', odooDate(new Date(endOfToday(now)))],
+        ],
+        TODAY_FIELDS,
+        { limit: 60, order: 'date' }
+      ),
+    ]);
 
-    const sessions = tracks.map(shapeTrack).filter((track) => track.at);
+    const sessions = scheduleRows.map(shapeTrack).filter((track) => track.at);
     const byCourse = new Map();
     for (const session of sessions) {
       if (!byCourse.has(session.eventId)) byCourse.set(session.eventId, []);
       byCourse.get(session.eventId).push(session);
     }
 
+    const registrations = await registrationCounts([...new Set([...running, ...upcoming].map((r) => r.id))]);
+
     const withProgress = (row) => {
-      const course = shapeEvent(row);
+      const course = { ...shapeEvent(row), attendees: registrations.get(row.id) ?? 0 };
       const all = byCourse.get(course.id) ?? [];
       const remaining = all.filter((session) => new Date(session.at) >= now);
       return {
@@ -249,18 +315,13 @@ export async function coursesOverview({ days = 14 } = {}) {
       };
     };
 
-    const nowMs = now.getTime();
     return {
       running: running.map(withProgress),
       upcoming: upcoming.map(withProgress),
       // Every lecture between now and midnight tonight, whichever course it
-      // belongs to — this is the "who is on next" list.
-      today: sessions
-        .filter((session) => {
-          const at = new Date(session.at).getTime();
-          return at >= nowMs && at <= endOfToday(now);
-        })
-        .slice(0, 25),
+      // belongs to — this is the "who is on next" list, and the only one that
+      // carries a joining link.
+      today: todayRows.map(shapeTrack).filter((session) => session.at),
       stages: stageList,
       fetchedAt: new Date().toISOString(),
     };
@@ -320,40 +381,32 @@ export async function courseDetail(id) {
 export async function eventsAnalytics({ months = 6 } = {}) {
   if (!odooConfigured()) throw new OdooError('odoo_not_configured', 503);
 
-  return cached(`analytics:${months}`, async () => {
+  return slowCache.get(`analytics:${months}`, async () => {
     const stageList = await stages();
     const since = new Date();
     since.setMonth(since.getMonth() - months);
 
     const [byStage, byMode, byInstructor, byMonth] = await Promise.all([
-      readGroup('event.event', [], ['stage_id'], ['stage_id']),
-      readGroup('event.event', [['date_begin', '>=', odooDate(since)]], ['attendance_method'], [
-        'attendance_method',
-      ]),
-      readGroup(
-        'event.event',
-        [
+      readGroup('event.event', [], ['stage_id']),
+      readGroup('event.event', [['date_begin', '>=', odooDate(since)]], ['attendance_method']),
+      readGroup('event.event', [
           ['date_begin', '>=', odooDate(since)],
           ['instructor_id', '!=', false],
-        ],
-        ['instructor_id'],
-        ['instructor_id']
-      ),
-      readGroup('event.event', [['date_begin', '>=', odooDate(since)]], ['date_begin:month'], [
-        'date_begin:month',
-      ]),
+        ], ['instructor_id']),
+      readGroup('event.event', [['date_begin', '>=', odooDate(since)]], ['date_begin:month']),
     ]);
 
     const runningIds = stageList.filter((stage) => stage.running).map((stage) => stage.id);
     // Seats only mean something for courses that are actually selling, so the
     // fill rate is measured over the running ones rather than all 1,100.
     const running = runningIds.length
-      ? await searchRead('event.event', [['stage_id', 'in', runningIds]], ['seats_taken', 'seats_max'], {
+      ? await searchRead('event.event', [['stage_id', 'in', runningIds]], ['seats_max'], {
           limit: 200,
         })
       : [];
 
-    const seatsTaken = running.reduce((sum, row) => sum + (row.seats_taken || 0), 0);
+    const registrations = await registrationCounts(running.map((row) => row.id));
+    const seatsTaken = [...registrations.values()].reduce((sum, count) => sum + count, 0);
     const seatsMax = running.reduce((sum, row) => sum + (row.seats_max || 0), 0);
 
     return {
@@ -370,7 +423,7 @@ export async function eventsAnalytics({ months = 6 } = {}) {
         .sort((a, b) => b.value - a.value)
         .slice(0, 8),
       byMonth: byMonth.map((row) => ({
-        label: String(row['date_begin:month'] ?? '').split(' ')[0] || '—',
+        label: arabicMonth(String(row['date_begin:month'] ?? '')),
         value: row.__count ?? 0,
       })),
       students: seatsTaken,
@@ -383,4 +436,5 @@ export async function eventsAnalytics({ months = 6 } = {}) {
 /** Dropped whenever the shape of the answer changes, and by the refresh button. */
 export function clearEventsCache() {
   cache.clear();
+  slowCache.clear();
 }

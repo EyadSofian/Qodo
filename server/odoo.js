@@ -57,10 +57,29 @@ class OdooError extends Error {
 let cachedUid = null;
 let cachedFor = '';
 
+/**
+ * One retry, and only on a timeout.
+ *
+ * This Odoo's latency is wildly unstable — a bare `version` call, which touches
+ * no data at all, was measured at 4 seconds, then 4 again, then 30. Retrying a
+ * request that timed out is therefore the difference between a page that works
+ * and one that works most of the time. Nothing else is retried: a rejected key
+ * or a bad field will fail again the same way, and asking twice would only be
+ * twice the load on somebody's production ERP.
+ */
 async function rpc(service, method, args) {
+  try {
+    return await rpcOnce(service, method, args);
+  } catch (error) {
+    if (error?.message !== 'odoo_timeout') throw error;
+    return rpcOnce(service, method, args);
+  }
+}
+
+async function rpcOnce(service, method, args) {
   const { url } = CONFIG();
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 20_000);
+  const timer = setTimeout(() => controller.abort(), 45_000);
   try {
     const response = await fetch(`${url}/jsonrpc`, {
       method: 'POST',
@@ -82,6 +101,11 @@ async function rpc(service, method, args) {
         payload.error?.data?.message || payload.error?.message || 'odoo_rpc_error';
       throw new OdooError(detail);
     }
+    // A body carrying neither `result` nor `error` is a broken response, not an
+    // empty one. Returning `undefined` here is how a truncated reply turned into
+    // "running is not iterable" three call frames away, which says nothing about
+    // what actually went wrong.
+    if (!Object.hasOwn(payload, 'result')) throw new OdooError('odoo_bad_response');
     return payload.result;
   } catch (error) {
     if (error instanceof OdooError) throw error;
@@ -149,8 +173,12 @@ export async function searchRead(model, domain, fields, options = {}) {
  * a thousand courses across the wire to learn five numbers. `read_group` is how
  * Odoo's own graph views do it.
  */
-export async function readGroup(model, domain, groupBy, fields = groupBy) {
+export async function readGroup(model, domain, groupBy, fields = []) {
   if (!odooConfigured()) throw new OdooError('odoo_not_configured', 503);
+  // `fields` defaults to empty on purpose. A groupby may carry a granularity —
+  // `date_begin:month` — and the same string in `fields` is read as an aggregate
+  // function called "month", which Odoo rejects outright. Counting needs no
+  // fields at all; `__count` comes back regardless.
   const { db, apiKey } = CONFIG();
   const user = await uid();
   return rpc('object', 'execute_kw', [
