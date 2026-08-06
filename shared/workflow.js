@@ -190,30 +190,92 @@ export function isReviewer(user) {
 }
 
 /**
- * The person who owes the work. Normally the assignee; on an unassigned task it
- * falls back to whoever filed it, so a task nobody owns is never stuck.
+ * Everybody who owes this work.
+ *
+ * A task used to carry one `assigneeId`, and most of the workspace still reads
+ * through this function rather than the field so that rows written before the
+ * change — and any the migration has not reached — answer the same question the
+ * same way.
+ */
+export function assigneesOf(task) {
+  if (Array.isArray(task?.assigneeIds)) return task.assigneeIds;
+  return task?.assigneeId ? [task.assigneeId] : [];
+}
+
+export function isAssignee(user, task) {
+  return Boolean(user) && assigneesOf(task).includes(user.id);
+}
+
+/**
+ * Each partner answers their own assignment. One shared status would mean the
+ * first person to accept answers for everybody, and the second person's silence
+ * would be invisible — which is the thing the accept gate exists to surface.
+ */
+export function assignmentRows(task) {
+  if (Array.isArray(task?.assignments)) return task.assignments;
+  if (!task?.assigneeId) return [];
+  return [
+    {
+      userId: task.assigneeId,
+      status: task.assignmentStatus ?? 'accepted',
+      note: task.assignmentNote ?? '',
+      acceptedAt: task.acceptedAt ?? null,
+      declinedAt: task.declinedAt ?? null,
+      proposedDueDate: task.proposedDueDate ?? null,
+    },
+  ];
+}
+
+export function assignmentFor(task, userId) {
+  return assignmentRows(task).find((row) => row.userId === userId) ?? null;
+}
+
+/**
+ * The person who owes the work. Normally a named partner; on an unassigned task
+ * it falls back to whoever filed it, so a task nobody owns is never stuck.
  */
 export function isDoer(user, task) {
   if (!user || !task) return false;
-  if (task.assigneeId) return task.assigneeId === user.id;
+  const owners = assigneesOf(task);
+  if (owners.length > 0) return owners.includes(user.id);
   return task.createdBy === user.id || canAssignWork(user);
 }
 
-/** A named assignee must explicitly accept before execution starts. */
-export function assignmentReady(task) {
-  if (!task?.assigneeId) return true;
-  // Legacy rows are treated as accepted until the boot migration stamps them.
-  return !task.assignmentStatus || task.assignmentStatus === 'accepted';
+/**
+ * A named partner must explicitly accept before *they* start work.
+ *
+ * Asked about a particular person it means their own answer. Asked about nobody
+ * in particular — the board checking whether a card may move at all — it means
+ * at least one partner has accepted, because on a shared task the one who said
+ * yes can legitimately get going without waiting for the others.
+ */
+export function assignmentReady(task, user) {
+  const owners = assigneesOf(task);
+  if (owners.length === 0) return true;
+
+  const rows = assignmentRows(task);
+  // Legacy rows carry no answers at all and are treated as accepted, exactly as
+  // a missing `assignmentStatus` used to be.
+  if (rows.length === 0) return true;
+
+  if (user && owners.includes(user.id)) {
+    const mine = rows.find((row) => row.userId === user.id);
+    return !mine || mine.status === 'accepted';
+  }
+  return rows.some((row) => row.status === 'accepted');
 }
 
 export function canRespondToAssignment(user, task) {
+  if (!user || !isAssignee(user, task)) return false;
   const state = taskState(task);
-  return Boolean(
-    user &&
-      task?.assigneeId === user.id &&
-      (state === 'assigned' || state === 'working') &&
-      task.assignmentStatus !== 'accepted'
-  );
+  if (state !== 'assigned' && state !== 'working') return false;
+  const mine = assignmentFor(task, user.id);
+  return !mine || mine.status !== 'accepted';
+}
+
+/** How many partners still owe an answer — what a manager chases. */
+export function unansweredAssignees(task) {
+  return assignmentRows(task).filter((row) => row.status === 'pending').length;
 }
 
 /* ── the gates ───────────────────────────────────────────────────── */
@@ -221,7 +283,7 @@ export function canRespondToAssignment(user, task) {
 export function canStart(user, task) {
   return (
     taskState(task) === 'assigned' &&
-    ((isDoer(user, task) && assignmentReady(task)) ||
+    ((isDoer(user, task) && assignmentReady(task, user)) ||
       (canAssignWork(user) && !task.assigneeId))
   );
 }
@@ -230,7 +292,7 @@ export function canSubmit(user, task) {
   const state = taskState(task);
   return (
     (state === 'assigned' || state === 'working') &&
-    ((isDoer(user, task) && assignmentReady(task)) ||
+    ((isDoer(user, task) && assignmentReady(task, user)) ||
       (canAssignWork(user) && !task.assigneeId))
   );
 }
@@ -311,7 +373,12 @@ export function stageWriteVerdict(user, task, nextDepartment, nextStage) {
   // A pending assignment is a real gate. Without this check, dragging the card
   // from an open column to an active one bypasses the explicit accept/decline
   // response even though the dedicated /start action correctly refuses it.
-  if (from === 'assigned' && to === 'working' && task.assigneeId && !assignmentReady(task)) {
+  if (
+    from === 'assigned' &&
+    to === 'working' &&
+    assigneesOf(task).length > 0 &&
+    !assignmentReady(task, user)
+  ) {
     return doer || reviewer ? 'assignment' : 'forbidden';
   }
   // Sign-off to done is the publish step, and the only move that is allowed to

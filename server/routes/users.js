@@ -19,6 +19,7 @@ import {
 } from '../../shared/departments.js';
 import { canUseDepartment, visiblePeople } from '../taskAccess.js';
 import { organizationOf } from '../../shared/organization.js';
+import { assigneesOf } from '../../shared/workflow.js';
 
 const router = Router();
 
@@ -241,7 +242,7 @@ router.delete('/:id', requirePermission(PERMISSIONS.USERS_MANAGE), async (req, r
   // Their tasks outlive them — unassign rather than cascade-delete work.
   const owned = await find(
     'tasks',
-    (t) => t.assigneeId === target.id && organizationOf(t) === organizationOf(target)
+    (t) => assigneesOf(t).includes(target.id) && organizationOf(t) === organizationOf(target)
   );
   for (const task of owned) {
     await store.update('tasks', task.id, {

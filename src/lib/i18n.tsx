@@ -289,6 +289,12 @@ const STRINGS = {
   'flow.reopen': { ar: 'إعادة فتح المهمة', en: 'Reopen task' },
   'flow.sendToRework': { ar: 'رجّعها إعادة عمل', en: 'Send back for rework' },
   'flow.publish': { ar: 'تم النشر', en: 'Mark as published' },
+  'tasks.assignees': { ar: 'المسؤولون', en: 'Assigned to' },
+  'tasks.sharedHint': {
+    ar: 'مهمة مشتركة — أي واحد فيهم يقدر يسلّمها، والتقييم بيتسجّل للكل.',
+    en: 'Shared task — any of them can hand it in, and the score goes on every record.',
+  },
+  'tasks.noAssignees': { ar: 'مفيش حد تقدر تسنده هنا.', en: 'Nobody here you can assign.' },
   'flow.confirmReopen': { ar: 'إعادة فتح «{title}»؟ سيرجع للموظف من جديد.', en: 'Reopen “{title}”? It goes back to the assignee.' },
 
   'flow.deliverables': { ar: 'ملفات التسليم', en: 'Deliverables' },

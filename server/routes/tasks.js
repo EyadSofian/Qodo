@@ -19,11 +19,15 @@ import {
   canApproveWork,
   canPublish,
   canReopen,
+  assigneesOf,
+  assignmentFor,
+  assignmentRows,
   canRespondToAssignment,
   canReview,
   canScoreWork,
   canStart,
   canSubmit,
+  isAssignee,
   isDoer,
   isReviewer,
   scoreBand,
@@ -56,6 +60,12 @@ import { organizationOf } from '../../shared/organization.js';
 const router = Router();
 
 export const PRIORITIES = ['low', 'normal', 'high', 'urgent'];
+/**
+ * A ceiling rather than a rule anybody hits. Work shared by more than a handful
+ * of people is a project, not a task, and the board has no way to draw a card
+ * that names a dozen owners.
+ */
+export const MAX_ASSIGNEES = 8;
 export const EFFORT_POINTS = [1, 2, 3, 5, 8, 13];
 
 router.use(requireAuth);
@@ -91,11 +101,11 @@ router.get('/counts', async (req, res) => {
   const today = new Date().toISOString().slice(0, 10);
   const isOpen = (task) => !isSettledStage(task.department ?? DEFAULT_DEPARTMENT, task.stage);
 
-  const mine = visible.filter((task) => task.assigneeId === req.user.id && isOpen(task));
+  const mine = visible.filter((task) => isAssignee(req.user, task) && isOpen(task));
 
   // What a reviewer needs to act on — theirs to clear, not theirs to do.
   const awaitingMyReview = isReviewer(req.user)
-    ? visible.filter((task) => taskState(task) === 'submitted' && task.assigneeId !== req.user.id)
+    ? visible.filter((task) => taskState(task) === 'submitted' && !isAssignee(req.user, task))
         .length
     : 0;
 
@@ -105,7 +115,10 @@ router.get('/counts', async (req, res) => {
     dueToday: mine.filter((task) => task.dueDate === today).length,
     // Assigned to them and never accepted or declined — the quietest way for
     // work to stall, so it gets its own number.
-    unanswered: mine.filter((task) => task.assignmentStatus === 'pending').length,
+    // Their own answer, not the task's: on shared work one partner accepting
+    // must not clear the prompt sitting in front of the other.
+    unanswered: mine.filter((task) => assignmentFor(task, req.user.id)?.status === 'pending')
+      .length,
     awaitingMyReview,
   });
 });
@@ -122,7 +135,7 @@ router.get('/overview', async (req, res) => {
   // Performance is more private than the team task table: employees get only
   // their own figures even when the team's work is visible for collaboration.
   if (!managesTeam) {
-    tasks = tasks.filter((task) => task.assigneeId === req.user.id);
+    tasks = tasks.filter((task) => isAssignee(req.user, task));
     people = people.filter((person) => person.id === req.user.id);
   }
 
@@ -187,7 +200,10 @@ router.get('/export.csv', requirePermission(PERMISSIONS.TASKS_EXPORT), async (re
       task.taskDate ?? task.createdAt?.slice(0, 10) ?? '',
       departmentLabel(department, lang),
       subteamLabel(department, task.subteam, lang),
-      names.get(task.assigneeId) ?? '',
+      assigneesOf(task)
+        .map((id) => names.get(id))
+        .filter(Boolean)
+        .join('، '),
       task.title,
       task.description ?? '',
       task.objective ?? '',
@@ -251,11 +267,10 @@ router.post('/', requirePermission(PERMISSIONS.TASKS_CREATE), async (req, res) =
   if (parsed.error) return res.status(400).json({ error: parsed.error });
 
   const department = parsed.value.department ?? req.user.department ?? DEFAULT_DEPARTMENT;
-  if (
-    parsed.value.assigneeId &&
-    !(await validAssignee(req.user, parsed.value.assigneeId, department))
-  ) {
-    return res.status(400).json({ error: 'assignee_team_mismatch' });
+  for (const id of parsed.value.assigneeIds ?? []) {
+    if (!(await validAssignee(req.user, id, department))) {
+      return res.status(400).json({ error: 'assignee_team_mismatch' });
+    }
   }
   const stage = parsed.value.stage ?? firstStage(department);
   const initialState = taskState({ department, stage });
@@ -279,7 +294,7 @@ router.post('/', requirePermission(PERMISSIONS.TASKS_CREATE), async (req, res) =
   const task = await create('tasks', {
     reference: taskReference(),
     priority: 'normal',
-    assigneeId: null,
+    assigneeIds: [],
     dueDate: null,
     appId: null,
     labels: [],
@@ -293,7 +308,7 @@ router.post('/', requirePermission(PERMISSIONS.TASKS_CREATE), async (req, res) =
     taskDate: new Date().toISOString().slice(0, 10),
     subteam: req.user.department === department ? (req.user.subteam ?? null) : null,
     ...blankLifecycle(),
-    ...assignmentLifecycle(parsed.value.assigneeId ?? null, req.user.id),
+    ...assignmentLifecycle(parsed.value.assigneeIds ?? [], req.user.id),
     completedAt: isSettledStage(department, stage) ? new Date().toISOString() : null,
     ...parsed.value,
     organizationId: organizationOf(req.user),
@@ -303,21 +318,19 @@ router.post('/', requirePermission(PERMISSIONS.TASKS_CREATE), async (req, res) =
     order: Math.min(0, ...siblings.map((t) => t.order ?? 0)) - 1,
   });
 
-  if (task.assigneeId) {
+  if (assigneesOf(task).length > 0) {
     await recordAssignment(task, req.user, 'assigned', {
-      assigneeId: task.assigneeId,
+      assigneeIds: assigneesOf(task),
       assignedBy: req.user.id,
     });
   }
 
-  if (task.assigneeId && task.assigneeId !== req.user.id) {
-    await notify(task.assigneeId, req.user.id, {
-      type: 'task.assigned',
-      title: { ar: 'مهمة جديدة مُسندة إليك', en: 'A new task is assigned to you' },
-      body: task.title,
-      link: `/tasks?task=${task.id}`,
-    });
-  }
+  await notifyPartners(task, req.user.id, {
+    type: 'task.assigned',
+    title: { ar: 'مهمة جديدة مُسندة إليك', en: 'A new task is assigned to you' },
+    body: task.title,
+    link: `/tasks?task=${task.id}`,
+  });
 
   await logActivity({
     actorId: req.user.id,
@@ -355,21 +368,23 @@ router.patch('/:id', async (req, res) => {
   if (!canUseDepartment(req.user, nextDepartment)) {
     return res.status(403).json({ error: 'forbidden_team' });
   }
-  const nextAssignee = patch.assigneeId !== undefined ? patch.assigneeId : task.assigneeId;
-  // Only re-check the assignment when it is actually being decided: the person
-  // is changing, or the team is moving under them. An assignee editing their own
+  const currentAssignees = assigneesOf(task);
+  const nextAssignees = patch.assigneeIds !== undefined ? patch.assigneeIds : currentAssignees;
+  // Only re-check the assignment when it is actually being decided: the people
+  // are changing, or the team is moving under them. A partner editing their own
   // progress is not assigning anybody, and asking them to prove they *could*
-  // have assigned the person already on the card would fail every ordinary edit
+  // have assigned the people already on the card would fail every ordinary edit
   // now that assigning is a manager's authority.
   const assignmentDecided =
-    nextAssignee !== (task.assigneeId ?? null) ||
+    nextAssignees.length !== currentAssignees.length ||
+    nextAssignees.some((id) => !currentAssignees.includes(id)) ||
     nextDepartment !== (task.department ?? DEFAULT_DEPARTMENT);
-  if (
-    nextAssignee &&
-    assignmentDecided &&
-    !(await validAssignee(req.user, nextAssignee, nextDepartment))
-  ) {
-    return res.status(400).json({ error: 'assignee_team_mismatch' });
+  if (assignmentDecided) {
+    for (const id of nextAssignees) {
+      if (!(await validAssignee(req.user, id, nextDepartment))) {
+        return res.status(400).json({ error: 'assignee_team_mismatch' });
+      }
+    }
   }
 
   if (changesPlan(patch, task) && !canManageTaskPlan(req.user, task)) {
@@ -389,16 +404,29 @@ router.patch('/:id', async (req, res) => {
   if (verdict === 'forbidden') return res.status(403).json({ error: 'forbidden' });
 
   const assignmentChanged =
-    Object.hasOwn(patch, 'assigneeId') && patch.assigneeId !== task.assigneeId;
+    Object.hasOwn(patch, 'assigneeIds') &&
+    (patch.assigneeIds.length !== currentAssignees.length ||
+      patch.assigneeIds.some((id) => !currentAssignees.includes(id)));
   if (assignmentChanged) {
-    Object.assign(patch, assignmentLifecycle(patch.assigneeId, req.user.id));
-  } else if (
-    Object.hasOwn(patch, 'dueDate') &&
-    task.assignmentStatus === 'due_date_proposed' &&
-    patch.dueDate === task.proposedDueDate
-  ) {
-    patch.assignmentStatus = 'accepted';
-    patch.acceptedAt = new Date().toISOString();
+    // Partners already on the task keep the answer they gave; only the people
+    // being added start out pending.
+    Object.assign(
+      patch,
+      assignmentLifecycle(patch.assigneeIds, req.user.id, assignmentRows(task))
+    );
+  } else if (Object.hasOwn(patch, 'dueDate')) {
+    // Granting a proposed date answers that partner's request — and only that
+    // partner's, since each one proposes their own.
+    const proposer = assignmentRows(task).find(
+      (row) => row.status === 'due_date_proposed' && row.proposedDueDate === patch.dueDate
+    );
+    if (proposer) {
+      patch.assignments = assignmentRows(task).map((row) =>
+        row.userId === proposer.userId
+          ? { ...row, status: 'accepted', acceptedAt: new Date().toISOString() }
+          : row
+      );
+    }
   }
 
   // Settled rather than delivered: the work is finished the moment it is
@@ -410,34 +438,36 @@ router.patch('/:id', async (req, res) => {
   const updated = await store.update('tasks', task.id, patch);
 
   if (assignmentChanged) {
-    await recordAssignment(updated, req.user, patch.assigneeId ? 'assigned' : 'unassigned', {
-      previousAssigneeId: task.assigneeId ?? null,
-      assigneeId: patch.assigneeId ?? null,
-    });
-  } else if (
-    task.assignmentStatus === 'due_date_proposed' &&
-    updated.assignmentStatus === 'accepted'
-  ) {
-    await recordAssignment(updated, req.user, 'due_date_approved', {
-      dueDate: updated.dueDate,
-    });
+    await recordAssignment(
+      updated,
+      req.user,
+      assigneesOf(updated).length ? 'assigned' : 'unassigned',
+      { previousAssigneeIds: currentAssignees, assigneeIds: assigneesOf(updated) }
+    );
+  } else if (patch.assignments) {
+    await recordAssignment(updated, req.user, 'due_date_approved', { dueDate: updated.dueDate });
   }
 
-  if (patch.assigneeId && patch.assigneeId !== task.assigneeId && patch.assigneeId !== req.user.id) {
-    await notify(patch.assigneeId, req.user.id, {
-      type: 'task.assigned',
-      title: { ar: 'مهمة أُسندت إليك', en: 'A task was assigned to you' },
-      body: updated.title,
-      link: `/tasks?task=${updated.id}`,
-    });
-  }
-  if (assignmentChanged && task.assigneeId && task.assigneeId !== req.user.id) {
-    await notify(task.assigneeId, req.user.id, {
-      type: 'task.unassigned',
-      title: { ar: 'تم تغيير إسناد مهمة', en: 'A task assignment changed' },
-      body: updated.title,
-      link: '/tasks',
-    });
+  if (assignmentChanged) {
+    const now = assigneesOf(updated);
+    // Told once each, and only about what changed for them: the people who
+    // gained the task, and the people who lost it.
+    for (const id of now.filter((x) => !currentAssignees.includes(x) && x !== req.user.id)) {
+      await notify(id, req.user.id, {
+        type: 'task.assigned',
+        title: { ar: 'مهمة أُسندت إليك', en: 'A task was assigned to you' },
+        body: updated.title,
+        link: `/tasks?task=${updated.id}`,
+      });
+    }
+    for (const id of currentAssignees.filter((x) => !now.includes(x) && x !== req.user.id)) {
+      await notify(id, req.user.id, {
+        type: 'task.unassigned',
+        title: { ar: 'تم تغيير إسناد مهمة', en: 'A task assignment changed' },
+        body: updated.title,
+        link: '/tasks',
+      });
+    }
   }
 
   await logActivity({
@@ -471,14 +501,12 @@ router.post('/:id/archive', async (req, res) => {
   });
 
   // The person who was carrying the work needs to know it stopped being theirs.
-  if (task.assigneeId && task.assigneeId !== req.user.id) {
-    await notify(task.assigneeId, req.user.id, {
-      type: 'task.archived',
-      title: { ar: 'أُرشفت مهمة كانت لديك', en: 'A task of yours was archived' },
-      body: task.title,
-      link: '/tasks',
-    });
-  }
+  await notifyPartners(task, req.user.id, {
+    type: 'task.archived',
+    title: { ar: 'أُرشفت مهمة كانت لديك', en: 'A task of yours was archived' },
+    body: task.title,
+    link: '/tasks',
+  });
 
   await logActivity({
     actorId: req.user.id,
@@ -593,30 +621,35 @@ router.post('/:id/assignment', async (req, res) => {
   }
 
   const stamp = new Date().toISOString();
-  const patch = { assignmentNote: note };
+  // The answer belongs to the person giving it. On shared work the others are
+  // still expected to answer for themselves, so only this row moves.
+  const mine = { ...(assignmentFor(task, req.user.id) ?? { userId: req.user.id }), note };
   if (action === 'accept') {
-    patch.assignmentStatus = 'accepted';
-    patch.acceptedAt = stamp;
-    patch.declinedAt = null;
-    patch.proposedDueDate = null;
+    Object.assign(mine, {
+      status: 'accepted',
+      acceptedAt: stamp,
+      declinedAt: null,
+      proposedDueDate: null,
+    });
   } else if (action === 'decline') {
-    patch.assignmentStatus = 'declined';
-    patch.declinedAt = stamp;
+    Object.assign(mine, { status: 'declined', declinedAt: stamp });
   } else if (action === 'request_clarification') {
-    patch.assignmentStatus = 'clarification_requested';
+    mine.status = 'clarification_requested';
   } else if (action === 'request_reassignment') {
-    patch.assignmentStatus = 'reassignment_requested';
+    mine.status = 'reassignment_requested';
   } else {
     const proposedDueDate = parseDate(req.body?.dueDate);
     if (!proposedDueDate) return res.status(400).json({ error: 'invalid_due_date' });
-    patch.assignmentStatus = 'due_date_proposed';
-    patch.proposedDueDate = proposedDueDate;
+    Object.assign(mine, { status: 'due_date_proposed', proposedDueDate });
   }
 
+  const patch = {
+    assignments: assignmentRows(task).map((row) => (row.userId === req.user.id ? mine : row)),
+  };
   const updated = await store.update('tasks', task.id, patch);
   await recordAssignment(updated, req.user, action, {
     note,
-    proposedDueDate: patch.proposedDueDate ?? null,
+    proposedDueDate: mine.proposedDueDate ?? null,
   });
 
   const audience = new Set([task.createdBy, task.assignedBy].filter(Boolean));
@@ -759,14 +792,12 @@ router.post('/:id/review', async (req, res) => {
       progress: 100,
     });
 
-    if (task.assigneeId && task.assigneeId !== req.user.id) {
-      await notify(task.assigneeId, req.user.id, {
-        type: 'task.approved',
-        title: { ar: 'تم اعتماد مهمتك', en: 'Your task was approved' },
-        body: `${updated.title} — ${updated.score}/100`,
-        link: `/tasks?task=${updated.id}`,
-      });
-    }
+    await notifyPartners(task, req.user.id, {
+      type: 'task.approved',
+      title: { ar: 'تم اعتماد مهمتك', en: 'Your task was approved' },
+      body: `${updated.title} — ${updated.score}/100`,
+      link: `/tasks?task=${updated.id}`,
+    });
     await logActivity({
       actorId: req.user.id,
       action: 'task.approve',
@@ -792,14 +823,12 @@ router.post('/:id/review', async (req, res) => {
     progress: Math.min(task.progress ?? 90, 90),
   });
 
-  if (task.assigneeId && task.assigneeId !== req.user.id) {
-    await notify(task.assigneeId, req.user.id, {
-      type: 'task.returned',
-      title: { ar: 'مهمة رجعت إليك للتعديل', en: 'A task was sent back to you' },
-      body: `${updated.title} — ${note.slice(0, 80)}`,
-      link: `/tasks?task=${updated.id}`,
-    });
-  }
+  await notifyPartners(task, req.user.id, {
+    type: 'task.returned',
+    title: { ar: 'مهمة رجعت إليك للتعديل', en: 'A task was sent back to you' },
+    body: `${updated.title} — ${note.slice(0, 80)}`,
+    link: `/tasks?task=${updated.id}`,
+  });
   await logActivity({
     actorId: req.user.id,
     action: 'task.return',
@@ -875,14 +904,12 @@ router.post('/:id/reopen', async (req, res) => {
     progress: Math.min(task.progress ?? 90, 90),
   });
 
-  if (task.assigneeId && task.assigneeId !== req.user.id) {
-    await notify(task.assigneeId, req.user.id, {
-      type: 'task.returned',
-      title: { ar: 'أُعيد فتح مهمة', en: 'A task was reopened' },
-      body: updated.title,
-      link: `/tasks?task=${updated.id}`,
-    });
-  }
+  await notifyPartners(task, req.user.id, {
+    type: 'task.returned',
+    title: { ar: 'أُعيد فتح مهمة', en: 'A task was reopened' },
+    body: updated.title,
+    link: `/tasks?task=${updated.id}`,
+  });
   await logActivity({
     actorId: req.user.id,
     action: 'task.reopen',
@@ -922,7 +949,7 @@ router.post('/:id/comments', async (req, res) => {
   });
 
   // Tell the other side of the task — never yourself.
-  const audience = new Set([task.assigneeId, task.createdBy].filter(Boolean));
+  const audience = new Set([...assigneesOf(task), task.createdBy].filter(Boolean));
   audience.delete(req.user.id);
   for (const userId of audience) {
     await notify(userId, req.user.id, {
@@ -978,7 +1005,7 @@ const PLAN_FIELDS = {
   description: (task) => task.description ?? '',
   objective: (task) => task.objective ?? '',
   definitionOfDone: (task) => task.definitionOfDone ?? '',
-  assigneeId: (task) => task.assigneeId ?? null,
+  assigneeIds: (task) => assigneesOf(task),
   department: (task) => task.department ?? DEFAULT_DEPARTMENT,
   subteam: (task) => task.subteam ?? null,
   dueDate: (task) => task.dueDate ?? null,
@@ -989,9 +1016,18 @@ const PLAN_FIELDS = {
   appId: (task) => task.appId ?? null,
 };
 
+/**
+ * Plan fields are compared as strings because one of them is now a list. A raw
+ * `!==` on an array compares identities, so echoing the same partners back —
+ * which the dialog does on every ordinary save — read as a change of plan and
+ * refused the edit.
+ */
+const planValue = (value) => (Array.isArray(value) ? [...value].sort().join(',') : value);
+
 function changesPlan(patch, task) {
   return Object.entries(PLAN_FIELDS).some(
-    ([field, currentValue]) => Object.hasOwn(patch, field) && patch[field] !== currentValue(task)
+    ([field, currentValue]) =>
+      Object.hasOwn(patch, field) && planValue(patch[field]) !== planValue(currentValue(task))
   );
 }
 
@@ -1026,18 +1062,31 @@ function blankLifecycle() {
  * accepted rather than leaving a pending response you would then grant
  * yourself.
  */
-function assignmentLifecycle(assigneeId, actorId) {
-  const assigned = Boolean(assigneeId);
-  const selfAssigned = assigned && assigneeId === actorId;
+function assignmentLifecycle(assigneeIds, actorId, previous = []) {
+  const owners = [...new Set(assigneeIds ?? [])];
   const stamp = new Date().toISOString();
+  const keep = new Map(previous.map((row) => [row.userId, row]));
+
   return {
-    assignmentStatus: assigned ? (selfAssigned ? 'accepted' : 'pending') : 'unassigned',
-    assignedAt: assigned ? stamp : null,
-    assignedBy: assigned ? actorId : null,
-    acceptedAt: selfAssigned ? stamp : null,
-    declinedAt: null,
-    assignmentNote: '',
-    proposedDueDate: null,
+    assigneeIds: owners,
+    // A partner who was already on the task keeps the answer they gave. Adding
+    // a second person to a task the first already accepted must not silently
+    // put the first back to pending.
+    assignments: owners.map(
+      (userId) =>
+        keep.get(userId) ?? {
+          userId,
+          // Assigning yourself is the request and the answer in the same
+          // breath — there is no second party to wait for.
+          status: userId === actorId ? 'accepted' : 'pending',
+          note: '',
+          acceptedAt: userId === actorId ? stamp : null,
+          declinedAt: null,
+          proposedDueDate: null,
+        }
+    ),
+    assignedAt: owners.length ? stamp : null,
+    assignedBy: owners.length ? actorId : null,
   };
 }
 
@@ -1047,8 +1096,7 @@ async function recordAssignment(task, actor, action, meta = {}) {
     taskId: task.id,
     actorId: actor.id,
     action,
-    assigneeId: task.assigneeId ?? null,
-    status: task.assignmentStatus,
+    assigneeIds: assigneesOf(task),
     meta,
   });
 }
@@ -1106,6 +1154,18 @@ async function notify(userId, actorId, { type, title, body, link }) {
   });
   publishNotification(userId, notification.id);
   await notifyUser(userId, { title, body, link });
+}
+
+/**
+ * Tell everybody who owes this work, except whoever caused it.
+ *
+ * Shared tasks made this worth naming: five copies of "if there is an assignee
+ * and it is not me" were five chances to forget the second partner exists.
+ */
+async function notifyPartners(task, actorId, payload) {
+  for (const userId of assigneesOf(task)) {
+    if (userId !== actorId) await notify(userId, actorId, payload);
+  }
 }
 
 async function parseTaskInput(body, { partial = false, current = null } = {}) {
@@ -1192,14 +1252,29 @@ async function parseTaskInput(body, { partial = false, current = null } = {}) {
     value.progress = Math.round(progress);
   }
 
-  if (body?.assigneeId !== undefined) {
-    if (body.assigneeId === null || body.assigneeId === '') {
-      value.assigneeId = null;
-    } else {
-      const user = await findOne('users', (u) => u.id === body.assigneeId);
-      if (!user) return { error: 'unknown_assignee' };
-      value.assigneeId = user.id;
+  /**
+   * A task may be shared by several people, and `assigneeIds` is how that is
+   * said. `assigneeId` is still accepted because the assistant, the seed and
+   * anything integrating against the old shape all speak it — it is read as a
+   * list of one rather than kept as a second, disagreeing field.
+   */
+  const rawAssignees =
+    body?.assigneeIds !== undefined
+      ? body.assigneeIds
+      : body?.assigneeId !== undefined
+        ? body.assigneeId === null || body.assigneeId === ''
+          ? []
+          : [body.assigneeId]
+        : undefined;
+
+  if (rawAssignees !== undefined) {
+    if (!Array.isArray(rawAssignees)) return { error: 'invalid_assignees' };
+    const ids = [...new Set(rawAssignees.map(String).filter(Boolean))];
+    if (ids.length > MAX_ASSIGNEES) return { error: 'too_many_assignees' };
+    for (const id of ids) {
+      if (!(await findOne('users', (u) => u.id === id))) return { error: 'unknown_assignee' };
     }
+    value.assigneeIds = ids;
   }
 
   if (body?.appId !== undefined) {
@@ -1266,7 +1341,9 @@ async function validAssignee(actor, assigneeId, department) {
 }
 
 function performanceFor(person, tasks) {
-  const assigned = tasks.filter((task) => task.assigneeId === person.id);
+  // A shared task appears in each partner's record carrying the same score —
+  // equal owners, equal credit, which is what "shared" was asked to mean.
+  const assigned = tasks.filter((task) => assigneesOf(task).includes(person.id));
   return {
     user: {
       id: person.id,

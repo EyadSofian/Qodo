@@ -30,7 +30,7 @@ import {
   subteamLabel,
   stageType,
 } from '@shared/departments';
-import { isReviewer, stageWriteVerdict } from '@shared/workflow';
+import { assigneesOf, isAssignee, isReviewer, stageWriteVerdict } from '@shared/workflow';
 import { TaskDialog, TaskMeta } from '../components/TaskDialog';
 import { ScoreChip, StateBadge, returnedLabel, stateOf } from '../components/TaskWorkflow';
 import { ModuleIcon } from '../components/ModuleIcon';
@@ -243,8 +243,8 @@ export function Tasks() {
     const term = query.trim().toLowerCase();
     return tasks.filter((task) => {
       if (department && (task.department ?? DEFAULT_DEPARTMENT) !== department) return false;
-      if (scope === 'mine' && task.assigneeId !== user?.id && task.createdBy !== user?.id) return false;
-      if (assignee && task.assigneeId !== assignee) return false;
+      if (scope === 'mine' && !isAssignee(user, task) && task.createdBy !== user?.id) return false;
+      if (assignee && !assigneesOf(task).includes(assignee)) return false;
       if (term) {
         const haystack = [
           task.reference,

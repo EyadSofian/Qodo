@@ -38,6 +38,7 @@ import {
 } from '../taskAccess.js';
 import { APP_DATA_EXECUTORS, APP_DATA_LABELS, APP_DATA_TOOLS } from './appData.js';
 import { organizationOf } from '../../shared/organization.js';
+import { assigneesOf } from '../../shared/workflow.js';
 
 const PRIORITY_LABELS = {
   urgent: { ar: 'عاجلة', en: 'Urgent' },
@@ -85,7 +86,7 @@ async function shapeTask(task, lang) {
     stage: stageLabel(department, task.stage, lang),
     progress: STAGE_TYPE_LABELS[stageType(department, task.stage)][lang],
     priority: PRIORITY_LABELS[task.priority]?.[lang] ?? task.priority,
-    assignee: await nameOf(task.assigneeId),
+    assignees: (await Promise.all(assigneesOf(task).map(nameOf))).filter(Boolean),
     createdBy: await nameOf(task.createdBy),
     dueDate: task.dueDate,
     daysUntilDue: daysUntil(task.dueDate),
@@ -293,7 +294,7 @@ const EXECUTORS = {
         };
       }
       const ids = new Set(matches.map((u) => u.id));
-      tasks = tasks.filter((t) => ids.has(t.assigneeId));
+      tasks = tasks.filter((t) => assigneesOf(t).some((id) => ids.has(id)));
     }
 
     if (input.overdueOnly) {
@@ -328,7 +329,7 @@ const EXECUTORS = {
     const visible = await visibleTasks(user);
     const tasks = canManagePerformance(user)
       ? visible
-      : visible.filter((task) => task.assigneeId === user.id);
+      : visible.filter((task) => assigneesOf(task).includes(user.id));
     const open = tasks.filter((t) => !isSettledStage(dept(t), t.stage));
     const weekAgo = Date.now() - 7 * 86_400_000;
 
@@ -338,7 +339,9 @@ const EXECUTORS = {
       const overdue = (daysUntil(task.dueDate) ?? 99999) < 0;
 
       const person =
-        (await nameOf(task.assigneeId)) ?? (lang === 'en' ? 'Unassigned' : 'غير مُسندة');
+        (await Promise.all(assigneesOf(task).map(nameOf)))
+          .filter(Boolean)
+          .join('، ') || (lang === 'en' ? 'Unassigned' : 'غير مُسندة');
       perPerson[person] = perPerson[person] ?? { open: 0, overdue: 0 };
       perPerson[person].open += 1;
       if (overdue) perPerson[person].overdue += 1;
@@ -362,7 +365,7 @@ const EXECUTORS = {
       byProgress,
       overdue: open.filter((t) => (daysUntil(t.dueDate) ?? 99999) < 0).length,
       dueToday: open.filter((t) => daysUntil(t.dueDate) === 0).length,
-      unassigned: open.filter((t) => !t.assigneeId).length,
+      unassigned: open.filter((t) => assigneesOf(t).length === 0).length,
       finishedLast7Days: tasks.filter(
         (t) => t.completedAt && new Date(t.completedAt).getTime() > weekAgo
       ).length,

@@ -41,6 +41,7 @@ import { useWorkspace } from '../lib/workspace';
 import {
   MAX_ATTACHMENT_BYTES,
   SCORE_BANDS,
+  assignmentFor,
   canPublish,
   canReopen,
   canReview,
@@ -546,8 +547,10 @@ export function WorkflowActions({
   const reviewer = isReviewer(user);
   const doer = isDoer(user, task);
   const ownsAssignment = canRespondToAssignment(user, task);
-  const awaitingAssignment =
-    Boolean(task.assigneeId) && task.assignmentStatus !== 'accepted';
+  // Their own answer, not the task's. On shared work one partner accepting must
+  // not make the prompt vanish from in front of the other.
+  const myAssignment = user ? assignmentFor(task, user.id) : null;
+  const awaitingAssignment = Boolean(myAssignment) && myAssignment.status !== 'accepted';
 
   // Coming back from a return, the panel should already be open — the person
   // has one thing to do and it is not "find the button again".
@@ -663,8 +666,8 @@ export function WorkflowActions({
           <Clock3 size={16} />
           {t('assignment.awaiting')}
         </p>
-        {task.assignmentNote && (
-          <p className="text-[12px] leading-relaxed text-ink-muted">{task.assignmentNote}</p>
+        {myAssignment?.note && (
+          <p className="text-[12px] leading-relaxed text-ink-muted">{myAssignment.note}</p>
         )}
       </div>
     );
@@ -715,12 +718,14 @@ function AssignmentGate({
   onAct: (path: string, body?: unknown) => Promise<boolean>;
 }) {
   const { t } = useI18n();
+  const { user } = useAuth();
   const { push } = useToast();
   const [mode, setMode] = useState<
     'decline' | 'request_clarification' | 'propose_due_date' | 'request_reassignment' | null
   >(null);
-  const [note, setNote] = useState(task.assignmentNote ?? '');
-  const [dueDate, setDueDate] = useState(task.proposedDueDate ?? task.dueDate ?? '');
+  const mine = user ? assignmentFor(task, user.id) : null;
+  const [note, setNote] = useState(mine?.note ?? '');
+  const [dueDate, setDueDate] = useState(mine?.proposedDueDate ?? task.dueDate ?? '');
 
   const accept = async () => {
     if (await onAct('assignment', { action: 'accept' })) {
@@ -803,9 +808,9 @@ function AssignmentGate({
           {t('assignment.hint')}
         </p>
       </div>
-      {task.assignmentNote && (
+      {mine?.note && (
         <p className="rounded-lg bg-white px-3 py-2 text-[12px] leading-relaxed text-ink-muted">
-          {task.assignmentNote}
+          {mine.note}
         </p>
       )}
       <div className="flex flex-wrap gap-2">

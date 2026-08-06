@@ -542,7 +542,7 @@ test('assign → deliver → review → approve, including the rework loop', asy
   // the recipient; this is the contract used by fresh notification deep links.
   const direct = await request(`/tasks/${task.id}`, { cookie: creativeCookie });
   assert.equal(direct.status, 200);
-  assert.equal(direct.data.task.assigneeId, creative.user.id);
+  assert.deepEqual(direct.data.task.assigneeIds, [creative.user.id]);
   const alerts = await request('/notifications', { cookie: creativeCookie });
   assert.equal(alerts.status, 200);
   assert.ok(
@@ -566,7 +566,11 @@ test('assign → deliver → review → approve, including the rework loop', asy
     body: { action: 'request_clarification', note: 'Which brand guideline version?' },
   });
   assert.equal(clarification.status, 200);
-  assert.equal(clarification.data.task.assignmentStatus, 'clarification_requested');
+  // The answer lives on this partner's own row, not on the task.
+  assert.equal(
+    clarification.data.task.assignments.find((row) => row.userId === creative.user.id).status,
+    'clarification_requested'
+  );
 
   const acceptedAssignment = await request(`/tasks/${task.id}/assignment`, {
     method: 'POST',
@@ -574,8 +578,11 @@ test('assign → deliver → review → approve, including the rework loop', asy
     body: { action: 'accept' },
   });
   assert.equal(acceptedAssignment.status, 200);
-  assert.equal(acceptedAssignment.data.task.assignmentStatus, 'accepted');
-  assert.ok(acceptedAssignment.data.task.acceptedAt);
+  const acceptedRow = acceptedAssignment.data.task.assignments.find(
+    (row) => row.userId === creative.user.id
+  );
+  assert.equal(acceptedRow.status, 'accepted');
+  assert.ok(acceptedRow.acceptedAt);
 
   const assignmentHistory = await request(`/tasks/${task.id}/assignments`, {
     cookie: creativeCookie,
@@ -1304,4 +1311,104 @@ test('an invite link cannot grant manager access, and a revoked link is dead', a
   // Creating and listing links is administrator-only.
   const asEmployee = await request('/invites', { cookie: creativeCookie });
   assert.equal(asEmployee.status, 403);
+});
+
+test('two people can own one task, and both carry its score', async () => {
+  // A second designer, so the shared task has a real second party rather than
+  // the manager standing in for one.
+  const second = await create(
+    '/users',
+    {
+      name: 'عبدالله',
+      email: 'abdullah@test.local',
+      password: 'DesignPass123!',
+      role: 'member',
+      department: 'marketing',
+      subteam: 'creative',
+    },
+    adminCookie
+  );
+  const secondCookie = await login('abdullah@test.local', 'DesignPass123!');
+
+  const { task } = await create(
+    '/tasks',
+    {
+      title: 'حملة مشتركة',
+      department: 'marketing',
+      subteam: 'creative',
+      assigneeIds: [creative.user.id, second.user.id],
+      dueDate: '2099-01-01',
+    },
+    managerCookie
+  );
+  assert.deepEqual(task.assigneeIds, [creative.user.id, second.user.id]);
+
+  // Each partner answers for themselves — the manager assigned both, so both
+  // start pending and neither answer speaks for the other.
+  assert.deepEqual(
+    task.assignments.map((row) => row.status),
+    ['pending', 'pending']
+  );
+
+  await request(`/tasks/${task.id}/assignment`, {
+    method: 'POST',
+    cookie: creativeCookie,
+    body: { action: 'accept' },
+  });
+  const afterOne = await request(`/tasks/${task.id}`, { cookie: managerCookie });
+  const rows = afterOne.data.task.assignments;
+  assert.equal(rows.find((row) => row.userId === creative.user.id).status, 'accepted');
+  assert.equal(
+    rows.find((row) => row.userId === second.user.id).status,
+    'pending',
+    'one partner accepting must not answer for the other'
+  );
+
+  // A partner who has not answered their own assignment yet cannot hand the
+  // work in — the accept gate is per person, so being on a shared task is not
+  // a way around it.
+  await upload(task.id, { name: 'shared.pdf' }, creativeCookie);
+  const tooEarly = await request(`/tasks/${task.id}/submit`, {
+    method: 'POST',
+    cookie: secondCookie,
+    body: { note: 'لسه مقبلتش' },
+  });
+  assert.equal(tooEarly.status, 403);
+
+  // The partner who did accept may hand it in for both; one submission covers
+  // the task, because the deliverable is the task's, not each person's.
+  const submitted = await request(`/tasks/${task.id}/submit`, {
+    method: 'POST',
+    cookie: creativeCookie,
+    body: { note: 'خلصنا الاتنين' },
+  });
+  assert.equal(submitted.status, 200, JSON.stringify(submitted.data));
+
+  const approved = await request(`/tasks/${task.id}/review`, {
+    method: 'POST',
+    cookie: managerCookie,
+    body: { decision: 'approved', score: 90, note: 'تمام' },
+  });
+  assert.equal(approved.status, 200);
+
+  // One review closed it for both, and the same number lands on both records —
+  // which is what "equal partners" was asked to mean.
+  const overview = await request('/tasks/overview?department=marketing', {
+    cookie: managerCookie,
+  });
+  for (const person of [creative.user.id, second.user.id]) {
+    const row = overview.data.people.find((entry) => entry.user.id === person);
+    assert.ok(
+      row.averageScore >= 88 && row.averageScore <= 90,
+      `${person} should carry the shared score, got ${row.averageScore}`
+    );
+  }
+
+  // And a stranger to the task still cannot hand it in.
+  const outsider = await request(`/tasks/${task.id}/submit`, {
+    method: 'POST',
+    cookie: adminCookie,
+    body: { note: 'nope' },
+  });
+  assert.notEqual(outsider.status, 200);
 });

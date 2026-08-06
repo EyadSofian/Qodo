@@ -9,7 +9,7 @@ import { useWorkspace } from '../lib/workspace';
 import { useOpenApp } from '../lib/useOpenApp';
 import { PERMISSIONS } from '@shared/permissions';
 import { DEFAULT_DEPARTMENT, getDepartment, isDoneStage, stageLabel } from '@shared/departments';
-import { isReviewer, taskState } from '@shared/workflow';
+import {isAssignee, isReviewer, taskState} from '@shared/workflow';
 import { ModuleIcon } from '../components/ModuleIcon';
 import { EmptyState } from '../components/ui';
 import { CountBadge } from '../components/Shell';
@@ -167,19 +167,19 @@ function MyWork() {
   const mine = useMemo(() => {
     if (!tasks || !user) return null;
     const open = tasks.filter(
-      (t) => t.assigneeId === user.id && !isDoneStage(t.department ?? DEFAULT_DEPARTMENT, t.stage)
+      (t) => isAssignee(user, t) && !isDoneStage(t.department ?? DEFAULT_DEPARTMENT, t.stage)
     );
     return {
       open,
       // A manager's real backlog is not their own tasks — it is other people's
       // work sitting in their queue, blocking the board behind it.
       toReview: isReviewer(user)
-        ? tasks.filter((t) => taskState(t) === 'submitted' && t.assigneeId !== user.id).length
+        ? tasks.filter((t) => taskState(t) === 'submitted' && !isAssignee(user, t)).length
         : null,
       overdue: open.filter((t) => (daysUntil(t.dueDate) ?? 99) < 0).length,
       doneThisWeek: tasks.filter(
         (t) =>
-          t.assigneeId === user.id &&
+          isAssignee(user, t) &&
           t.completedAt &&
           Date.now() - new Date(t.completedAt).getTime() < 7 * 86_400_000
       ).length,

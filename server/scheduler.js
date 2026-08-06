@@ -17,6 +17,7 @@ import { notifyUser, pushConfigured } from './push.js';
 import { PERMISSIONS, can, isActiveUser } from '../shared/permissions.js';
 import { DEFAULT_DEPARTMENT, DEPARTMENTS, isSettledStage } from '../shared/departments.js';
 import { organizationOf } from '../shared/organization.js';
+import { isAssignee } from '../shared/workflow.js';
 import { remindDueSoon } from './management.js';
 
 const TICK_MS = 60 * 1000;
@@ -104,7 +105,7 @@ async function sendDigest() {
      * team line always ends with their personal count. Nobody manages so much
      * that they stop having work of their own.
      */
-    const own = digest.open.filter((task) => task.assigneeId === user.id);
+    const own = digest.open.filter((task) => isAssignee(user, task));
     const ownLate = own.filter(digest.isOverdue).length;
     const ownLine = own.length
       ? {
@@ -163,7 +164,7 @@ async function sendDigest() {
       continue;
     }
 
-    const mine = digest.open.filter((t) => t.assigneeId === user.id);
+    const mine = digest.open.filter((t) => isAssignee(user, t));
     if (mine.length === 0) continue;
     const late = mine.filter(digest.isOverdue).length;
 

@@ -16,7 +16,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { Archive, CalendarClock, MessageSquare, Send, UserRound } from 'lucide-react';
+import {Archive, CalendarClock, Check, MessageSquare, Send, UserRound} from 'lucide-react';
 import { api, errorMessage } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useI18n } from '../lib/i18n';
@@ -30,7 +30,7 @@ import {
   getSubteams,
   translateStage,
 } from '@shared/departments';
-import { isDoer, isReviewer } from '@shared/workflow';
+import {assigneesOf, assignmentRows, isAssignee, isDoer, isReviewer} from '@shared/workflow';
 import { Avatar, Field, Modal, Spinner, useToast } from './ui';
 import { ModuleIcon } from './ModuleIcon';
 import {
@@ -44,7 +44,7 @@ import {
   stateOf,
 } from './TaskWorkflow';
 import { PRIORITY_META, PRIORITY_ORDER, cx, formatDate, timeAgo } from '../lib/utils';
-import type { Task, TaskAttachment, TaskComment, TaskPriority } from '../lib/types';
+import type {Task, TaskAssignment, TaskAttachment, TaskComment, TaskPriority} from '../lib/types';
 
 interface Props {
   open: boolean;
@@ -81,7 +81,7 @@ export function TaskDialog({
   const [subteam, setSubteam] = useState('');
   const [stage, setStage] = useState('');
   const [priority, setPriority] = useState<TaskPriority>('normal');
-  const [assigneeId, setAssigneeId] = useState('');
+  const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
   const [taskDate, setTaskDate] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [effortPoints, setEffortPoints] = useState('');
@@ -107,7 +107,7 @@ export function TaskDialog({
     setSubteam(task?.subteam ?? '');
     setStage(task?.stage ?? defaultStage ?? firstStage(nextDepartment));
     setPriority(task?.priority ?? 'normal');
-    setAssigneeId(task?.assigneeId ?? '');
+    setAssigneeIds(assigneesOf(task ?? undefined));
     setTaskDate(task?.taskDate ?? new Date().toISOString().slice(0, 10));
     setDueDate(task?.dueDate ?? '');
     setEffortPoints(task?.effortPoints ? String(task.effortPoints) : '');
@@ -141,7 +141,7 @@ export function TaskDialog({
     setStage((value) => translateStage(department, value, next));
     setDepartment(next);
     setSubteam('');
-    setAssigneeId('');
+    setAssigneeIds([]);
   };
 
   const subteams = getSubteams(department);
@@ -156,7 +156,7 @@ export function TaskDialog({
   const editable = useMemo(() => {
     if (!current) return true;
     if (can(PERMISSIONS.TASKS_EDIT_ANY)) return true;
-    return current.createdBy === user?.id || current.assigneeId === user?.id;
+    return current.createdBy === user?.id || isAssignee(user, current);
   }, [current, can, user]);
 
   // The brief and the plan are the commissioning side of the contract. Having
@@ -202,7 +202,7 @@ export function TaskDialog({
           subteam: subteam || null,
           stage,
           priority,
-          assigneeId: assigneeId || null,
+          assigneeIds,
           taskDate,
           dueDate: dueDate || null,
           effortPoints: effortPoints ? Number(effortPoints) : null,
@@ -241,20 +241,54 @@ export function TaskDialog({
 
   const properties = (
     <div className="grid gap-3.5">
-      <Field label={t('tasks.assignee')}>
-        <select
-          className="field"
-          value={assigneeId}
-          onChange={(event) => setAssigneeId(event.target.value)}
-          disabled={!planEditable}
-        >
-          <option value="">— {t('tasks.unassigned')} —</option>
-          {assignees.map((person) => (
-            <option key={person.id} value={person.id}>
-              {person.name}
-            </option>
-          ))}
-        </select>
+      {/* Several people can share one task, so this is a list of toggles
+          rather than a dropdown: a <select multiple> hides how many are picked
+          behind a scrollbar, and "who is on this" is the question the field
+          exists to answer at a glance. */}
+      <Field
+        label={t('tasks.assignees')}
+        hint={assigneeIds.length > 1 ? t('tasks.sharedHint') : undefined}
+      >
+        <div className="grid max-h-52 gap-1 overflow-y-auto rounded-xl border border-surface-line p-1.5">
+          {assignees.length === 0 && (
+            <p className="px-2 py-1.5 text-[12.5px] text-ink-faint">{t('tasks.noAssignees')}</p>
+          )}
+          {assignees.map((person) => {
+            const picked = assigneeIds.includes(person.id);
+            return (
+              <label
+                key={person.id}
+                className={cx(
+                  'flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-[13px] transition-colors',
+                  picked ? 'bg-brand-50 font-semibold text-ink' : 'text-ink-muted hover:bg-surface-sunken',
+                  !planEditable && 'pointer-events-none opacity-60'
+                )}
+              >
+                <input
+                  type="checkbox"
+                  className="sr-only"
+                  checked={picked}
+                  disabled={!planEditable}
+                  onChange={() =>
+                    setAssigneeIds((current) =>
+                      picked ? current.filter((id) => id !== person.id) : [...current, person.id]
+                    )
+                  }
+                />
+                <span
+                  className={cx(
+                    'grid h-4 w-4 shrink-0 place-items-center rounded border-2 transition-colors',
+                    picked ? 'border-brand-500 bg-brand-500 text-white' : 'border-surface-line'
+                  )}
+                >
+                  {picked && <Check size={11} strokeWidth={3.5} />}
+                </span>
+                <Avatar name={person.name} color={person.avatarColor} size={20} />
+                {person.name}
+              </label>
+            );
+          })}
+        </div>
       </Field>
 
       <div className="grid grid-cols-2 gap-3">
@@ -352,7 +386,7 @@ export function TaskDialog({
             value={subteam}
             onChange={(event) => {
               setSubteam(event.target.value);
-              setAssigneeId('');
+              setAssigneeIds([]);
             }}
             disabled={!planEditable}
           >
@@ -637,13 +671,18 @@ function TaskHeading({
 function Timeline({ task }: { task: Task }) {
   const { t, lang } = useI18n();
   const { userById } = useWorkspace();
+  const assignments = assignmentRows(task);
 
   const rows = [
     { key: 'flow.createdOn' as const, at: task.createdAt, who: task.createdBy },
     { key: 'assignment.assignedOn' as const, at: task.assignedAt, who: task.assignedBy },
-    { key: 'assignment.acceptedOn' as const, at: task.acceptedAt, who: task.assigneeId },
-    { key: 'assignment.declinedOn' as const, at: task.declinedAt, who: task.assigneeId },
-    { key: 'flow.startedOn' as const, at: task.startedAt, who: task.assigneeId },
+    // One row per partner: on shared work "accepted" happened several times,
+    // on different days, by different people.
+    ...assignments.flatMap((row: TaskAssignment) => [
+      { key: 'assignment.acceptedOn' as const, at: row.acceptedAt, who: row.userId },
+      { key: 'assignment.declinedOn' as const, at: row.declinedAt, who: row.userId },
+    ]),
+    { key: 'flow.startedOn' as const, at: task.startedAt, who: assigneesOf(task)[0] ?? null },
     { key: 'flow.submittedOn' as const, at: task.submittedAt, who: task.submittedBy },
     { key: 'flow.reviewedOn' as const, at: task.reviewedAt, who: task.reviewedBy },
   ].filter((row) => row.at);
@@ -787,14 +826,22 @@ export function TaskMeta({ task }: { task: Task }) {
   const { appById, userById } = useWorkspace();
   const { lang } = useI18n();
   const app = appById(task.appId);
-  const assignee = userById(task.assigneeId);
+  const owners = assigneesOf(task).map(userById).filter(Boolean) as { name: string; avatarColor: string }[];
 
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-ink-faint">
-      {assignee ? (
+      {owners.length > 0 ? (
         <span className="inline-flex items-center gap-1">
-          <Avatar name={assignee.name} color={assignee.avatarColor} size={16} />
-          {assignee.name.split(/\s+/)[0]}
+          {/* Overlapped avatars, then one first name — three full names would
+              be the whole card. */}
+          <span className="flex -space-x-1.5 rtl:space-x-reverse">
+            {owners.slice(0, 3).map((person) => (
+              <Avatar key={person.name} name={person.name} color={person.avatarColor} size={16} />
+            ))}
+          </span>
+          {owners.length === 1
+            ? owners[0].name.split(/\s+/)[0]
+            : `${owners[0].name.split(/\s+/)[0]} +${owners.length - 1}`}
         </span>
       ) : (
         <span className="inline-flex items-center gap-1">

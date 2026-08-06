@@ -1,6 +1,7 @@
 import { PERMISSIONS, can, visibilityFor } from '../shared/permissions.js';
 import { DEFAULT_DEPARTMENT } from '../shared/departments.js';
 import { organizationOf, sameOrganization } from '../shared/organization.js';
+import { isAssignee } from '../shared/workflow.js';
 
 export const departmentOf = (record) => record?.department ?? DEFAULT_DEPARTMENT;
 export const subteamOf = (record) => record?.subteam ?? null;
@@ -22,7 +23,7 @@ export function sameSubteam(user, record) {
 }
 
 export const isOwnTask = (user, task) =>
-  task.assigneeId === user.id || task.createdBy === user.id;
+  isAssignee(user, task) || task.createdBy === user.id;
 
 /**
  * Task visibility has four explicit scopes, from `shared/permissions.js`:
@@ -94,7 +95,7 @@ export function canEditTask(user, task) {
   if (!canViewTask(user, task)) return false;
   if (can(user, PERMISSIONS.TASKS_VIEW_ALL) && can(user, PERMISSIONS.TASKS_EDIT_ANY)) return true;
   if (sameDepartment(user, task) && can(user, PERMISSIONS.TASKS_EDIT_ANY)) return true;
-  return task.createdBy === user.id || task.assigneeId === user.id;
+  return task.createdBy === user.id || isAssignee(user, task);
 }
 
 /**
@@ -176,6 +177,6 @@ export function visiblePeople(user, people) {
  * work together on it.
  */
 export function taskForUser(user, task) {
-  if (canManagePerformance(user) || task.assigneeId === user.id) return task;
+  if (canManagePerformance(user) || isAssignee(user, task)) return task;
   return { ...task, score: null, scoreBy: null, scoredAt: null, reviewNote: '' };
 }

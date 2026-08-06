@@ -246,21 +246,41 @@ async function migrateOrganisationAndTasks(store) {
     if (!Object.hasOwn(task, 'score')) patch.score = null;
     if (!Object.hasOwn(task, 'scoreBy')) patch.scoreBy = null;
     if (!Object.hasOwn(task, 'scoredAt')) patch.scoredAt = null;
-    if (!Object.hasOwn(task, 'assignmentStatus')) {
-      patch.assignmentStatus = task.assigneeId ? 'accepted' : 'unassigned';
-    }
     if (!Object.hasOwn(task, 'assignedAt')) {
       patch.assignedAt = task.assigneeId ? (task.createdAt ?? null) : null;
     }
     if (!Object.hasOwn(task, 'assignedBy')) {
       patch.assignedBy = task.assigneeId ? (task.createdBy ?? null) : null;
     }
-    if (!Object.hasOwn(task, 'acceptedAt')) {
-      patch.acceptedAt = task.assigneeId ? (task.startedAt ?? task.createdAt ?? null) : null;
+
+    /*
+     * A task used to name one person, and its answer to the assignment lived in
+     * flat fields beside them. Shared work needs both to be lists — an answer
+     * per partner, because one shared status would let whoever accepts first
+     * answer for everybody and hide the second person's silence.
+     *
+     * The old fields are read here and then left alone rather than deleted:
+     * `assigneesOf` and `assignmentRows` still fall back to them, so a row this
+     * migration has not reached yet behaves identically either way, and a
+     * rollback does not lose the answers people already gave.
+     */
+    if (!Object.hasOwn(task, 'assigneeIds')) {
+      patch.assigneeIds = task.assigneeId ? [task.assigneeId] : [];
     }
-    if (!Object.hasOwn(task, 'declinedAt')) patch.declinedAt = null;
-    if (!Object.hasOwn(task, 'assignmentNote')) patch.assignmentNote = '';
-    if (!Object.hasOwn(task, 'proposedDueDate')) patch.proposedDueDate = null;
+    if (!Object.hasOwn(task, 'assignments')) {
+      patch.assignments = task.assigneeId
+        ? [
+            {
+              userId: task.assigneeId,
+              status: task.assignmentStatus ?? 'accepted',
+              note: task.assignmentNote ?? '',
+              acceptedAt: task.acceptedAt ?? task.startedAt ?? task.createdAt ?? null,
+              declinedAt: task.declinedAt ?? null,
+              proposedDueDate: task.proposedDueDate ?? null,
+            },
+          ]
+        : [];
+    }
     const closed = isDoneStage(department, stage);
     if (!Object.hasOwn(task, 'progress')) patch.progress = closed ? 100 : 0;
     if (closed && !task.completedAt) {

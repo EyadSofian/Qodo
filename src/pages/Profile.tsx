@@ -30,6 +30,7 @@ import { ModuleIcon } from '../components/ModuleIcon';
 import { Avatar, EmptyState, Spinner } from '../components/ui';
 import { DUE_CHIP_CLASS, cx, dueLabel } from '../lib/utils';
 import type { PerformanceOverview, PerformancePerson, Task } from '../lib/types';
+import { assigneesOf } from '@shared/workflow';
 
 export function Profile() {
   const { id = '' } = useParams();
@@ -47,7 +48,7 @@ export function Profile() {
     api
       .get<{ tasks: Task[] }>('/tasks')
       .then(({ tasks: list }) => {
-        if (!cancelled) setTasks(list.filter((task) => task.assigneeId === id));
+        if (!cancelled) setTasks(list.filter((task) => assigneesOf(task).includes(id)));
       })
       .catch(() => {
         if (!cancelled) setTasks([]);

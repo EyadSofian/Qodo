@@ -150,7 +150,10 @@ export interface Task {
   /** Stage id, only meaningful within that department. */
   stage: string;
   priority: TaskPriority;
-  assigneeId: string | null;
+  /** Everybody who owes the work. Equal partners — there is no lead. */
+  assigneeIds: string[];
+  /** Legacy single-owner field, still present on rows the migration predates. */
+  assigneeId?: string | null;
   createdBy: string;
   /** Business date shown in the task table. */
   taskDate: string;
@@ -159,13 +162,10 @@ export interface Task {
   effortPoints: 1 | 2 | 3 | 5 | 8 | 13 | null;
   estimatedMinutes: number | null;
   progress: number;
-  assignmentStatus: AssignmentStatus;
+  /** One answer per partner: each accepts or declines their own assignment. */
+  assignments: TaskAssignment[];
   assignedAt: string | null;
   assignedBy: string | null;
-  acceptedAt: string | null;
-  declinedAt: string | null;
-  assignmentNote: string;
-  proposedDueDate: string | null;
 
   /* ── the lifecycle ──────────────────────────────────────────────
      Written only by the workflow endpoints, never by the edit form. */
@@ -202,13 +202,21 @@ export interface Task {
   updatedAt: string;
 }
 
+export interface TaskAssignment {
+  userId: string;
+  status: AssignmentStatus;
+  note: string;
+  acceptedAt: string | null;
+  declinedAt: string | null;
+  proposedDueDate: string | null;
+}
+
 export interface TaskAssignmentEvent {
   id: string;
   taskId: string;
   actorId: string;
   action: string;
-  assigneeId: string | null;
-  status: AssignmentStatus;
+  assigneeIds: string[];
   meta: Record<string, unknown>;
   createdAt: string;
 }
