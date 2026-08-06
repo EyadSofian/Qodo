@@ -287,6 +287,7 @@ const STRINGS = {
   'flow.approve': { ar: 'اعتماد ← منجزة', en: 'Approve → Done' },
   'flow.requestChanges': { ar: 'إرجاع ← إعادة عمل', en: 'Send back → Rework' },
   'flow.reopen': { ar: 'إعادة فتح المهمة', en: 'Reopen task' },
+  'flow.sendToRework': { ar: 'رجّعها إعادة عمل', en: 'Send back for rework' },
   'flow.publish': { ar: 'تم النشر', en: 'Mark as published' },
   'flow.confirmReopen': { ar: 'إعادة فتح «{title}»؟ سيرجع للموظف من جديد.', en: 'Reopen “{title}”? It goes back to the assignee.' },
 

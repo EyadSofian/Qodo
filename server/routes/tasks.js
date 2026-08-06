@@ -862,9 +862,16 @@ router.post('/:id/reopen', async (req, res) => {
 
   const department = task.department ?? DEFAULT_DEPARTMENT;
   const updated = await store.update('tasks', task.id, {
-    stage: stageForState(department, 'working', task.stage),
+    // Work coming back from an approval is rework, and a board that named that
+    // column should get it — landing in "قيد العمل" made a manager's correction
+    // indistinguishable from work somebody simply picked up.
+    stage: stageForReturn(department, task.stage),
     reviewDecision: null,
     completedAt: null,
+    // The publication is undone with the approval it belonged to; leaving the
+    // stamp behind would claim a post is live that is back on somebody's desk.
+    publishedAt: null,
+    publishedBy: null,
     progress: Math.min(task.progress ?? 90, 90),
   });
 

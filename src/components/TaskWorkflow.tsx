@@ -583,9 +583,9 @@ export function WorkflowActions({
   };
 
   /**
-   * Approved, and waiting to go out. The publish button is the primary action
-   * here because it is the only thing left to do — reopening is the correction,
-   * so it stays quiet beside it.
+   * Approved, and waiting to go out. Two ways forward and the buttons say which
+   * they are: it went live, or it comes back as rework. Publishing leads because
+   * it is what usually happens next; sending it back is the correction.
    */
   if (state === 'signed_off') {
     return (
@@ -601,7 +601,7 @@ export function WorkflowActions({
           {canReopen(user, task) && (
             <button type="button" onClick={reopen} disabled={busy} className="btn-ghost btn-sm gap-1.5">
               <RotateCcw size={15} />
-              {t('flow.reopen')}
+              {t('flow.sendToRework')}
             </button>
           )}
         </div>
