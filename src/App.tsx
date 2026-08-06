@@ -11,6 +11,7 @@ import { Launcher } from './pages/Launcher';
 import { AppFrame } from './pages/AppFrame';
 import { Tasks } from './pages/Tasks';
 import { Management } from './pages/Management';
+import { Events } from './pages/Events';
 import { Users } from './pages/Users';
 import { Profile } from './pages/Profile';
 import { Settings } from './pages/Settings';
@@ -63,6 +64,7 @@ function Gate() {
             from the router instead would mean a bookmarked link lands on the
             launcher with no explanation. */}
         <Route path="/management" element={<Management />} />
+        <Route path="/events" element={<Events />} />
         <Route path="/users" element={<Users />} />
         {/* Reachable by anybody who can see the person at all — the endpoints
             behind it are what decide how much of them is shown. */}
