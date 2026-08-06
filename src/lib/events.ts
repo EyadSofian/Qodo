@@ -19,6 +19,10 @@ export interface CourseSession {
   hours: number;
   eventId: number | null;
   eventName: string | null;
+  /** Already validated as http(s) on the server — safe for an href. */
+  joinUrl: string | null;
+  /** False means the Zoom meeting has not been created in Odoo yet. */
+  meetingReady: boolean;
 }
 
 export interface Course {

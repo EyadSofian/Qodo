@@ -20,6 +20,7 @@ import {
   MapPin,
   RefreshCw,
   Users,
+  Video,
   X,
 } from 'lucide-react';
 import { errorMessage } from '../lib/api';
@@ -191,11 +192,11 @@ function TodayLane({
   return (
     <ul className="grid gap-2">
       {sessions.map((session) => (
-        <li key={session.id}>
+        <li key={session.id} className="card flex items-center gap-3 p-3.5 transition-colors hover:border-brand-300">
           <button
             type="button"
             onClick={() => session.eventId && onOpen(session.eventId)}
-            className="card flex w-full items-center gap-3.5 p-3.5 text-start transition-colors hover:border-brand-300"
+            className="flex min-w-0 flex-1 items-center gap-3.5 text-start"
           >
             {/* The time leads, because that is the only thing being looked for. */}
             <span className="grid w-[4.5rem] shrink-0 place-items-center rounded-xl bg-brand-50 py-2 text-center">
@@ -216,12 +217,46 @@ function TodayLane({
                 </span>
               )}
             </span>
-            <ChevronLeft size={18} className="shrink-0 text-ink-faint rtl:rotate-180" />
           </button>
+
+          <JoinButton session={session} />
+          <ChevronLeft size={18} className="shrink-0 text-ink-faint rtl:rotate-180" />
         </li>
       ))}
     </ul>
   );
+}
+
+/**
+ * The one thing somebody wants from a lecture that is about to start.
+ *
+ * Absent rather than disabled when there is no link: a greyed-out button
+ * invites clicking and explains nothing. When Zoom simply has not been set up
+ * for the session yet, that is said out loud, because it is somebody's job
+ * rather than a fault.
+ */
+function JoinButton({ session }: { session: CoursesOverview['today'][number] }) {
+  if (session.joinUrl) {
+    return (
+      <a
+        href={session.joinUrl}
+        target="_blank"
+        rel="noreferrer noopener"
+        className="btn-primary btn-sm shrink-0 gap-1.5"
+      >
+        <Video size={15} />
+        ادخل المحاضرة
+      </a>
+    );
+  }
+  if (!session.meetingReady) {
+    return (
+      <span className="shrink-0 rounded-lg bg-status-warnBg px-2.5 py-1.5 text-[11.5px] font-semibold text-accent-600">
+        لينك الزووم لسه مااتعملش
+      </span>
+    );
+  }
+  return null;
 }
 
 function CourseGrid({
@@ -414,7 +449,20 @@ function CoursePanel({ id, onClose }: { id: number | null; onClose: () => void }
                             <span className="min-w-0 flex-1 truncate text-ink-muted">
                               {session.name ?? '—'}
                             </span>
-                            {past && <span className="shrink-0 text-ink-faint">خلصت</span>}
+                            {past ? (
+                              <span className="shrink-0 text-ink-faint">خلصت</span>
+                            ) : (
+                              session.joinUrl && (
+                                <a
+                                  href={session.joinUrl}
+                                  target="_blank"
+                                  rel="noreferrer noopener"
+                                  className="shrink-0 font-bold text-brand-600 hover:underline"
+                                >
+                                  ادخل
+                                </a>
+                              )
+                            )}
                           </li>
                         );
                       })}

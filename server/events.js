@@ -60,7 +60,52 @@ const EVENT_FIELDS = [
   'address_id',
 ];
 
-const TRACK_FIELDS = ['name', 'date', 'duration', 'event_id'];
+const TRACK_FIELDS = [
+  'name',
+  'date',
+  'duration',
+  'event_id',
+  // The Zoom integration spreads the joining link over several fields and then
+  // names the winner in `join_live_url_source`. All of them are read because
+  // the resolved one is empty more often than the raw ones are.
+  'active_join_live_url',
+  'zoom_join_link',
+  'meeting_url',
+  'zoom_link',
+  'zoom_status',
+];
+
+/**
+ * The link somebody actually clicks to get into the lecture.
+ *
+ * `active_join_live_url` is Odoo's own answer and is preferred, but it resolves
+ * through `join_live_url_source` to a field that is frequently blank — a track
+ * can carry a perfectly good `zoom_join_link` while the source points at an
+ * empty `meeting_url`. So the raw fields are the fallback, in the order the
+ * integration fills them.
+ *
+ * The protocol is checked because this ends up in an `href`: a `javascript:`
+ * value arriving from an upstream system is the same stored XSS as one typed by
+ * a user, and "it came from Odoo" is not a security boundary.
+ */
+function joinUrl(row) {
+  const candidates = [
+    row.active_join_live_url,
+    row.zoom_join_link,
+    row.meeting_url,
+    row.zoom_link,
+  ];
+  for (const value of candidates) {
+    if (typeof value !== 'string' || !value.trim()) continue;
+    try {
+      const url = new URL(value.trim());
+      if (url.protocol === 'https:' || url.protocol === 'http:') return url.href;
+    } catch {
+      // Not a URL at all — try the next field.
+    }
+  }
+  return null;
+}
 
 /**
  * The stage table, which is small, static and the only way to know which stage
@@ -117,6 +162,11 @@ function shapeTrack(row) {
     hours: row.duration || 0,
     eventId: idOf(row.event_id),
     eventName: nameOf(row.event_id),
+    joinUrl: joinUrl(row),
+    // `not_created` means the meeting does not exist in Zoom yet, which is a
+    // coordinator's job rather than a bug — the page says so instead of showing
+    // a dead button.
+    meetingReady: row.zoom_status === 'created',
   };
 }
 
