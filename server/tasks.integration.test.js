@@ -614,14 +614,14 @@ test('assign → deliver → review → approve, including the rework loop', asy
   assert.equal(started.data.task.stage, 'working');
   assert.ok(started.data.task.startedAt);
 
-  // Handing in with nothing attached is the case the whole gate exists for.
+  // A blank hand-in — no file, no note — is the case the gate still exists for.
   const empty = await request(`/tasks/${task.id}/submit`, {
     method: 'POST',
     cookie: creativeCookie,
-    body: { note: 'done' },
+    body: {},
   });
   assert.equal(empty.status, 400);
-  assert.equal(empty.data.error, 'deliverable_required');
+  assert.equal(empty.data.error, 'submission_empty');
 
   const uploaded = await upload(task.id, { name: 'كي فيجوال.pdf' }, creativeCookie);
   assert.equal(uploaded.status, 201, JSON.stringify(uploaded.data));
@@ -848,14 +848,15 @@ test('a link satisfies the deliverable gate, and only http(s) links do', async (
     body: { action: 'accept' },
   });
 
-  // Nothing attached, so the gate holds even though the note is full of text.
-  const bare = await request(`/tasks/${task.id}/submit`, {
+  // A blank hand-in is still refused: no file and nothing said is the "done"
+  // with nothing behind it that the lifecycle exists to prevent.
+  const blank = await request(`/tasks/${task.id}/submit`, {
     method: 'POST',
     cookie: creativeCookie,
-    body: { note: 'https://docs.google.com/spreadsheets/d/abc/edit' },
+    body: {},
   });
-  assert.equal(bare.status, 400);
-  assert.equal(bare.data.error, 'deliverable_required');
+  assert.equal(blank.status, 400);
+  assert.equal(blank.data.error, 'submission_empty');
 
   // A URL comes back out as an href, so anything that could execute is refused.
   for (const url of ['javascript:alert(1)', 'data:text/html,<script>x</script>', 'not a url', '']) {
@@ -1446,4 +1447,44 @@ test('two people can own one task, and both carry its score', async () => {
     body: { note: 'nope' },
   });
   assert.notEqual(outsider.status, 200);
+});
+
+test('work with no file to show is handed in on its note alone', async () => {
+  // The case the deliverable gate used to have no answer for: a phone call.
+  // There is nothing to upload, and the only honest record of it is a sentence.
+  const { task } = await create(
+    '/tasks',
+    {
+      title: 'مكالمة مع العميل',
+      department: 'marketing',
+      subteam: 'creative',
+      stage: 'pending',
+      assigneeIds: [creative.user.id],
+    },
+    managerCookie
+  );
+  await request(`/tasks/${task.id}/assignment`, {
+    method: 'POST',
+    cookie: creativeCookie,
+    body: { action: 'accept' },
+  });
+
+  const handedIn = await request(`/tasks/${task.id}/submit`, {
+    method: 'POST',
+    cookie: creativeCookie,
+    body: { note: 'اتصلت بالعميل واتفقنا على ميعاد التسليم الأسبوع الجاي' },
+  });
+  assert.equal(handedIn.status, 200, JSON.stringify(handedIn.data));
+  assert.equal(handedIn.data.task.stage, 'review');
+  assert.match(handedIn.data.task.submissionNote, /اتفقنا على ميعاد/);
+
+  // And it reaches the reviewer as an ordinary submission — nothing about the
+  // rest of the lifecycle changes just because there was no file.
+  const reviewed = await request(`/tasks/${task.id}/review`, {
+    method: 'POST',
+    cookie: managerCookie,
+    body: { decision: 'approved', score: 85, note: 'تمام' },
+  });
+  assert.equal(reviewed.status, 200, JSON.stringify(reviewed.data));
+  assert.equal(reviewed.data.task.score, 85);
 });

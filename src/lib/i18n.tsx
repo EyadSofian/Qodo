@@ -317,17 +317,21 @@ const STRINGS = {
 
   'flow.submitTitle': { ar: 'تسليم المهمة للمراجعة', en: 'Submit this task for review' },
   'flow.submitHint': {
-    ar: 'راجع المرفقات، واكتب باختصار ما أنجزته. بعد التسليم تنتقل المهمة للمدير — هو من يعتمدها ويضع التقييم.',
-    en: 'Check the attachments and say briefly what you did. Once submitted it goes to your manager — approving and scoring are their call.',
+    ar: 'ارفع التسليم لو فيه ملف أو رابط، أو اكتب بس اللي عملته. بعد التسليم تروح للمدير — هو اللي يعتمدها ويحط التقييم.',
+    en: 'Attach a file or link if there is one, or just write what you did. It then goes to your manager — approving and scoring are their call.',
   },
-  'flow.submitNote': { ar: 'ملخص ما أنجزته', en: 'What you delivered' },
+  'flow.submitNote': { ar: 'اللي عملته', en: 'What you did' },
   'flow.submitNotePlaceholder': {
     ar: 'مثال: التصميمات الثلاثة النهائية بعد تعديلات البراند…',
     en: 'e.g. the three final designs after the brand revisions…',
   },
-  'flow.needDeliverable': {
-    ar: 'أرفق التسليم أولاً — ملف أو رابط.',
-    en: 'Attach the deliverable first — a file or a link.',
+  'flow.needSomething': {
+    ar: 'اكتب اللي عملته، أو أرفق ملف أو رابط — واحدة منهم تكفي.',
+    en: 'Write what you did, or attach a file or link — either one is enough.',
+  },
+  'flow.noDeliverableHint': {
+    ar: 'مفيش مرفقات. لو المهمة دي مالهاش ملف، اكتب في الخانة فوق اللي عملته وسلّمها عادي.',
+    en: 'Nothing attached. If this task has no file, just write what you did above and hand it in.',
   },
   'flow.submitted.toast': { ar: 'تم التسليم — المهمة الآن عند المدير.', en: 'Submitted — it is with your manager now.' },
   'flow.started.toast': { ar: 'بدأ العمل على المهمة.', en: 'Work started.' },

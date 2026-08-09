@@ -261,9 +261,9 @@ const ERRORS: Record<string, { ar: string; en: string }> = {
     ar: 'هذا التسليم رابط — افتحه مباشرة، لا يوجد ملف لتنزيله.',
     en: 'This deliverable is a link — open it directly; there is no file to download.',
   },
-  deliverable_required: {
-    ar: 'أرفق ملف التسليم أولاً قبل إرسال المهمة للمراجعة.',
-    en: 'Attach what you produced before sending the task for review.',
+  submission_empty: {
+    ar: 'المهمة مش هتتسلّم فاضية — اكتب اللي عملته أو أرفق ملف أو رابط.',
+    en: 'A hand-in cannot be blank — write what you did, or attach a file or link.',
   },
   start_required: {
     ar: 'ابدأ المهمة من زر «ابدأ العمل» — المرحلة تتغير بالفعل لا بالسحب.',

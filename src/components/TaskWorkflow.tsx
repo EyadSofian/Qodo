@@ -869,7 +869,9 @@ function SubmitGate({
   const [note, setNote] = useState(task.submissionNote ?? '');
 
   const send = async () => {
-    if (attachmentCount === 0) return push(t('flow.needDeliverable'), 'bad');
+    // Either is enough; neither is not. See the submit route for why the file
+    // stopped being mandatory.
+    if (attachmentCount === 0 && !note.trim()) return push(t('flow.needSomething'), 'bad');
     if (await onSubmit('submit', { note })) push(t('flow.submitted.toast'));
   };
 
@@ -890,10 +892,13 @@ function SubmitGate({
         />
       </Field>
 
+      {/* A nudge, not a wall. Attaching is still the better hand-in when there
+          is something to attach, so it is worth saying — but a task that
+          produced no file is a normal task, not a mistake. */}
       {attachmentCount === 0 && (
-        <p className="flex items-center gap-2 rounded-lg bg-status-warnBg px-3 py-2 text-[12.5px] font-semibold text-accent-600">
-          <AlertTriangle size={15} />
-          {t('flow.needDeliverable')}
+        <p className="flex items-center gap-2 rounded-lg bg-surface-sunken px-3 py-2 text-[12.5px] text-ink-muted">
+          <AlertTriangle size={15} className="shrink-0 text-ink-faint" />
+          {t('flow.noDeliverableHint')}
         </p>
       )}
 
@@ -904,7 +909,7 @@ function SubmitGate({
         <button
           type="button"
           onClick={send}
-          disabled={busy || attachmentCount === 0}
+          disabled={busy || (attachmentCount === 0 && !note.trim())}
           className="btn-primary btn-sm gap-1.5"
         >
           {busy ? <Spinner size={15} /> : <Send size={15} />}

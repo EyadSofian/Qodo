@@ -708,12 +708,28 @@ router.post('/:id/submit', async (req, res) => {
   if (!task) return;
   if (!canSubmit(req.user, task)) return res.status(403).json({ error: 'forbidden' });
 
-  // Keep the count honest even if an older row drifted, then insist on proof.
+  // Keep the count honest even if an older row drifted.
   const count = await syncAttachmentCount(task.id);
-  if (count === 0) return res.status(400).json({ error: 'deliverable_required' });
-
   const department = task.department ?? DEFAULT_DEPARTMENT;
   const note = String(req.body?.note || '').trim().slice(0, 2000);
+
+  /**
+   * A hand-in has to say what was done. It no longer has to be a file.
+   *
+   * The gate used to demand an attachment or a link, which was right for the
+   * work it was written against — a designer hands in artwork — and wrong for
+   * half of everything else. Calling a client, sitting in a meeting, chasing a
+   * supplier: real tasks with no artifact, and the only way to close one was to
+   * upload a screenshot of nothing. That is not evidence, it is a ritual, and a
+   * gate people route around stops meaning anything.
+   *
+   * So the requirement moved from *a file* to *an account of the work*: attach
+   * something, or write what you did. What it still refuses is a blank hand-in,
+   * because "done" with nothing behind it is the opinion this whole lifecycle
+   * was built to stop being.
+   */
+  if (count === 0 && !note) return res.status(400).json({ error: 'submission_empty' });
+
   const now = new Date().toISOString();
   const updated = await store.update('tasks', task.id, {
     stage: stageForState(department, 'submitted', task.stage),
