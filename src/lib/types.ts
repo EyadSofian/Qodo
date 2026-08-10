@@ -260,6 +260,16 @@ export interface PerformanceMetrics {
   scoredTasks: number;
   effortPoints: number;
   estimatedMinutes: number;
+  /**
+   * How long finishing takes, start to close, in days. Null when nothing has
+   * been timed — an absent measurement rather than a zero.
+   */
+  averageDays: number | null;
+  medianDays: number | null;
+  fastestDays: number | null;
+  slowestDays: number | null;
+  /** How many completed tasks carried both stamps, so the reader can weigh it. */
+  timedTasks: number;
 }
 
 export interface PerformancePerson extends PerformanceMetrics {

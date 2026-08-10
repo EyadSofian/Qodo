@@ -12,7 +12,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { ArrowRight, CalendarClock, Lock, Mail } from 'lucide-react';
+import {AlarmClock, ArrowRight, CalendarClock, Lock, Mail} from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useI18n } from '../lib/i18n';
@@ -28,6 +28,7 @@ import {
 import { ScoreChip, StateBadge } from '../components/TaskWorkflow';
 import { ModuleIcon } from '../components/ModuleIcon';
 import { Avatar, EmptyState, Spinner } from '../components/ui';
+import { BarList, ChartCard, SplitBar } from '../components/Charts';
 import { DUE_CHIP_CLASS, cx, dueLabel } from '../lib/utils';
 import type { PerformanceOverview, PerformancePerson, Task } from '../lib/types';
 import { assigneesOf } from '@shared/workflow';
@@ -149,6 +150,8 @@ export function Profile() {
         </p>
       )}
 
+      {metrics && <PerformanceCharts metrics={metrics} />}
+
       {tasks === null ? (
         <div className="flex items-center justify-center gap-2 py-14 text-ink-muted">
           <Spinner size={18} />
@@ -226,6 +229,76 @@ function TaskList({ title, empty, tasks }: { title: string; empty: string; tasks
           })}
         </ul>
       )}
+    </section>
+  );
+}
+
+/**
+ * The two questions a person asks about their own record: how much is left, and
+ * how long things take me.
+ *
+ * Kept to three panels on purpose. A profile is read in a few seconds before
+ * somebody goes back to work, and a wall of charts is how a page stops being
+ * read at all — the numbers that answer nothing stay in the tiles above.
+ */
+function PerformanceCharts({ metrics }: { metrics: PerformancePerson }) {
+  const { t } = useI18n();
+
+  const timed = metrics.timedTasks > 0;
+  const quality = [
+    { label: t('performance.onTime'), value: metrics.onTimeRate, display: `${metrics.onTimeRate}\u066A` },
+    { label: t('performance.firstPass'), value: metrics.firstPassRate, display: `${metrics.firstPassRate}\u066A` },
+    { label: t('profile.completionRate'), value: metrics.completionRate, display: `${metrics.completionRate}\u066A` },
+  ];
+
+  return (
+    <section className="grid gap-3 lg:grid-cols-3">
+      <ChartCard title={t('profile.workload')} hint={t('profile.workloadHint')}>
+        <SplitBar
+          parts={[
+            { label: t('profile.done'), value: metrics.completed },
+            { label: t('profile.remaining'), value: metrics.active },
+          ]}
+        />
+        {metrics.overdue > 0 && (
+          <p className="mt-3 flex items-center gap-1.5 rounded-lg bg-status-badBg px-2.5 py-2 text-[12px] font-semibold text-status-bad">
+            <AlarmClock size={14} className="shrink-0" />
+            {t('profile.overdueNote', { n: metrics.overdue })}
+          </p>
+        )}
+      </ChartCard>
+
+      <ChartCard title={t('profile.speed')} hint={t('profile.speedHint')}>
+        {timed ? (
+          <div className="grid gap-3">
+            <div className="flex items-baseline gap-2">
+              <span className="text-[30px] font-extrabold leading-none tabular-nums text-ink">
+                {metrics.medianDays}
+              </span>
+              <span className="text-[13px] font-semibold text-ink-muted">{t('profile.daysTypical')}</span>
+            </div>
+            {/* The mean sits underneath rather than beside: where the two
+                disagree it is one slow task pulling, and the median is the
+                honest headline. */}
+            <BarList
+              data={[
+                { label: t('profile.fastest'), value: metrics.fastestDays ?? 0, display: `${metrics.fastestDays} ${t('profile.day')}` },
+                { label: t('profile.average'), value: metrics.averageDays ?? 0, display: `${metrics.averageDays} ${t('profile.day')}` },
+                { label: t('profile.slowest'), value: metrics.slowestDays ?? 0, display: `${metrics.slowestDays} ${t('profile.day')}` },
+              ]}
+            />
+            <p className="text-[11.5px] text-ink-faint">
+              {t('profile.timedFrom', { n: metrics.timedTasks })}
+            </p>
+          </div>
+        ) : (
+          <p className="py-6 text-center text-[12.5px] text-ink-faint">{t('profile.noTiming')}</p>
+        )}
+      </ChartCard>
+
+      <ChartCard title={t('profile.quality')} hint={t('profile.qualityHint')}>
+        <BarList data={quality} max={100} />
+      </ChartCard>
     </section>
   );
 }

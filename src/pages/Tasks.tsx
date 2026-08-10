@@ -1260,6 +1260,11 @@ function emptyMetrics(): PerformanceMetrics {
     scoredTasks: 0,
     effortPoints: 0,
     estimatedMinutes: 0,
+    averageDays: null,
+    medianDays: null,
+    fastestDays: null,
+    slowestDays: null,
+    timedTasks: 0,
   };
 }
 

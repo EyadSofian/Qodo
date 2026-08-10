@@ -407,6 +407,13 @@ router.patch('/:id', async (req, res) => {
     Object.hasOwn(patch, 'assigneeIds') &&
     (patch.assigneeIds.length !== currentAssignees.length ||
       patch.assigneeIds.some((id) => !currentAssignees.includes(id)));
+  // A deadline that moved has to be able to go late again. The overdue notice
+  // fires once per due date, so the stamp is keyed to the date it warned about
+  // and clearing it here is what lets a task pushed to next week warn then.
+  if (Object.hasOwn(patch, 'dueDate') && patch.dueDate !== task.dueDate) {
+    patch.overdueNotifiedFor = null;
+  }
+
   if (assignmentChanged) {
     // Partners already on the task keep the answer they gave; only the people
     // being added start out pending.
@@ -1394,6 +1401,28 @@ function performanceSummary(tasks) {
   // was unclear, not that the person is weak — which is why it is its own number.
   const firstPass = completed.filter((task) => (task.reworkCount ?? 0) === 0);
 
+  /**
+   * How long finishing actually takes, start to close, in days.
+   *
+   * Measured from `startedAt` rather than when the task was filed, because the
+   * gap between "a manager wrote it down" and "somebody picked it up" is queue
+   * time — a planning number, not a speed one — and mixing the two makes a fast
+   * worker on a slow board look slow. Only tasks carrying both stamps count.
+   *
+   * The median is reported next to the mean on purpose: one task that sat open
+   * over a holiday drags an average badly, and on a handful of tasks the
+   * average is mostly that outlier. Where they disagree, the median is the
+   * honest one.
+   */
+  const durations = completed
+    .filter((task) => task.startedAt && task.completedAt)
+    .map((task) => (Date.parse(task.completedAt) - Date.parse(task.startedAt)) / 86_400_000)
+    .filter((days) => Number.isFinite(days) && days >= 0)
+    .sort((a, b) => a - b);
+
+  const round1 = (value) => Math.round(value * 10) / 10;
+  const middle = durations.length ? durations[Math.floor(durations.length / 2)] : null;
+
   return {
     total: tasks.length,
     completed: completed.length,
@@ -1401,6 +1430,14 @@ function performanceSummary(tasks) {
     overdue: overdue.length,
     awaitingReview: awaitingReview.length,
     returned: tasks.filter((task) => (task.reworkCount ?? 0) > 0).length,
+    /** Null rather than 0 when nothing has been timed — an absent measurement. */
+    averageDays: durations.length
+      ? round1(durations.reduce((sum, days) => sum + days, 0) / durations.length)
+      : null,
+    medianDays: middle === null ? null : round1(middle),
+    fastestDays: durations.length ? round1(durations[0]) : null,
+    slowestDays: durations.length ? round1(durations[durations.length - 1]) : null,
+    timedTasks: durations.length,
     completionRate: percentage(completed.length, tasks.length),
     onTimeRate: percentage(onTime.length, withDeadline.length),
     firstPassRate: percentage(firstPass.length, completed.length),

@@ -14,10 +14,13 @@
 
 import { create, find, findOne, getStore } from './store.js';
 import { notifyUser, pushConfigured } from './push.js';
+import { publishNotification } from './notificationStream.js';
+import { mailConfigured, renderEmail, sendMail } from './mail.js';
+import { assigneesOf, isAssignee } from '../shared/workflow.js';
 import { PERMISSIONS, can, isActiveUser } from '../shared/permissions.js';
 import { DEFAULT_DEPARTMENT, DEPARTMENTS, isSettledStage } from '../shared/departments.js';
 import { organizationOf } from '../shared/organization.js';
-import { isAssignee } from '../shared/workflow.js';
+
 import { remindDueSoon } from './management.js';
 
 const TICK_MS = 60 * 1000;
@@ -285,7 +288,7 @@ async function checkInsights() {
 async function notifyAndRecord(userId, { type, title, body, link }) {
   const text = typeof body === 'string' ? body : (body.ar ?? '');
   const user = await findOne('users', (candidate) => candidate.id === userId);
-  await create('notifications', {
+  const row = await create('notifications', {
     organizationId: organizationOf(user),
     userId,
     type,
@@ -294,7 +297,106 @@ async function notifyAndRecord(userId, { type, title, body, link }) {
     link,
     read: false,
   });
+  // The live stream is what turns a stored notification into the alert that
+  // slides in while somebody is looking at the app. Without it a scheduled
+  // notice only appears on the next page load, which for "this is late today"
+  // is too late to be the point.
+  publishNotification(userId, row.id);
   await notifyUser(userId, { title, body: text, link });
+  return row;
+}
+
+/* ── job 3: work that has gone past its date ─────────────────────── */
+
+/**
+ * Tells each person, once per task, that something of theirs is now late.
+ *
+ * Once per task and not once per day is the whole design. A daily repeat of the
+ * same five names is the definition of a notification people learn to swipe
+ * away, and the morning digest already carries the running count — this exists
+ * to mark the *transition*, which is the moment the news is actually new. The
+ * stamp lives on the task rather than in a scheduler variable so a redeploy
+ * cannot resend it, and moving a due date clears it, because a deadline pushed
+ * to next week has to be able to go late again.
+ */
+async function remindOverdue() {
+  const store = await getStore();
+  const today = new Date().toISOString().slice(0, 10);
+  const open = await find(
+    'tasks',
+    (task) =>
+      !task.archivedAt &&
+      task.dueDate &&
+      task.dueDate < today &&
+      !isSettledStage(task.department ?? DEFAULT_DEPARTMENT, task.stage)
+  );
+
+  const perUser = new Map();
+  for (const task of open) {
+    // A due date that moved forward invalidates the old warning.
+    if (task.overdueNotifiedFor === task.dueDate) continue;
+    for (const userId of assigneesOf(task)) {
+      if (!perUser.has(userId)) perUser.set(userId, []);
+      perUser.get(userId).push(task);
+    }
+    await store.update('tasks', task.id, { overdueNotifiedFor: task.dueDate });
+  }
+
+  let sent = 0;
+  for (const [userId, tasks] of perUser) {
+    const user = await findOne('users', (candidate) => candidate.id === userId);
+    if (!isActiveUser(user)) continue;
+
+    const first = tasks[0];
+    const more = tasks.length - 1;
+    await notifyAndRecord(userId, {
+      type: 'task.overdue',
+      title: {
+        ar: tasks.length === 1 ? 'مهمة عدّت ميعادها' : `${tasks.length} مهام عدّت ميعادها`,
+        en: tasks.length === 1 ? 'A task is past its due date' : `${tasks.length} tasks are past due`,
+      },
+      body: {
+        ar: more > 0 ? `«${first.title}» و${more} غيرها.` : `«${first.title}» كان المفروض تخلص ${first.dueDate}.`,
+        en: more > 0 ? `“${first.title}” and ${more} more.` : `“${first.title}” was due ${first.dueDate}.`,
+      },
+      // One task deep-links to itself; several open the board filtered to late.
+      link: tasks.length === 1 ? `/tasks?task=${first.id}` : '/tasks?scope=mine',
+    });
+    sent += 1;
+
+    await emailOverdue(user, tasks);
+  }
+  return sent;
+}
+
+/**
+ * The same news by email, for the person who has not opened the app.
+ *
+ * Silent when SMTP is unconfigured, and never allowed to fail the job: an
+ * address that bounces must not stop the other ninety-nine people being told.
+ */
+async function emailOverdue(user, tasks) {
+  if (!mailConfigured() || !user.email) return;
+
+  const base = (process.env.PUBLIC_URL || '').replace(/\/+$/, '');
+  const html = renderEmail({
+    title: 'عندك شغل عدّى ميعاده',
+    intro: `${user.name}، المهام دي كان المفروض تخلص وهي لسه مفتوحة:`,
+    rows: tasks.map((task) => ({
+      title: task.title,
+      meta: `كان ميعادها ${task.dueDate}`,
+    })),
+    actionLabel: 'افتح البورد',
+    actionUrl: base ? `${base}/tasks?scope=mine` : '',
+    footer: 'الرسالة دي اتبعتت مرة واحدة لكل مهمة أول ما عدّت ميعادها — مش هتتكرر كل يوم.',
+  });
+
+  await sendMail({
+    to: user.email,
+    subject: tasks.length === 1 ? `مهمة متأخرة: ${tasks[0].title}` : `${tasks.length} مهام متأخرة`,
+    text: tasks.map((task) => `- ${task.title} (${task.dueDate})`).join('\n'),
+    html,
+  });
 }
 
 /* ── the loop ────────────────────────────────────────────────────── */
@@ -305,15 +407,18 @@ export function startScheduler() {
   if (started) return;
   started = true;
 
-  if (!pushConfigured()) {
-    console.log('[scheduler] push not configured — digest and watchers stay off');
-    return;
-  }
-
+  /**
+   * Push being off used to switch the whole scheduler off, which was wrong once
+   * anything here reached somebody another way. The in-app bell and the live
+   * alert are stored in our own database, and email is its own channel; none of
+   * them needs a VAPID key. Only the push *delivery* inside `notifyUser` does,
+   * and that already no-ops on its own.
+   */
   console.log(
     `[scheduler] daily digest at ${DIGEST_HOUR}:00 ${TIMEZONE}; ` +
       `Insights checked every ${INSIGHTS_POLL_MINUTES} min; ` +
-      `management reminders ${DESK_REMINDER_MINUTES} min ahead`
+      `management reminders ${DESK_REMINDER_MINUTES} min ahead; ` +
+      `push ${pushConfigured() ? 'on' : 'off'}, email ${mailConfigured() ? 'on' : 'off'}`
   );
 
   let lastInsightsCheck = 0;
@@ -328,6 +433,12 @@ export function startScheduler() {
         await setSetting('digest.lastSentDay', day);
         await sendDigest();
         console.log(`[scheduler] daily digest sent for ${day}`);
+
+        // Same hour as the digest, and deliberately not its own schedule: two
+        // separate notifications about the same backlog arriving hours apart is
+        // how a person learns to ignore both.
+        const late = await remindOverdue();
+        if (late) console.log(`[scheduler] ${late} overdue notice(s) sent`);
       }
 
       if (Date.now() - lastInsightsCheck >= INSIGHTS_POLL_MINUTES * 60 * 1000) {

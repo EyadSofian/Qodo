@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Archive,
   BellRing,
@@ -10,6 +10,7 @@ import {
   Send,
   UserPlus,
   X,
+  AlarmClock,
 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
@@ -53,6 +54,7 @@ const TONES: Record<
   'account.approved': { icon: CheckCircle2, ring: 'bg-status-ok', bar: 'bg-status-ok', chip: 'text-green-100' },
   'user.join_request': { icon: UserPlus, ring: 'bg-brand-400', bar: 'bg-brand-300', chip: 'text-brand-100' },
   'management.due_soon': { icon: Clock, ring: 'bg-status-warn', bar: 'bg-status-warn', chip: 'text-amber-100' },
+  'task.overdue': { icon: AlarmClock, ring: 'bg-status-bad', bar: 'bg-status-bad', chip: 'text-red-100' },
 };
 
 const DEFAULT_TONE = {
@@ -62,10 +64,66 @@ const DEFAULT_TONE = {
   chip: 'text-brand-100',
 };
 
+/**
+ * A short two-tone chime, synthesised rather than shipped as a file.
+ *
+ * An audio asset would be a network request that has to succeed before the
+ * sound the alert is announcing itself with can play, plus a file to host and
+ * cache-bust. Two oscillator notes are a few lines and always ready.
+ *
+ * Browsers refuse audio until the page has been interacted with, which is
+ * correct behaviour and not worth fighting: the call is wrapped so a refusal is
+ * silence rather than an unhandled rejection, and the alert itself never
+ * depends on the sound having played.
+ */
+function chime() {
+  try {
+    const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctor) return;
+    const context = new Ctor();
+    if (context.state === 'suspended') void context.resume();
+
+    // Rising, because this is an arrival and not an error.
+    [
+      { at: 0, hz: 660 },
+      { at: 0.12, hz: 880 },
+    ].forEach(({ at, hz }) => {
+      const osc = context.createOscillator();
+      const gain = context.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = hz;
+      // Ramped rather than switched: an abrupt start and stop is heard as a click.
+      gain.gain.setValueAtTime(0.0001, context.currentTime + at);
+      gain.gain.exponentialRampToValueAtTime(0.14, context.currentTime + at + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + at + 0.16);
+      osc.connect(gain).connect(context.destination);
+      osc.start(context.currentTime + at);
+      osc.stop(context.currentTime + at + 0.18);
+    });
+
+    setTimeout(() => void context.close(), 600);
+  } catch {
+    /* Audio blocked or unavailable — the alert is still on screen. */
+  }
+}
+
 export function IncomingNotificationPopup() {
   const { incomingNotifications, dismissIncomingNotification, actors, markRead } = useWorkspace();
   const { t, lang } = useI18n();
   const navigate = useNavigate();
+
+  // Sounded once per arrival, keyed by id, so a re-render never re-rings and a
+  // second alert landing while the first is up still gets its own chime.
+  const soundedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    for (const notification of incomingNotifications) {
+      if (soundedRef.current.has(notification.id)) continue;
+      soundedRef.current.add(notification.id);
+      chime();
+    }
+    // The set would otherwise grow for the life of the tab.
+    if (soundedRef.current.size > 50) soundedRef.current = new Set();
+  }, [incomingNotifications]);
 
   if (incomingNotifications.length === 0) return null;
 
