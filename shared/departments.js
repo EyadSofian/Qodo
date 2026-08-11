@@ -400,18 +400,9 @@ export function isDoneStage(departmentId, stageId) {
   return stageType(departmentId, stageId) === 'done';
 }
 
-/**
- * Nobody owes any more work on it — approved, whether or not it has shipped.
- *
- * This is the question almost every counter is really asking. A post signed off
- * this morning and scheduled for Thursday is not "still open": nagging its
- * owner about the deadline, or counting it against them as overdue, would be
- * telling them off for work a manager already approved and scored. `isDoneStage`
- * stays for the places that genuinely mean delivered.
- */
+/** Nobody owes any more work on it. Pending final approval is not settled. */
 export function isSettledStage(departmentId, stageId) {
-  const type = stageType(departmentId, stageId);
-  return type === 'done' || type === 'signoff';
+  return stageType(departmentId, stageId) === 'done';
 }
 
 /**

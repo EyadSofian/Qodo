@@ -338,8 +338,8 @@ const STRINGS = {
 
   'flow.submitTitle': { ar: 'تسليم المهمة للمراجعة', en: 'Submit this task for review' },
   'flow.submitHint': {
-    ar: 'ارفع التسليم لو فيه ملف أو رابط، أو اكتب بس اللي عملته. بعد التسليم تروح للمدير — هو اللي يعتمدها ويحط التقييم.',
-    en: 'Attach a file or link if there is one, or just write what you did. It then goes to your manager — approving and scoring are their call.',
+    ar: 'ارفع التسليم لو فيه ملف أو رابط، أو اكتب بس اللي عملته. بعدها تمر بالمراجعة ثم الموافقة النهائية والتقييم.',
+    en: 'Attach a file or link if there is one, or just write what you did. It then passes through review, final approval and scoring.',
   },
   'flow.submitNote': { ar: 'اللي عملته', en: 'What you did' },
   'flow.submitNotePlaceholder': {
@@ -362,6 +362,22 @@ const STRINGS = {
     ar: 'افتح المرفقات، حدّد التقييم، ثم اختر: تروح «منجزة» ولا ترجع «إعادة عمل» مع سبب واضح.',
     en: 'Open the deliverables, set the score, then choose: it goes to Done, or back to Rework with a clear reason.',
   },
+  'flow.marketingReviewTitle': { ar: 'مراجعة التسليم', en: 'Review deliverables' },
+  'flow.marketingReviewHint': {
+    ar: 'راجعي التسليم ثم اختاري: يرجع «إعادة عمل» مع سبب واضح، أو ينتقل «قيد الموافقة» من غير تقييم.',
+    en: 'Review the deliverables, then send them back to Rework with a clear reason or pass them to Pending approval without a score.',
+  },
+  'flow.sendToApproval': { ar: 'تحويل لقيد الموافقة', en: 'Pass to approval' },
+  'flow.sentToApproval.toast': {
+    ar: 'تمت المراجعة وانتقلت المهمة إلى قيد الموافقة.',
+    en: 'Review passed and the task moved to Pending approval.',
+  },
+  'flow.finalApprovalTitle': { ar: 'الموافقة النهائية والتقييم', en: 'Final approval & score' },
+  'flow.finalApprovalHint': {
+    ar: 'حدّد التقييم النهائي؛ بعد الموافقة تنتقل المهمة إلى «منجزة».',
+    en: 'Set the final score. Approving moves the task to Done.',
+  },
+  'flow.finalApprove': { ar: 'موافقة نهائية ← منجزة', en: 'Final approve → Done' },
   'flow.weakScoreHint': {
     ar: 'التقييم ده «دون المتوقع» — الأنسب ترجّعها «إعادة عمل» مع السبب بدل ما تقفلها بتقييم ضعيف.',
     en: 'That score is “below expectations” — better to send it back to Rework with a reason than to close it on a poor score.',
@@ -401,6 +417,7 @@ const STRINGS = {
   'flow.returnedTwice': { ar: 'أُعيدت مرتين', en: 'Returned twice' },
   'flow.returnedTimes': { ar: 'أُعيدت {n} مرات', en: 'Returned {n}×' },
   'flow.verdictApproved': { ar: 'اعتُمدت', en: 'Approved' },
+  'flow.reviewPassed': { ar: 'اجتازت المراجعة', en: 'Review passed' },
   'flow.verdictChanges': { ar: 'طُلب تعديلها', en: 'Changes requested' },
   'flow.scoredBy': { ar: 'قيّمها {name}', en: 'Scored by {name}' },
   'flow.managerOnly': {

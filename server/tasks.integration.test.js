@@ -140,6 +140,8 @@ let creative;
 let managerCookie;
 let creativeCookie;
 let adminCookie;
+let finalApprover;
+let finalApproverCookie;
 
 test('tenant policy rejects cross-organization task and people access', () => {
   const managerA = {
@@ -507,7 +509,7 @@ test('the board cannot be dragged past either gate', async () => {
 });
 
 test('assign → deliver → review → approve, including the rework loop', async () => {
-  const finalApprover = await create(
+  finalApprover = await create(
     '/users',
     {
       name: 'Seddik',
@@ -521,7 +523,7 @@ test('assign → deliver → review → approve, including the rework loop', asy
   );
   assert.ok(finalApprover.user.taskWorkflowRoles.includes('marketing_final_approver'));
   assert.ok(finalApprover.user.effectivePermissions.includes(PERMISSIONS.TASKS_PUBLISH));
-  const finalApproverCookie = await login('seddik@test.local', 'SeddikPass123!');
+  finalApproverCookie = await login('seddik@test.local', 'SeddikPass123!');
 
   const { task } = await create(
     '/tasks',
@@ -792,31 +794,24 @@ test('assign → deliver → review → approve, including the rework loop', asy
   });
   assert.equal(resubmittedAgain.status, 200);
 
-  const badScore = await request(`/tasks/${task.id}/review`, {
-    method: 'POST',
-    cookie: managerCookie,
-    body: { decision: 'approved', score: 140 },
-  });
-  assert.equal(badScore.status, 400);
-  assert.equal(badScore.data.error, 'invalid_score');
-
   const approved = await request(`/tasks/${task.id}/review`, {
     method: 'POST',
     cookie: managerCookie,
+    // Even a stale browser that still sends its old slider value cannot make
+    // Mirna the scorer; Marketing review deliberately ignores it.
     body: { decision: 'approved', score: 88, note: 'تمام بعد التعديل' },
   });
   assert.equal(approved.status, 200);
   // Marketing separates "the manager said yes" from "it went out", so approving
   // parks the card in "قيد الموافقة" rather than closing it.
   assert.equal(approved.data.task.stage, 'approved');
-  assert.equal(approved.data.task.scoreBeforeReworkPenalty, 88);
+  assert.equal(approved.data.task.scoreBeforeReworkPenalty, null);
   assert.equal(approved.data.task.scorePenaltyPercent, 20);
-  assert.equal(approved.data.task.score, 70.4);
+  assert.equal(approved.data.task.score, null);
   assert.equal(approved.data.task.reviewedBy, manager.user.id);
   assert.equal(approved.data.task.reviewDecision, 'approved');
-  // The work was finished when it was approved — waiting for a publishing slot
-  // is not the employee still owing something.
-  assert.ok(approved.data.task.completedAt);
+  // Mirna passes the review without scoring or completing the task.
+  assert.equal(approved.data.task.completedAt, null);
   assert.equal(approved.data.task.publishedAt, null);
 
   const directScoreEdit = await request(`/tasks/${task.id}`, {
@@ -864,18 +859,27 @@ test('assign → deliver → review → approve, including the rework loop', asy
     )
   );
 
+  const badScore = await request(`/tasks/${task.id}/publish`, {
+    method: 'POST',
+    cookie: finalApproverCookie,
+    body: { score: 140 },
+  });
+  assert.equal(badScore.status, 400);
+  assert.equal(badScore.data.error, 'invalid_score');
+
   // The second named approval desk owns the final move to Done.
   const published = await request(`/tasks/${task.id}/publish`, {
     method: 'POST',
     cookie: finalApproverCookie,
+    body: { score: 88 },
   });
   assert.equal(published.status, 200);
   assert.equal(published.data.task.stage, 'done');
   assert.ok(published.data.task.publishedAt);
   assert.equal(published.data.task.publishedBy, finalApprover.user.id);
-  // Publishing must not restamp completion, or a post that waited a week for
-  // its slot would read as delivered a week late.
-  assert.equal(published.data.task.completedAt, approved.data.task.completedAt);
+  assert.equal(published.data.task.scoreBeforeReworkPenalty, 88);
+  assert.equal(published.data.task.score, 70.4);
+  assert.ok(published.data.task.completedAt);
 
   const draggedOutOfDone = await request(`/tasks/${task.id}`, {
     method: 'PATCH',
@@ -1517,12 +1521,20 @@ test('two people can own one task, and both carry its score', async () => {
   const approved = await request(`/tasks/${task.id}/review`, {
     method: 'POST',
     cookie: managerCookie,
-    body: { decision: 'approved', score: 90, note: 'تمام' },
+    body: { decision: 'approved', note: 'تمام' },
   });
   assert.equal(approved.status, 200);
-  assert.equal(approved.data.task.score, 90);
+  assert.equal(approved.data.task.score, null);
 
-  // One review closed it for both, and the same number lands on both records —
+  const finallyApproved = await request(`/tasks/${task.id}/publish`, {
+    method: 'POST',
+    cookie: finalApproverCookie,
+    body: { score: 90 },
+  });
+  assert.equal(finallyApproved.status, 200);
+  assert.equal(finallyApproved.data.task.score, 90);
+
+  // One final approval closed it for both, and the same number lands on both records —
   // which is what "equal partners" was asked to mean.
   const overview = await request('/tasks/overview?department=marketing', {
     cookie: managerCookie,
@@ -1574,8 +1586,16 @@ test('work with no file to show is handed in on its note alone', async () => {
   const reviewed = await request(`/tasks/${task.id}/review`, {
     method: 'POST',
     cookie: managerCookie,
-    body: { decision: 'approved', score: 85, note: 'تمام' },
+    body: { decision: 'approved', note: 'تمام' },
   });
   assert.equal(reviewed.status, 200, JSON.stringify(reviewed.data));
-  assert.equal(reviewed.data.task.score, 85);
+  assert.equal(reviewed.data.task.score, null);
+
+  const scored = await request(`/tasks/${task.id}/publish`, {
+    method: 'POST',
+    cookie: finalApproverCookie,
+    body: { score: 85 },
+  });
+  assert.equal(scored.status, 200, JSON.stringify(scored.data));
+  assert.equal(scored.data.task.score, 85);
 });

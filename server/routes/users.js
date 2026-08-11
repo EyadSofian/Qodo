@@ -326,6 +326,7 @@ function provisionMarketingWorkflow(user) {
       PERMISSIONS.TASKS_VIEW,
       PERMISSIONS.TASKS_VIEW_TEAM,
       PERMISSIONS.TASKS_PUBLISH,
+      PERMISSIONS.TASKS_SCORE,
     ];
     permissions = [...new Set([...(permissions ?? permissionsFor(user)), ...access])];
     visibilityScope = 'department';

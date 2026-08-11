@@ -16,7 +16,7 @@ import { create, find, findOne, getStore } from './store.js';
 import { notifyUser, pushConfigured } from './push.js';
 import { publishNotification } from './notificationStream.js';
 import { mailConfigured, renderEmail, sendMail } from './mail.js';
-import { assigneesOf, isAssignee } from '../shared/workflow.js';
+import { assigneesOf, isAssignee, taskState } from '../shared/workflow.js';
 import { PERMISSIONS, can, isActiveUser } from '../shared/permissions.js';
 import { DEFAULT_DEPARTMENT, DEPARTMENTS, isSettledStage } from '../shared/departments.js';
 import { organizationOf } from '../shared/organization.js';
@@ -328,6 +328,7 @@ async function remindOverdue() {
       !task.archivedAt &&
       task.dueDate &&
       task.dueDate < today &&
+      taskState(task) !== 'signed_off' &&
       !isSettledStage(task.department ?? DEFAULT_DEPARTMENT, task.stage)
   );
 

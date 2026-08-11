@@ -111,7 +111,10 @@ router.get('/counts', async (req, res) => {
 
   const visible = await find('tasks', livePredicate(req.user));
   const today = new Date().toISOString().slice(0, 10);
-  const isOpen = (task) => !isSettledStage(task.department ?? DEFAULT_DEPARTMENT, task.stage);
+  const isOpen = (task) => {
+    const state = taskState(task);
+    return state !== 'signed_off' && state !== 'approved';
+  };
 
   const mine = visible.filter((task) => isAssignee(req.user, task) && isOpen(task));
   const reworkTasks = mine
@@ -851,9 +854,9 @@ router.post('/:id/submit', async (req, res) => {
 });
 
 /**
- * The manager's verdict. Approving closes the task and must carry a score;
- * returning it must carry a reason, because "do it again" without one is the
- * single most common way a review loop wastes a day.
+ * The reviewer's verdict. Marketing deliberately separates it from scoring:
+ * Mirna either returns the work with a reason or passes it to the final
+ * approval desk. Other departments still close and score at this gate.
  */
 router.post('/:id/review', async (req, res) => {
   const store = await getStore();
@@ -868,46 +871,47 @@ router.post('/:id/review', async (req, res) => {
   const stamp = new Date().toISOString();
 
   if (decision === 'approved') {
-    // Closing the task and putting a number on somebody's record are separate
-    // authorities from being allowed to read the work and send it back.
     if (!canApproveWork(req.user)) return res.status(403).json({ error: 'approve_forbidden' });
-    if (!canScoreWork(req.user)) return res.status(403).json({ error: 'score_forbidden' });
-    const score = Number(req.body?.score);
-    if (!Number.isFinite(score) || score < 0 || score > 100) {
-      return res.status(400).json({ error: 'invalid_score' });
-    }
-    const roundedScore = Math.round(score * 10) / 10;
+    const awaitsFinalApproval = department === 'marketing';
+    let roundedScore = null;
+    let effectiveScore = null;
     const scorePenaltyPercent = reworkPenaltyPercent(task.reworkCount ?? 0);
-    const effectiveScore = applyReworkPenalty(roundedScore, task.reworkCount ?? 0);
+
+    if (!awaitsFinalApproval) {
+      if (!canScoreWork(req.user)) return res.status(403).json({ error: 'score_forbidden' });
+      const score = Number(req.body?.score);
+      if (!Number.isFinite(score) || score < 0 || score > 100) {
+        return res.status(400).json({ error: 'invalid_score' });
+      }
+      roundedScore = Math.round(score * 10) / 10;
+      effectiveScore = applyReworkPenalty(roundedScore, task.reworkCount ?? 0);
+    }
+
     const updated = await store.update('tasks', task.id, {
-      // Marketing parks reviewed work in "قيد الموافقة" for the second named
-      // approval desk; every other board closes it outright.
       stage: stageForApproval(department, task.stage),
       score: effectiveScore,
       scoreBeforeReworkPenalty: roundedScore,
       scorePenaltyPercent,
-      scoreBy: req.user.id,
-      scoredAt: stamp,
+      scoreBy: awaitsFinalApproval ? null : req.user.id,
+      scoredAt: awaitsFinalApproval ? null : stamp,
       reviewDecision: 'approved',
       reviewedAt: stamp,
       reviewedBy: req.user.id,
       reviewNote: note,
-      completedAt: stamp,
+      completedAt: awaitsFinalApproval ? null : stamp,
       progress: 100,
     });
 
-    await notifyPartners(task, req.user.id, {
-      type: 'task.approved',
-      title: { ar: 'تم اعتماد مهمتك', en: 'Your task was approved' },
-      body: scorePenaltyPercent
-        ? {
-            ar: `${updated.title} — ${updated.score}/100 بعد خصم ${scorePenaltyPercent}% لإعادة العمل.`,
-            en: `${updated.title} — ${updated.score}/100 after a ${scorePenaltyPercent}% rework deduction.`,
-          }
-        : `${updated.title} — ${updated.score}/100`,
-      link: `/tasks?task=${updated.id}`,
-    });
-    if (department === 'marketing') {
+    if (awaitsFinalApproval) {
+      await notifyPartners(task, req.user.id, {
+        type: 'task.review_passed',
+        title: { ar: 'اجتازت مهمتك المراجعة', en: 'Your task passed review' },
+        body: {
+          ar: `نقلت ${req.user.name} «${updated.title}» إلى قيد الموافقة النهائية.`,
+          en: `${req.user.name} moved “${updated.title}” to final approval.`,
+        },
+        link: `/tasks?task=${updated.id}`,
+      });
       for (const userId of await finalApprovalAudience(updated, req.user.id)) {
         await notify(userId, req.user.id, {
           type: 'task.awaiting_final_approval',
@@ -919,10 +923,22 @@ router.post('/:id/review', async (req, res) => {
           link: `/tasks?task=${updated.id}`,
         });
       }
+    } else {
+      await notifyPartners(task, req.user.id, {
+        type: 'task.approved',
+        title: { ar: 'تم اعتماد مهمتك', en: 'Your task was approved' },
+        body: scorePenaltyPercent
+          ? {
+              ar: `${updated.title} — ${updated.score}/100 بعد خصم ${scorePenaltyPercent}% لإعادة العمل.`,
+              en: `${updated.title} — ${updated.score}/100 after a ${scorePenaltyPercent}% rework deduction.`,
+            }
+          : `${updated.title} — ${updated.score}/100`,
+        link: `/tasks?task=${updated.id}`,
+      });
     }
     await logActivity({
       actorId: req.user.id,
-      action: 'task.approve',
+      action: awaitsFinalApproval ? 'task.review_pass' : 'task.approve',
       subject: 'task',
       subjectId: task.id,
       meta: {
@@ -975,23 +991,48 @@ router.post('/:id/review', async (req, res) => {
 /**
  * The move out of "قيد الموافقة": the final approver marks the work Done.
  *
- * The judgement and score already happened at review, so the final approver is
- * not asked to score again. `completedAt` is left alone on purpose: the work was
- * finished at review, and restamping it here would make the employee look late
- * because of time spent waiting at the second approval desk.
+ * Mirna has already passed the deliverable itself. The final approver now owns
+ * the score and the move to Done; this is where completion is stamped.
  */
 router.post('/:id/publish', async (req, res) => {
   const store = await getStore();
   const task = await loadLive(req, res);
   if (!task) return;
   if (!canPublish(req.user, task)) return res.status(403).json({ error: 'forbidden' });
+  if (!canScoreWork(req.user)) return res.status(403).json({ error: 'score_forbidden' });
+
+  const score = Number(req.body?.score);
+  if (!Number.isFinite(score) || score < 0 || score > 100) {
+    return res.status(400).json({ error: 'invalid_score' });
+  }
 
   const department = task.department ?? DEFAULT_DEPARTMENT;
   const stamp = new Date().toISOString();
+  const roundedScore = Math.round(score * 10) / 10;
+  const scorePenaltyPercent = reworkPenaltyPercent(task.reworkCount ?? 0);
+  const effectiveScore = applyReworkPenalty(roundedScore, task.reworkCount ?? 0);
   const updated = await store.update('tasks', task.id, {
     stage: stageForState(department, 'approved', task.stage),
     publishedAt: stamp,
     publishedBy: req.user.id,
+    score: effectiveScore,
+    scoreBeforeReworkPenalty: roundedScore,
+    scorePenaltyPercent,
+    scoreBy: req.user.id,
+    scoredAt: stamp,
+    completedAt: stamp,
+  });
+
+  await notifyPartners(task, req.user.id, {
+    type: 'task.approved',
+    title: { ar: 'تمت الموافقة النهائية على مهمتك', en: 'Your task received final approval' },
+    body: scorePenaltyPercent
+      ? {
+          ar: `${updated.title} — ${updated.score}/100 بعد خصم ${scorePenaltyPercent}% لإعادة العمل.`,
+          en: `${updated.title} — ${updated.score}/100 after a ${scorePenaltyPercent}% rework deduction.`,
+        }
+      : `${updated.title} — ${updated.score}/100`,
+    link: `/tasks?task=${updated.id}`,
   });
 
   // The reviewer who approved it is the one waiting to hear it went out.
@@ -1008,7 +1049,12 @@ router.post('/:id/publish', async (req, res) => {
     action: 'task.publish',
     subject: 'task',
     subjectId: task.id,
-    meta: { title: task.title },
+    meta: {
+      title: task.title,
+      score: effectiveScore,
+      scoreBeforeReworkPenalty: roundedScore,
+      scorePenaltyPercent,
+    },
   });
   res.json({ task: taskForUser(req.user, updated) });
 });
@@ -1558,13 +1604,20 @@ function performanceSummary(tasks) {
     (task) =>
       task.dueDate &&
       task.dueDate < today &&
+      taskState(task) !== 'signed_off' &&
       !isSettledStage(task.department ?? DEFAULT_DEPARTMENT, task.stage)
   );
   const scored = tasks.filter((task) => Number.isFinite(task.score));
   const scoreWeight = (task) => task.effortPoints ?? 1;
   const totalScoreWeight = scored.reduce((sum, task) => sum + scoreWeight(task), 0);
-  const withDeadline = completed.filter((task) => task.dueDate && task.completedAt);
-  const onTime = withDeadline.filter((task) => task.completedAt.slice(0, 10) <= task.dueDate);
+  const withDeadline = completed.filter(
+    (task) => task.dueDate && (task.submittedAt || task.completedAt)
+  );
+  // Final approval can wait on another person's desk; the employee's punctuality
+  // is measured at their hand-in, not when the approver eventually scores it.
+  const onTime = withDeadline.filter(
+    (task) => (task.submittedAt ?? task.completedAt).slice(0, 10) <= task.dueDate
+  );
   const awaitingReview = tasks.filter((task) => taskState(task) === 'submitted');
   // Approved without ever being sent back. A low rate usually means the brief
   // was unclear, not that the person is weak — which is why it is its own number.

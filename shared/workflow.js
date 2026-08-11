@@ -345,7 +345,7 @@ export function canScore(user) {
  *   'assignment' the assignee must answer the assignment before work starts
  *   'start'      this is picking the work up, so use the start action
  *   'submit'     this is a hand-in; it needs a deliverable, so use the submit gate
- *   'review'     this is an approval; it needs a score, so use the review gate
+ *   'review'     this is a review/final-approval gate, so use its explicit action
  *   'reopen'     approved work must be reopened explicitly before it can move
  *   'forbidden'  the caller cannot make this transition
  *
@@ -431,11 +431,11 @@ export function submittedOnTime(task) {
 }
 
 /**
- * Approved the first time it was submitted — the cleanest signal of a clear
- * brief. Sign-off counts: the manager already said yes, and whether the post
- * has gone out yet says nothing about how clear the brief was.
+ * Finally approved the first time it was submitted — the cleanest signal of a
+ * clear brief. Passing review alone does not count until the final approver has
+ * scored and closed it.
  */
 export function approvedFirstPass(task) {
   const state = taskState(task);
-  return (state === 'approved' || state === 'signed_off') && (task.reworkCount ?? 0) === 0;
+  return state === 'approved' && (task.reworkCount ?? 0) === 0;
 }

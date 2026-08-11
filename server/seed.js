@@ -309,6 +309,7 @@ async function migrateOrganisationAndTasks(store) {
         PERMISSIONS.TASKS_VIEW,
         PERMISSIONS.TASKS_VIEW_TEAM,
         PERMISSIONS.TASKS_PUBLISH,
+        PERMISSIONS.TASKS_SCORE,
       ];
       patch.permissions = [...new Set([...(patch.permissions ?? permissionsFor(person)), ...access])];
       patch.visibilityScope = 'department';

@@ -448,7 +448,9 @@ export function ReviewVerdict({ task }: { task: Task }) {
   const { t } = useI18n();
   const { userById } = useWorkspace();
   const approved = task.reviewDecision === 'approved';
+  const awaitingFinalApproval = stateOf(task) === 'signed_off';
   const reviewer = userById(task.reviewedBy);
+  const scorer = userById(task.scoreBy);
   if (!task.reviewDecision) return null;
 
   return (
@@ -466,7 +468,9 @@ export function ReviewVerdict({ task }: { task: Task }) {
           )}
         >
           {approved ? <ShieldCheck size={15} /> : <RotateCcw size={15} />}
-          {approved ? t('flow.verdictApproved') : t('flow.verdictChanges')}
+          {approved
+            ? t(awaitingFinalApproval ? 'flow.reviewPassed' : 'flow.verdictApproved')
+            : t('flow.verdictChanges')}
         </span>
         <span className="text-[11.5px] text-ink-faint">
           {reviewer ? `${reviewer.name} · ` : ''}
@@ -476,6 +480,11 @@ export function ReviewVerdict({ task }: { task: Task }) {
       {task.score !== null && task.score !== undefined && (
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <ScoreChip score={task.score} />
+          {scorer && (
+            <span className="text-[11.5px] font-semibold text-ink-faint">
+              {t('flow.scoredBy', { name: scorer.name })}
+            </span>
+          )}
           {task.scorePenaltyPercent > 0 && (
             <span className="chip bg-status-badBg text-status-bad">
               {t('flow.reworkPenaltyApplied', { percent: task.scorePenaltyPercent })}
@@ -551,6 +560,7 @@ export function WorkflowActions({
   const state = stateOf(task);
   const reviewer = isReviewer(user);
   const doer = isDoer(user, task);
+  const marketingTask = (task.department ?? 'general') === 'marketing';
   const ownsAssignment = canRespondToAssignment(user, task);
   // Their own answer, not the task's. On shared work one partner accepting must
   // not make the prompt vanish from in front of the other.
@@ -586,26 +596,22 @@ export function WorkflowActions({
     if (await act('reopen')) push(t('flow.reopened.toast'));
   };
 
-  const publish = async () => {
-    if (await act('publish')) push(t('flow.published.toast'));
+  const publish = async (score: number) => {
+    if (await act('publish', { score })) push(t('flow.published.toast'));
   };
 
   /**
-   * Approved, and waiting to go out. Two ways forward and the buttons say which
-   * they are: it went live, or it comes back as rework. Publishing leads because
-   * it is what usually happens next; sending it back is the correction.
+   * Mirna passed the review without scoring. The named final approver owns the
+   * score and the move to Done; Mirna still retains the correction route.
    */
   if (state === 'signed_off') {
     return (
       <div className="grid gap-3">
         <ReviewVerdict task={task} />
+        {canPublish(user, task) && (
+          <FinalApprovalGate task={task} busy={busy} onApprove={publish} />
+        )}
         <div className="flex flex-wrap items-center gap-2">
-          {canPublish(user, task) && (
-            <button type="button" onClick={publish} disabled={busy} className="btn-primary btn-sm gap-1.5">
-              {busy ? <Spinner size={15} /> : <Send size={15} />}
-              {t('flow.publish')}
-            </button>
-          )}
           {canReopen(user, task) && (
             <button type="button" onClick={reopen} disabled={busy} className="btn-ghost btn-sm gap-1.5">
               <RotateCcw size={15} />
@@ -648,7 +654,7 @@ export function WorkflowActions({
           <div className="flex flex-wrap gap-2">
             <button type="button" onClick={() => setOpen('review')} className="btn-primary btn-sm gap-1.5">
               <ShieldCheck size={16} />
-              {t('flow.approve')}
+              {t(marketingTask ? 'flow.sendToApproval' : 'flow.approve')}
             </button>
             <button type="button" onClick={() => setOpen('review')} className="btn-ghost btn-sm gap-1.5">
               <RotateCcw size={15} />
@@ -925,6 +931,96 @@ function SubmitGate({
   );
 }
 
+function FinalApprovalGate({
+  task,
+  busy,
+  onApprove,
+}: {
+  task: Task;
+  busy: boolean;
+  onApprove: (score: number) => Promise<void>;
+}) {
+  const { t, lang } = useI18n();
+  const [score, setScore] = useState(85);
+  const penaltyPercent = Math.min(100, (task.reworkCount ?? 0) * 10);
+  const effectiveScore = Math.round(score * Math.max(0, 1 - penaltyPercent / 100) * 10) / 10;
+  const band = scoreBand(effectiveScore);
+
+  return (
+    <div className="grid gap-3.5 rounded-xl border border-brand-200 bg-brand-50/40 p-3.5">
+      <div>
+        <h4 className="text-[13px] font-bold text-ink">{t('flow.finalApprovalTitle')}</h4>
+        <p className="mt-1 text-[12px] leading-relaxed text-ink-muted">
+          {t('flow.finalApprovalHint')}
+        </p>
+      </div>
+
+      <div>
+        <span className="label">{t('flow.scoreLabel')}</span>
+        <div className="flex items-center gap-3">
+          <span
+            className={cx(
+              'ltr w-14 text-[30px] font-black leading-none tabular-nums',
+              scoreTextTone(effectiveScore)
+            )}
+          >
+            {score}
+          </span>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            step={1}
+            value={score}
+            onChange={(event) => setScore(Number(event.target.value))}
+            className="ltr h-2 flex-1 cursor-pointer appearance-none rounded-full bg-white accent-brand-500"
+            aria-label={t('flow.scoreLabel')}
+          />
+        </div>
+        <div className="mt-2.5 flex flex-wrap gap-1.5">
+          {SCORE_BANDS.map((item: { id: string; min: number; ar: string; en: string }) => {
+            const value = item.min === 0 ? 40 : Math.min(100, item.min + 5);
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setScore(value)}
+                className={cx(
+                  'rounded-lg border px-2.5 py-1 text-[12px] font-semibold transition-colors',
+                  band?.id === item.id
+                    ? 'border-transparent bg-navy text-white'
+                    : 'border-surface-line bg-white text-ink-muted hover:bg-surface-sunken'
+                )}
+              >
+                {lang === 'en' ? item.en : item.ar}
+              </button>
+            );
+          })}
+        </div>
+        {penaltyPercent > 0 && (
+          <p className="mt-2.5 rounded-xl bg-status-badBg px-3 py-2 text-[12px] font-bold text-status-bad">
+            {t('flow.reworkPenaltyPreview', {
+              percent: penaltyPercent,
+              raw: score,
+              final: effectiveScore,
+            })}
+          </p>
+        )}
+      </div>
+
+      <button
+        type="button"
+        onClick={() => onApprove(score)}
+        disabled={busy}
+        className="btn-primary btn-sm ms-auto gap-1.5"
+      >
+        {busy ? <Spinner size={15} /> : <ShieldCheck size={16} />}
+        {t('flow.finalApprove')}
+      </button>
+    </div>
+  );
+}
+
 function ReviewGate({
   task,
   busy,
@@ -938,6 +1034,7 @@ function ReviewGate({
 }) {
   const { t, lang } = useI18n();
   const { push } = useToast();
+  const marketingReview = (task.department ?? 'general') === 'marketing';
   const [score, setScore] = useState(task.score ?? 85);
   const [note, setNote] = useState('');
   const penaltyPercent = Math.min(100, (task.reworkCount ?? 0) * 10);
@@ -954,11 +1051,17 @@ function ReviewGate({
    * may still approve, because a score can be low for reasons that have nothing
    * to do with whether the task should stay open.
    */
-  const weak = band?.id === 'weak';
+  const weak = !marketingReview && band?.id === 'weak';
 
   const approve = async () => {
-    if (await onDecide('review', { decision: 'approved', score, note })) {
-      push(t('flow.approved.toast'));
+    if (
+      await onDecide('review', {
+        decision: 'approved',
+        note,
+        ...(marketingReview ? {} : { score }),
+      })
+    ) {
+      push(t(marketingReview ? 'flow.sentToApproval.toast' : 'flow.approved.toast'));
     }
   };
 
@@ -972,11 +1075,15 @@ function ReviewGate({
   return (
     <div className="grid gap-3.5 rounded-xl border border-surface-line bg-white p-3.5 shadow-sm">
       <div>
-        <h4 className="text-[13px] font-bold text-ink">{t('flow.reviewTitle')}</h4>
-        <p className="mt-1 text-[12px] leading-relaxed text-ink-muted">{t('flow.reviewHint')}</p>
+        <h4 className="text-[13px] font-bold text-ink">
+          {t(marketingReview ? 'flow.marketingReviewTitle' : 'flow.reviewTitle')}
+        </h4>
+        <p className="mt-1 text-[12px] leading-relaxed text-ink-muted">
+          {t(marketingReview ? 'flow.marketingReviewHint' : 'flow.reviewHint')}
+        </p>
       </div>
 
-      <div>
+      {!marketingReview && <div>
         <span className="label">{t('flow.scoreLabel')}</span>
         <div className="flex items-center gap-3">
           <span className={cx('ltr w-14 text-[30px] font-black leading-none tabular-nums', scoreTextTone(score))}>
@@ -1022,7 +1129,7 @@ function ReviewGate({
             })}
           </p>
         )}
-      </div>
+      </div>}
 
       {weak && (
         <p
@@ -1065,7 +1172,7 @@ function ReviewGate({
           className={cx('btn-sm gap-1.5', weak ? 'btn-ghost' : 'btn-primary')}
         >
           {busy && !weak ? <Spinner size={15} /> : <ShieldCheck size={16} />}
-          {t('flow.approve')}
+          {t(marketingReview ? 'flow.sendToApproval' : 'flow.approve')}
         </button>
       </div>
     </div>
