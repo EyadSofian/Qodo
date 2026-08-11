@@ -1,4 +1,4 @@
-# Odoo — الإيفينت and التعلّم الإلكتروني
+# Odoo — الإيفينتات والكورسات
 
 The workspace reads Engosoft's training out of Odoo 17 as **two** apps.
 Read-only: courses are run in Odoo, and a second system quietly editing them is
@@ -8,12 +8,12 @@ They are separate because they are different things wearing the same word:
 
 | App | Odoo model | Is | Has |
 |---|---|---|---|
-| **الإيفينت** | `event.event` + `event.track` | training with a date | lectures at a time, a room, a register, an instructor |
-| **التعلّم الإلكتروني** | `slide.channel` | recorded content | lessons, enrolment, a completion percentage, no schedule |
+| **الإيفينتات** | `event.event` + `event.track` | training with a date | lectures at a time, a room, a register, an instructor |
+| **الكورسات** | `slide.channel` | recorded content | lessons, enrolment, a completion percentage, no schedule |
 
 Merging them would leave every second column blank whichever row you looked at:
 a video has no attendance and a lecture has no completion rate. Each app has its
-own **تحليل** tab and its own Allowed-apps tile, so somebody who may see the
+own **الملخص العام** tab and its own Allowed-apps tile, so somebody who may see the
 training calendar is not automatically able to see who finished which video.
 
 ## Setup
@@ -117,7 +117,7 @@ the tiles it cannot fill rather than drawing zeroes and calling them data.
 
 The eLearning half has not been verified against the live database: the API key
 was rotated mid-build, and the account it belonged to was refused
-`slide.channel` before that. When a key exists again, open **التعلّم الإلكتروني**
+`slide.channel` before that. When a key exists again, open **الكورسات**
 and check the numbers against Odoo — and note the account needs read access to
 **eLearning** as well as Events, which are separate groups.
 
@@ -130,9 +130,35 @@ categorical pair (online/in-person, published/draft) is the validated blue and
 orange, adjacent CVD ΔE 24.7, and both segments carry a label so colour is never
 the only carrier.
 
+## Reporting periods and demand
+
+The first tab in both apps is the summary. A manager can choose 30, 90, 180 or
+365 days, or enter exact dates. Every headline number is compared with the
+equally-sized period immediately before it.
+
+In **الإيفينتات**, the filter is the event's `date_begin`: an event belongs to
+the period when it starts inside it. `event.registration` is grouped by event
+and state without downloading attendee rows:
+
+- `open` and `done` are confirmed bookings;
+- `draft` is interested but not confirmed;
+- `cancel` is reported separately;
+- an event with none of the above is shown first in the low-demand list.
+
+The event breakdown includes individual, company and private training, so the
+headline total is not an individual-course count only. Capacity and occupancy
+use `seats_max` against confirmed bookings.
+
+In **الكورسات**, the filter is `slide.channel.partner.create_date`: it measures
+memberships and invitations created in the selected period. The current status
+of that cohort supplies joined, started and completed counts. This relation is
+restricted to eLearning officers in stock Odoo. If the API account can read the
+catalogue but not `slide.channel.partner`, the period report says so and keeps
+the all-time catalogue figures visible instead of displaying invented zeroes.
+
 ## Who sees it
 
-Access is the app tile, not a new permission: an administrator ticks **الإيفينت**
-or **التعلّم الإلكتروني** under Allowed apps on the user form.
+Access is the app tile, not a new permission: an administrator ticks **الإيفينتات**
+or **الكورسات** under Allowed apps on the user form.
 `server/routes/events.js` enforces the same `canOpenApp` check the launcher draws
 with, so the tile and the API can never disagree about who is allowed in.

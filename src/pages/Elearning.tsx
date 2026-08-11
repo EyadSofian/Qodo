@@ -15,12 +15,17 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   AlertCircle,
+  BarChart3,
   BookOpen,
   CheckCircle2,
+  CircleSlash2,
   Clock,
   Layers,
+  PlayCircle,
   RefreshCw,
   Search,
+  Send,
+  UserPlus,
   Users,
 } from 'lucide-react';
 import { errorMessage } from '../lib/api';
@@ -35,8 +40,16 @@ import {
   type ElearningAnalytics,
   type ElearningCourse,
   type ElearningOverview,
+  type AnalyticsRange,
 } from '../lib/events';
 import { BarList, ChartCard, Meter, SplitBar, StatTile } from '../components/Charts';
+import {
+  AnalyticsPeriodPicker,
+  DEFAULT_ANALYTICS_RANGE,
+  DemandRanking,
+  comparisonHint,
+  dateRangeLabel,
+} from '../components/TrainingAnalytics';
 import { EmptyState, Segmented, Spinner, useToast } from '../components/ui';
 import { cx } from '../lib/utils';
 
@@ -46,21 +59,28 @@ export function Elearning() {
   const { push } = useToast();
   const [data, setData] = useState<ElearningOverview | null>(null);
   const [problem, setProblem] = useState<{ message: string; missing: string[] } | null>(null);
-  const [tab, setTab] = useState<Tab>('courses');
+  const [tab, setTab] = useState<Tab>('analysis');
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(false);
+  const [checked, setChecked] = useState(false);
+  const [analysisVersion, setAnalysisVersion] = useState(0);
 
   const load = useCallback(async () => {
     try {
       const status = await fetchStatus();
       if (!status.configured) {
         setProblem({ message: 'الاتصال بأودو لسه مش متظبط.', missing: status.missing });
+        setChecked(true);
         return;
       }
       setProblem(null);
-      setData(await fetchElearning());
+      setChecked(true);
+      fetchElearning()
+        .then(setData)
+        .catch((err) => setProblem({ message: errorMessage(err, 'ar'), missing: [] }));
     } catch (err) {
       setProblem({ message: errorMessage(err, 'ar'), missing: [] });
+      setChecked(true);
     }
   }, []);
 
@@ -72,6 +92,7 @@ export function Elearning() {
     setBusy(true);
     try {
       setData(await refreshElearning());
+      setAnalysisVersion((version) => version + 1);
       push('اتحدّثت من أودو.');
     } catch (err) {
       push(errorMessage(err, 'ar'), 'bad');
@@ -84,9 +105,9 @@ export function Elearning() {
     <div className="mx-auto w-full max-w-[1600px] px-4 py-6 sm:px-6">
       <header className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-[26px] font-extrabold text-ink">التعلّم الإلكتروني</h1>
+          <h1 className="text-[26px] font-extrabold text-ink">الكورسات</h1>
           <p className="mt-0.5 text-[13px] text-ink-muted">
-            الكورسات المسجّلة اللي الطالب بيتفرج عليها وقت ما يحب — مين مشترك وكام خلّص.
+            التعلّم الإلكتروني وقت ما الطالب يحب — الإقبال، الاشتراكات، التقدم والإكمال.
           </p>
         </div>
         <button
@@ -126,7 +147,7 @@ export function Elearning() {
         </div>
       )}
 
-      {!problem && !data && (
+      {!problem && !checked && (
         <div className="grid gap-3 md:grid-cols-2">
           {Array.from({ length: 4 }).map((_, index) => (
             <div key={index} className="skeleton h-40 rounded-2xl" />
@@ -134,20 +155,27 @@ export function Elearning() {
         </div>
       )}
 
-      {data && (
+      {!problem && checked && (
         <>
           <div className="mb-4">
             <Segmented
               value={tab}
               onChange={(value) => setTab(value as Tab)}
               options={[
-                { value: 'courses', label: 'الكورسات', count: data.courses.length },
-                { value: 'analysis', label: 'تحليل' },
+                { value: 'analysis', label: 'الملخص العام', icon: <BarChart3 size={14} /> },
+                { value: 'courses', label: 'كل الكورسات', count: data?.courses.length },
               ]}
             />
           </div>
 
-          {tab === 'courses' && (
+          {tab === 'courses' && !data && (
+            <div className="grid gap-3 md:grid-cols-2">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <div key={index} className="skeleton h-40 rounded-2xl" />
+              ))}
+            </div>
+          )}
+          {tab === 'courses' && data && (
             <>
               <div className="relative mb-3">
                 <Search
@@ -168,7 +196,7 @@ export function Elearning() {
               />
             </>
           )}
-          {tab === 'analysis' && <ElearningAnalysis />}
+          {tab === 'analysis' && <ElearningAnalysis version={analysisVersion} />}
         </>
       )}
     </div>
@@ -241,110 +269,269 @@ function CourseList({ courses }: { courses: ElearningCourse[] }) {
   );
 }
 
-function ElearningAnalysis() {
+function ElearningAnalysis({ version }: { version: number }) {
+  const [range, setRange] = useState<AnalyticsRange>(DEFAULT_ANALYTICS_RANGE);
   const [data, setData] = useState<ElearningAnalytics | null>(null);
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
-    fetchElearningAnalytics()
+    setLoading(true);
+    setError('');
+    setData(null);
+    fetchElearningAnalytics(range)
       .then((rows) => !cancelled && setData(rows))
-      .catch((err) => !cancelled && setError(errorMessage(err, 'ar')));
+      .catch((err) => !cancelled && setError(errorMessage(err, 'ar')))
+      .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [range, version]);
 
-  if (error) {
-    return (
-      <p className="flex items-center gap-2 rounded-xl bg-status-badBg px-3 py-2.5 text-[13px] font-semibold text-status-bad">
-        <AlertCircle size={16} />
-        {error}
-      </p>
-    );
-  }
-  if (!data) {
-    return (
-      <div className="grid gap-3 md:grid-cols-2">
-        {Array.from({ length: 4 }).map((_, index) => (
-          <div key={index} className="skeleton h-56 rounded-2xl" />
-        ))}
-      </div>
-    );
-  }
-
-  const { totals } = data;
-  const has = (field: string) => data.available.includes(field);
+  const totals = data?.totals;
+  const has = (field: string) => Boolean(data?.available.includes(field));
+  const top = data?.topDemand[0];
 
   return (
-    <div className="grid gap-3">
-      {data.stale && (
+    <div className="grid gap-4">
+      <AnalyticsPeriodPicker
+        value={range}
+        onApply={setRange}
+        loading={loading}
+        basis="الاشتراكات والدعوات التي أُنشئت داخل الفترة المختارة"
+      />
+
+      {error && (
+        <p className="flex items-center gap-2 rounded-xl bg-status-badBg px-3 py-2.5 text-[13px] font-semibold text-status-bad">
+          <AlertCircle size={16} />
+          {error}
+        </p>
+      )}
+
+      {!data && loading && (
+        <div className="grid gap-3 md:grid-cols-2">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div key={index} className="skeleton h-44 rounded-2xl" />
+          ))}
+        </div>
+      )}
+
+      {data?.stale && (
         <p className="mb-3 flex items-center gap-2 rounded-xl bg-status-warnBg px-3.5 py-2.5 text-[12.5px] font-semibold text-accent-600">
           <AlertCircle size={15} />
           أودو مارِدّش دلوقتي — دي آخر أرقام وصلت {staleLabel(data.fetchedAt)}.
         </p>
       )}
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <StatTile label="كورسات" value={totals.courses} hint={`${totals.published} منشور`} icon={<BookOpen size={17} />} />
-        <StatTile label="مشتركين" value={totals.members} icon={<Users size={17} />} />
-        <StatTile
-          label="خلّصوا الكورس"
-          value={totals.completed}
-          hint={
-            totals.completionRate === null
-              ? 'النسخة دي مش بتوفّر الرقم'
-              : `${totals.completionRate}٪ من المشتركين`
-          }
-          tone={totals.completionRate !== null && totals.completionRate >= 50 ? 'good' : 'plain'}
-          icon={<CheckCircle2 size={17} />}
-        />
-        <StatTile
-          label="حجم المحتوى"
-          value={totals.lessons}
-          hint={totals.hours > 0 ? `${totals.hours} ساعة` : 'درس'}
-          icon={<Layers size={17} />}
-        />
-      </div>
 
-      <div className="grid gap-3 lg:grid-cols-2">
-        <ChartCard title="أكتر الكورسات اشتراكاً" hint="عدد المشتركين">
-          <BarList data={data.topByMembers} empty="لسه محدش اشترك في أي كورس" />
-        </ChartCard>
+      {data && !data.periodAvailable && (
+        <p className="rounded-xl bg-status-warnBg px-3.5 py-3 text-[12.5px] leading-relaxed text-accent-600">
+          حساب أودو يقدر يقرأ الكورسات لكنه لا يقدر يقرأ سجل العضويات، لذلك تحليل الفترة والإقبال غير متاح.
+          امنح حساب الربط صلاحية eLearning Officer؛ أرقام كل الوقت بالأسفل ما زالت صحيحة.
+        </p>
+      )}
 
-        <ChartCard
-          title="أعلى نسب الإكمال"
-          hint="الكورسات اللي فيها ٥ مشتركين على الأقل — أقل من كده النسبة مش معبّرة"
-        >
-          <BarList data={data.topByCompletion} empty="مفيش كورس عليه مشتركين كفاية" />
-        </ChartCard>
-
-        <ChartCard title="أكبر الكورسات محتوى" hint="عدد الدروس">
-          <BarList data={data.biggest} empty="مفيش دروس متسجّلة" />
-        </ChartCard>
-
-        <ChartCard title="منشور ولا مسودة">
-          <SplitBar
-            parts={[
-              { label: 'منشور', value: totals.published },
-              { label: 'مسودة', value: totals.draft },
-            ]}
-          />
-          {has('channel_type') && data.byKind.length > 0 && (
-            <div className="mt-4 border-t border-surface-line pt-3">
-              <p className="mb-2 text-[12px] font-semibold text-ink-muted">حسب النوع</p>
-              <BarList data={data.byKind} />
+      {data?.periodAvailable && data.current && data.previous && (
+        <div className={cx('grid gap-4 transition-opacity', loading && 'opacity-55')}>
+          <section className="relative overflow-hidden rounded-2xl bg-navy px-5 py-5 text-white shadow-card">
+            <span className="absolute -end-12 -top-14 h-40 w-40 rounded-full border-[28px] border-white/[0.04]" />
+            <div className="relative grid gap-4 lg:grid-cols-[1.35fr_1fr] lg:items-end">
+              <div>
+                <p className="text-[11.5px] font-bold text-brand-200">
+                  قراءة سريعة · {dateRangeLabel(data.period.from, data.period.to)}
+                </p>
+                <h2 className="mt-2 max-w-2xl text-[19px] font-black leading-relaxed sm:text-[22px]">
+                  {top
+                    ? <><bdi dir="auto">«{top.name}»</bdi> جذب أكبر عدد جديد بـ {top.enrollments.toLocaleString('ar-EG')} اشتراك.</>
+                    : 'لم تُسجّل اشتراكات أو دعوات جديدة في الفترة المختارة.'}
+                </h2>
+                <p className="mt-2 text-[12.5px] text-white/60">
+                  {data.current.noDemand > 0
+                    ? `${data.current.noDemand.toLocaleString('ar-EG')} كورس بلا اشتراك أو دعوة جديدة خلال الفترة.`
+                    : 'كل الكورسات عليها حركة جديدة خلال الفترة.'}
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <LearningQuickFact label="بدأوا التعلّم" value={data.current.startRate === null ? '—' : `${data.current.startRate}٪`} />
+                <LearningQuickFact label="أكملوا" value={data.current.completionRate === null ? '—' : `${data.current.completionRate}٪`} />
+              </div>
             </div>
-          )}
-        </ChartCard>
-      </div>
+          </section>
 
-      {/* Said out loud rather than drawn as zeroes: a chart of a field this Odoo
-          does not have is a chart that lies quietly. */}
-      {!has('members_completed_count') && (
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <StatTile
+              label="اشتراكات جديدة"
+              value={data.current.enrollments}
+              hint={comparisonHint(data.current.enrollments, data.previous.enrollments)}
+              tone={data.current.enrollments > data.previous.enrollments ? 'good' : 'plain'}
+              icon={<UserPlus size={17} />}
+            />
+            <StatTile
+              label="دعوات لم تُقبل"
+              value={data.current.invited}
+              hint={comparisonHint(data.current.invited, data.previous.invited)}
+              icon={<Send size={17} />}
+            />
+            <StatTile
+              label="بدأوا التعلّم"
+              value={data.current.started}
+              hint={data.current.startRate === null ? 'لا توجد اشتراكات' : `${data.current.startRate}٪ من مسجلي الفترة`}
+              icon={<PlayCircle size={17} />}
+            />
+            <StatTile
+              label="أكملوا الكورس"
+              value={data.current.completed}
+              hint={comparisonHint(data.current.completed, data.previous.completed)}
+              tone={data.current.completed > data.previous.completed ? 'good' : 'plain'}
+              icon={<CheckCircle2 size={17} />}
+            />
+            <StatTile
+              label="كورسات عليها إقبال"
+              value={data.current.activeCourses}
+              hint={`${(data.current.courses - data.current.activeCourses).toLocaleString('ar-EG')} بدون حركة جديدة`}
+              icon={<BookOpen size={17} />}
+            />
+            <StatTile
+              label="بلا أي إقبال"
+              value={data.current.noDemand}
+              hint={comparisonHint(data.current.noDemand, data.previous.noDemand)}
+              tone={data.current.noDemand > 0 ? 'warn' : 'good'}
+              icon={<CircleSlash2 size={17} />}
+            />
+            <StatTile
+              label="تحويل الدعوات لاشتراك"
+              value={data.current.conversionRate === null ? '—' : `${data.current.conversionRate}٪`}
+              hint="الاشتراكات من إجمالي الاشتراكات والدعوات"
+              icon={<Users size={17} />}
+            />
+            <StatTile
+              label="إجمالي الكورسات"
+              value={data.current.courses}
+              hint={`${data.current.published.toLocaleString('ar-EG')} منشور`}
+              icon={<Layers size={17} />}
+            />
+          </div>
+
+          <div className="grid gap-3 lg:grid-cols-2">
+            <ChartCard title="الأعلى إقبالًا" hint="الاشتراكات والدعوات الجديدة داخل الفترة">
+              <DemandRanking
+                rows={data.topDemand.map((course) => ({
+                  id: course.id,
+                  name: course.name,
+                  primary: course.enrollments,
+                  secondary: course.invited,
+                  note: `${course.started.toLocaleString('ar-EG')} بدأوا · ${course.completed.toLocaleString('ar-EG')} أكملوا`,
+                }))}
+                empty="لا توجد اشتراكات أو دعوات جديدة"
+                primaryLabel="مشترك"
+                secondaryLabel="دعوة"
+              />
+            </ChartCard>
+
+            <ChartCard title="الأقل إقبالًا" hint="تبدأ بالكورسات التي لم تستقبل أي اشتراك جديد">
+              <DemandRanking
+                rows={data.lowDemand.map((course) => ({
+                  id: course.id,
+                  name: course.name,
+                  primary: course.enrollments,
+                  secondary: course.invited,
+                  note: `${course.members.toLocaleString('ar-EG')} مشترك إجمالي`,
+                }))}
+                empty="لا توجد كورسات"
+                primaryLabel="مشترك"
+                secondaryLabel="دعوة"
+              />
+            </ChartCard>
+
+            <ChartCard title="الإقبال شهرًا بشهر" hint="العضويات الجديدة حسب تاريخ إنشائها">
+              <DemandRanking
+                rows={data.trend.map((point, index) => ({
+                  id: index,
+                  name: point.label,
+                  primary: point.enrollments,
+                  secondary: point.invited,
+                  note: `${point.completed.toLocaleString('ar-EG')} أكملوا`,
+                }))}
+                empty="لا توجد حركة شهرية"
+                primaryLabel="مشترك"
+                secondaryLabel="دعوة"
+              />
+            </ChartCard>
+
+            <ChartCard title="مسار التعلّم" hint="وضع المشتركين الجدد حاليًا">
+              <BarList
+                data={[
+                  { label: 'اشتركوا', value: data.current.enrollments },
+                  { label: 'بدأوا المحتوى', value: data.current.started },
+                  { label: 'أكملوا', value: data.current.completed },
+                ]}
+              />
+            </ChartCard>
+          </div>
+        </div>
+      )}
+
+      {data && totals && (
+        <section className="grid gap-3 border-t border-surface-line pt-4">
+          <div>
+            <h2 className="text-[15px] font-extrabold text-ink">صورة كل الوقت</h2>
+            <p className="text-[11.5px] text-ink-faint">الحالة الحالية لكل الكورسات، وليست مقيدة بفترة الاشتراك.</p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <StatTile label="كورسات" value={totals.courses} hint={`${totals.published.toLocaleString('ar-EG')} منشور`} icon={<BookOpen size={17} />} />
+            <StatTile label="مشتركين" value={totals.members} icon={<Users size={17} />} />
+            <StatTile
+              label="خلّصوا الكورس"
+              value={totals.completed}
+              hint={totals.completionRate === null ? 'النسخة دي مش بتوفّر الرقم' : `${totals.completionRate}٪ من المشتركين`}
+              tone={totals.completionRate !== null && totals.completionRate >= 50 ? 'good' : 'plain'}
+              icon={<CheckCircle2 size={17} />}
+            />
+            <StatTile
+              label="حجم المحتوى"
+              value={totals.lessons}
+              hint={totals.hours > 0 ? `${totals.hours} ساعة` : 'درس'}
+              icon={<Layers size={17} />}
+            />
+          </div>
+
+          <div className="grid gap-3 lg:grid-cols-2">
+            <ChartCard title="أكتر الكورسات اشتراكًا" hint="إجمالي المشتركين الحالي">
+              <BarList data={data.topByMembers} empty="لسه محدش اشترك في أي كورس" />
+            </ChartCard>
+            <ChartCard title="أعلى نسب الإكمال" hint="الكورسات التي فيها ٥ مشتركين على الأقل">
+              <BarList data={data.topByCompletion} empty="مفيش كورس عليه مشتركين كفاية" />
+            </ChartCard>
+            <ChartCard title="أكبر الكورسات محتوى" hint="عدد الدروس">
+              <BarList data={data.biggest} empty="مفيش دروس متسجّلة" />
+            </ChartCard>
+            <ChartCard title="منشور ولا مسودة">
+              <SplitBar parts={[{ label: 'منشور', value: totals.published }, { label: 'مسودة', value: totals.draft }]} />
+              {has('channel_type') && data.byKind.length > 0 && (
+                <div className="mt-4 border-t border-surface-line pt-3">
+                  <p className="mb-2 text-[12px] font-semibold text-ink-muted">حسب النوع</p>
+                  <BarList data={data.byKind} />
+                </div>
+              )}
+            </ChartCard>
+          </div>
+        </section>
+      )}
+
+      {data && !has('members_completed_count') && (
         <p className={cx('rounded-xl bg-status-warnBg px-3.5 py-2.5 text-[12.5px] text-accent-600')}>
           نسخة أودو دي مش بتوفّر عدد اللي خلّصوا الكورس، فنسب الإكمال مش ظاهرة.
         </p>
       )}
+    </div>
+  );
+}
+
+function LearningQuickFact({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/[0.07] px-3 py-2.5 backdrop-blur">
+      <p className="text-[10.5px] font-semibold text-white/55">{label}</p>
+      <p className="mt-0.5 text-[21px] font-black tabular-nums text-white">{value}</p>
     </div>
   );
 }

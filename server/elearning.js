@@ -21,6 +21,7 @@
 import { OdooError, existingFields, odooConfigured, readGroup, searchRead } from './odoo.js';
 
 import { makeCache } from './cache.js';
+import { analyticsPeriod, publicPeriod } from './analyticsPeriod.js';
 
 const cache = makeCache(5 * 60_000);
 const cached = (key, load) => cache.get(key, load);
@@ -104,10 +105,140 @@ export async function elearningOverview() {
   });
 }
 
-export async function elearningAnalytics() {
-  if (!odooConfigured()) throw new OdooError('odoo_not_configured', 503);
+const ENROLLED_STATUSES = new Set(['joined', 'ongoing', 'completed']);
+const STARTED_STATUSES = new Set(['ongoing', 'completed']);
 
-  return cached('analytics', async () => {
+function channelId(pair) {
+  return Array.isArray(pair) ? pair[0] : null;
+}
+
+function membershipCounts(rows) {
+  const counts = new Map();
+  for (const row of rows) {
+    const id = channelId(row.channel_id);
+    if (!id) continue;
+    const count = row.__count ?? 0;
+    const current = counts.get(id) ?? {
+      invited: 0,
+      enrollments: 0,
+      started: 0,
+      completed: 0,
+    };
+    if (row.member_status === 'invited') current.invited += count;
+    if (ENROLLED_STATUSES.has(row.member_status)) current.enrollments += count;
+    if (STARTED_STATUSES.has(row.member_status)) current.started += count;
+    if (row.member_status === 'completed') current.completed += count;
+    counts.set(id, current);
+  }
+  return counts;
+}
+
+/** Pure shaping for the selected-period membership funnel and demand ranking. */
+export function buildElearningPeriodSnapshot(courses, membershipRows) {
+  const counts = membershipCounts(membershipRows);
+  const ranked = courses.map((course) => {
+    const period = counts.get(course.id) ?? {
+      invited: 0,
+      enrollments: 0,
+      started: 0,
+      completed: 0,
+    };
+    return {
+      id: course.id,
+      name: course.name,
+      published: course.published,
+      members: course.members,
+      completionRate: course.completionRate,
+      ...period,
+      demand: period.invited + period.enrollments,
+    };
+  });
+
+  const totals = ranked.reduce(
+    (sum, course) => ({
+      invited: sum.invited + course.invited,
+      enrollments: sum.enrollments + course.enrollments,
+      started: sum.started + course.started,
+      completed: sum.completed + course.completed,
+      activeCourses: sum.activeCourses + (course.demand > 0 ? 1 : 0),
+      noEnrollment: sum.noEnrollment + (course.enrollments === 0 ? 1 : 0),
+      noDemand: sum.noDemand + (course.demand === 0 ? 1 : 0),
+    }),
+    {
+      invited: 0,
+      enrollments: 0,
+      started: 0,
+      completed: 0,
+      activeCourses: 0,
+      noEnrollment: 0,
+      noDemand: 0,
+    }
+  );
+
+  const denominator = totals.invited + totals.enrollments;
+  const demandOrder = (a, b) =>
+    b.enrollments - a.enrollments || b.invited - a.invited || a.name.localeCompare(b.name, 'ar');
+  const lowOrder = (a, b) =>
+    a.enrollments - b.enrollments || a.invited - b.invited || a.name.localeCompare(b.name, 'ar');
+
+  return {
+    totals: {
+      ...totals,
+      courses: courses.length,
+      published: courses.filter((course) => course.published).length,
+      conversionRate: denominator > 0 ? Math.round((totals.enrollments / denominator) * 100) : null,
+      startRate:
+        totals.enrollments > 0 ? Math.round((totals.started / totals.enrollments) * 100) : null,
+      completionRate:
+        totals.enrollments > 0 ? Math.round((totals.completed / totals.enrollments) * 100) : null,
+    },
+    topDemand: [...ranked].filter((course) => course.demand > 0).sort(demandOrder).slice(0, 10),
+    lowDemand: [...ranked].sort(lowOrder).slice(0, 10),
+  };
+}
+
+function membershipTrend(rows) {
+  const points = new Map();
+  for (const row of rows) {
+    const raw = String(row['create_date:month'] ?? '');
+    const [month, year] = raw.split(' ');
+    const key = `${year ?? ''}-${String(Object.keys(MONTHS_AR).indexOf(month?.toLowerCase()) + 1).padStart(2, '0')}`;
+    const point = points.get(raw) ?? {
+      key,
+      label: `${MONTHS_AR[month?.toLowerCase()] ?? month ?? '—'}${year ? ` ${Number(year).toLocaleString('ar-EG', { useGrouping: false })}` : ''}`,
+      enrollments: 0,
+      invited: 0,
+      completed: 0,
+    };
+    const count = row.__count ?? 0;
+    if (row.member_status === 'invited') point.invited += count;
+    if (ENROLLED_STATUSES.has(row.member_status)) point.enrollments += count;
+    if (row.member_status === 'completed') point.completed += count;
+    points.set(raw, point);
+  }
+  return [...points.values()].sort((a, b) => a.key.localeCompare(b.key));
+}
+
+const MONTHS_AR = {
+  january: 'يناير',
+  february: 'فبراير',
+  march: 'مارس',
+  april: 'أبريل',
+  may: 'مايو',
+  june: 'يونيو',
+  july: 'يوليو',
+  august: 'أغسطس',
+  september: 'سبتمبر',
+  october: 'أكتوبر',
+  november: 'نوفمبر',
+  december: 'ديسمبر',
+};
+
+export async function elearningAnalytics({ from, to } = {}) {
+  if (!odooConfigured()) throw new OdooError('odoo_not_configured', 503);
+  const period = analyticsPeriod({ from, to });
+
+  return cached(`analytics:${period.from}:${period.to}`, async () => {
     const { courses, available } = await elearningOverview();
     const has = (field) => available.includes(field);
 
@@ -117,8 +248,6 @@ export async function elearningAnalytics() {
     const lessons = courses.reduce((sum, course) => sum + course.lessons, 0);
     const hours = courses.reduce((sum, course) => sum + course.hours, 0);
 
-    // Grouped by Odoo where the field exists, so an unusual `channel_type`
-    // configuration is reported rather than assumed.
     let byKind = [];
     if (has('channel_type')) {
       const groups = await readGroup('slide.channel', [], ['channel_type']);
@@ -133,7 +262,8 @@ export async function elearningAnalytics() {
       }));
     }
 
-    return {
+    const base = {
+      period: publicPeriod(period),
       totals: {
         courses: courses.length,
         published: published.length,
@@ -144,9 +274,6 @@ export async function elearningAnalytics() {
         hours: Math.round(hours),
         engaged: courses.reduce((sum, course) => sum + course.engaged, 0),
         completionRate:
-          // Only a rate when the number behind it exists. Reporting 0% because a
-          // field is missing is worse than reporting nothing: one is a fact
-          // about the courses and the other is a fact about the integration.
           has('members_completed_count') && members > 0
             ? Math.round((completed / members) * 100)
             : null,
@@ -156,8 +283,6 @@ export async function elearningAnalytics() {
         .filter((course) => course.members > 0)
         .slice(0, 8)
         .map((course) => ({ label: course.name, value: course.members })),
-      // Only courses with enough enrolment for a percentage to mean anything —
-      // one member who finished is not a 100% completion rate.
       topByCompletion: courses
         .filter((course) => course.members >= 5 && course.completionRate !== null)
         .sort((a, b) => (b.completionRate ?? 0) - (a.completionRate ?? 0))
@@ -173,7 +298,51 @@ export async function elearningAnalytics() {
         .slice(0, 8)
         .map((course) => ({ label: course.name, value: course.lessons })),
       available,
+      fetchedAt: new Date().toISOString(),
     };
+
+    try {
+      const currentDomain = [
+        ['active', '=', true],
+        ['create_date', '>=', period.fromOdoo],
+        ['create_date', '<', period.toOdooExclusive],
+      ];
+      const previousDomain = [
+        ['active', '=', true],
+        ['create_date', '>=', period.previousFromOdoo],
+        ['create_date', '<', period.previousToOdooExclusive],
+      ];
+      const [currentRows, previousRows, trendRows] = await Promise.all([
+        readGroup('slide.channel.partner', currentDomain, ['channel_id', 'member_status']),
+        readGroup('slide.channel.partner', previousDomain, ['channel_id', 'member_status']),
+        readGroup('slide.channel.partner', currentDomain, ['create_date:month', 'member_status']),
+      ]);
+      const current = buildElearningPeriodSnapshot(courses, currentRows);
+      const previous = buildElearningPeriodSnapshot(courses, previousRows);
+      return {
+        ...base,
+        periodAvailable: true,
+        current: current.totals,
+        previous: previous.totals,
+        topDemand: current.topDemand,
+        lowDemand: current.lowDemand,
+        trend: membershipTrend(trendRows),
+      };
+    } catch (error) {
+      // `slide.channel` can be readable while the member relation is restricted
+      // to eLearning officers. The all-time catalogue remains useful; the page
+      // says why the period funnel is unavailable instead of presenting zeroes.
+      return {
+        ...base,
+        periodAvailable: false,
+        periodError: error?.message || 'membership_analytics_unavailable',
+        current: null,
+        previous: null,
+        topDemand: [],
+        lowDemand: [],
+        trend: [],
+      };
+    }
   });
 }
 

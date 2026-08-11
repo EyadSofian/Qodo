@@ -39,6 +39,9 @@ function fail(res, error) {
   if (error instanceof OdooError) {
     return res.status(error.status).json({ error: error.message });
   }
+  if (Number.isInteger(error?.status) && error.status >= 400 && error.status < 500) {
+    return res.status(error.status).json({ error: error.message });
+  }
   console.error('[events]', error);
   return res.status(500).json({ error: 'server_error' });
 }
@@ -64,7 +67,7 @@ router.get('/elearning', gate(ELEARNING_APP_ID), async (req, res) => {
 
 router.get('/elearning/analytics', gate(ELEARNING_APP_ID), async (req, res) => {
   try {
-    res.json(await elearningAnalytics());
+    res.json(await elearningAnalytics({ from: req.query.from, to: req.query.to }));
   } catch (error) {
     fail(res, error);
   }
@@ -85,8 +88,7 @@ router.use(gate(EVENTS_APP_ID));
 
 router.get('/analytics', async (req, res) => {
   try {
-    const months = Math.min(Math.max(Number(req.query.months) || 6, 1), 24);
-    res.json(await eventsAnalytics({ months }));
+    res.json(await eventsAnalytics({ from: req.query.from, to: req.query.to }));
   } catch (error) {
     fail(res, error);
   }

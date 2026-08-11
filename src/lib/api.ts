@@ -146,6 +146,14 @@ const ERRORS: Record<string, { ar: string; en: string }> = {
   invalid_max_uses: { ar: 'عدد الاستخدامات يجب أن يكون من ١ إلى ٥٠٠.', en: 'Uses must be between 1 and 500.' },
   invalid_expiry: { ar: 'مدة الصلاحية يجب أن تكون من يوم إلى ٣٦٥ يوماً.', en: 'Expiry must be between 1 and 365 days.' },
   invalid_status: { ar: 'حالة الحساب غير معروفة.', en: 'That account status is not recognised.' },
+  invalid_analytics_period: {
+    ar: 'فترة التحليل غير صحيحة. راجع تاريخ البداية والنهاية.',
+    en: 'That reporting period is not valid. Check the start and end dates.',
+  },
+  analytics_period_too_long: {
+    ar: 'فترة التحليل أكبر من ١٠ سنوات. اختر فترة أقصر.',
+    en: 'The reporting period is longer than 10 years. Choose a shorter range.',
+  },
   too_many_attempts: {
     ar: 'محاولات كثيرة. انتظر عشر دقائق ثم أعد المحاولة.',
     en: 'Too many attempts. Wait ten minutes and try again.',

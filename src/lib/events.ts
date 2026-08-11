@@ -78,21 +78,77 @@ export interface Bar {
   display?: string;
 }
 
+export interface AnalyticsRange {
+  from: string;
+  to: string;
+}
+
+export interface AnalyticsPeriod extends AnalyticsRange {
+  previousFrom: string;
+  previousTo: string;
+  days: number;
+  basis?: 'event_start';
+}
+
+export interface EventAnalyticsTotals {
+  events: number;
+  bookings: number;
+  interested: number;
+  attended: number;
+  cancelled: number;
+  seats: number;
+  noBookings: number;
+  noDemand: number;
+  withDemand: number;
+  fillRate: number | null;
+  demandRate: number | null;
+  confirmationRate: number | null;
+}
+
+export interface EventDemandRow {
+  id: number;
+  name: string;
+  startsAt: string | null;
+  stage: string | null;
+  kind: string | null;
+  mode: string | null;
+  instructor: string | null;
+  seats: number;
+  bookings: number;
+  interested: number;
+  attended: number;
+  cancelled: number;
+  demand: number;
+  fillRate: number | null;
+}
+
 export interface EventsAnalytics {
-  months: number;
+  period: AnalyticsPeriod;
   /** True when Odoo failed and this is the last answer that worked. */
   stale?: boolean;
   fetchedAt?: string;
+  current: EventAnalyticsTotals;
+  previous: EventAnalyticsTotals;
+  topDemand: EventDemandRow[];
+  lowDemand: EventDemandRow[];
   byStage: Bar[];
   byMode: Bar[];
+  byKind: Bar[];
   byInstructor: Bar[];
-  byMonth: Bar[];
-  students: number;
-  seats: number;
-  runningCount: number;
+  trend: Array<{
+    key: string;
+    label: string;
+    events: number;
+    bookings: number;
+    interested: number;
+  }>;
 }
 
-export const fetchAnalytics = () => api.get<EventsAnalytics>('/events/analytics');
+const rangeQuery = (range: AnalyticsRange) =>
+  new URLSearchParams({ from: range.from, to: range.to }).toString();
+
+export const fetchAnalytics = (range: AnalyticsRange) =>
+  api.get<EventsAnalytics>(`/events/analytics?${rangeQuery(range)}`);
 
 /* ── eLearning ───────────────────────────────────────────────────── */
 
@@ -123,6 +179,9 @@ export interface ElearningOverview {
 export interface ElearningAnalytics {
   stale?: boolean;
   fetchedAt?: string;
+  period: AnalyticsPeriod;
+  periodAvailable: boolean;
+  periodError?: string;
   totals: {
     courses: number;
     published: number;
@@ -139,11 +198,50 @@ export interface ElearningAnalytics {
   topByCompletion: Bar[];
   biggest: Bar[];
   available: string[];
+  current: ElearningPeriodTotals | null;
+  previous: ElearningPeriodTotals | null;
+  topDemand: ElearningDemandRow[];
+  lowDemand: ElearningDemandRow[];
+  trend: Array<{
+    key: string;
+    label: string;
+    enrollments: number;
+    invited: number;
+    completed: number;
+  }>;
+}
+
+export interface ElearningPeriodTotals {
+  courses: number;
+  published: number;
+  invited: number;
+  enrollments: number;
+  started: number;
+  completed: number;
+  activeCourses: number;
+  noEnrollment: number;
+  noDemand: number;
+  conversionRate: number | null;
+  startRate: number | null;
+  completionRate: number | null;
+}
+
+export interface ElearningDemandRow {
+  id: number;
+  name: string;
+  published: boolean;
+  members: number;
+  completionRate: number | null;
+  invited: number;
+  enrollments: number;
+  started: number;
+  completed: number;
+  demand: number;
 }
 
 export const fetchElearning = () => api.get<ElearningOverview>('/events/elearning');
-export const fetchElearningAnalytics = () =>
-  api.get<ElearningAnalytics>('/events/elearning/analytics');
+export const fetchElearningAnalytics = (range: AnalyticsRange) =>
+  api.get<ElearningAnalytics>(`/events/elearning/analytics?${rangeQuery(range)}`);
 export const refreshElearning = () => api.post<ElearningOverview>('/events/elearning/refresh');
 
 /**

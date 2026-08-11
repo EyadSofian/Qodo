@@ -13,13 +13,19 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   AlertCircle,
+  BarChart3,
   CalendarClock,
+  CalendarDays,
   ChevronLeft,
+  CircleSlash2,
   Clock,
   GraduationCap,
   MapPin,
   RefreshCw,
   Search,
+  TicketCheck,
+  TrendingUp,
+  UserRoundSearch,
   Users,
   Video,
   X,
@@ -47,8 +53,16 @@ import {
   type CourseDetail,
   type CoursesOverview,
   type EventsAnalytics,
+  type AnalyticsRange,
 } from '../lib/events';
-import { BarList, ChartCard, ColumnChart, SplitBar, StatTile } from '../components/Charts';
+import { BarList, ChartCard, StatTile } from '../components/Charts';
+import {
+  AnalyticsPeriodPicker,
+  DEFAULT_ANALYTICS_RANGE,
+  DemandRanking,
+  comparisonHint,
+  dateRangeLabel,
+} from '../components/TrainingAnalytics';
 import { EmptyState, Modal, Segmented, Spinner, useToast } from '../components/ui';
 import { cx } from '../lib/utils';
 
@@ -62,10 +76,12 @@ export function Events() {
   const { push } = useToast();
   const [data, setData] = useState<CoursesOverview | null>(null);
   const [problem, setProblem] = useState<{ message: string; missing: string[] } | null>(null);
-  const [lane, setLane] = useState<Lane>('today');
+  const [lane, setLane] = useState<Lane>('analysis');
   const [openId, setOpenId] = useState<number | null>(null);
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(false);
+  const [checked, setChecked] = useState(false);
+  const [analysisVersion, setAnalysisVersion] = useState(0);
 
   const load = useCallback(async () => {
     try {
@@ -73,12 +89,17 @@ export function Events() {
       if (!status.configured) {
         setProblem({ message: 'الاتصال بأودو لسه مش متظبط.', missing: status.missing });
         setData(null);
+        setChecked(true);
         return;
       }
       setProblem(null);
-      setData(await fetchCourses());
+      setChecked(true);
+      fetchCourses()
+        .then(setData)
+        .catch((err) => setProblem({ message: errorMessage(err, 'ar'), missing: [] }));
     } catch (err) {
       setProblem({ message: errorMessage(err, 'ar'), missing: [] });
+      setChecked(true);
     }
   }, []);
 
@@ -90,6 +111,7 @@ export function Events() {
     setBusy(true);
     try {
       setData(await refreshCourses());
+      setAnalysisVersion((version) => version + 1);
       push('اتحدّثت من أودو.');
     } catch (err) {
       push(errorMessage(err, 'ar'), 'bad');
@@ -98,18 +120,13 @@ export function Events() {
     }
   };
 
-  // The first lane worth opening on: no point landing on an empty "today".
-  useEffect(() => {
-    if (data && data.today.length === 0 && data.running.length > 0) setLane('running');
-  }, [data]);
-
   return (
     <div className="mx-auto w-full max-w-[1600px] px-4 py-6 sm:px-6">
       <header className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-[26px] font-extrabold text-ink">الإيفينت</h1>
+          <h1 className="text-[26px] font-extrabold text-ink">الإيفينتات</h1>
           <p className="mt-0.5 text-[13px] text-ink-muted">
-            التدريب اللي بميعاد — محاضرات النهاردة، الكورسات الشغالة، والمدرّبين.
+            التدريب اللي بميعاد — الطلب والحجوزات، محاضرات النهاردة، والكورسات الشغالة.
           </p>
         </div>
         <button
@@ -149,7 +166,7 @@ export function Events() {
         </div>
       )}
 
-      {!problem && !data && (
+      {!problem && !checked && (
         <div className="grid gap-3 md:grid-cols-3">
           {Array.from({ length: 3 }).map((_, index) => (
             <div key={index} className="skeleton h-48 rounded-2xl" />
@@ -157,17 +174,17 @@ export function Events() {
         </div>
       )}
 
-      {data && (
+      {!problem && checked && (
         <>
           <div className="mb-4">
             <Segmented
               value={lane}
               onChange={(value) => setLane(value as Lane)}
               options={[
-                { value: 'today', label: 'النهاردة', count: data.today.length },
-                { value: 'running', label: 'شغّالة', count: data.running.length },
-                { value: 'upcoming', label: 'جاية', count: data.upcoming.length },
-                { value: 'analysis', label: 'تحليل' },
+                { value: 'analysis', label: 'الملخص العام', icon: <BarChart3 size={14} /> },
+                { value: 'today', label: 'النهاردة', count: data?.today.length },
+                { value: 'running', label: 'شغّالة', count: data?.running.length },
+                { value: 'upcoming', label: 'جاية', count: data?.upcoming.length },
               ]}
             />
           </div>
@@ -189,19 +206,26 @@ export function Events() {
             </div>
           )}
 
-          {lane === 'today' && (
+          {lane !== 'analysis' && !data && (
+            <div className="grid gap-3 md:grid-cols-3">
+              {Array.from({ length: 3 }).map((_, index) => (
+                <div key={index} className="skeleton h-48 rounded-2xl" />
+              ))}
+            </div>
+          )}
+          {lane === 'today' && data && (
             <TodayLane
               sessions={data.today.filter((session) => matches(query, session.eventName, session.name))}
               onOpen={setOpenId}
             />
           )}
-          {lane === 'running' && (
+          {lane === 'running' && data && (
             <CourseGrid courses={data.running.filter(hits(query))} onOpen={setOpenId} running />
           )}
-          {lane === 'upcoming' && (
+          {lane === 'upcoming' && data && (
             <CourseGrid courses={data.upcoming.filter(hits(query))} onOpen={setOpenId} />
           )}
-          {lane === 'analysis' && <EventsAnalysis />}
+          {lane === 'analysis' && <EventsAnalysis version={analysisVersion} />}
         </>
       )}
 
@@ -422,88 +446,216 @@ function CourseCard({
  * Loaded only when the tab is opened: it is four `read_group` calls against
  * Odoo and nobody should pay for them to look at today's lectures.
  */
-function EventsAnalysis() {
+function EventsAnalysis({ version }: { version: number }) {
+  const [range, setRange] = useState<AnalyticsRange>(DEFAULT_ANALYTICS_RANGE);
   const [data, setData] = useState<EventsAnalytics | null>(null);
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
-    fetchAnalytics()
+    setLoading(true);
+    setError('');
+    setData(null);
+    fetchAnalytics(range)
       .then((rows) => !cancelled && setData(rows))
-      .catch((err) => !cancelled && setError(errorMessage(err, 'ar')));
+      .catch((err) => !cancelled && setError(errorMessage(err, 'ar')))
+      .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [range, version]);
 
-  if (error) {
-    return (
-      <p className="flex items-center gap-2 rounded-xl bg-status-badBg px-3 py-2.5 text-[13px] font-semibold text-status-bad">
-        <AlertCircle size={16} />
-        {error}
-      </p>
-    );
-  }
-  if (!data) {
-    return (
-      <div className="grid gap-3 md:grid-cols-2">
-        {Array.from({ length: 4 }).map((_, index) => (
-          <div key={index} className="skeleton h-56 rounded-2xl" />
-        ))}
-      </div>
-    );
-  }
-
-  const fill = data.seats > 0 ? Math.round((data.students / data.seats) * 100) : null;
+  const current = data?.current;
+  const previous = data?.previous;
+  const top = data?.topDemand[0];
 
   return (
-    <div className="grid gap-3">
-      {data.stale && (
+    <div className="grid gap-4">
+      <AnalyticsPeriodPicker
+        value={range}
+        onApply={setRange}
+        loading={loading}
+        basis="الإيفينتات التي يبدأ موعدها داخل الفترة المختارة"
+      />
+
+      {error && (
+        <p className="flex items-center gap-2 rounded-xl bg-status-badBg px-3 py-2.5 text-[13px] font-semibold text-status-bad">
+          <AlertCircle size={16} />
+          {error}
+        </p>
+      )}
+
+      {!data && loading && (
+        <div className="grid gap-3 md:grid-cols-2">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div key={index} className="skeleton h-44 rounded-2xl" />
+          ))}
+        </div>
+      )}
+
+      {data?.stale && (
         <p className="mb-3 flex items-center gap-2 rounded-xl bg-status-warnBg px-3.5 py-2.5 text-[12.5px] font-semibold text-accent-600">
           <AlertCircle size={15} />
           أودو مارِدّش دلوقتي — دي آخر أرقام وصلت {staleLabel(data.fetchedAt)}.
         </p>
       )}
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <StatTile label="كورسات شغالة" value={data.runningCount} icon={<GraduationCap size={17} />} />
-        <StatTile label="طلاب في الكورسات الشغالة" value={data.students} icon={<Users size={17} />} />
-        <StatTile
-          label="أماكن متاحة"
-          value={Math.max(0, data.seats - data.students)}
-          hint={data.seats ? `من ${data.seats} مكان` : undefined}
-          icon={<CalendarClock size={17} />}
-        />
-        <StatTile
-          label="نسبة الإشغال"
-          value={fill === null ? '—' : `${fill}٪`}
-          hint={fill === null ? 'مفيش حد أقصى مسجّل' : undefined}
-          tone={fill !== null && fill >= 70 ? 'good' : 'plain'}
-          icon={<Users size={17} />}
-        />
-      </div>
 
-      <div className="grid gap-3 lg:grid-cols-2">
-        <ChartCard title="الكورسات حسب المرحلة" hint="كل الكورسات المسجّلة على النظام">
-          <BarList
-            data={data.byStage.map((row) => ({ ...row, label: stageLabel(row.label) }))}
-          />
-        </ChartCard>
+      {data && current && previous && (
+        <div className={cx('grid gap-4 transition-opacity', loading && 'opacity-55')}>
+          <section className="relative overflow-hidden rounded-2xl bg-navy px-5 py-5 text-white shadow-card">
+            <span className="absolute -end-12 -top-14 h-40 w-40 rounded-full border-[28px] border-white/[0.04]" />
+            <div className="relative grid gap-4 lg:grid-cols-[1.3fr_1fr] lg:items-end">
+              <div>
+                <p className="text-[11.5px] font-bold text-brand-200">
+                  قراءة سريعة · {dateRangeLabel(data.period.from, data.period.to)}
+                </p>
+                <h2 className="mt-2 max-w-2xl text-[19px] font-black leading-relaxed sm:text-[22px]">
+                  {top
+                    ? <><bdi dir="auto">«{top.name}»</bdi> هو الأعلى طلبًا بـ {top.bookings.toLocaleString('ar-EG')} حجز مؤكد.</>
+                    : 'لا يوجد أي حجز أو اهتمام مسجّل على إيفينتات هذه الفترة.'}
+                </h2>
+                <p className="mt-2 text-[12.5px] text-white/60">
+                  {current.noDemand > 0
+                    ? `${current.noDemand.toLocaleString('ar-EG')} إيفينت بلا حجز أو اهتمام ويحتاج مراجعة التسويق أو الموعد.`
+                    : 'كل الإيفينتات في الفترة عليها طلب مسجّل.'}
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <QuickFact label="تغطية الطلب" value={current.demandRate === null ? '—' : `${current.demandRate}٪`} />
+                <QuickFact label="تحويل الاهتمام" value={current.confirmationRate === null ? '—' : `${current.confirmationRate}٪`} />
+              </div>
+            </div>
+          </section>
 
-        <ChartCard
-          title="أكتر المدرّبين تحميلاً"
-          hint={`عدد الكورسات في آخر ${data.months} شهور`}
-        >
-          <BarList data={data.byInstructor} />
-        </ChartCard>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <StatTile
+              label="إجمالي الإيفينتات"
+              value={current.events}
+              hint={comparisonHint(current.events, previous.events)}
+              icon={<CalendarDays size={17} />}
+            />
+            <StatTile
+              label="الحجوزات المؤكدة"
+              value={current.bookings}
+              hint={comparisonHint(current.bookings, previous.bookings)}
+              tone={current.bookings > previous.bookings ? 'good' : 'plain'}
+              icon={<TicketCheck size={17} />}
+            />
+            <StatTile
+              label="المهتمون — غير مؤكد"
+              value={current.interested}
+              hint={comparisonHint(current.interested, previous.interested)}
+              icon={<UserRoundSearch size={17} />}
+            />
+            <StatTile
+              label="بلا أي طلب"
+              value={current.noDemand}
+              hint={comparisonHint(current.noDemand, previous.noDemand)}
+              tone={current.noDemand > 0 ? 'warn' : 'good'}
+              icon={<CircleSlash2 size={17} />}
+            />
+            <StatTile
+              label="نسبة الإشغال"
+              value={current.fillRate === null ? '—' : `${current.fillRate}٪`}
+              hint={current.seats ? `${current.bookings.toLocaleString('ar-EG')} من ${current.seats.toLocaleString('ar-EG')} مقعد` : 'السعة غير مسجّلة'}
+              tone={current.fillRate !== null && current.fillRate >= 70 ? 'good' : 'plain'}
+              icon={<Users size={17} />}
+            />
+            <StatTile
+              label="حضروا بالفعل"
+              value={current.attended}
+              hint={comparisonHint(current.attended, previous.attended)}
+              icon={<GraduationCap size={17} />}
+            />
+            <StatTile
+              label="إيفينتات عليها طلب"
+              value={current.withDemand}
+              hint={current.demandRate === null ? '—' : `${current.demandRate}٪ من إيفينتات الفترة`}
+              icon={<TrendingUp size={17} />}
+            />
+            <StatTile
+              label="حجوزات ملغاة"
+              value={current.cancelled}
+              hint={comparisonHint(current.cancelled, previous.cancelled)}
+              tone={current.cancelled > previous.cancelled ? 'warn' : 'plain'}
+              icon={<AlertCircle size={17} />}
+            />
+          </div>
 
-        <ChartCard title="الكورسات شهر بشهر" hint={`بداية الكورسات في آخر ${data.months} شهور`}>
-          <ColumnChart data={data.byMonth} />
-        </ChartCard>
+          <div className="grid gap-3 lg:grid-cols-2">
+            <ChartCard title="الأعلى طلبًا" hint="الحجز المؤكد والاهتمام غير المؤكد لكل إيفينت">
+              <DemandRanking
+                rows={data.topDemand.map((event) => ({
+                  id: event.id,
+                  name: event.name,
+                  primary: event.bookings,
+                  secondary: event.interested,
+                  note: [shortDate(event.startsAt), event.instructor].filter(Boolean).join(' · '),
+                }))}
+                empty="لا يوجد طلب مسجّل في الفترة"
+                primaryLabel="حجز"
+                secondaryLabel="مهتم"
+              />
+            </ChartCard>
 
-        <ChartCard title="أونلاين ولا حضوري" hint={`آخر ${data.months} شهور`}>
-          <SplitBar parts={data.byMode} />
-        </ChartCard>
-      </div>
+            <ChartCard title="الأقل طلبًا" hint="تبدأ بالتي بلا حجز أو اهتمام لتسهيل اتخاذ إجراء">
+              <DemandRanking
+                rows={data.lowDemand.map((event) => ({
+                  id: event.id,
+                  name: event.name,
+                  primary: event.bookings,
+                  secondary: event.interested,
+                  note: [shortDate(event.startsAt), kindLabel(event.kind)].filter(Boolean).join(' · '),
+                }))}
+                empty="لا توجد إيفينتات في الفترة"
+                primaryLabel="حجز"
+                secondaryLabel="مهتم"
+              />
+            </ChartCard>
+
+            <ChartCard title="الحجوزات شهرًا بشهر" hint="يربط الطلب بالشهر الذي يبدأ فيه الإيفينت">
+              <DemandRanking
+                rows={data.trend.map((point, index) => ({
+                  id: index,
+                  name: point.label,
+                  primary: point.bookings,
+                  secondary: point.interested,
+                  note: `${point.events.toLocaleString('ar-EG')} إيفينت`,
+                }))}
+                empty="لا توجد بيانات شهرية"
+                primaryLabel="حجز"
+                secondaryLabel="مهتم"
+              />
+            </ChartCard>
+
+            <ChartCard title="أفراد وشركات وخاص" hint="كل أنواع الإيفينتات داخل الفترة — ليست كورسات أفراد فقط">
+              <BarList data={data.byKind} />
+            </ChartCard>
+
+            <ChartCard title="أونلاين أم حضوري" hint="توزيع الإيفينتات حسب طريقة الحضور">
+              <BarList data={data.byMode} />
+            </ChartCard>
+
+            <ChartCard title="حسب المرحلة" hint="حالة الإيفينتات التي تبدأ داخل الفترة">
+              <BarList data={data.byStage.map((row) => ({ ...row, label: stageLabel(row.label) }))} />
+            </ChartCard>
+
+            <ChartCard title="تحميل المدرّبين" hint="عدد الإيفينتات لكل مدرّب في الفترة">
+              <BarList data={data.byInstructor} />
+            </ChartCard>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function QuickFact({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/[0.07] px-3 py-2.5 backdrop-blur">
+      <p className="text-[10.5px] font-semibold text-white/55">{label}</p>
+      <p className="mt-0.5 text-[21px] font-black tabular-nums text-white">{value}</p>
     </div>
   );
 }

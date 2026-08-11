@@ -23,6 +23,7 @@
 import { OdooError, odooConfigured, readGroup, searchRead } from './odoo.js';
 
 import { makeCache } from './cache.js';
+import { analyticsPeriod, publicPeriod } from './analyticsPeriod.js';
 
 const cache = makeCache(60_000);
 /** Aggregates change by the day, not the minute, and cost far more to fetch. */
@@ -222,6 +223,17 @@ function arabicMonth(label) {
   return MONTHS_AR[month?.toLowerCase()] ?? label ?? '—';
 }
 
+function monthLabel(iso) {
+  if (!iso) return 'بدون تاريخ';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return 'بدون تاريخ';
+  return new Intl.DateTimeFormat('ar-EG', {
+    month: 'short',
+    year: '2-digit',
+    timeZone: 'UTC',
+  }).format(date);
+}
+
 /**
  * Everything the courses page needs, in one answer.
  *
@@ -371,64 +383,216 @@ export async function courseDetail(id) {
   });
 }
 
+const ANALYTICS_EVENT_FIELDS = [
+  'name',
+  'date_begin',
+  'stage_id',
+  'event_type',
+  'attendance_method',
+  'instructor_id',
+  'seats_max',
+];
+
+const CONFIRMED_STATES = new Set(['open', 'done']);
+
+async function registrationBreakdown(eventIds) {
+  if (eventIds.length === 0) return [];
+  return readGroup(
+    'event.registration',
+    [['event_id', 'in', eventIds]],
+    ['event_id', 'state']
+  );
+}
+
+function groupedCounts(rows) {
+  const counts = new Map();
+  for (const row of rows) {
+    const eventId = idOf(row.event_id);
+    if (!eventId) continue;
+    const count = row.__count ?? 0;
+    const current = counts.get(eventId) ?? {
+      bookings: 0,
+      interested: 0,
+      attended: 0,
+      cancelled: 0,
+    };
+    if (CONFIRMED_STATES.has(row.state)) current.bookings += count;
+    if (row.state === 'draft') current.interested += count;
+    if (row.state === 'done') current.attended += count;
+    if (row.state === 'cancel') current.cancelled += count;
+    counts.set(eventId, current);
+  }
+  return counts;
+}
+
+function tally(rows, label) {
+  const counts = new Map();
+  for (const row of rows) {
+    const key = label(row);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return [...counts]
+    .map(([name, value]) => ({ label: name, value }))
+    .sort((a, b) => b.value - a.value);
+}
+
+function eventKind(kind) {
+  if (kind === 'individual') return 'أفراد';
+  if (kind === 'company') return 'شركات';
+  if (kind === 'private') return 'خاص';
+  return 'مش محدد';
+}
+
+function eventMode(mode) {
+  if (mode === 'online') return 'أونلاين';
+  if (mode === 'offline') return 'حضوري';
+  return 'مش محدد';
+}
+
+/** Pure shaping kept separate so the business counts can be verified without Odoo. */
+export function buildEventsSnapshot(eventRows, registrationRows) {
+  const registrations = groupedCounts(registrationRows);
+  const events = eventRows.map((row) => {
+    const demand = registrations.get(row.id) ?? {
+      bookings: 0,
+      interested: 0,
+      attended: 0,
+      cancelled: 0,
+    };
+    const seats = row.seats_max || 0;
+    return {
+      id: row.id,
+      name: text(row.name) ?? 'بدون اسم',
+      startsAt: asInstant(row.date_begin),
+      stage: nameOf(row.stage_id),
+      kind: text(row.event_type),
+      mode: text(row.attendance_method),
+      instructor: nameOf(row.instructor_id),
+      seats,
+      ...demand,
+      demand: demand.bookings + demand.interested,
+      fillRate: seats > 0 ? Math.round((demand.bookings / seats) * 100) : null,
+    };
+  });
+
+  const totals = events.reduce(
+    (sum, event) => ({
+      events: sum.events + 1,
+      bookings: sum.bookings + event.bookings,
+      interested: sum.interested + event.interested,
+      attended: sum.attended + event.attended,
+      cancelled: sum.cancelled + event.cancelled,
+      seats: sum.seats + event.seats,
+      noBookings: sum.noBookings + (event.bookings === 0 ? 1 : 0),
+      noDemand: sum.noDemand + (event.demand === 0 ? 1 : 0),
+      withDemand: sum.withDemand + (event.demand > 0 ? 1 : 0),
+    }),
+    {
+      events: 0,
+      bookings: 0,
+      interested: 0,
+      attended: 0,
+      cancelled: 0,
+      seats: 0,
+      noBookings: 0,
+      noDemand: 0,
+      withDemand: 0,
+    }
+  );
+
+  const trend = new Map();
+  for (const event of events) {
+    const key = event.startsAt?.slice(0, 7) ?? 'unknown';
+    const point = trend.get(key) ?? {
+      key,
+      label: monthLabel(event.startsAt),
+      events: 0,
+      bookings: 0,
+      interested: 0,
+    };
+    point.events += 1;
+    point.bookings += event.bookings;
+    point.interested += event.interested;
+    trend.set(key, point);
+  }
+
+  const demandOrder = (a, b) =>
+    b.demand - a.demand || b.bookings - a.bookings || a.name.localeCompare(b.name, 'ar');
+  const lowOrder = (a, b) =>
+    a.demand - b.demand || a.bookings - b.bookings || a.name.localeCompare(b.name, 'ar');
+
+  return {
+    totals: {
+      ...totals,
+      fillRate: totals.seats > 0 ? Math.round((totals.bookings / totals.seats) * 100) : null,
+      demandRate: totals.events > 0 ? Math.round((totals.withDemand / totals.events) * 100) : null,
+      confirmationRate:
+        totals.bookings + totals.interested > 0
+          ? Math.round((totals.bookings / (totals.bookings + totals.interested)) * 100)
+          : null,
+    },
+    topDemand: [...events].filter((event) => event.demand > 0).sort(demandOrder).slice(0, 10),
+    lowDemand: [...events].sort(lowOrder).slice(0, 10),
+    byStage: tally(events, (event) => event.stage ?? 'بدون مرحلة'),
+    byMode: tally(events, (event) => eventMode(event.mode)),
+    byKind: tally(events, (event) => eventKind(event.kind)),
+    byInstructor: tally(events, (event) => event.instructor ?? 'بدون مدرّب').slice(0, 10),
+    trend: [...trend.values()].sort((a, b) => a.key.localeCompare(b.key)),
+  };
+}
+
 /**
- * The numbers behind the analysis tab.
- *
- * Counted with `read_group`, which is Odoo doing the aggregation in Postgres
- * rather than us pulling a thousand rows across the wire to count them here.
- * That is the difference between a tab that opens and one that times out.
+ * Demand and capacity over the exact event-start window chosen by the manager.
+ * All fields pulled from event.event are stored; registrations are aggregated
+ * in Postgres by event and state, so even a long window does not download every
+ * attendee record into the workspace.
  */
-export async function eventsAnalytics({ months = 6 } = {}) {
+export async function eventsAnalytics({ from, to } = {}) {
   if (!odooConfigured()) throw new OdooError('odoo_not_configured', 503);
+  const period = analyticsPeriod({ from, to });
 
-  return slowCache.get(`analytics:${months}`, async () => {
-    const stageList = await stages();
-    const since = new Date();
-    since.setMonth(since.getMonth() - months);
+  return slowCache.get(`analytics:${period.from}:${period.to}`, async () => {
+    const currentDomain = [
+      ['date_begin', '>=', period.fromOdoo],
+      ['date_begin', '<', period.toOdooExclusive],
+    ];
+    const previousDomain = [
+      ['date_begin', '>=', period.previousFromOdoo],
+      ['date_begin', '<', period.previousToOdooExclusive],
+    ];
 
-    const [byStage, byMode, byInstructor, byMonth] = await Promise.all([
-      readGroup('event.event', [], ['stage_id']),
-      readGroup('event.event', [['date_begin', '>=', odooDate(since)]], ['attendance_method']),
-      readGroup('event.event', [
-          ['date_begin', '>=', odooDate(since)],
-          ['instructor_id', '!=', false],
-        ], ['instructor_id']),
-      readGroup('event.event', [['date_begin', '>=', odooDate(since)]], ['date_begin:month']),
+    // 2,500 comfortably covers the live catalogue while still protecting Odoo
+    // from an accidental decade-wide unbounded read.
+    const [currentEvents, previousEvents] = await Promise.all([
+      searchRead('event.event', currentDomain, ANALYTICS_EVENT_FIELDS, {
+        limit: 2500,
+        order: 'date_begin',
+      }),
+      searchRead('event.event', previousDomain, ANALYTICS_EVENT_FIELDS, {
+        limit: 2500,
+        order: 'date_begin',
+      }),
     ]);
 
-    const runningIds = stageList.filter((stage) => stage.running).map((stage) => stage.id);
-    // Seats only mean something for courses that are actually selling, so the
-    // fill rate is measured over the running ones rather than all 1,100.
-    const running = runningIds.length
-      ? await searchRead('event.event', [['stage_id', 'in', runningIds]], ['seats_max'], {
-          limit: 200,
-        })
-      : [];
-
-    const registrations = await registrationCounts(running.map((row) => row.id));
-    const seatsTaken = [...registrations.values()].reduce((sum, count) => sum + count, 0);
-    const seatsMax = running.reduce((sum, row) => sum + (row.seats_max || 0), 0);
+    const [currentRegistrations, previousRegistrations] = await Promise.all([
+      registrationBreakdown(currentEvents.map((event) => event.id)),
+      registrationBreakdown(previousEvents.map((event) => event.id)),
+    ]);
+    const current = buildEventsSnapshot(currentEvents, currentRegistrations);
+    const previous = buildEventsSnapshot(previousEvents, previousRegistrations);
 
     return {
-      months,
-      byStage: byStage
-        .map((row) => ({ label: nameOf(row.stage_id) ?? 'بدون مرحلة', value: row.__count ?? 0 }))
-        .sort((a, b) => b.value - a.value),
-      byMode: byMode.map((row) => ({
-        label: row.attendance_method === 'online' ? 'أونلاين' : row.attendance_method === 'offline' ? 'حضوري' : 'مش محدد',
-        value: row.__count ?? 0,
-      })),
-      byInstructor: byInstructor
-        .map((row) => ({ label: nameOf(row.instructor_id) ?? '—', value: row.__count ?? 0 }))
-        .sort((a, b) => b.value - a.value)
-        .slice(0, 8),
-      byMonth: byMonth.map((row) => ({
-        label: arabicMonth(String(row['date_begin:month'] ?? '')),
-        value: row.__count ?? 0,
-      })),
-      students: seatsTaken,
-      seats: seatsMax,
-      runningCount: running.length,
+      period: { ...publicPeriod(period), basis: 'event_start' },
+      current: current.totals,
+      previous: previous.totals,
+      topDemand: current.topDemand,
+      lowDemand: current.lowDemand,
+      byStage: current.byStage,
+      byMode: current.byMode,
+      byKind: current.byKind,
+      byInstructor: current.byInstructor,
+      trend: current.trend,
+      fetchedAt: new Date().toISOString(),
     };
   });
 }

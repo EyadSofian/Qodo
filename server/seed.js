@@ -105,9 +105,9 @@ export const DEFAULT_APPS = [
   {
     id: 'events',
     kind: 'internal',
-    nameAr: 'الإيفينت',
-    nameEn: 'Event',
-    descAr: 'التدريب اللي بميعاد: محاضرات النهاردة، المدرّبين، والتحليل.',
+    nameAr: 'الإيفينتات',
+    nameEn: 'Events',
+    descAr: 'التدريب اللي بميعاد: الطلب والحجوزات، محاضرات النهاردة، والتحليل.',
     url: '/events',
     icon: 'calendar',
     color: '#0EA5A5',
@@ -118,9 +118,9 @@ export const DEFAULT_APPS = [
   {
     id: 'elearning',
     kind: 'internal',
-    nameAr: 'التعلّم الإلكتروني',
-    nameEn: 'eLearning',
-    descAr: 'الكورسات المسجّلة: المشتركين، نسب الإكمال، وحجم المحتوى.',
+    nameAr: 'الكورسات',
+    nameEn: 'Courses',
+    descAr: 'التعلّم الإلكتروني: الإقبال، الاشتراكات، التقدم، ونسب الإكمال.',
     url: '/elearning',
     icon: 'folder',
     color: '#7C3AED',
@@ -184,6 +184,7 @@ export async function seed() {
   for (const app of DEFAULT_APPS) {
     if (!known.has(app.id)) await create('apps', { ...app, enabled: true, builtin: true });
   }
+  await migrateTrainingAppLabels(store);
 
   const users = await find('users');
   if (users.length === 0) {
@@ -223,6 +224,34 @@ export async function seed() {
 
   await migrateOrganisationAndTasks(store);
   return store;
+}
+
+/**
+ * Built-in ids and routes stay stable because user access lists store those ids.
+ * Only the labels presented outside the modules change. This migration runs on
+ * existing installations too; editing DEFAULT_APPS alone would affect first
+ * boot only and production would keep the old names forever.
+ */
+async function migrateTrainingAppLabels(store) {
+  const labels = {
+    events: {
+      nameAr: 'الإيفينتات',
+      nameEn: 'Events',
+      descAr: 'التدريب اللي بميعاد: الطلب والحجوزات، محاضرات النهاردة، والتحليل.',
+    },
+    elearning: {
+      nameAr: 'الكورسات',
+      nameEn: 'Courses',
+      descAr: 'التعلّم الإلكتروني: الإقبال، الاشتراكات، التقدم، ونسب الإكمال.',
+    },
+  };
+  const apps = await find('apps');
+  for (const app of apps) {
+    const patch = labels[app.id];
+    if (!patch) continue;
+    const changed = Object.entries(patch).some(([key, value]) => app[key] !== value);
+    if (changed) await store.update('apps', app.id, patch);
+  }
 }
 
 /**
