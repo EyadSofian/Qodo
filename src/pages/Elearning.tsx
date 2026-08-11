@@ -45,7 +45,7 @@ import {
   type ElearningOverview,
   type AnalyticsRange,
 } from '../lib/events';
-import { BarList, ChartCard, Meter, SplitBar, StatTile } from '../components/Charts';
+import { BarList, ChartCard, Meter, StatTile } from '../components/Charts';
 import {
   AnalyticsPeriodPicker,
   DEFAULT_ANALYTICS_RANGE,
@@ -123,7 +123,7 @@ export function Elearning() {
         <div>
           <h1 className="text-[26px] font-extrabold text-ink">الكورسات</h1>
           <p className="mt-0.5 text-[13px] text-ink-muted">
-            التعلّم الإلكتروني وقت ما الطالب يحب — الإقبال، الاشتراكات، التقدم والإكمال.
+            الكورسات المسجلة والمنشورة حاليًا — المبيعات، الاشتراكات، التقدم والإكمال.
           </p>
         </div>
         <button
@@ -644,11 +644,11 @@ function ElearningAnalysis({ version }: { version: number }) {
       {data && totals && (
         <section className="grid gap-3 border-t border-surface-line pt-4">
           <div>
-            <h2 className="text-[15px] font-extrabold text-ink">صورة كل الوقت</h2>
-            <p className="text-[11.5px] text-ink-faint">الحالة الحالية لكل الكورسات، وليست مقيدة بفترة الاشتراك.</p>
+            <h2 className="text-[15px] font-extrabold text-ink">الكتالوج المسجل الحالي</h2>
+            <p className="text-[11.5px] text-ink-faint">الكورسات المنشورة والنشطة الآن فقط؛ المسودات والمتوقفة مستبعدة.</p>
           </div>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <StatTile label="كورسات" value={totals.courses} hint={`${totals.published.toLocaleString('ar-EG')} منشور`} icon={<BookOpen size={17} />} />
+            <StatTile label="كورسات مسجلة شغالة" value={totals.courses} icon={<BookOpen size={17} />} />
             <StatTile label="مشتركين" value={totals.members} icon={<Users size={17} />} />
             <StatTile
               label="خلّصوا الكورس"
@@ -666,23 +666,11 @@ function ElearningAnalysis({ version }: { version: number }) {
           </div>
 
           <div className="grid gap-3 lg:grid-cols-2">
-            <ChartCard title="أكتر الكورسات المدفوعة اشتراكًا" hint="إجمالي المشتركين الحالي">
-              <BarList data={data.topByMembers} empty="لسه محدش اشترك في أي كورس" />
-            </ChartCard>
             <ChartCard title="أعلى نسب الإكمال" hint="الكورسات التي فيها ٥ مشتركين على الأقل">
               <BarList data={data.topByCompletion} empty="مفيش كورس عليه مشتركين كفاية" />
             </ChartCard>
             <ChartCard title="أكبر الكورسات محتوى" hint="عدد الدروس">
               <BarList data={data.biggest} empty="مفيش دروس متسجّلة" />
-            </ChartCard>
-            <ChartCard title="منشور ولا مسودة">
-              <SplitBar parts={[{ label: 'منشور', value: totals.published }, { label: 'مسودة', value: totals.draft }]} />
-              {has('channel_type') && data.byKind.length > 0 && (
-                <div className="mt-4 border-t border-surface-line pt-3">
-                  <p className="mb-2 text-[12px] font-semibold text-ink-muted">حسب النوع</p>
-                  <BarList data={data.byKind} />
-                </div>
-              )}
             </ChartCard>
           </div>
         </section>

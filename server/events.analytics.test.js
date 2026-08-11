@@ -30,15 +30,17 @@ test('event demand separates confirmed bookings, interest and no-demand events',
     { event_id: [1, 'Revit'], state: 'done', __count: 2 },
     { event_id: [1, 'Revit'], state: 'draft', __count: 3 },
     { event_id: [1, 'Revit'], state: 'cancel', __count: 1 },
+    { event_id: [2, 'BIM'], state: 'open', __count: 4 },
+    { event_id: [2, 'BIM'], state: 'draft', __count: 1 },
   ];
 
   const result = buildEventsSnapshot(events, registrations);
-  assert.equal(result.totals.events, 2);
-  assert.equal(result.totals.bookings, 6);
-  assert.equal(result.totals.interested, 3);
-  assert.equal(result.totals.attended, 2);
-  assert.equal(result.totals.noDemand, 1);
+  assert.equal(result.totals.events, 1);
+  assert.equal(result.totals.bookings, 4);
+  assert.equal(result.totals.interested, 1);
+  assert.equal(result.totals.attended, 0);
+  assert.equal(result.totals.noDemand, 0);
   assert.equal(result.totals.fillRate, 20);
-  assert.equal(result.topDemand[0].name, 'Revit');
+  assert.equal(result.topDemand[0].name, 'BIM');
   assert.equal(result.lowDemand[0].name, 'BIM');
 });

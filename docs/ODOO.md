@@ -8,8 +8,8 @@ They are separate because they are different things wearing the same word:
 
 | App | Odoo model | Is | Has |
 |---|---|---|---|
-| **الإيفينتات** | `event.event` + `event.track` | training with a date | lectures at a time, a room, a register, an instructor |
-| **الكورسات** | `slide.channel` | recorded content | lessons, enrolment, a completion percentage, no schedule |
+| **الإيفينتات** | `event.event` + `event.track` | in-person training with a date (`attendance_method=offline`) | lectures at a time, a room, a register, an instructor |
+| **الكورسات** | `slide.channel` | currently active, published recorded content (`channel_type=training`) | lessons, enrolment, a completion percentage, no schedule |
 
 Merging them would leave every second column blank whichever row you looked at:
 a video has no attendance and a lecture has no completion rate. Each app has its
@@ -132,13 +132,17 @@ the only carrier.
 
 ## Reporting periods and demand
 
-The first tab in both apps is the summary. A manager can choose 30, 90, 180 or
-365 days, or enter exact dates. Every headline number is compared with the
-equally-sized period immediately before it.
+The first tab in both apps is the summary. It opens on the current calendar
+month (the first day through today), not a rolling all-time or 90-day ranking. A
+manager can still choose 30, 90, 180 or 365 days, or enter exact dates. Every
+headline number is compared with the equally-sized period immediately before
+it.
 
 In **الإيفينتات**, the filter is the event's `date_begin`: an event belongs to
-the period when it starts inside it. `event.registration` is grouped by event
-and state without downloading attendee rows:
+the period when it starts inside it. Online events are excluded at the Odoo
+domain from the overview, today's sessions, detail and analysis.
+`event.registration` is grouped by event and state without downloading attendee
+rows:
 
 - `open` and `done` are confirmed bookings;
 - `draft` is interested but not confirmed;
@@ -162,6 +166,11 @@ as paid demand. That distinction matters here: product `list_price` is zero for
 many genuinely paid courses because website pricelists and promotions supply
 the real price, while Freelance Masterclass is free despite its channel still
 saying `enroll=payment`.
+
+Commercial rankings include only a channel that is active, published, recorded,
+and connected to an active `product.template` that can be sold, is published,
+and has `detailed_type=course`. This is why stopped courses and the 78 live
+draft channels do not appear in either the top or no-sales lists.
 
 Packages live in `training.package`; recorded components are
 `training.package.product.line → product.template`. Checkout creates one sale

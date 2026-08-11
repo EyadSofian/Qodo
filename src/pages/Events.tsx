@@ -126,7 +126,7 @@ export function Events() {
         <div>
           <h1 className="text-[26px] font-extrabold text-ink">الإيفينتات</h1>
           <p className="mt-0.5 text-[13px] text-ink-muted">
-            التدريب اللي بميعاد — الطلب والحجوزات، محاضرات النهاردة، والكورسات الشغالة.
+            التدريب الحضوري فقط — الطلب والحجوزات، محاضرات النهاردة، والكورسات الشغالة.
           </p>
         </div>
         <button
@@ -476,7 +476,7 @@ function EventsAnalysis({ version }: { version: number }) {
         value={range}
         onApply={setRange}
         loading={loading}
-        basis="الإيفينتات التي يبدأ موعدها داخل الفترة المختارة"
+        basis="الإيفينتات الحضورية فقط التي يبدأ موعدها داخل الفترة المختارة"
       />
 
       {error && (
@@ -629,12 +629,8 @@ function EventsAnalysis({ version }: { version: number }) {
               />
             </ChartCard>
 
-            <ChartCard title="أفراد وشركات وخاص" hint="كل أنواع الإيفينتات داخل الفترة — ليست كورسات أفراد فقط">
+            <ChartCard title="أفراد وشركات وخاص" hint="أنواع الإيفينتات الحضورية داخل الفترة">
               <BarList data={data.byKind} />
-            </ChartCard>
-
-            <ChartCard title="أونلاين أم حضوري" hint="توزيع الإيفينتات حسب طريقة الحضور">
-              <BarList data={data.byMode} />
             </ChartCard>
 
             <ChartCard title="حسب المرحلة" hint="حالة الإيفينتات التي تبدأ داخل الفترة">

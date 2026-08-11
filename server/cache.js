@@ -13,19 +13,36 @@
  */
 export function makeCache(freshMs) {
   const store = new Map();
+  const inflight = new Map();
+  let generation = 0;
   return {
     async get(key, load) {
       const hit = store.get(key);
       if (hit && Date.now() - hit.at < freshMs) return hit.value;
-      try {
-        const value = await load();
-        store.set(key, { at: Date.now(), value });
-        return value;
-      } catch (error) {
-        if (!hit) throw error;
-        return { ...hit.value, stale: true, fetchedAt: new Date(hit.at).toISOString() };
-      }
+      // The catalogue and its analysis open together and ask for the same Odoo
+      // rows. Share that request instead of making the slow ERP do identical
+      // work twice at the same moment.
+      if (inflight.has(key)) return inflight.get(key);
+      const startedIn = generation;
+      const request = (async () => {
+        try {
+          const value = await load();
+          if (startedIn === generation) store.set(key, { at: Date.now(), value });
+          return value;
+        } catch (error) {
+          if (!hit) throw error;
+          return { ...hit.value, stale: true, fetchedAt: new Date(hit.at).toISOString() };
+        } finally {
+          if (inflight.get(key) === request) inflight.delete(key);
+        }
+      })();
+      inflight.set(key, request);
+      return request;
     },
-    clear: () => store.clear(),
+    clear: () => {
+      generation += 1;
+      store.clear();
+      inflight.clear();
+    },
   };
 }

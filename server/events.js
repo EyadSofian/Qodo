@@ -39,6 +39,7 @@ const asInstant = (value) =>
 const nameOf = (pair) => (Array.isArray(pair) ? pair[1] : null);
 const idOf = (pair) => (Array.isArray(pair) ? pair[0] : null);
 const text = (value) => (typeof value === 'string' && value ? value : null);
+const IN_PERSON_DOMAIN = [['attendance_method', '=', 'offline']];
 
 const EVENT_FIELDS = [
   'name',
@@ -255,7 +256,7 @@ export async function coursesOverview({ days = 14 } = {}) {
     // Deliberately by stage id rather than `stage_id.inprogress`: the dotted
     // form makes Odoo join across a thousand rows and it times out.
     const running = runningIds.length
-      ? await searchRead('event.event', [['stage_id', 'in', runningIds]], EVENT_FIELDS, {
+      ? await searchRead('event.event', [...IN_PERSON_DOMAIN, ['stage_id', 'in', runningIds]], EVENT_FIELDS, {
           limit: 60,
           order: 'date_begin',
         })
@@ -264,7 +265,9 @@ export async function coursesOverview({ days = 14 } = {}) {
     const upcoming = await searchRead(
       'event.event',
       [
+        ...IN_PERSON_DOMAIN,
         ['date_begin', '>', odooDate(now)],
+        ['date_begin', '<=', odooDate(horizon)],
         ['stage_id', 'not in', [...runningIds, ...finishedIds]],
       ],
       EVENT_FIELDS,
@@ -296,6 +299,7 @@ export async function coursesOverview({ days = 14 } = {}) {
       searchRead(
         'event.track',
         [
+          ['event_id.attendance_method', '=', 'offline'],
           ['date', '>=', odooDate(now)],
           ['date', '<=', odooDate(new Date(endOfToday(now)))],
         ],
@@ -361,7 +365,7 @@ export async function courseDetail(id) {
   if (!Number.isInteger(courseId)) throw new OdooError('invalid_course', 400);
 
   return cached(`course:${courseId}`, async () => {
-    const [row] = await searchRead('event.event', [['id', '=', courseId]], EVENT_FIELDS, {
+    const [row] = await searchRead('event.event', [...IN_PERSON_DOMAIN, ['id', '=', courseId]], EVENT_FIELDS, {
       limit: 1,
     });
     if (!row) throw new OdooError('course_not_found', 404);
@@ -452,7 +456,7 @@ function eventMode(mode) {
 /** Pure shaping kept separate so the business counts can be verified without Odoo. */
 export function buildEventsSnapshot(eventRows, registrationRows) {
   const registrations = groupedCounts(registrationRows);
-  const events = eventRows.map((row) => {
+  const events = eventRows.filter((row) => row.attendance_method === 'offline').map((row) => {
     const demand = registrations.get(row.id) ?? {
       bookings: 0,
       interested: 0,
@@ -553,10 +557,12 @@ export async function eventsAnalytics({ from, to } = {}) {
 
   return slowCache.get(`analytics:${period.from}:${period.to}`, async () => {
     const currentDomain = [
+      ...IN_PERSON_DOMAIN,
       ['date_begin', '>=', period.fromOdoo],
       ['date_begin', '<', period.toOdooExclusive],
     ];
     const previousDomain = [
+      ...IN_PERSON_DOMAIN,
       ['date_begin', '>=', period.previousFromOdoo],
       ['date_begin', '<', period.previousToOdooExclusive],
     ];

@@ -164,6 +164,7 @@ export interface ElearningCourse {
   engaged: number;
   views: number;
   completionRate: number | null;
+  active: boolean;
   published: boolean;
   owner: string | null;
   access: string | null;
@@ -172,6 +173,7 @@ export interface ElearningCourse {
   productTemplateId: number | null;
   currency: string | null;
   free: boolean;
+  sellable: boolean;
   commercial: boolean;
 }
 

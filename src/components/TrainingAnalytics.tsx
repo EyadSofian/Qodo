@@ -18,7 +18,14 @@ export function rangeForDays(days: number): AnalyticsRange {
   return { from: inputDay(from), to: inputDay(to) };
 }
 
-export const DEFAULT_ANALYTICS_RANGE = rangeForDays(90);
+export function rangeForCurrentMonth(now = new Date()): AnalyticsRange {
+  return {
+    from: inputDay(new Date(now.getFullYear(), now.getMonth(), 1)),
+    to: inputDay(now),
+  };
+}
+
+export const DEFAULT_ANALYTICS_RANGE = rangeForCurrentMonth();
 
 const PRESETS = [
   { days: 30, label: '٣٠ يوم' },
@@ -45,10 +52,13 @@ export function AnalyticsPeriodPicker({
   const dirty = draft.from !== value.from || draft.to !== value.to;
 
   const activePreset = useMemo(() => {
+    const currentMonth = rangeForCurrentMonth();
+    if (value.from === currentMonth.from && value.to === currentMonth.to) return 'current-month';
     const from = new Date(`${value.from}T00:00:00`);
     const to = new Date(`${value.to}T00:00:00`);
     const days = Math.round((to.getTime() - from.getTime()) / DAY_MS) + 1;
-    return PRESETS.find((preset) => preset.days === days)?.days ?? null;
+    const preset = PRESETS.find((item) => item.days === days);
+    return preset ? String(preset.days) : null;
   }, [value]);
 
   const pickPreset = (days: number) => {
@@ -68,6 +78,22 @@ export function AnalyticsPeriodPicker({
           <p className="text-[11px] text-ink-faint">{basis}</p>
         </div>
         <div className="no-scrollbar flex max-w-full gap-1 overflow-x-auto">
+          <button
+            type="button"
+            onClick={() => {
+              const next = rangeForCurrentMonth();
+              setDraft(next);
+              onApply(next);
+            }}
+            className={cx(
+              'shrink-0 rounded-lg px-2.5 py-1.5 text-[11.5px] font-bold transition-colors',
+              activePreset === 'current-month'
+                ? 'bg-navy text-white'
+                : 'bg-white text-ink-muted hover:bg-surface-sunken'
+            )}
+          >
+            الشهر الحالي
+          </button>
           {PRESETS.map((preset) => (
             <button
               key={preset.days}
@@ -75,7 +101,7 @@ export function AnalyticsPeriodPicker({
               onClick={() => pickPreset(preset.days)}
               className={cx(
                 'shrink-0 rounded-lg px-2.5 py-1.5 text-[11.5px] font-bold transition-colors',
-                activePreset === preset.days
+                activePreset === String(preset.days)
                   ? 'bg-navy text-white'
                   : 'bg-white text-ink-muted hover:bg-surface-sunken'
               )}

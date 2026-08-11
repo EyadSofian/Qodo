@@ -71,6 +71,7 @@ const CHANNEL_WISHLIST = [
   // every completion at zero until somebody looked at the page and said so.
   'members_completed_count',
   'members_engaged_count',
+  'active',
   'is_published',
   'user_id',
   'visibility',
@@ -106,6 +107,7 @@ function shapeChannel(row) {
     completed,
     completionRate: members > 0 ? Math.round((completed / members) * 100) : null,
     published: row.is_published !== false,
+    active: row.active !== false,
     owner: nameOf(row.user_id),
     access: text(row.enroll),
     productId: idOf(row.product_id),
@@ -119,11 +121,16 @@ export async function elearningOverview() {
 
   return cached('overview', async () => {
     const fields = await channelFields();
-    const rows = await searchRead('slide.channel', [], fields, { limit: 200 });
+    const currentDomain = [];
+    if (fields.includes('active')) currentDomain.push(['active', '=', true]);
+    if (fields.includes('is_published')) currentDomain.push(['is_published', '=', true]);
+    if (fields.includes('channel_type')) currentDomain.push(['channel_type', '=', 'training']);
+    const rows = await searchRead('slide.channel', currentDomain, fields, { limit: 500 });
     const productIds = [...new Set(rows.map((row) => idOf(row.product_id)).filter(Boolean))];
     const productFields = productIds.length
       ? await existingFields('product.product', [
           'name',
+          'active',
           'product_tmpl_id',
           'currency_id',
         ])
@@ -134,22 +141,51 @@ export async function elearningOverview() {
         })
       : [];
     const productsById = new Map(products.map((product) => [product.id, product]));
+    const templateIds = [...new Set(products.map((product) => idOf(product.product_tmpl_id)).filter(Boolean))];
+    const templateFields = templateIds.length
+      ? await existingFields('product.template', [
+          'name',
+          'active',
+          'sale_ok',
+          'is_published',
+          'detailed_type',
+        ])
+      : [];
+    const templates = templateIds.length
+      ? await searchRead('product.template', [['id', 'in', templateIds]], templateFields, {
+          limit: templateIds.length,
+          context: { active_test: false },
+        })
+      : [];
+    const templatesById = new Map(templates.map((template) => [template.id, template]));
     const knownFree = freeCourseTemplateIds();
     const courses = rows
       .map((row) => {
         const course = shapeChannel(row);
         const product = productsById.get(course.productId);
         const productTemplateId = idOf(product?.product_tmpl_id);
+        const template = templatesById.get(productTemplateId);
         const free = row.enroll === 'public' || knownFree.has(productTemplateId);
+        const sellable = Boolean(
+          course.productId &&
+            productTemplateId &&
+            product?.active !== false &&
+            template &&
+            template.active !== false &&
+            template.sale_ok !== false &&
+            template.is_published !== false &&
+            (!templateFields.includes('detailed_type') || template.detailed_type === 'course')
+        );
         return {
           ...course,
           productTemplateId,
           currency: nameOf(product?.currency_id),
           free,
+          sellable,
           // A product is the only reliable bridge to a confirmed paid order.
           // Invite-only internal channels without one remain learning activity,
           // but are not presented as a product that failed to sell.
-          commercial: Boolean(course.productId && productTemplateId && !free),
+          commercial: Boolean(sellable && !free),
         };
       })
       .sort((a, b) => b.members - a.members);
@@ -491,12 +527,19 @@ export function buildElearningSalesSnapshot(courses, products, packages, saleLin
 
 async function salesCatalog(courses) {
   const products = courses
-    .filter((course) => course.productId && course.productTemplateId)
+    .filter((course) => course.commercial && course.productId && course.productTemplateId)
     .map((course) => ({
       id: course.productId,
       templateId: course.productTemplateId,
       name: course.productName ?? course.name,
     }));
+  const allowedTemplates = new Set(
+    courses.filter((course) => course.commercial).map((course) => course.productTemplateId)
+  );
+  const freeTemplates = freeCourseTemplateIds();
+  for (const course of courses) {
+    if (course.free && course.productTemplateId) freeTemplates.add(course.productTemplateId);
+  }
 
   let packages = [];
   try {
@@ -538,7 +581,13 @@ async function salesCatalog(courses) {
       : [];
     for (const variant of variants) {
       const templateId = idOf(variant.product_tmpl_id);
-      if (!templateId || products.some((product) => product.id === variant.id)) continue;
+      if (
+        !templateId ||
+        (!allowedTemplates.has(templateId) && !freeTemplates.has(templateId)) ||
+        products.some((product) => product.id === variant.id)
+      ) {
+        continue;
+      }
       products.push({ id: variant.id, templateId, name: text(variant.name) ?? nameOf(variant.product_tmpl_id) });
     }
 
@@ -546,7 +595,13 @@ async function salesCatalog(courses) {
     for (const line of lines) {
       const packageId = idOf(line.package_id);
       const templateId = idOf(line.product_id);
-      if (!packageId || !templateId) continue;
+      if (
+        !packageId ||
+        !templateId ||
+        (!allowedTemplates.has(templateId) && !freeTemplates.has(templateId))
+      ) {
+        continue;
+      }
       const current = linesByPackage.get(packageId) ?? [];
       current.push({
         templateId,
