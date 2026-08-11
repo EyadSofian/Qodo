@@ -47,6 +47,7 @@ const TONES: Record<
 > = {
   'task.assigned': { icon: ClipboardList, ring: 'bg-accent-500', bar: 'bg-accent-400', chip: 'text-accent-100' },
   'task.returned': { icon: RotateCcw, ring: 'bg-status-bad', bar: 'bg-status-bad', chip: 'text-red-100' },
+  'task.reset_pending': { icon: RotateCcw, ring: 'bg-status-warn', bar: 'bg-status-warn', chip: 'text-amber-100' },
   'task.submitted': { icon: Send, ring: 'bg-brand-400', bar: 'bg-brand-300', chip: 'text-brand-100' },
   'task.approved': { icon: CheckCircle2, ring: 'bg-status-ok', bar: 'bg-status-ok', chip: 'text-green-100' },
   'task.review_passed': { icon: CheckCircle2, ring: 'bg-brand-400', bar: 'bg-brand-300', chip: 'text-brand-100' },

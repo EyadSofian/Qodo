@@ -35,6 +35,7 @@ import { Avatar, Field, Modal, Spinner, useToast } from './ui';
 import { ModuleIcon } from './ModuleIcon';
 import {
   Deliverables,
+  ResetToPendingAction,
   ScoreChip,
   StateBadge,
   SubmissionSummary,
@@ -470,6 +471,7 @@ export function TaskDialog({
                 attachmentCount={attachments?.length ?? current.attachmentCount ?? 0}
                 onChanged={applyTask}
               />
+              <ResetToPendingAction task={current} onChanged={applyTask} />
             </div>
           </div>
 

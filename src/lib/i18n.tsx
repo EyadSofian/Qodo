@@ -288,6 +288,7 @@ const STRINGS = {
   'flow.requestChanges': { ar: 'إرجاع ← إعادة عمل', en: 'Send back → Rework' },
   'flow.reopen': { ar: 'إعادة فتح المهمة', en: 'Reopen task' },
   'flow.sendToRework': { ar: 'رجّعها إعادة عمل', en: 'Send back for rework' },
+  'flow.resetPending': { ar: 'إرجاع إلى Pending', en: 'Return to Pending' },
   'profile.workload': { ar: 'الشغل', en: 'Workload' },
   'profile.workloadHint': { ar: 'خلص كام وفاضل كام', en: 'How much is done and how much is left' },
   'profile.speed': { ar: 'بتخلص في قد إيه', en: 'How long a task takes' },
@@ -317,6 +318,10 @@ const STRINGS = {
   },
   'tasks.noAssignees': { ar: 'مفيش حد تقدر تسنده هنا.', en: 'Nobody here you can assign.' },
   'flow.confirmReopen': { ar: 'إعادة فتح «{title}»؟ سيرجع للموظف من جديد.', en: 'Reopen “{title}”? It goes back to the assignee.' },
+  'flow.confirmResetPending': {
+    ar: 'إرجاع «{title}» إلى Pending؟ سيتم إلغاء حالة التسليم والمراجعة والموافقة والتقييم الحالية.',
+    en: 'Return “{title}” to Pending? Its current submission, review, approval and score state will be cleared.',
+  },
 
   'flow.deliverables': { ar: 'ملفات التسليم', en: 'Deliverables' },
   'flow.deliverablesHint': {
@@ -409,6 +414,7 @@ const STRINGS = {
   'flow.returned.toast': { ar: 'رجعت المهمة للموظف مع ملاحظاتك.', en: 'Sent back with your notes.' },
   'flow.reopened.toast': { ar: 'أُعيد فتح المهمة.', en: 'Task reopened.' },
   'flow.published.toast': { ar: 'تمت الموافقة النهائية ونُقلت المهمة إلى منجزة.', en: 'Final approval recorded and task marked done.' },
+  'flow.resetPending.toast': { ar: 'رجعت المهمة إلى Pending.', en: 'Task returned to Pending.' },
 
   'flow.awaitingYou': { ar: 'بانتظار مراجعتك', en: 'Waiting for your review' },
   'flow.awaitingManager': { ar: 'عند المدير للمراجعة', en: 'With the manager' },
@@ -817,6 +823,7 @@ const STRINGS = {
   'activity.app.delete': { ar: 'أزال تطبيقاً', en: 'removed an app' },
   'activity.task.create': { ar: 'أضاف مهمة', en: 'created a task' },
   'activity.task.update': { ar: 'عدّل مهمة', en: 'updated a task' },
+  'activity.task.reset_pending': { ar: 'أعاد مهمة إلى Pending', en: 'returned a task to Pending' },
   'activity.task.delete': { ar: 'حذف مهمة', en: 'deleted a task' },
 
   /* ── assistant ───────────────────────────────────────────── */

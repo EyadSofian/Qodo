@@ -43,6 +43,7 @@ import {
   SCORE_BANDS,
   assignmentFor,
   canPublish,
+  canResetToPending,
   canReopen,
   canReview,
   canRespondToAssignment,
@@ -536,6 +537,48 @@ export function SubmissionSummary({ task }: { task: Task }) {
 }
 
 /* ── the gates ───────────────────────────────────────────────────── */
+
+/** The named Marketing desks' hard reset, kept visible beside every gate. */
+export function ResetToPendingAction({
+  task,
+  onChanged,
+}: {
+  task: Task;
+  onChanged: (task: Task) => void;
+}) {
+  const { user } = useAuth();
+  const { t, lang } = useI18n();
+  const { push } = useToast();
+  const [busy, setBusy] = useState(false);
+
+  if (stateOf(task) === 'assigned' || !canResetToPending(user, task)) return null;
+
+  const reset = async () => {
+    if (!window.confirm(t('flow.confirmResetPending', { title: task.title }))) return;
+    setBusy(true);
+    try {
+      const { task: updated } = await api.post<{ task: Task }>(
+        `/tasks/${task.id}/reset-to-pending`,
+        {}
+      );
+      onChanged(updated);
+      push(t('flow.resetPending.toast'));
+    } catch (err) {
+      push(errorMessage(err, lang), 'bad');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mt-3 flex border-t border-surface-line pt-3">
+      <button type="button" onClick={reset} disabled={busy} className="btn-ghost btn-sm gap-1.5">
+        {busy ? <Spinner size={15} /> : <RotateCcw size={15} />}
+        {t('flow.resetPending')}
+      </button>
+    </div>
+  );
+}
 
 /**
  * The action rail. One card, and it only ever shows the moves the person

@@ -142,6 +142,7 @@ let creativeCookie;
 let adminCookie;
 let finalApprover;
 let finalApproverCookie;
+let completedMarketingTaskId;
 
 test('tenant policy rejects cross-organization task and people access', () => {
   const managerA = {
@@ -474,14 +475,21 @@ test('the board cannot be dragged past either gate', async () => {
     assert.equal(sideways.status, 403, `employee moved the card to ${stage}`);
   }
 
-  // The manager rearranging the board is exactly what dragging is for.
+  // Returning to Pending is now an explicit reset rather than a stage-only
+  // patch, because its lifecycle stamps must move with it.
   const ordinaryMove = await request(`/tasks/${task.id}`, {
     method: 'PATCH',
     cookie: managerCookie,
     body: { stage: 'pending' },
   });
-  assert.equal(ordinaryMove.status, 200);
-  assert.equal(ordinaryMove.data.task.stage, 'pending');
+  assert.equal(ordinaryMove.status, 409);
+  assert.equal(ordinaryMove.data.error, 'reset_pending_required');
+  const resetToPending = await request(`/tasks/${task.id}/reset-to-pending`, {
+    method: 'POST',
+    cookie: managerCookie,
+  });
+  assert.equal(resetToPending.status, 200);
+  assert.equal(resetToPending.data.task.stage, 'pending');
 
   const bornInReview = await request('/tasks', {
     method: 'POST',
@@ -880,6 +888,7 @@ test('assign → deliver → review → approve, including the rework loop', asy
   assert.equal(published.data.task.scoreBeforeReworkPenalty, 88);
   assert.equal(published.data.task.score, 70.4);
   assert.ok(published.data.task.completedAt);
+  completedMarketingTaskId = task.id;
 
   const draggedOutOfDone = await request(`/tasks/${task.id}`, {
     method: 'PATCH',
@@ -1098,6 +1107,78 @@ test('the overview counts rework, queue depth and first-pass approvals', async (
   assert.equal(row.reworkCycles, 2);
   assert.equal(row.onTimeRate, 100);
   assert.equal(typeof overview.data.summary.awaitingReview, 'number');
+});
+
+test('Mirna and Seddik can return any Marketing stage to Pending', async () => {
+  const employeeReset = await request(
+    `/tasks/${completedMarketingTaskId}/reset-to-pending`,
+    { method: 'POST', cookie: creativeCookie }
+  );
+  assert.equal(employeeReset.status, 403);
+
+  // Seddik can pull a fully approved and scored task back without needing the
+  // generic task-edit permission his account deliberately does not carry.
+  const finalApproverReset = await request(
+    `/tasks/${completedMarketingTaskId}/reset-to-pending`,
+    { method: 'POST', body: { order: 125 }, cookie: finalApproverCookie }
+  );
+  assert.equal(finalApproverReset.status, 200);
+  assert.equal(finalApproverReset.data.task.stage, 'pending');
+  assert.equal(finalApproverReset.data.task.order, 125);
+  assert.equal(finalApproverReset.data.task.progress, 0);
+  assert.equal(finalApproverReset.data.task.startedAt, null);
+  assert.equal(finalApproverReset.data.task.submittedAt, null);
+  assert.equal(finalApproverReset.data.task.submittedBy, null);
+  assert.equal(finalApproverReset.data.task.submissionNote, '');
+  assert.equal(finalApproverReset.data.task.reviewedAt, null);
+  assert.equal(finalApproverReset.data.task.reviewedBy, null);
+  assert.equal(finalApproverReset.data.task.reviewDecision, null);
+  assert.equal(finalApproverReset.data.task.completedAt, null);
+  assert.equal(finalApproverReset.data.task.score, null);
+  assert.equal(finalApproverReset.data.task.scoreBy, null);
+  assert.equal(finalApproverReset.data.task.reworkCount, 2);
+  assert.equal(finalApproverReset.data.task.scorePenaltyPercent, 20);
+  assert.equal(finalApproverReset.data.task.attachmentCount, 1);
+
+  const employeeAlerts = await request('/notifications', { cookie: creativeCookie });
+  assert.ok(
+    employeeAlerts.data.notifications.some(
+      (notification) =>
+        notification.type === 'task.reset_pending' &&
+        notification.link === `/tasks?task=${completedMarketingTaskId}`
+    )
+  );
+
+  // Mirna has the same reset from a non-terminal stage.
+  const { task: workingTask } = await create(
+    '/tasks',
+    {
+      title: 'Reset a working Marketing task',
+      department: 'marketing',
+      stage: 'pending',
+    },
+    managerCookie
+  );
+  const started = await request(`/tasks/${workingTask.id}/start`, {
+    method: 'POST',
+    cookie: managerCookie,
+  });
+  assert.equal(started.status, 200);
+  assert.equal(started.data.task.stage, 'working');
+
+  const mirnaReset = await request(`/tasks/${workingTask.id}/reset-to-pending`, {
+    method: 'POST',
+    cookie: managerCookie,
+  });
+  assert.equal(mirnaReset.status, 200);
+  assert.equal(mirnaReset.data.task.stage, 'pending');
+
+  const activity = await request('/notifications/activity', { cookie: adminCookie });
+  assert.ok(
+    activity.data.activity.some(
+      (entry) => entry.action === 'task.reset_pending' && entry.subjectId === workingTask.id
+    )
+  );
 });
 
 test('a sub-team scope hides the rest of the department but never own work', () => {

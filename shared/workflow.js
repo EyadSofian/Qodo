@@ -323,6 +323,23 @@ export function canPublish(user, task) {
 }
 
 /**
+ * Marketing's two named desks may pull a task all the way back to Pending.
+ *
+ * This is deliberately narrower than ordinary review authority: Mirna and
+ * Seddik need the operational escape hatch from every later column, while a
+ * manager in another department must keep using that department's normal
+ * review/reopen actions. Administrators retain emergency access.
+ */
+export function canResetToPending(user, task) {
+  if (!user || departmentOfTask(task) !== 'marketing') return false;
+  return (
+    user.role === 'admin' ||
+    hasTaskWorkflowRole(user, TASK_WORKFLOW_ROLES.MARKETING_REVIEWER) ||
+    hasTaskWorkflowRole(user, TASK_WORKFLOW_ROLES.MARKETING_FINAL_APPROVER)
+  );
+}
+
+/**
  * Reopening is a manager's correction, not an employee's undo. It reaches back
  * from sign-off too: work reviewed this morning and not finally approved is the
  * easiest thing to pull back, and refusing there would mean publishing it first
@@ -347,6 +364,7 @@ export function canScore(user) {
  *   'submit'     this is a hand-in; it needs a deliverable, so use the submit gate
  *   'review'     this is a review/final-approval gate, so use its explicit action
  *   'reopen'     approved work must be reopened explicitly before it can move
+ *   'reset'      a named Marketing desk is returning it all the way to Pending
  *   'forbidden'  the caller cannot make this transition
  *
  * The client turns every non-'ok' verdict into the matching task action rather
@@ -375,6 +393,11 @@ export function stageWriteVerdict(user, task, nextDepartment, nextStage) {
     nextStage === task.stage &&
     departmentOfTask({ department: nextDepartment }) === departmentOfTask(task);
   if (sameStage) return 'ok';
+
+  // Mirna and Seddik have one explicit escape hatch from every later state.
+  // It goes through its own endpoint because moving to Pending must clear the
+  // current delivery, review, completion and score stamps as one transaction.
+  if (to === 'assigned' && canResetToPending(user, task)) return 'reset';
 
   const forward = TASK_STATES.indexOf(to) > TASK_STATES.indexOf(from);
   const reviewer = canReviewWork(user);

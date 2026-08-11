@@ -31,7 +31,13 @@ import {
   subteamLabel,
   stageType,
 } from '@shared/departments';
-import { assigneesOf, isAssignee, isReviewer, stageWriteVerdict } from '@shared/workflow';
+import {
+  assigneesOf,
+  canResetToPending,
+  isAssignee,
+  isReviewer,
+  stageWriteVerdict,
+} from '@shared/workflow';
 import { TaskDialog, TaskMeta } from '../components/TaskDialog';
 import { ScoreChip, StateBadge, returnedLabel, stateOf } from '../components/TaskWorkflow';
 import { ModuleIcon } from '../components/ModuleIcon';
@@ -315,7 +321,11 @@ export function Tasks() {
    * API, and a card that springs back is a worse answer than one that never
    * lifted.
    */
-  const canMove = useCallback((_task: Task) => isReviewer(user), [user]);
+  const canMove = useCallback(
+    (task: Task) =>
+      isReviewer(user) || (stateOf(task) !== 'assigned' && canResetToPending(user, task)),
+    [user]
+  );
 
   /**
    * Move optimistically so the card lands where it was dropped immediately,
@@ -351,6 +361,26 @@ export function Tasks() {
         push(t('flow.managerOnly'), 'bad');
         return;
       }
+      if (verdict === 'reset') {
+        if (!window.confirm(t('flow.confirmResetPending', { title: task.title }))) return;
+        const siblings = column.filter((item) => item.id !== taskId);
+        const order = orderBetween(siblings[index - 1]?.order, siblings[index]?.order);
+        try {
+          const { task: updated } = await api.post<{ task: Task }>(
+            `/tasks/${taskId}/reset-to-pending`,
+            { order }
+          );
+          setTasks((list) =>
+            (list ?? []).map((item) => (item.id === taskId ? updated : item))
+          );
+          reloadTaskCounts().catch(() => {});
+          push(t('flow.resetPending.toast'));
+        } catch (err) {
+          push(errorMessage(err, lang), 'bad');
+          load().catch(() => {});
+        }
+        return;
+      }
       // Every other non-'ok' verdict names an action with something to collect —
       // an answer to the assignment, a deliverable, a score — so the task opens
       // on whichever gate is asking rather than the card moving on its own.
@@ -375,7 +405,7 @@ export function Tasks() {
         load().catch(() => {});
       }
     },
-    [tasks, department, byColumn, push, lang, load, user, t, openTask]
+    [tasks, department, byColumn, push, lang, load, reloadTaskCounts, user, t, openTask]
   );
 
   /**

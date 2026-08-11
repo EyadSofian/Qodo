@@ -18,6 +18,7 @@ import {
   ASSIGNMENT_ACTIONS,
   canApproveWork,
   canPublish,
+  canResetToPending,
   canReopen,
   assigneesOf,
   assignmentFor,
@@ -480,6 +481,7 @@ router.patch('/:id', async (req, res) => {
   if (verdict === 'review') return res.status(409).json({ error: 'review_required' });
   if (verdict === 'reopen') return res.status(409).json({ error: 'reopen_required' });
   if (verdict === 'publish') return res.status(409).json({ error: 'publish_required' });
+  if (verdict === 'reset') return res.status(409).json({ error: 'reset_pending_required' });
   if (verdict === 'forbidden') return res.status(403).json({ error: 'forbidden' });
 
   const assignmentChanged =
@@ -1054,6 +1056,73 @@ router.post('/:id/publish', async (req, res) => {
       score: effectiveScore,
       scoreBeforeReworkPenalty: roundedScore,
       scorePenaltyPercent,
+    },
+  });
+  res.json({ task: taskForUser(req.user, updated) });
+});
+
+/**
+ * Mirna or Seddik may return any Marketing task to the start of the board.
+ *
+ * This is not a plain stage edit. A task cannot honestly be Pending while it
+ * still carries a current hand-in, approval, completion or score, so all of
+ * those stamps are cleared together. Rework history and deliverables stay: the
+ * former is an employee-performance fact, and the latter may still be useful
+ * when the work starts again.
+ */
+router.post('/:id/reset-to-pending', async (req, res) => {
+  const store = await getStore();
+  const task = await loadLive(req, res);
+  if (!task) return;
+  if (!canResetToPending(req.user, task)) {
+    return res.status(403).json({ error: 'forbidden' });
+  }
+
+  const department = task.department ?? DEFAULT_DEPARTMENT;
+  const requestedOrder = Number(req.body?.order);
+  const patch = {
+    stage: stageForState(department, 'assigned', firstStage(department)),
+    progress: 0,
+    startedAt: null,
+    submittedAt: null,
+    submittedBy: null,
+    submissionNote: '',
+    reviewedAt: null,
+    reviewedBy: null,
+    reviewNote: '',
+    reviewDecision: null,
+    publishedAt: null,
+    publishedBy: null,
+    completedAt: null,
+    score: null,
+    scoreBeforeReworkPenalty: null,
+    scorePenaltyPercent: reworkPenaltyPercent(task.reworkCount ?? 0),
+    scoreBy: null,
+    scoredAt: null,
+    overdueNotifiedFor: null,
+  };
+  if (Number.isFinite(requestedOrder)) patch.order = requestedOrder;
+
+  const updated = await store.update('tasks', task.id, patch);
+
+  await notifyPartners(task, req.user.id, {
+    type: 'task.reset_pending',
+    title: { ar: 'أُعيدت المهمة إلى Pending', en: 'Task returned to Pending' },
+    body: {
+      ar: `أعاد ${req.user.name} «${updated.title}» إلى Pending لبدء دورة العمل من جديد.`,
+      en: `${req.user.name} returned “${updated.title}” to Pending to restart its workflow.`,
+    },
+    link: `/tasks?task=${updated.id}`,
+  });
+  await logActivity({
+    actorId: req.user.id,
+    action: 'task.reset_pending',
+    subject: 'task',
+    subjectId: task.id,
+    meta: {
+      title: task.title,
+      fromStage: task.stage,
+      reworkCount: task.reworkCount ?? 0,
     },
   });
   res.json({ task: taskForUser(req.user, updated) });
