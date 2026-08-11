@@ -166,6 +166,13 @@ export interface ElearningCourse {
   completionRate: number | null;
   published: boolean;
   owner: string | null;
+  access: string | null;
+  productId: number | null;
+  productName: string | null;
+  productTemplateId: number | null;
+  currency: string | null;
+  free: boolean;
+  commercial: boolean;
 }
 
 export interface ElearningOverview {
@@ -198,6 +205,14 @@ export interface ElearningAnalytics {
   topByCompletion: Bar[];
   biggest: Bar[];
   available: string[];
+  salesAvailable: boolean;
+  salesError?: string | null;
+  currency: string | null;
+  commercialCurrent: ElearningCommercialTotals | null;
+  commercialPrevious: ElearningCommercialTotals | null;
+  topPaidCourses: ElearningCourseSalesRow[];
+  noPaidSales: ElearningCourseSalesRow[];
+  packageSales: ElearningPackageSalesRow[];
   current: ElearningPeriodTotals | null;
   previous: ElearningPeriodTotals | null;
   topDemand: ElearningDemandRow[];
@@ -209,6 +224,47 @@ export interface ElearningAnalytics {
     invited: number;
     completed: number;
   }>;
+  freeActivity: ElearningPeriodTotals | null;
+}
+
+export interface ElearningCommercialTotals {
+  paidOrders: number;
+  purchases: number;
+  directSales: number;
+  packagesSold: number;
+  revenue: number;
+  directRevenue: number;
+  packageRevenue: number;
+  paidCourses: number;
+  coursesWithSales: number;
+  noSales: number;
+  freeExcluded: number;
+}
+
+export interface ElearningCourseSalesRow {
+  id: number;
+  templateId: number;
+  name: string;
+  published: boolean;
+  directSales: number;
+  packageSales: number;
+  totalSales: number;
+  directRevenue: number;
+  directOrders: number;
+  packageOrders: number;
+  packages: string[];
+}
+
+export interface ElearningPackageSalesRow {
+  id: number;
+  name: string;
+  componentCount: number;
+  components: string[];
+  sales: number;
+  revenue: number;
+  orders: number;
+  previousSales: number;
+  previousRevenue: number;
 }
 
 export interface ElearningPeriodTotals {

@@ -27,7 +27,29 @@ const cache = makeCache(5 * 60_000);
 const cached = (key, load) => cache.get(key, load);
 
 const nameOf = (pair) => (Array.isArray(pair) ? pair[1] : null);
+const idOf = (pair) => (Array.isArray(pair) ? pair[0] : null);
 const text = (value) => (typeof value === 'string' && value ? value : null);
+
+/**
+ * Odoo does not expose a dependable "this course is free" flag in this
+ * database. `list_price` is zero even on paid courses because the real price
+ * comes from website pricelists and promotions, and The Freelance Masterclass
+ * is still configured with `enroll=payment` although it is a free inclusion.
+ *
+ * Template ids are the stable join key used by package lines and sale lines.
+ * The default records the known Engosoft free course; the environment variable
+ * makes the business rule editable without a deploy when another free course
+ * is introduced. Zero-value sale lines are excluded independently as a second
+ * guard, so a free checkout can never become paid demand.
+ */
+function freeCourseTemplateIds() {
+  return new Set(
+    (process.env.ODOO_FREE_COURSE_TEMPLATE_IDS || '2056')
+      .split(',')
+      .map((value) => Number(value.trim()))
+      .filter(Number.isInteger)
+  );
+}
 
 /**
  * Everything worth showing, and nothing that must be there.
@@ -53,6 +75,8 @@ const CHANNEL_WISHLIST = [
   'user_id',
   'visibility',
   'enroll',
+  'product_id',
+  'path_channel_ids',
 ];
 
 let channelFieldsCache = null;
@@ -83,6 +107,9 @@ function shapeChannel(row) {
     completionRate: members > 0 ? Math.round((completed / members) * 100) : null,
     published: row.is_published !== false,
     owner: nameOf(row.user_id),
+    access: text(row.enroll),
+    productId: idOf(row.product_id),
+    productName: nameOf(row.product_id),
   };
 }
 
@@ -93,7 +120,39 @@ export async function elearningOverview() {
   return cached('overview', async () => {
     const fields = await channelFields();
     const rows = await searchRead('slide.channel', [], fields, { limit: 200 });
-    const courses = rows.map(shapeChannel).sort((a, b) => b.members - a.members);
+    const productIds = [...new Set(rows.map((row) => idOf(row.product_id)).filter(Boolean))];
+    const productFields = productIds.length
+      ? await existingFields('product.product', [
+          'name',
+          'product_tmpl_id',
+          'currency_id',
+        ])
+      : [];
+    const products = productIds.length
+      ? await searchRead('product.product', [['id', 'in', productIds]], productFields, {
+          limit: productIds.length,
+        })
+      : [];
+    const productsById = new Map(products.map((product) => [product.id, product]));
+    const knownFree = freeCourseTemplateIds();
+    const courses = rows
+      .map((row) => {
+        const course = shapeChannel(row);
+        const product = productsById.get(course.productId);
+        const productTemplateId = idOf(product?.product_tmpl_id);
+        const free = row.enroll === 'public' || knownFree.has(productTemplateId);
+        return {
+          ...course,
+          productTemplateId,
+          currency: nameOf(product?.currency_id),
+          free,
+          // A product is the only reliable bridge to a confirmed paid order.
+          // Invite-only internal channels without one remain learning activity,
+          // but are not presented as a product that failed to sell.
+          commercial: Boolean(course.productId && productTemplateId && !free),
+        };
+      })
+      .sort((a, b) => b.members - a.members);
 
     return {
       courses,
@@ -197,6 +256,371 @@ export function buildElearningPeriodSnapshot(courses, membershipRows) {
   };
 }
 
+const number = (value) => (Number.isFinite(Number(value)) ? Number(value) : 0);
+const money = (value) => Math.round((number(value) + Number.EPSILON) * 100) / 100;
+
+function earlierThanOrEqual(left, right) {
+  return !left || !right || String(left) <= String(right);
+}
+
+function canonicalCourseByTemplate(courses) {
+  const result = new Map();
+  for (const course of courses) {
+    if (!course.productTemplateId) continue;
+    const current = result.get(course.productTemplateId);
+    if (
+      !current ||
+      (course.published && !current.published) ||
+      (course.published === current.published && course.members > current.members)
+    ) {
+      result.set(course.productTemplateId, course);
+    }
+  }
+  return result;
+}
+
+/**
+ * Turn confirmed sale lines into one non-duplicated commercial picture.
+ *
+ * A package is not a product in this Odoo. Checkout adds each mapped course as
+ * a sale line, so blindly grouping by product counts one package six times.
+ * We recognise the mapped set inside an order, assign the order to the largest
+ * matching package, and remove those lines from direct-course sales. Components
+ * still receive `packageSales` so the manager can see how often a course moved
+ * inside packages, but package revenue is kept on the package only.
+ */
+export function buildElearningSalesSnapshot(courses, products, packages, saleLines) {
+  const freeTemplates = freeCourseTemplateIds();
+  for (const course of courses) {
+    if (course.free && course.productTemplateId) freeTemplates.add(course.productTemplateId);
+  }
+  const productsById = new Map(products.map((product) => [product.id, product]));
+  const canonicalCourses = canonicalCourseByTemplate(courses);
+  const catalogByTemplate = new Map();
+
+  for (const product of products) {
+    if (!product.templateId || freeTemplates.has(product.templateId)) continue;
+    const course = canonicalCourses.get(product.templateId);
+    const current = catalogByTemplate.get(product.templateId);
+    if (!current || course) {
+      catalogByTemplate.set(product.templateId, {
+        id: course?.id ?? -product.templateId,
+        templateId: product.templateId,
+        name: course?.name ?? product.name ?? 'بدون اسم',
+        published: course?.published ?? true,
+        directSales: 0,
+        packageSales: 0,
+        directRevenue: 0,
+        directOrders: new Set(),
+        packageOrders: new Set(),
+        packageNames: new Set(),
+      });
+    }
+  }
+
+  const packageStates = new Map(
+    packages.map((item) => [
+      item.id,
+      {
+        id: item.id,
+        name: item.name,
+        componentCount: item.components.filter((component) => !freeTemplates.has(component.templateId))
+          .length,
+        components: item.components.map((component) => component.name),
+        sales: 0,
+        revenue: 0,
+        orders: new Set(),
+      },
+    ])
+  );
+
+  const orders = new Map();
+  for (const row of saleLines) {
+    const orderId = idOf(row.order_id);
+    const productId = idOf(row.product_id);
+    const product = productsById.get(productId);
+    const quantity = number(row.product_uom_qty);
+    if (!orderId || !product?.templateId || quantity <= 0) continue;
+    const order = orders.get(orderId) ?? { at: row.create_date ?? null, lines: [] };
+    if (row.create_date && (!order.at || row.create_date < order.at)) order.at = row.create_date;
+    order.lines.push({
+      productId,
+      templateId: product.templateId,
+      quantity,
+      subtotal: number(row.price_subtotal),
+    });
+    orders.set(orderId, order);
+  }
+
+  const paidOrders = new Set();
+  let directSales = 0;
+  let directRevenue = 0;
+
+  for (const [orderId, order] of orders) {
+    const quantities = new Map();
+    for (const line of order.lines) {
+      quantities.set(line.templateId, (quantities.get(line.templateId) ?? 0) + line.quantity);
+    }
+
+    const candidates = packages
+      .filter((item) => earlierThanOrEqual(item.createdAt, order.at))
+      .map((item) => {
+        const activeComponents = item.components.filter((component) =>
+          earlierThanOrEqual(component.createdAt, order.at)
+        );
+        const required = [
+          ...new Set(
+            activeComponents
+              .map((component) => component.templateId)
+              .filter((templateId) => templateId && !freeTemplates.has(templateId))
+          ),
+        ];
+        return { item, activeComponents, required };
+      })
+      .filter(
+        ({ required }) =>
+          required.length >= 2 && required.every((templateId) => number(quantities.get(templateId)) > 0)
+      )
+      .sort(
+        (a, b) =>
+          b.required.length - a.required.length ||
+          b.activeComponents.length - a.activeComponents.length ||
+          a.item.id - b.item.id
+      );
+
+    const matched = candidates[0] ?? null;
+    const packageTemplates = new Set(
+      matched?.activeComponents.map((component) => component.templateId).filter(Boolean) ?? []
+    );
+
+    if (matched) {
+      const units = Math.min(...matched.required.map((templateId) => quantities.get(templateId) ?? 0));
+      const revenue = order.lines
+        .filter(
+          (line) => packageTemplates.has(line.templateId) && !freeTemplates.has(line.templateId) && line.subtotal > 0
+        )
+        .reduce((sum, line) => sum + line.subtotal, 0);
+      const state = packageStates.get(matched.item.id);
+      state.sales += units;
+      state.revenue += revenue;
+      state.orders.add(orderId);
+      if (units > 0 || revenue > 0) paidOrders.add(orderId);
+
+      for (const templateId of matched.required) {
+        const course = catalogByTemplate.get(templateId);
+        if (!course) continue;
+        course.packageSales += units;
+        course.packageOrders.add(orderId);
+        course.packageNames.add(matched.item.name);
+      }
+    }
+
+    for (const line of order.lines) {
+      if (packageTemplates.has(line.templateId) || freeTemplates.has(line.templateId) || line.subtotal <= 0) {
+        continue;
+      }
+      const course = catalogByTemplate.get(line.templateId);
+      if (!course) continue;
+      course.directSales += line.quantity;
+      course.directRevenue += line.subtotal;
+      course.directOrders.add(orderId);
+      directSales += line.quantity;
+      directRevenue += line.subtotal;
+      paidOrders.add(orderId);
+    }
+  }
+
+  const courseRows = [...catalogByTemplate.values()].map((course) => ({
+    id: course.id,
+    templateId: course.templateId,
+    name: course.name,
+    published: course.published,
+    directSales: course.directSales,
+    packageSales: course.packageSales,
+    totalSales: course.directSales + course.packageSales,
+    directRevenue: money(course.directRevenue),
+    directOrders: course.directOrders.size,
+    packageOrders: course.packageOrders.size,
+    packages: [...course.packageNames].sort((a, b) => a.localeCompare(b, 'ar')),
+  }));
+  const packageRows = [...packageStates.values()]
+    .map((item) => ({
+      id: item.id,
+      name: item.name,
+      componentCount: item.componentCount,
+      components: item.components,
+      sales: item.sales,
+      revenue: money(item.revenue),
+      orders: item.orders.size,
+    }))
+    .sort((a, b) => b.sales - a.sales || b.revenue - a.revenue || a.name.localeCompare(b.name, 'ar'));
+
+  const packagesSold = packageRows.reduce((sum, item) => sum + item.sales, 0);
+  const packageRevenue = packageRows.reduce((sum, item) => sum + item.revenue, 0);
+  const withSales = courseRows.filter((course) => course.totalSales > 0);
+
+  return {
+    totals: {
+      paidOrders: paidOrders.size,
+      purchases: directSales + packagesSold,
+      directSales,
+      packagesSold,
+      revenue: money(directRevenue + packageRevenue),
+      directRevenue: money(directRevenue),
+      packageRevenue: money(packageRevenue),
+      paidCourses: courseRows.length,
+      coursesWithSales: withSales.length,
+      noSales: courseRows.length - withSales.length,
+      freeExcluded: courses.filter((course) => course.free).length,
+    },
+    topCourses: withSales
+      .sort(
+        (a, b) =>
+          b.totalSales - a.totalSales ||
+          b.directRevenue - a.directRevenue ||
+          a.name.localeCompare(b.name, 'ar')
+      )
+      .slice(0, 12),
+    noSales: courseRows
+      .filter((course) => course.totalSales === 0)
+      .sort((a, b) => a.name.localeCompare(b.name, 'ar'))
+      .slice(0, 12),
+    packages: packageRows,
+  };
+}
+
+async function salesCatalog(courses) {
+  const products = courses
+    .filter((course) => course.productId && course.productTemplateId)
+    .map((course) => ({
+      id: course.productId,
+      templateId: course.productTemplateId,
+      name: course.productName ?? course.name,
+    }));
+
+  let packages = [];
+  try {
+    const [packageFields, lineFields] = await Promise.all([
+      existingFields('training.package', [
+        'name',
+        'active',
+        'currency_id',
+        'create_date',
+        'final_price',
+        'total_price',
+      ]),
+      existingFields('training.package.product.line', [
+        'package_id',
+        'product_id',
+        'level_id',
+        'create_date',
+      ]),
+    ]);
+    const packageDomain = packageFields.includes('active') ? [['active', '=', true]] : [];
+    const packageRows = await searchRead('training.package', packageDomain, packageFields, { limit: 500 });
+    const packageIds = packageRows.map((item) => item.id);
+    const lines = packageIds.length
+      ? await searchRead(
+          'training.package.product.line',
+          [['package_id', 'in', packageIds]],
+          lineFields,
+          { limit: 5000 }
+        )
+      : [];
+    const templateIds = [...new Set(lines.map((line) => idOf(line.product_id)).filter(Boolean))];
+    const variantFields = templateIds.length
+      ? await existingFields('product.product', ['name', 'product_tmpl_id'])
+      : [];
+    const variants = templateIds.length
+      ? await searchRead('product.product', [['product_tmpl_id', 'in', templateIds]], variantFields, {
+          limit: 5000,
+        })
+      : [];
+    for (const variant of variants) {
+      const templateId = idOf(variant.product_tmpl_id);
+      if (!templateId || products.some((product) => product.id === variant.id)) continue;
+      products.push({ id: variant.id, templateId, name: text(variant.name) ?? nameOf(variant.product_tmpl_id) });
+    }
+
+    const linesByPackage = new Map();
+    for (const line of lines) {
+      const packageId = idOf(line.package_id);
+      const templateId = idOf(line.product_id);
+      if (!packageId || !templateId) continue;
+      const current = linesByPackage.get(packageId) ?? [];
+      current.push({
+        templateId,
+        name: nameOf(line.product_id) ?? 'بدون اسم',
+        level: nameOf(line.level_id),
+        createdAt: line.create_date ?? null,
+      });
+      linesByPackage.set(packageId, current);
+    }
+    packages = packageRows
+      .map((item) => ({
+        id: item.id,
+        name: text(item.name) ?? 'باقة بدون اسم',
+        createdAt: item.create_date ?? null,
+        currency: nameOf(item.currency_id),
+        listPrice: number(item.total_price),
+        finalPrice: number(item.final_price),
+        components: linesByPackage.get(item.id) ?? [],
+      }))
+      .filter((item) => item.components.length >= 2);
+  } catch {
+    // Stock Odoo has no `training.package`. Direct course sales remain exact;
+    // package analytics simply returns an empty list on those installations.
+    packages = [];
+  }
+
+  return { products, packages };
+}
+
+async function commercialSales(courses, period) {
+  const { products, packages } = await salesCatalog(courses);
+  const productIds = [...new Set(products.map((product) => product.id).filter(Boolean))];
+  if (!productIds.length) {
+    const empty = buildElearningSalesSnapshot(courses, products, packages, []);
+    return { current: empty, previous: empty, currency: null };
+  }
+  const saleFields = await existingFields('sale.order.line', [
+    'order_id',
+    'product_id',
+    'product_uom_qty',
+    'price_subtotal',
+    'create_date',
+    'state',
+  ]);
+  const required = ['order_id', 'product_id', 'product_uom_qty', 'price_subtotal', 'create_date'];
+  if (required.some((field) => !saleFields.includes(field))) throw new Error('sales_fields_unavailable');
+  const domainFor = (fromOdoo, toOdoo) => [
+    ['product_id', 'in', productIds],
+    ['state', 'in', ['sale', 'done']],
+    ['product_uom_qty', '>', 0],
+    ['order_id.date_order', '>=', fromOdoo],
+    ['order_id.date_order', '<', toOdoo],
+  ];
+  const [currentRows, previousRows] = await Promise.all([
+    searchRead(
+      'sale.order.line',
+      domainFor(period.fromOdoo, period.toOdooExclusive),
+      saleFields,
+      { limit: 20_000 }
+    ),
+    searchRead(
+      'sale.order.line',
+      domainFor(period.previousFromOdoo, period.previousToOdooExclusive),
+      saleFields,
+      { limit: 20_000 }
+    ),
+  ]);
+  return {
+    current: buildElearningSalesSnapshot(courses, products, packages, currentRows),
+    previous: buildElearningSalesSnapshot(courses, products, packages, previousRows),
+    currency: courses.find((course) => course.currency)?.currency ?? packages.find((item) => item.currency)?.currency ?? null,
+  };
+}
+
 function membershipTrend(rows) {
   const points = new Map();
   for (const row of rows) {
@@ -243,6 +667,8 @@ export async function elearningAnalytics({ from, to } = {}) {
     const has = (field) => available.includes(field);
 
     const published = courses.filter((course) => course.published);
+    const commercialCourses = courses.filter((course) => course.commercial);
+    const freeCourses = courses.filter((course) => course.free);
     const members = courses.reduce((sum, course) => sum + course.members, 0);
     const completed = courses.reduce((sum, course) => sum + course.completed, 0);
     const lessons = courses.reduce((sum, course) => sum + course.lessons, 0);
@@ -257,9 +683,21 @@ export async function elearningAnalytics({ from, to } = {}) {
             ? 'مسار تدريبي'
             : row.channel_type === 'documentation'
               ? 'مكتبة محتوى'
+              : row.channel_type === 'path'
+                ? 'مسار كورسات'
               : 'مش محدد',
         value: row.__count ?? 0,
       }));
+    }
+
+    let salesAvailable = true;
+    let salesError = null;
+    let sales = null;
+    try {
+      sales = await commercialSales(courses, period);
+    } catch (error) {
+      salesAvailable = false;
+      salesError = error?.message || 'sales_analytics_unavailable';
     }
 
     const base = {
@@ -279,11 +717,12 @@ export async function elearningAnalytics({ from, to } = {}) {
             : null,
       },
       byKind,
-      topByMembers: courses
+      topByMembers: commercialCourses
         .filter((course) => course.members > 0)
+        .sort((a, b) => b.members - a.members)
         .slice(0, 8)
         .map((course) => ({ label: course.name, value: course.members })),
-      topByCompletion: courses
+      topByCompletion: commercialCourses
         .filter((course) => course.members >= 5 && course.completionRate !== null)
         .sort((a, b) => (b.completionRate ?? 0) - (a.completionRate ?? 0))
         .slice(0, 8)
@@ -298,6 +737,20 @@ export async function elearningAnalytics({ from, to } = {}) {
         .slice(0, 8)
         .map((course) => ({ label: course.name, value: course.lessons })),
       available,
+      salesAvailable,
+      salesError,
+      currency: sales?.currency ?? null,
+      commercialCurrent: sales?.current?.totals ?? null,
+      commercialPrevious: sales?.previous?.totals ?? null,
+      topPaidCourses: sales?.current?.topCourses ?? [],
+      noPaidSales: sales?.current?.noSales ?? [],
+      packageSales: (sales?.current?.packages ?? []).map((item) => ({
+        ...item,
+        previousSales:
+          sales?.previous?.packages.find((previous) => previous.id === item.id)?.sales ?? 0,
+        previousRevenue:
+          sales?.previous?.packages.find((previous) => previous.id === item.id)?.revenue ?? 0,
+      })),
       fetchedAt: new Date().toISOString(),
     };
 
@@ -312,13 +765,18 @@ export async function elearningAnalytics({ from, to } = {}) {
         ['create_date', '>=', period.previousFromOdoo],
         ['create_date', '<', period.previousToOdooExclusive],
       ];
+      const commercialIds = commercialCourses.map((course) => course.id);
+      const trendDomain = commercialIds.length
+        ? [...currentDomain, ['channel_id', 'in', commercialIds]]
+        : [...currentDomain, ['id', '=', 0]];
       const [currentRows, previousRows, trendRows] = await Promise.all([
         readGroup('slide.channel.partner', currentDomain, ['channel_id', 'member_status']),
         readGroup('slide.channel.partner', previousDomain, ['channel_id', 'member_status']),
-        readGroup('slide.channel.partner', currentDomain, ['create_date:month', 'member_status']),
+        readGroup('slide.channel.partner', trendDomain, ['create_date:month', 'member_status']),
       ]);
-      const current = buildElearningPeriodSnapshot(courses, currentRows);
-      const previous = buildElearningPeriodSnapshot(courses, previousRows);
+      const current = buildElearningPeriodSnapshot(commercialCourses, currentRows);
+      const previous = buildElearningPeriodSnapshot(commercialCourses, previousRows);
+      const freeActivity = buildElearningPeriodSnapshot(freeCourses, currentRows);
       return {
         ...base,
         periodAvailable: true,
@@ -327,6 +785,7 @@ export async function elearningAnalytics({ from, to } = {}) {
         topDemand: current.topDemand,
         lowDemand: current.lowDemand,
         trend: membershipTrend(trendRows),
+        freeActivity: freeActivity.totals,
       };
     } catch (error) {
       // `slide.channel` can be readable while the member relation is restricted
@@ -341,6 +800,7 @@ export async function elearningAnalytics({ from, to } = {}) {
         topDemand: [],
         lowDemand: [],
         trend: [],
+        freeActivity: null,
       };
     }
   });

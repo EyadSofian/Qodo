@@ -28,6 +28,7 @@ erroring, and the rest of the workspace is unaffected.
 | `ODOO_LOGIN` | The email of the account the API key belongs to |
 | `ODOO_API_KEY` | Odoo → Preferences → Account Security → New API Key |
 | `ODOO_UID` | Optional. Saves one authentication round trip after a restart |
+| `ODOO_FREE_COURSE_TEMPLATE_IDS` | Optional comma-separated `product.template` ids excluded from paid comparisons. Defaults to Engosoft's free Freelance Masterclass (`2056`) |
 
 The key inherits **that user's** permissions. A read-only Odoo account is the
 right thing to point this at; nothing here writes, so nothing more is needed.
@@ -115,11 +116,10 @@ customisation's source and is **not** on the server, and asking for a field that
 does not exist fails the whole query rather than one column. The page then hides
 the tiles it cannot fill rather than drawing zeroes and calling them data.
 
-The eLearning half has not been verified against the live database: the API key
-was rotated mid-build, and the account it belonged to was refused
-`slide.channel` before that. When a key exists again, open **الكورسات**
-and check the numbers against Odoo — and note the account needs read access to
-**eLearning** as well as Events, which are separate groups.
+The eLearning reader was verified against the live Engosoft database on
+2026-08-11. The API user can read `slide.channel`, `slide.channel.partner`,
+`sale.order.line`, `training.package` and its product lines. Package composition
+is joined by ids, never by similar names.
 
 ## Charts
 
@@ -155,6 +155,21 @@ of that cohort supplies joined, started and completed counts. This relation is
 restricted to eLearning officers in stock Odoo. If the API account can read the
 catalogue but not `slide.channel.partner`, the period report says so and keeps
 the all-time catalogue figures visible instead of displaying invented zeroes.
+
+The commercial half of the same report uses confirmed `sale.order.line` rows
+whose parent order date is inside the period. Only positive net subtotals count
+as paid demand. That distinction matters here: product `list_price` is zero for
+many genuinely paid courses because website pricelists and promotions supply
+the real price, while Freelance Masterclass is free despite its channel still
+saying `enroll=payment`.
+
+Packages live in `training.package`; recorded components are
+`training.package.product.line → product.template`. Checkout creates one sale
+line per component rather than one package product. The report therefore finds
+the mapped component set inside each order, assigns the largest matching
+package, and removes those component lines from direct-course totals. A course
+still says how many times it moved inside a package, but the package's revenue
+is counted once and is never copied onto every component.
 
 ## Who sees it
 
