@@ -39,7 +39,7 @@ export const STAGE_TYPE_LABELS = {
   open: { ar: 'لم تبدأ', en: 'Not started' },
   active: { ar: 'قيد التنفيذ', en: 'In progress' },
   review: { ar: 'قيد المراجعة', en: 'In review' },
-  signoff: { ar: 'معتمدة', en: 'Approved' },
+  signoff: { ar: 'قيد الموافقة', en: 'Pending approval' },
   done: { ar: 'منجزة', en: 'Done' },
 };
 
@@ -185,10 +185,10 @@ export const DEPARTMENTS = [
     ],
     /**
      * The board reads left to right as the work actually travels: filed,
-     * picked up, handed in, approved, published — with the two side columns
+     * picked up, handed in, reviewed, finally approved — with the side columns
      * for work sent back and work parked.
      *
-     * "معتمدة" is here on its second attempt, and the difference is the whole
+     * "قيد الموافقة" is here on its second attempt, and the difference is the whole
      * lesson. It used to sit *second*, between "قيد الانتظار" and "قيد العمل",
      * typed `open` — so approving never landed there, nothing in the lifecycle
      * could move a task into it, and being the same type as "قيد الانتظار"
@@ -205,10 +205,10 @@ export const DEPARTMENTS = [
       { id: 'pending', type: 'open', ar: 'قيد الانتظار', en: 'Pending' },
       { id: 'working', type: 'active', ar: 'قيد العمل', en: 'Working' },
       { id: 'review', type: 'review', ar: 'قيد المراجعة', en: 'In review' },
-      { id: 'approved', type: 'signoff', ar: 'معتمدة', en: 'Approved' },
+      { id: 'approved', type: 'signoff', ar: 'قيد الموافقة', en: 'Pending approval' },
       { id: 'rework', type: 'active', ar: 'إعادة عمل', en: 'Rework' },
-      { id: 'blocked', type: 'active', ar: 'متوقفة', en: 'Blocked' },
       { id: 'done', type: 'done', ar: 'منجزة', en: 'Done' },
+      { id: 'blocked', type: 'active', ar: 'متوقفة', en: 'Blocked' },
     ],
   },
   {

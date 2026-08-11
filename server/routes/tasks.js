@@ -37,6 +37,10 @@ import {
   stageWriteVerdict,
   taskState,
 } from '../../shared/workflow.js';
+import {
+  TASK_WORKFLOW_ROLES,
+  hasTaskWorkflowRole,
+} from '../../shared/marketingWorkflow.js';
 import { notifyUser } from '../push.js';
 import { publishNotification } from '../notificationStream.js';
 import {
@@ -94,7 +98,15 @@ router.get('/', async (req, res) => {
  */
 router.get('/counts', async (req, res) => {
   if (!can(req.user, PERMISSIONS.TASKS_VIEW)) {
-    return res.json({ mine: 0, overdue: 0, dueToday: 0, unanswered: 0, awaitingMyReview: 0 });
+    return res.json({
+      mine: 0,
+      overdue: 0,
+      dueToday: 0,
+      unanswered: 0,
+      awaitingMyReview: 0,
+      rework: 0,
+      reworkTasks: [],
+    });
   }
 
   const visible = await find('tasks', livePredicate(req.user));
@@ -102,6 +114,19 @@ router.get('/counts', async (req, res) => {
   const isOpen = (task) => !isSettledStage(task.department ?? DEFAULT_DEPARTMENT, task.stage);
 
   const mine = visible.filter((task) => isAssignee(req.user, task) && isOpen(task));
+  const reworkTasks = mine
+    .filter((task) => task.stage === 'rework' && (task.reworkCount ?? 0) > 0)
+    .filter(
+      (task) =>
+        Number(task.reworkAcknowledgedBy?.[req.user.id] ?? 0) < Number(task.reworkCount ?? 0)
+    )
+    .sort((a, b) => (a.reviewedAt ?? '').localeCompare(b.reviewedAt ?? ''))
+    .map((task) => ({
+      id: task.id,
+      title: task.title,
+      reworkCount: task.reworkCount ?? 0,
+      scorePenaltyPercent: reworkPenaltyPercent(task.reworkCount ?? 0),
+    }));
 
   // What a reviewer needs to act on — theirs to clear, not theirs to do.
   const awaitingMyReview = isReviewer(req.user)
@@ -120,7 +145,38 @@ router.get('/counts', async (req, res) => {
     unanswered: mine.filter((task) => assignmentFor(task, req.user.id)?.status === 'pending')
       .length,
     awaitingMyReview,
+    rework: reworkTasks.length,
+    reworkTasks,
   });
+});
+
+/**
+ * Opening the mandatory Rework queue acknowledges the current return cycle for
+ * every task shown in it. A later return increments `reworkCount`, so it will
+ * freeze the workspace again even though the employee already opened an older
+ * cycle of the same task.
+ */
+router.post('/rework/acknowledge', async (req, res) => {
+  const store = await getStore();
+  const tasks = await find(
+    'tasks',
+    (task) =>
+      livePredicate(req.user)(task) &&
+      isAssignee(req.user, task) &&
+      task.stage === 'rework' &&
+      (task.reworkCount ?? 0) > 0
+  );
+
+  for (const task of tasks) {
+    await store.update('tasks', task.id, {
+      reworkAcknowledgedBy: {
+        ...(task.reworkAcknowledgedBy ?? {}),
+        [req.user.id]: task.reworkCount ?? 0,
+      },
+    });
+  }
+
+  res.json({ ok: true, acknowledged: tasks.length });
 });
 
 router.get('/overview', async (req, res) => {
@@ -131,6 +187,8 @@ router.get('/overview', async (req, res) => {
   const managesTeam = canManagePerformance(req.user);
   let tasks = await find('tasks', livePredicate(req.user));
   let people = visiblePeople(req.user, await find('users', isActiveUser));
+  const period = parseOverviewPeriod(req.query);
+  if (period === false) return res.status(400).json({ error: 'invalid_date_range' });
 
   // Performance is more private than the team task table: employees get only
   // their own figures even when the team's work is visible for collaboration.
@@ -153,9 +211,27 @@ router.get('/overview', async (req, res) => {
     );
   }
 
-  const rows = people.map((person) => performanceFor(person, tasks));
+  if (period) {
+    tasks = tasks.filter((task) => {
+      const date = task.taskDate ?? task.createdAt?.slice(0, 10);
+      return date && date >= period.from && date <= period.to;
+    });
+  }
+
+  const organization = await findOne(
+    'organizations',
+    (item) => item.id === organizationOf(req.user)
+  );
+  const workingDates = period
+    ? datesInPeriod(period.from, period.to, organization?.workingDays ?? [0, 1, 2, 3, 4])
+    : [];
+
+  const rows = people.map((person) => performanceFor(person, tasks, workingDates));
   res.json({
     scope: managesTeam ? 'team' : 'self',
+    period: period
+      ? { ...period, workingDays: workingDates.length }
+      : { from: null, to: null, workingDays: 0 },
     summary: performanceSummary(tasks),
     people: rows,
     statuses: statusBreakdown(tasks),
@@ -280,7 +356,7 @@ router.post('/', requirePermission(PERMISSIONS.TASKS_CREATE), async (req, res) =
   if (initialState === 'submitted') {
     return res.status(409).json({ error: 'submit_required' });
   }
-  if (initialState === 'approved') {
+  if (initialState === 'signed_off' || initialState === 'approved') {
     return res.status(409).json({ error: 'review_required' });
   }
   const siblings = await find(
@@ -800,11 +876,16 @@ router.post('/:id/review', async (req, res) => {
     if (!Number.isFinite(score) || score < 0 || score > 100) {
       return res.status(400).json({ error: 'invalid_score' });
     }
+    const roundedScore = Math.round(score * 10) / 10;
+    const scorePenaltyPercent = reworkPenaltyPercent(task.reworkCount ?? 0);
+    const effectiveScore = applyReworkPenalty(roundedScore, task.reworkCount ?? 0);
     const updated = await store.update('tasks', task.id, {
-      // Marketing parks approved work in "معتمدة" until it is actually
-      // published; every other board closes it outright.
+      // Marketing parks reviewed work in "قيد الموافقة" for the second named
+      // approval desk; every other board closes it outright.
       stage: stageForApproval(department, task.stage),
-      score: Math.round(score * 10) / 10,
+      score: effectiveScore,
+      scoreBeforeReworkPenalty: roundedScore,
+      scorePenaltyPercent,
       scoreBy: req.user.id,
       scoredAt: stamp,
       reviewDecision: 'approved',
@@ -818,15 +899,38 @@ router.post('/:id/review', async (req, res) => {
     await notifyPartners(task, req.user.id, {
       type: 'task.approved',
       title: { ar: 'تم اعتماد مهمتك', en: 'Your task was approved' },
-      body: `${updated.title} — ${updated.score}/100`,
+      body: scorePenaltyPercent
+        ? {
+            ar: `${updated.title} — ${updated.score}/100 بعد خصم ${scorePenaltyPercent}% لإعادة العمل.`,
+            en: `${updated.title} — ${updated.score}/100 after a ${scorePenaltyPercent}% rework deduction.`,
+          }
+        : `${updated.title} — ${updated.score}/100`,
       link: `/tasks?task=${updated.id}`,
     });
+    if (department === 'marketing') {
+      for (const userId of await finalApprovalAudience(updated, req.user.id)) {
+        await notify(userId, req.user.id, {
+          type: 'task.awaiting_final_approval',
+          title: { ar: 'مهمة بانتظار الموافقة النهائية', en: 'Task awaiting final approval' },
+          body: {
+            ar: `تم اعتماد «${updated.title}» بواسطة ${req.user.name} وهي جاهزة للنقل إلى منجزة.`,
+            en: `“${updated.title}” was approved by ${req.user.name} and is ready to be marked done.`,
+          },
+          link: `/tasks?task=${updated.id}`,
+        });
+      }
+    }
     await logActivity({
       actorId: req.user.id,
       action: 'task.approve',
       subject: 'task',
       subjectId: task.id,
-      meta: { title: task.title, score: updated.score },
+      meta: {
+        title: task.title,
+        score: updated.score,
+        scoreBeforeReworkPenalty: roundedScore,
+        scorePenaltyPercent,
+      },
     });
     return res.json({ task: taskForUser(req.user, updated) });
   }
@@ -834,13 +938,16 @@ router.post('/:id/review', async (req, res) => {
   if (decision !== 'changes_requested') return res.status(400).json({ error: 'invalid_decision' });
   if (!note) return res.status(400).json({ error: 'review_note_required' });
 
+  const reworkCount = (task.reworkCount ?? 0) + 1;
+  const scorePenaltyPercent = reworkPenaltyPercent(reworkCount);
   const updated = await store.update('tasks', task.id, {
     stage: stageForReturn(department, task.stage),
     reviewDecision: 'changes_requested',
     reviewedAt: stamp,
     reviewedBy: req.user.id,
     reviewNote: note,
-    reworkCount: (task.reworkCount ?? 0) + 1,
+    reworkCount,
+    scorePenaltyPercent,
     submittedAt: null,
     completedAt: null,
     progress: Math.min(task.progress ?? 90, 90),
@@ -849,7 +956,10 @@ router.post('/:id/review', async (req, res) => {
   await notifyPartners(task, req.user.id, {
     type: 'task.returned',
     title: { ar: 'مهمة رجعت إليك للتعديل', en: 'A task was sent back to you' },
-    body: `${updated.title} — ${note.slice(0, 80)}`,
+    body: {
+      ar: `${updated.title} — ${note.slice(0, 80)}. خصم التقييم التراكمي الآن ${scorePenaltyPercent}%.`,
+      en: `${updated.title} — ${note.slice(0, 80)}. The cumulative score deduction is now ${scorePenaltyPercent}%.`,
+    },
     link: `/tasks?task=${updated.id}`,
   });
   await logActivity({
@@ -857,20 +967,18 @@ router.post('/:id/review', async (req, res) => {
     action: 'task.return',
     subject: 'task',
     subjectId: task.id,
-    meta: { title: task.title },
+    meta: { title: task.title, reworkCount, scorePenaltyPercent },
   });
   res.json({ task: taskForUser(req.user, updated) });
 });
 
 /**
- * The move out of "معتمدة": approved work has actually gone out.
+ * The move out of "قيد الموافقة": the final approver marks the work Done.
  *
- * Deliberately not a gate. The judgement happened at review and the score is
- * already on the record — this only records delivery, so it asks for nothing
- * and the person who does the work may do it themselves. `completedAt` is left
- * alone on purpose: the work was finished when it was approved, and restamping
- * it here would make every scheduled post look late by however long it sat
- * waiting for its slot.
+ * The judgement and score already happened at review, so the final approver is
+ * not asked to score again. `completedAt` is left alone on purpose: the work was
+ * finished at review, and restamping it here would make the employee look late
+ * because of time spent waiting at the second approval desk.
  */
 router.post('/:id/publish', async (req, res) => {
   const store = await getStore();
@@ -890,7 +998,7 @@ router.post('/:id/publish', async (req, res) => {
   if (task.reviewedBy && task.reviewedBy !== req.user.id) {
     await notify(task.reviewedBy, req.user.id, {
       type: 'task.published',
-      title: { ar: 'تم نشر مهمة معتمدة', en: 'Approved work went out' },
+      title: { ar: 'تمت الموافقة النهائية على المهمة', en: 'Task received final approval' },
       body: updated.title,
       link: `/tasks?task=${updated.id}`,
     });
@@ -913,6 +1021,8 @@ router.post('/:id/reopen', async (req, res) => {
   if (!canReopen(req.user, task)) return res.status(403).json({ error: 'forbidden' });
 
   const department = task.department ?? DEFAULT_DEPARTMENT;
+  const reworkCount = (task.reworkCount ?? 0) + 1;
+  const scorePenaltyPercent = reworkPenaltyPercent(reworkCount);
   const updated = await store.update('tasks', task.id, {
     // Work coming back from an approval is rework, and a board that named that
     // column should get it — landing in "قيد العمل" made a manager's correction
@@ -924,13 +1034,22 @@ router.post('/:id/reopen', async (req, res) => {
     // stamp behind would claim a post is live that is back on somebody's desk.
     publishedAt: null,
     publishedBy: null,
+    reworkCount,
+    score: null,
+    scoreBeforeReworkPenalty: null,
+    scorePenaltyPercent,
+    scoreBy: null,
+    scoredAt: null,
     progress: Math.min(task.progress ?? 90, 90),
   });
 
   await notifyPartners(task, req.user.id, {
     type: 'task.returned',
     title: { ar: 'أُعيد فتح مهمة', en: 'A task was reopened' },
-    body: updated.title,
+    body: {
+      ar: `${updated.title} — خصم التقييم التراكمي الآن ${scorePenaltyPercent}%.`,
+      en: `${updated.title} — the cumulative score deduction is now ${scorePenaltyPercent}%.`,
+    },
     link: `/tasks?task=${updated.id}`,
   });
   await logActivity({
@@ -938,7 +1057,7 @@ router.post('/:id/reopen', async (req, res) => {
     action: 'task.reopen',
     subject: 'task',
     subjectId: task.id,
-    meta: { title: task.title },
+    meta: { title: task.title, reworkCount, scorePenaltyPercent },
   });
   res.json({ task: taskForUser(req.user, updated) });
 });
@@ -1071,8 +1190,11 @@ function blankLifecycle() {
     publishedAt: null,
     publishedBy: null,
     reworkCount: 0,
+    reworkAcknowledgedBy: {},
     attachmentCount: 0,
     score: null,
+    scoreBeforeReworkPenalty: null,
+    scorePenaltyPercent: 0,
     scoreBy: null,
     scoredAt: null,
   };
@@ -1139,12 +1261,27 @@ function assignmentNotificationTitle(action) {
 }
 
 /**
- * Who should hear that work is waiting. Whoever filed the task, plus every
- * manager who can act on that department — so a submission never sits unseen
- * because one person is away.
+ * Who should hear that work is waiting. Marketing has a named review desk;
+ * other departments retain the creator-plus-reviewers fallback so a submission
+ * never sits unseen because one person is away.
  */
 async function reviewAudience(task, actorId) {
   const people = await find('users', isActiveUser);
+  if ((task.department ?? DEFAULT_DEPARTMENT) === 'marketing') {
+    const mirna = people.filter(
+      (person) =>
+        organizationOf(person) === organizationOf(task) &&
+        hasTaskWorkflowRole(person, TASK_WORKFLOW_ROLES.MARKETING_REVIEWER) &&
+        isReviewer(person) &&
+        canViewTask(person, task) &&
+        person.id !== actorId
+    );
+    // Once the named review desk exists, Marketing submissions go there alone.
+    // The fallback below keeps work moving during a first deploy before the
+    // account has been created or matched by the migration.
+    if (mirna.length > 0) return mirna.map((person) => person.id);
+  }
+
   const audience = new Set();
   for (const person of people) {
     if (organizationOf(person) !== organizationOf(task)) continue;
@@ -1154,6 +1291,32 @@ async function reviewAudience(task, actorId) {
   if (task.createdBy) audience.add(task.createdBy);
   audience.delete(actorId);
   return [...audience];
+}
+
+/** Who owns Marketing's second gate after the reviewer approves the work. */
+async function finalApprovalAudience(task, actorId) {
+  const people = await find('users', isActiveUser);
+  const designated = people.filter(
+    (person) =>
+      organizationOf(person) === organizationOf(task) &&
+      hasTaskWorkflowRole(person, TASK_WORKFLOW_ROLES.MARKETING_FINAL_APPROVER) &&
+      canPublish(person, task) &&
+      canViewTask(person, task) &&
+      person.id !== actorId
+  );
+  if (designated.length > 0) return designated.map((person) => person.id);
+
+  // An admin is the safe operational fallback if the named account has not
+  // been provisioned yet; the task never disappears between the two gates.
+  return people
+    .filter(
+      (person) =>
+        organizationOf(person) === organizationOf(task) &&
+        canPublish(person, task) &&
+        canViewTask(person, task) &&
+        person.id !== actorId
+    )
+    .map((person) => person.id);
 }
 
 /**
@@ -1363,10 +1526,14 @@ async function validAssignee(actor, assigneeId, department) {
   return canAssignUser(actor, assignee, department);
 }
 
-function performanceFor(person, tasks) {
+function performanceFor(person, tasks, workingDates = []) {
   // A shared task appears in each partner's record carrying the same score —
   // equal owners, equal credit, which is what "shared" was asked to mean.
   const assigned = tasks.filter((task) => assigneesOf(task).includes(person.id));
+  const taskDates = new Set(
+    assigned.map((task) => task.taskDate ?? task.createdAt?.slice(0, 10)).filter(Boolean)
+  );
+  const idleDates = workingDates.filter((date) => !taskDates.has(date));
   return {
     user: {
       id: person.id,
@@ -1376,6 +1543,8 @@ function performanceFor(person, tasks) {
       subteam: person.subteam ?? null,
       jobRole: person.jobRole ?? null,
     },
+    daysWithoutTasks: idleDates.length,
+    idleDates,
     ...performanceSummary(assigned),
   };
 }
@@ -1430,6 +1599,8 @@ function performanceSummary(tasks) {
     overdue: overdue.length,
     awaitingReview: awaitingReview.length,
     returned: tasks.filter((task) => (task.reworkCount ?? 0) > 0).length,
+    rework: tasks.filter((task) => task.stage === 'rework').length,
+    reworkCycles: tasks.reduce((sum, task) => sum + (task.reworkCount ?? 0), 0),
     /** Null rather than 0 when nothing has been timed — an absent measurement. */
     averageDays: durations.length
       ? round1(durations.reduce((sum, days) => sum + days, 0) / durations.length)
@@ -1457,6 +1628,42 @@ function performanceSummary(tasks) {
 
 function percentage(value, total) {
   return total ? Math.round((value / total) * 100) : 0;
+}
+
+function parseOverviewPeriod(query) {
+  const hasPeriod = query?.from !== undefined || query?.to !== undefined;
+  if (!hasPeriod) return null;
+  const today = new Date().toISOString().slice(0, 10);
+  const from = parseDate(query.from || `${today.slice(0, 7)}-01`);
+  const to = parseDate(query.to || today);
+  if (!from || !to || from === false || to === false || from > to) return false;
+  const span = (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000;
+  if (span > 366) return false;
+  return { from, to };
+}
+
+function datesInPeriod(from, to, workingDays) {
+  const dates = [];
+  const end = Math.min(Date.parse(`${to}T00:00:00Z`), Date.now());
+  for (
+    let stamp = Date.parse(`${from}T00:00:00Z`);
+    stamp <= end;
+    stamp += 86_400_000
+  ) {
+    const date = new Date(stamp);
+    if (workingDays.includes(date.getUTCDay())) dates.push(date.toISOString().slice(0, 10));
+  }
+  return dates;
+}
+
+/** Ten percent of the submitted score per return, capped before it can go negative. */
+function reworkPenaltyPercent(reworkCount) {
+  return Math.min(100, Math.max(0, Number(reworkCount) || 0) * 10);
+}
+
+function applyReworkPenalty(score, reworkCount) {
+  const multiplier = Math.max(0, 1 - reworkPenaltyPercent(reworkCount) / 100);
+  return Math.round(score * multiplier * 10) / 10;
 }
 
 function statusBreakdown(tasks) {

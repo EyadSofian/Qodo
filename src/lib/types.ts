@@ -4,7 +4,7 @@ export type UserStatus = 'active' | 'pending' | 'disabled';
 /** How wide a person's task view reaches. `null` = as wide as their role allows. */
 export type VisibilityScope = 'own' | 'subteam' | 'department' | 'all';
 export type TaskPriority = 'low' | 'normal' | 'high' | 'urgent';
-export type StageType = 'open' | 'active' | 'review' | 'done';
+export type StageType = 'open' | 'active' | 'review' | 'signoff' | 'done';
 /** Where a task sits in the assign → deliver → review → approve cycle. */
 export type TaskState = 'assigned' | 'working' | 'submitted' | 'signed_off' | 'approved';
 export type ReviewDecision = 'approved' | 'changes_requested';
@@ -39,6 +39,8 @@ export interface User {
   appIds: string[] | null;
   /** `null` = follow the role. Anything else narrows what they see. */
   visibilityScope: VisibilityScope | null;
+  /** Durable special responsibilities such as Marketing's two approval gates. */
+  taskWorkflowRoles?: string[];
   effectivePermissions: string[];
   /** What `visibilityScope` resolves to once capped by the permissions. */
   effectiveVisibility: VisibilityScope;
@@ -102,6 +104,14 @@ export interface TaskCounts {
   dueToday: number;
   unanswered: number;
   awaitingMyReview: number;
+  /** Unacknowledged Rework cycles that freeze the workspace until opened. */
+  rework: number;
+  reworkTasks: Array<{
+    id: string;
+    title: string;
+    reworkCount: number;
+    scorePenaltyPercent: number;
+  }>;
 }
 
 export interface DirectoryUser {
@@ -187,10 +197,15 @@ export interface Task {
   reviewDecision: ReviewDecision | null;
   /** How many times a manager sent the work back. */
   reworkCount: number;
+  /** Last rework cycle each assignee has opened. */
+  reworkAcknowledgedBy: Record<string, number>;
   /** Denormalised so a board card can show it without a request per card. */
   attachmentCount: number;
   /** Manager-owned final score from 0 to 100. Hidden from other employees. */
   score: number | null;
+  /** Reviewer's score before the automatic cumulative Rework deduction. */
+  scoreBeforeReworkPenalty: number | null;
+  scorePenaltyPercent: number;
   scoreBy: string | null;
   scoredAt: string | null;
 
@@ -252,6 +267,10 @@ export interface PerformanceMetrics {
   awaitingReview: number;
   /** Sent back at least once. */
   returned: number;
+  /** Tasks currently waiting in the dedicated Rework column. */
+  rework: number;
+  /** Total return cycles across the selected tasks. */
+  reworkCycles: number;
   completionRate: number;
   onTimeRate: number;
   /** Approved without ever being sent back — the clarity-of-brief signal. */
@@ -273,6 +292,8 @@ export interface PerformanceMetrics {
 }
 
 export interface PerformancePerson extends PerformanceMetrics {
+  daysWithoutTasks: number;
+  idleDates: string[];
   user: {
     id: string;
     name: string;
@@ -285,6 +306,7 @@ export interface PerformancePerson extends PerformanceMetrics {
 
 export interface PerformanceOverview {
   scope: 'self' | 'team';
+  period: { from: string | null; to: string | null; workingDays: number };
   summary: PerformanceMetrics;
   people: PerformancePerson[];
   statuses: Array<{

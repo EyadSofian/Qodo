@@ -40,6 +40,7 @@ import { ChangePasswordModal } from './ChangePasswordModal';
 import { Assistant } from './Assistant';
 import { TaskSummaryPopup } from './TaskSummaryPopup';
 import { IncomingNotificationPopup } from './IncomingNotificationPopup';
+import { ReworkGuard } from './ReworkGuard';
 import { Avatar, useToast } from './ui';
 
 /**
@@ -411,6 +412,7 @@ export function Shell({ children }: { children: ReactNode }) {
       <Assistant open={assistantOpen} onClose={() => setAssistantOpen(false)} />
       <TaskSummaryPopup />
       <IncomingNotificationPopup />
+      <ReworkGuard />
     </div>
   );
 }

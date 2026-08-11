@@ -246,7 +246,7 @@ const STRINGS = {
   'flow.working': { ar: 'قيد التنفيذ', en: 'In progress' },
   'flow.submitted': { ar: 'بانتظار المراجعة', en: 'In review' },
   'flow.approved': { ar: 'منجزة', en: 'Done' },
-  'flow.signedOff': { ar: 'معتمدة', en: 'Approved' },
+  'flow.signedOff': { ar: 'قيد الموافقة', en: 'Pending approval' },
 
   'assignment.title': { ar: 'مطلوب ردك على الإسناد', en: 'Respond to this assignment' },
   'assignment.hint': {
@@ -309,7 +309,7 @@ const STRINGS = {
   },
   'profile.completionRate': { ar: 'نسبة الإنجاز', en: 'Completion' },
   'profile.overdueNote': { ar: '{n} منهم عدّى ميعاده', en: '{n} of them are past due' },
-  'flow.publish': { ar: 'تم النشر', en: 'Mark as published' },
+  'flow.publish': { ar: 'نقل إلى منجزة', en: 'Mark as done' },
   'tasks.assignees': { ar: 'المسؤولون', en: 'Assigned to' },
   'tasks.sharedHint': {
     ar: 'مهمة مشتركة — أي واحد فيهم يقدر يسلّمها، والتقييم بيتسجّل للكل.',
@@ -370,6 +370,14 @@ const STRINGS = {
   'flow.onTime': { ar: 'سُلّمت في الموعد', en: 'Delivered on time' },
   'flow.late': { ar: 'سُلّمت بعد الموعد', en: 'Delivered late' },
   'flow.scoreLabel': { ar: 'التقييم من ١٠٠', en: 'Score out of 100' },
+  'flow.reworkPenaltyPreview': {
+    ar: 'بسبب مرات إعادة العمل سيُخصم {percent}٪: التقييم {raw} والنهائي {final}.',
+    en: 'Rework deducts {percent}%: entered score {raw}, final score {final}.',
+  },
+  'flow.reworkPenaltyApplied': {
+    ar: 'شامل خصم Rework بنسبة {percent}٪',
+    en: 'Includes a {percent}% Rework deduction',
+  },
   'flow.reviewNote': { ar: 'ملاحظات للموظف', en: 'Notes for the assignee' },
   'flow.reviewNotePlaceholder': { ar: 'ما كان جيداً، وما يمكن تحسينه…', en: 'What was good, what could be better…' },
   'flow.returnReason': { ar: 'سبب الإرجاع', en: 'Why it is going back' },
@@ -384,7 +392,7 @@ const STRINGS = {
   'flow.approved.toast': { ar: 'تم اعتماد المهمة وتسجيل التقييم.', en: 'Approved, and the score is recorded.' },
   'flow.returned.toast': { ar: 'رجعت المهمة للموظف مع ملاحظاتك.', en: 'Sent back with your notes.' },
   'flow.reopened.toast': { ar: 'أُعيد فتح المهمة.', en: 'Task reopened.' },
-  'flow.published.toast': { ar: 'اتسجّل إنها اتنشرت.', en: 'Recorded as published.' },
+  'flow.published.toast': { ar: 'تمت الموافقة النهائية ونُقلت المهمة إلى منجزة.', en: 'Final approval recorded and task marked done.' },
 
   'flow.awaitingYou': { ar: 'بانتظار مراجعتك', en: 'Waiting for your review' },
   'flow.awaitingManager': { ar: 'عند المدير للمراجعة', en: 'With the manager' },
@@ -436,7 +444,7 @@ const STRINGS = {
     en: 'Team delivery, timeliness and final scores.',
   },
   'performance.total': { ar: 'إجمالي المهام', en: 'Total tasks' },
-  'performance.completed': { ar: 'معتمدة', en: 'Approved' },
+  'performance.completed': { ar: 'تمت الموافقة', en: 'Approved' },
   'performance.completionRate': { ar: 'نسبة الإنجاز', en: 'Completion rate' },
   'performance.onTime': { ar: 'التسليم في الموعد', en: 'On-time delivery' },
   'performance.averageScore': { ar: 'متوسط التقييم', en: 'Average score' },
@@ -448,10 +456,27 @@ const STRINGS = {
     en: 'Approved without a single return. A low number usually means the brief was unclear.',
   },
   'performance.returned': { ar: 'أُعيدت للتعديل', en: 'Sent back' },
+  'performance.reworkNow': { ar: 'Rework حاليًا', en: 'In Rework now' },
+  'performance.daysWithoutTasks': { ar: 'أيام بدون مهام', en: 'Days without tasks' },
+  'performance.idleDates': { ar: 'بدون مهام', en: 'No tasks' },
+  'performance.from': { ar: 'من', en: 'From' },
+  'performance.to': { ar: 'إلى', en: 'To' },
   'performance.person': { ar: 'الموظف', en: 'Employee' },
   'performance.active': { ar: 'مفتوحة', en: 'Open' },
   'performance.noData': { ar: 'لا توجد بيانات أداء بعد.', en: 'No performance data yet.' },
   'performance.statusMix': { ar: 'توزيع الحالات', en: 'Status mix' },
+
+  'reworkGuard.title': { ar: 'عندك مهام رجعت لإعادة العمل', en: 'You have tasks in Rework' },
+  'reworkGuard.hint': {
+    ar: 'لازم تفتح مهام إعادة العمل وتشوف ملاحظات المراجع قبل ما تكمل استخدام النظام.',
+    en: 'Open the Rework queue and read the reviewer notes before continuing.',
+  },
+  'reworkGuard.penalty': {
+    ar: 'خصم التقييم التراكمي: {percent}٪',
+    en: 'Cumulative score deduction: {percent}%',
+  },
+  'reworkGuard.open': { ar: 'افتح مهام إعادة العمل', en: 'Open Rework tasks' },
+  'reworkGuard.filter': { ar: 'عرض مهام إعادة العمل فقط', en: 'Showing Rework tasks only' },
 
   'profile.viewProfile': { ar: 'الملف الشخصي', en: 'Profile' },
   'profile.notFound': {
@@ -559,6 +584,7 @@ const STRINGS = {
   'perm.tasks.review': { ar: 'مراجعة المسلَّم وإرجاعه', en: 'Review deliverables and send back' },
   'perm.tasks.approve': { ar: 'اعتماد المهام وإعادة فتحها', en: 'Approve and reopen tasks' },
   'perm.tasks.score': { ar: 'تقييم الأداء ورؤية تقييمات الفريق', en: 'Score work and see team scores' },
+  'perm.tasks.publish': { ar: 'الاعتماد النهائي ونقل المهمة لمنجزة', en: 'Final approval and mark work done' },
   'management.title': { ar: 'الإدارة', en: 'Management' },
   'perm.management.view': { ar: 'فتح لوحة الإدارة', en: 'Open the management desk' },
   'perm.management.manage': {

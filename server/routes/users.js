@@ -9,6 +9,7 @@ import {
   USER_STATUSES,
   VISIBILITY_SCOPES,
   isActiveUser,
+  permissionsFor,
   publicUser,
 } from '../../shared/permissions.js';
 import {
@@ -20,6 +21,10 @@ import {
 import { canUseDepartment, visiblePeople } from '../taskAccess.js';
 import { organizationOf } from '../../shared/organization.js';
 import { assigneesOf, assignmentRows } from '../../shared/workflow.js';
+import {
+  TASK_WORKFLOW_ROLES,
+  inferredMarketingWorkflowRoles,
+} from '../../shared/marketingWorkflow.js';
 
 const router = Router();
 
@@ -57,6 +62,14 @@ router.post('/', requirePermission(PERMISSIONS.USERS_MANAGE), async (req, res) =
   const organisation = parseOrganisation(req.body, department);
   if (organisation.error) return res.status(400).json({ error: organisation.error });
 
+  const requestedPermissions = normalisePermissions(req.body?.permissions);
+  const workflow = provisionMarketingWorkflow({
+    name,
+    department,
+    role,
+    status: 'active',
+    permissions: requestedPermissions,
+  });
   const user = await create('users', {
     name,
     email,
@@ -65,13 +78,14 @@ router.post('/', requirePermission(PERMISSIONS.USERS_MANAGE), async (req, res) =
     organizationId: organizationOf(req.user),
     status: 'active',
     // null on both = "inherit from role" / "every app". Explicit arrays override.
-    permissions: normalisePermissions(req.body?.permissions),
+    permissions: workflow.permissions,
     appIds: normaliseAppIds(req.body?.appIds),
     department,
     subteam: organisation.subteam,
     jobRole: organisation.jobRole,
     // null = as wide as the role allows. Anything else narrows it.
-    visibilityScope: normaliseScope(req.body?.visibilityScope),
+    visibilityScope: workflow.visibilityScope ?? normaliseScope(req.body?.visibilityScope),
+    taskWorkflowRoles: workflow.taskWorkflowRoles,
     title: req.body?.title ? String(req.body.title).trim() : null,
     avatarColor: pickAvatarColor(name),
     lastLoginAt: null,
@@ -284,6 +298,40 @@ function normalisePermissions(value) {
   if (!Array.isArray(value)) return null;
   const clean = [...new Set(value.filter((p) => ALL_PERMISSIONS.includes(p)))];
   return clean;
+}
+
+function provisionMarketingWorkflow(user) {
+  const taskWorkflowRoles = inferredMarketingWorkflowRoles(user);
+  let permissions = user.permissions;
+  let visibilityScope = null;
+
+  if (taskWorkflowRoles.includes(TASK_WORKFLOW_ROLES.MARKETING_REVIEWER)) {
+    const access = [
+      PERMISSIONS.APPS_VIEW,
+      PERMISSIONS.TASKS_VIEW,
+      PERMISSIONS.TASKS_VIEW_TEAM,
+      PERMISSIONS.TASKS_REVIEW,
+      PERMISSIONS.TASKS_APPROVE,
+      PERMISSIONS.TASKS_SCORE,
+    ];
+    permissions = [...new Set([...permissionsFor(user), ...access])].filter(
+      (permission) => permission !== PERMISSIONS.TASKS_PUBLISH
+    );
+    visibilityScope = 'department';
+  }
+
+  if (taskWorkflowRoles.includes(TASK_WORKFLOW_ROLES.MARKETING_FINAL_APPROVER)) {
+    const access = [
+      PERMISSIONS.APPS_VIEW,
+      PERMISSIONS.TASKS_VIEW,
+      PERMISSIONS.TASKS_VIEW_TEAM,
+      PERMISSIONS.TASKS_PUBLISH,
+    ];
+    permissions = [...new Set([...(permissions ?? permissionsFor(user)), ...access])];
+    visibilityScope = 'department';
+  }
+
+  return { permissions, visibilityScope, taskWorkflowRoles };
 }
 
 function normaliseAppIds(value) {

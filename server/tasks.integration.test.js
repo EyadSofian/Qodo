@@ -197,13 +197,13 @@ test('no column exists that the lifecycle can never move a task into', () => {
   const marketing = DEPARTMENTS.find((department) => department.id === 'marketing');
   assert.deepEqual(
     marketing.stages.map((stage) => stage.id),
-    ['pending', 'working', 'review', 'approved', 'rework', 'blocked', 'done']
+    ['pending', 'working', 'review', 'approved', 'rework', 'done', 'blocked']
   );
   assert.equal(marketing.stages.filter((stage) => stage.type === 'open').length, 1);
   assert.equal(marketing.stages.filter((stage) => stage.type === 'signoff').length, 1);
   assert.equal(marketing.stages.filter((stage) => stage.type === 'done').length, 1);
 
-  // Approving lands on "معتمدة", publishing on "منجزة", rework on "إعادة عمل".
+  // Reviewing lands on "قيد الموافقة", final approval on "منجزة", and returns on "إعادة عمل".
   assert.equal(stageForApproval('marketing', null), 'approved');
   assert.equal(stageForState('marketing', 'approved', null), 'done');
   assert.equal(stageForState('marketing', 'submitted', null), 'review');
@@ -232,7 +232,7 @@ test('team boundaries, performance privacy and export', async () => {
   manager = await create(
     '/users',
     {
-      name: 'Marketing Manager',
+      name: 'Mirna Marketing Manager',
       email: 'manager@test.local',
       password: 'Manager123!',
       role: 'manager',
@@ -326,6 +326,23 @@ test('team boundaries, performance privacy and export', async () => {
   });
   assert.equal(managerOverview.data.scope, 'team');
   assert.equal(managerOverview.data.people.length, 2);
+
+  const datedOverview = await request(
+    '/tasks/overview?department=marketing&from=2026-07-26&to=2026-07-30',
+    { cookie: managerCookie }
+  );
+  assert.equal(datedOverview.status, 200);
+  assert.equal(datedOverview.data.period.workingDays, 5);
+  const creativePeriod = datedOverview.data.people.find(
+    (person) => person.user.id === creative.user.id
+  );
+  assert.equal(creativePeriod.daysWithoutTasks, 4);
+  assert.deepEqual(creativePeriod.idleDates, [
+    '2026-07-27',
+    '2026-07-28',
+    '2026-07-29',
+    '2026-07-30',
+  ]);
 
   const exported = await request('/tasks/export.csv?lang=en&department=marketing', {
     cookie: managerCookie,
@@ -479,9 +496,33 @@ test('the board cannot be dragged past either gate', async () => {
   });
   assert.equal(bornDone.status, 409);
   assert.equal(bornDone.data.error, 'review_required');
+
+  const bornPendingApproval = await request('/tasks', {
+    method: 'POST',
+    cookie: managerCookie,
+    body: { title: 'No synthetic sign-off', department: 'marketing', stage: 'approved' },
+  });
+  assert.equal(bornPendingApproval.status, 409);
+  assert.equal(bornPendingApproval.data.error, 'review_required');
 });
 
 test('assign → deliver → review → approve, including the rework loop', async () => {
+  const finalApprover = await create(
+    '/users',
+    {
+      name: 'Seddik',
+      email: 'seddik@test.local',
+      password: 'SeddikPass123!',
+      role: 'member',
+      department: 'marketing',
+      subteam: 'marketing_core',
+    },
+    adminCookie
+  );
+  assert.ok(finalApprover.user.taskWorkflowRoles.includes('marketing_final_approver'));
+  assert.ok(finalApprover.user.effectivePermissions.includes(PERMISSIONS.TASKS_PUBLISH));
+  const finalApproverCookie = await login('seddik@test.local', 'SeddikPass123!');
+
   const { task } = await create(
     '/tasks',
     {
@@ -711,6 +752,19 @@ test('assign → deliver → review → approve, including the rework loop', asy
   assert.equal(returned.data.task.submittedAt, null);
   assert.equal(returned.data.task.score, null);
 
+  const reworkCounts = await request('/tasks/counts', { cookie: creativeCookie });
+  assert.equal(reworkCounts.data.rework, 1);
+  assert.equal(reworkCounts.data.reworkTasks[0].id, task.id);
+  assert.equal(reworkCounts.data.reworkTasks[0].scorePenaltyPercent, 10);
+  const acknowledged = await request('/tasks/rework/acknowledge', {
+    method: 'POST',
+    cookie: creativeCookie,
+  });
+  assert.equal(acknowledged.status, 200);
+  assert.equal(acknowledged.data.acknowledged, 1);
+  const afterAcknowledge = await request('/tasks/counts', { cookie: creativeCookie });
+  assert.equal(afterAcknowledge.data.rework, 0);
+
   const resubmitted = await request(`/tasks/${task.id}/submit`, {
     method: 'POST',
     cookie: creativeCookie,
@@ -718,6 +772,25 @@ test('assign → deliver → review → approve, including the rework loop', asy
   });
   assert.equal(resubmitted.status, 200);
   assert.equal(resubmitted.data.task.reviewDecision, null);
+
+  const returnedAgain = await request(`/tasks/${task.id}/review`, {
+    method: 'POST',
+    cookie: managerCookie,
+    body: { decision: 'changes_requested', note: 'راجع المقاس الأخير مرة ثانية' },
+  });
+  assert.equal(returnedAgain.status, 200);
+  assert.equal(returnedAgain.data.task.reworkCount, 2);
+  assert.equal(returnedAgain.data.task.scorePenaltyPercent, 20);
+
+  const secondReworkCounts = await request('/tasks/counts', { cookie: creativeCookie });
+  assert.equal(secondReworkCounts.data.rework, 1, 'a new return cycle must raise the guard again');
+  await request('/tasks/rework/acknowledge', { method: 'POST', cookie: creativeCookie });
+  const resubmittedAgain = await request(`/tasks/${task.id}/submit`, {
+    method: 'POST',
+    cookie: creativeCookie,
+    body: { note: 'راجعت المقاس الأخير' },
+  });
+  assert.equal(resubmittedAgain.status, 200);
 
   const badScore = await request(`/tasks/${task.id}/review`, {
     method: 'POST',
@@ -734,9 +807,11 @@ test('assign → deliver → review → approve, including the rework loop', asy
   });
   assert.equal(approved.status, 200);
   // Marketing separates "the manager said yes" from "it went out", so approving
-  // parks the card in "معتمدة" rather than closing it.
+  // parks the card in "قيد الموافقة" rather than closing it.
   assert.equal(approved.data.task.stage, 'approved');
-  assert.equal(approved.data.task.score, 88);
+  assert.equal(approved.data.task.scoreBeforeReworkPenalty, 88);
+  assert.equal(approved.data.task.scorePenaltyPercent, 20);
+  assert.equal(approved.data.task.score, 70.4);
   assert.equal(approved.data.task.reviewedBy, manager.user.id);
   assert.equal(approved.data.task.reviewDecision, 'approved');
   // The work was finished when it was approved — waiting for a publishing slot
@@ -760,26 +835,44 @@ test('assign → deliver → review → approve, including the rework loop', asy
   assert.equal(draggedOutOfSignoff.status, 409);
   assert.equal(draggedOutOfSignoff.data.error, 'reopen_required');
 
-  // Dragging it to "منجزة" is the publish step and has its own action, so the
-  // plain stage write is refused the same way every other gate is.
+  // Mirna's review authority stops at "قيد الموافقة"; she cannot perform the
+  // second desk's final move.
   const draggedToDone = await request(`/tasks/${task.id}`, {
     method: 'PATCH',
     cookie: managerCookie,
     body: { stage: 'done' },
   });
-  assert.equal(draggedToDone.status, 409);
-  assert.equal(draggedToDone.data.error, 'publish_required');
+  assert.equal(draggedToDone.status, 403);
+  assert.equal(draggedToDone.data.error, 'forbidden');
 
-  // Publishing is not a gate: the assignee may record that their own approved
-  // work went out, and it asks for nothing because the score already exists.
+  // The final approver has the dedicated action, not generic task editing, so
+  // the audit stamps cannot be skipped with a plain stage patch.
+  const finalDrag = await request(`/tasks/${task.id}`, {
+    method: 'PATCH',
+    cookie: finalApproverCookie,
+    body: { stage: 'done' },
+  });
+  assert.equal(finalDrag.status, 403);
+  assert.equal(finalDrag.data.error, 'forbidden');
+
+  const finalAlerts = await request('/notifications', { cookie: finalApproverCookie });
+  assert.ok(
+    finalAlerts.data.notifications.some(
+      (notification) =>
+        notification.type === 'task.awaiting_final_approval' &&
+        notification.link === `/tasks?task=${task.id}`
+    )
+  );
+
+  // The second named approval desk owns the final move to Done.
   const published = await request(`/tasks/${task.id}/publish`, {
     method: 'POST',
-    cookie: creativeCookie,
+    cookie: finalApproverCookie,
   });
   assert.equal(published.status, 200);
   assert.equal(published.data.task.stage, 'done');
   assert.ok(published.data.task.publishedAt);
-  assert.equal(published.data.task.publishedBy, creative.user.id);
+  assert.equal(published.data.task.publishedBy, finalApprover.user.id);
   // Publishing must not restamp completion, or a post that waited a week for
   // its slot would read as delivered a week late.
   assert.equal(published.data.task.completedAt, approved.data.task.completedAt);
@@ -795,7 +888,7 @@ test('assign → deliver → review → approve, including the rework loop', asy
   // The assignee sees their own score and the feedback written for them.
   const mine = await request('/tasks', { cookie: creativeCookie });
   const own = mine.data.tasks.find((item) => item.id === task.id);
-  assert.equal(own.score, 88);
+  assert.equal(own.score, 70.4);
   assert.equal(own.reviewNote, 'تمام بعد التعديل');
 
   // A teammate on the same board sees the task, but not the verdict on it.
@@ -997,7 +1090,8 @@ test('the overview counts rework, queue depth and first-pass approvals', async (
   assert.equal(row.returned, 1);
   // The one approved task went back once, so nothing was approved first time.
   assert.equal(row.firstPassRate, 0);
-  assert.equal(row.averageScore, 88);
+  assert.equal(row.averageScore, 70.4);
+  assert.equal(row.reworkCycles, 2);
   assert.equal(row.onTimeRate, 100);
   assert.equal(typeof overview.data.summary.awaitingReview, 'number');
 });
@@ -1426,19 +1520,16 @@ test('two people can own one task, and both carry its score', async () => {
     body: { decision: 'approved', score: 90, note: 'تمام' },
   });
   assert.equal(approved.status, 200);
+  assert.equal(approved.data.task.score, 90);
 
   // One review closed it for both, and the same number lands on both records —
   // which is what "equal partners" was asked to mean.
   const overview = await request('/tasks/overview?department=marketing', {
     cookie: managerCookie,
   });
-  for (const person of [creative.user.id, second.user.id]) {
-    const row = overview.data.people.find((entry) => entry.user.id === person);
-    assert.ok(
-      row.averageScore >= 88 && row.averageScore <= 90,
-      `${person} should carry the shared score, got ${row.averageScore}`
-    );
-  }
+  const secondRow = overview.data.people.find((entry) => entry.user.id === second.user.id);
+  assert.equal(secondRow.averageScore, 90);
+  assert.ok(Number.isFinite(overview.data.people.find((entry) => entry.user.id === creative.user.id).averageScore));
 
   // And a stranger to the task still cannot hand it in.
   const outsider = await request(`/tasks/${task.id}/submit`, {

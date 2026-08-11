@@ -40,6 +40,7 @@
 
 import { PERMISSIONS, can } from './permissions.js';
 import { DEFAULT_DEPARTMENT, getStages, stageType } from './departments.js';
+import { TASK_WORKFLOW_ROLES, hasTaskWorkflowRole } from './marketingWorkflow.js';
 
 /**
  * The lifecycle, in order. Maps 1:1 onto the canonical stage types.
@@ -131,9 +132,9 @@ export function stageForState(department, state, fallback) {
  * Where an approval lands: the sign-off column when the department has one,
  * and the done column when it does not.
  *
- * This is the whole of the opt-in. Marketing declares "معتمدة" and approved
- * work waits there to be published; sales, IT and the rest declare no such
- * column and approving closes the task outright, exactly as before.
+ * This is the whole of the opt-in. Marketing declares "قيد الموافقة" and the
+ * reviewed work waits for the final approver; sales, IT and the rest declare no
+ * such column and approving closes the task outright, exactly as before.
  */
 export function stageForApproval(department, fallback) {
   return stageForState(department, 'signed_off', null) ?? stageForState(department, 'approved', fallback);
@@ -182,6 +183,11 @@ export function canApproveWork(user) {
 
 export function canScoreWork(user) {
   return can(user, PERMISSIONS.TASKS_SCORE);
+}
+
+/** The final Marketing hand-off: approved work may now be marked delivered. */
+export function canPublishWork(user) {
+  return can(user, PERMISSIONS.TASKS_PUBLISH);
 }
 
 /** A reviewer is whoever may pass judgement on submitted work. */
@@ -302,19 +308,23 @@ export function canReview(user, task) {
 }
 
 /**
- * Publishing is the one move out of sign-off, and it is deliberately not a
- * gate: the judgement already happened at review and the score is already on
- * the record. This only says the approved thing is now out in the world, which
- * is usually the person who does the work — the media buyer posts the post —
- * so the doer may do it as well as a reviewer.
+ * Publishing is the one move out of sign-off. Marketing deliberately assigns
+ * it to its final approver rather than the doer or the first reviewer; admins
+ * retain emergency access, and the explicit permission remains the server-side
+ * capability behind that named responsibility.
  */
 export function canPublish(user, task) {
-  return taskState(task) === 'signed_off' && (isDoer(user, task) || isReviewer(user));
+  if (taskState(task) !== 'signed_off' || !canPublishWork(user)) return false;
+  if (departmentOfTask(task) !== 'marketing') return true;
+  return (
+    user?.role === 'admin' ||
+    hasTaskWorkflowRole(user, TASK_WORKFLOW_ROLES.MARKETING_FINAL_APPROVER)
+  );
 }
 
 /**
  * Reopening is a manager's correction, not an employee's undo. It reaches back
- * from sign-off too: work approved this morning and not yet published is the
+ * from sign-off too: work reviewed this morning and not finally approved is the
  * easiest thing to pull back, and refusing there would mean publishing it first
  * just to be allowed to take it back.
  */
@@ -351,7 +361,7 @@ export function canScore(user) {
  * Without that, an employee could drag their own card between two columns of
  * the same canonical type, which in a department like marketing means moving it
  * out of "إعادة عمل" — where a manager put it — back into "قيد العمل", or into
- * a column literally named "معتمدة". Same type, so the old rule read it as an
+ * a column literally named "قيد الموافقة". Same type, so the old rule read it as an
  * ordinary move and allowed it.
  */
 export function stageWriteVerdict(user, task, nextDepartment, nextStage) {
@@ -385,7 +395,7 @@ export function stageWriteVerdict(user, task, nextDepartment, nextStage) {
   // leave the sign-off column without a manager: the decision was already made
   // and scored, this just records that the approved thing went out.
   if (from === 'signed_off' && to === 'approved') {
-    return doer || reviewer ? 'publish' : 'forbidden';
+    return canPublish(user, task) ? 'publish' : 'forbidden';
   }
   // Landing in either terminal column is the review gate's verdict. On a board
   // with a sign-off column that is where approving lands, so both are named.

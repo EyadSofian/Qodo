@@ -474,8 +474,13 @@ export function ReviewVerdict({ task }: { task: Task }) {
         </span>
       </div>
       {task.score !== null && task.score !== undefined && (
-        <div className="mt-2">
+        <div className="mt-2 flex flex-wrap items-center gap-2">
           <ScoreChip score={task.score} />
+          {task.scorePenaltyPercent > 0 && (
+            <span className="chip bg-status-badBg text-status-bad">
+              {t('flow.reworkPenaltyApplied', { percent: task.scorePenaltyPercent })}
+            </span>
+          )}
         </div>
       )}
       {task.reviewNote && (
@@ -935,7 +940,9 @@ function ReviewGate({
   const { push } = useToast();
   const [score, setScore] = useState(task.score ?? 85);
   const [note, setNote] = useState('');
-  const band = scoreBand(score);
+  const penaltyPercent = Math.min(100, (task.reworkCount ?? 0) * 10);
+  const effectiveScore = Math.round(score * Math.max(0, 1 - penaltyPercent / 100) * 10) / 10;
+  const band = scoreBand(effectiveScore);
 
   /**
    * The score and the decision are one judgement, so the form says so.
@@ -1006,6 +1013,15 @@ function ReviewGate({
             );
           })}
         </div>
+        {penaltyPercent > 0 && (
+          <p className="mt-2.5 rounded-xl bg-status-badBg px-3 py-2 text-[12px] font-bold text-status-bad">
+            {t('flow.reworkPenaltyPreview', {
+              percent: penaltyPercent,
+              raw: score,
+              final: effectiveScore,
+            })}
+          </p>
+        )}
       </div>
 
       {weak && (

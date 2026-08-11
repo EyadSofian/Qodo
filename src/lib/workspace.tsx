@@ -18,6 +18,8 @@ const NO_TASKS: TaskCounts = {
   dueToday: 0,
   unanswered: 0,
   awaitingMyReview: 0,
+  rework: 0,
+  reworkTasks: [],
 };
 
 /**

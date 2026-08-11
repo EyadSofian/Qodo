@@ -10,6 +10,7 @@ import {
   ListPlus,
   Paperclip,
   Plus,
+  RotateCcw,
   Search,
   Table2,
 } from 'lucide-react';
@@ -89,6 +90,11 @@ const EDGE = 90;
 /** Keep an already-open board current when somebody else assigns or edits work. */
 const TASK_POLL_MS = 20_000;
 
+function localDateValue(date = new Date()) {
+  const offset = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 10);
+}
+
 export function Tasks() {
   const { user, can } = useAuth();
   const { t, lang, dir } = useI18n();
@@ -100,6 +106,8 @@ export function Tasks() {
   const [scope, setScope] = useState<'mine' | 'all'>('mine');
   const [view, setView] = useState<'table' | 'board' | 'review' | 'overview'>('table');
   const [overview, setOverview] = useState<PerformanceOverview | null>(null);
+  const [overviewFrom, setOverviewFrom] = useState(() => `${localDateValue().slice(0, 7)}-01`);
+  const [overviewTo, setOverviewTo] = useState(() => localDateValue());
   // '' = every department, which falls back to the canonical progress columns.
   const [department, setDepartment] = useState<string>(user?.department ?? DEFAULT_DEPARTMENT);
   const [assignee, setAssignee] = useState('');
@@ -166,22 +174,25 @@ export function Tasks() {
   useEffect(() => {
     if (view !== 'overview') return;
     setOverview(null);
-    const queryString = department ? `?department=${encodeURIComponent(department)}` : '';
+    const overviewParams = new URLSearchParams({ from: overviewFrom, to: overviewTo });
+    if (department) overviewParams.set('department', department);
     api
-      .get<PerformanceOverview>(`/tasks/overview${queryString}`)
+      .get<PerformanceOverview>(`/tasks/overview?${overviewParams}`)
       .then(setOverview)
       .catch(() => setOverview({
         scope: 'self',
+        period: { from: overviewFrom, to: overviewTo, workingDays: 0 },
         summary: emptyMetrics(),
         people: [],
         statuses: [],
       }));
-  }, [view, department]);
+  }, [view, department, overviewFrom, overviewTo]);
 
   // A ?task=… link from a notification or search fetches that row directly.
   // The board list may predate an assignment, so searching only the cached list
   // makes the notification appear broken and then discards its task id.
   const deepLink = params.get('task');
+  const reworkOnly = params.get('rework') === '1';
   useEffect(() => {
     if (!deepLink) return;
     let active = true;
@@ -244,6 +255,7 @@ export function Tasks() {
     const term = query.trim().toLowerCase();
     return tasks.filter((task) => {
       if (department && (task.department ?? DEFAULT_DEPARTMENT) !== department) return false;
+      if (reworkOnly && (task.stage !== 'rework' || !isAssignee(user, task))) return false;
       if (scope === 'mine' && !isAssignee(user, task) && task.createdBy !== user?.id) return false;
       if (assignee && !assigneesOf(task).includes(assignee)) return false;
       if (term) {
@@ -259,7 +271,7 @@ export function Tasks() {
       }
       return true;
     });
-  }, [tasks, scope, assignee, query, user, department]);
+  }, [tasks, scope, assignee, query, user, department, reworkOnly]);
 
   const byColumn = useMemo(() => {
     const groups: Record<string, Task[]> = {};
@@ -638,6 +650,22 @@ export function Tasks() {
       </div>
 
       {(view === 'table' || view === 'board') && <div className="mb-4 flex flex-wrap items-center gap-2">
+        {reworkOnly && (
+          <button
+            type="button"
+            onClick={() => {
+              setParams((current) => {
+                const next = new URLSearchParams(current);
+                next.delete('rework');
+                return next;
+              });
+            }}
+            className="btn-ghost btn-sm gap-1.5 border-status-bad/30 bg-status-badBg text-status-bad"
+          >
+            <RotateCcw size={14} />
+            {t('reworkGuard.filter')}
+          </button>
+        )}
         {seesTeam && (
           <Segmented
             value={scope}
@@ -690,7 +718,13 @@ export function Tasks() {
       </div>}
 
       {view === 'overview' ? (
-        <PerformancePanel data={overview} />
+        <PerformancePanel
+          data={overview}
+          from={overviewFrom}
+          to={overviewTo}
+          onFromChange={setOverviewFrom}
+          onToChange={setOverviewTo}
+        />
       ) : tasks === null ? (
         <div className="grid gap-3 md:grid-cols-4">
           {Array.from({ length: 4 }).map((_, index) => (
@@ -1053,7 +1087,19 @@ function ReviewQueue({ tasks, onOpen }: { tasks: Task[]; onOpen: (task: Task) =>
   );
 }
 
-function PerformancePanel({ data }: { data: PerformanceOverview | null }) {
+function PerformancePanel({
+  data,
+  from,
+  to,
+  onFromChange,
+  onToChange,
+}: {
+  data: PerformanceOverview | null;
+  from: string;
+  to: string;
+  onFromChange: (value: string) => void;
+  onToChange: (value: string) => void;
+}) {
   const { t, lang } = useI18n();
   if (!data) {
     return (
@@ -1090,20 +1136,51 @@ function PerformancePanel({ data }: { data: PerformanceOverview | null }) {
       tone: summary.awaitingReview ? 'text-accent-600' : 'text-ink-faint',
       hint: undefined,
     },
+    {
+      label: t('performance.reworkNow'),
+      value: summary.rework,
+      tone: summary.rework ? 'text-status-bad' : 'text-ink-faint',
+      hint: undefined,
+    },
     { label: t('performance.overdue'), value: summary.overdue, tone: 'text-status-bad', hint: undefined },
   ];
   const totalStatuses = data.statuses.reduce((sum, status) => sum + status.count, 0);
 
   return (
     <section>
-      <div className="mb-4 rounded-2xl border border-surface-line bg-navy px-5 py-4 text-white shadow-sm">
-        <h2 className="text-[17px] font-extrabold">{t('performance.title')}</h2>
-        <p className="mt-1 text-[12.5px] text-white/70">
-          {data.scope === 'self' ? t('performance.selfHint') : t('performance.teamHint')}
-        </p>
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-4 rounded-2xl border border-surface-line bg-navy px-5 py-4 text-white shadow-sm">
+        <div>
+          <h2 className="text-[17px] font-extrabold">{t('performance.title')}</h2>
+          <p className="mt-1 text-[12.5px] text-white/70">
+            {data.scope === 'self' ? t('performance.selfHint') : t('performance.teamHint')}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="grid gap-1 text-[10.5px] font-bold text-white/65">
+            {t('performance.from')}
+            <input
+              type="date"
+              value={from}
+              max={to}
+              onChange={(event) => onFromChange(event.target.value)}
+              className="field ltr !min-h-9 !border-white/15 !bg-white/10 !text-white [color-scheme:dark]"
+            />
+          </label>
+          <label className="grid gap-1 text-[10.5px] font-bold text-white/65">
+            {t('performance.to')}
+            <input
+              type="date"
+              value={to}
+              min={from}
+              max={localDateValue()}
+              onChange={(event) => onToChange(event.target.value)}
+              className="field ltr !min-h-9 !border-white/15 !bg-white/10 !text-white [color-scheme:dark]"
+            />
+          </label>
+        </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
         {cards.map((card) => (
           <article
             key={card.label}
@@ -1134,7 +1211,9 @@ function PerformancePanel({ data }: { data: PerformanceOverview | null }) {
                     <th className="px-3 py-2.5 text-center">{t('performance.total')}</th>
                     <th className="px-3 py-2.5 text-center">{t('performance.completed')}</th>
                     <th className="px-3 py-2.5 text-center">{t('performance.awaitingReview')}</th>
+                    <th className="px-3 py-2.5 text-center">{t('performance.reworkNow')}</th>
                     <th className="px-3 py-2.5 text-center">{t('performance.returned')}</th>
+                    <th className="px-3 py-2.5 text-center">{t('performance.daysWithoutTasks')}</th>
                     <th className="px-3 py-2.5 text-center">{t('performance.overdue')}</th>
                     <th className="px-3 py-2.5 text-center">{t('performance.onTime')}</th>
                     <th className="px-3 py-2.5 text-center">{t('performance.averageScore')}</th>
@@ -1191,8 +1270,10 @@ function PerformanceRow({
   person: PerformancePerson;
   lang: 'ar' | 'en';
 }) {
+  const { t } = useI18n();
   const subteam = getSubteam(person.user.department, person.user.subteam);
   const role = getJobRole(person.user.department, person.user.subteam, person.user.jobRole);
+  const idlePreview = person.idleDates.slice(0, 3).map((date) => date.slice(5)).join('، ');
   return (
     <tr className="text-[12px] text-ink">
       <td className="px-4 py-3">
@@ -1215,6 +1296,12 @@ function PerformanceRow({
                 {role ? (lang === 'en' ? role.en : role.ar) : lang === 'en' ? subteam?.en : subteam?.ar}
               </span>
             )}
+            {person.idleDates.length > 0 && (
+              <span className="mt-0.5 block truncate text-[10px] font-semibold text-accent-600">
+                {t('performance.idleDates')}: {idlePreview}
+                {person.idleDates.length > 3 ? ` +${person.idleDates.length - 3}` : ''}
+              </span>
+            )}
           </span>
         </Link>
       </td>
@@ -1224,7 +1311,13 @@ function PerformanceRow({
         value={person.awaitingReview}
         className={person.awaitingReview ? 'text-accent-600' : 'text-ink-faint'}
       />
+      <MetricCell value={person.rework} className={person.rework ? 'text-status-bad' : 'text-ink-faint'} />
       <MetricCell value={person.returned} className={person.returned ? 'text-ink-muted' : 'text-ink-faint'} />
+      <MetricCell
+        value={person.daysWithoutTasks}
+        className={person.daysWithoutTasks ? 'text-accent-600' : 'text-ink-faint'}
+        title={person.idleDates.join('، ')}
+      />
       <MetricCell value={person.overdue} className={person.overdue ? 'text-status-bad' : ''} />
       <MetricCell value={`${person.onTimeRate}%`} />
       <MetricCell
@@ -1238,11 +1331,13 @@ function PerformanceRow({
 function MetricCell({
   value,
   className,
+  title,
 }: {
   value: string | number;
   className?: string;
+  title?: string;
 }) {
-  return <td className={cx('px-3 py-3 text-center font-bold tabular-nums', className)}>{value}</td>;
+  return <td title={title} className={cx('px-3 py-3 text-center font-bold tabular-nums', className)}>{value}</td>;
 }
 
 function emptyMetrics(): PerformanceMetrics {
@@ -1253,6 +1348,8 @@ function emptyMetrics(): PerformanceMetrics {
     overdue: 0,
     awaitingReview: 0,
     returned: 0,
+    rework: 0,
+    reworkCycles: 0,
     completionRate: 0,
     onTimeRate: 0,
     firstPassRate: 0,
@@ -1297,6 +1394,7 @@ function statusTone(type: StageType) {
     open: 'bg-surface-sunken text-ink-muted',
     active: 'bg-status-infoBg text-brand-600',
     review: 'bg-status-warnBg text-accent-600',
+    signoff: 'bg-status-warnBg text-accent-600',
     done: 'bg-status-okBg text-status-ok',
   }[type];
 }

@@ -178,5 +178,12 @@ export function visiblePeople(user, people) {
  */
 export function taskForUser(user, task) {
   if (canManagePerformance(user) || isAssignee(user, task)) return task;
-  return { ...task, score: null, scoreBy: null, scoredAt: null, reviewNote: '' };
+  return {
+    ...task,
+    score: null,
+    scoreBeforeReworkPenalty: null,
+    scoreBy: null,
+    scoredAt: null,
+    reviewNote: '',
+  };
 }

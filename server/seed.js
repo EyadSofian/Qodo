@@ -14,6 +14,11 @@ import {
   normaliseStageId,
 } from '../shared/departments.js';
 import { DEFAULT_ORGANIZATION_ID, organizationOf } from '../shared/organization.js';
+import { PERMISSIONS, permissionsFor } from '../shared/permissions.js';
+import {
+  TASK_WORKFLOW_ROLES,
+  inferredMarketingWorkflowRoles,
+} from '../shared/marketingWorkflow.js';
 
 export const DEFAULT_ORGANIZATION = {
   id: DEFAULT_ORGANIZATION_ID,
@@ -268,6 +273,46 @@ async function migrateOrganisationAndTasks(store) {
     }
     if (!Object.hasOwn(person, 'subteam')) patch.subteam = null;
     if (!Object.hasOwn(person, 'jobRole')) patch.jobRole = null;
+    const inferredRoles = inferredMarketingWorkflowRoles(person);
+    const workflowRoles = [
+      ...new Set([...(person.taskWorkflowRoles ?? []), ...inferredRoles]),
+    ];
+    if (
+      !Object.hasOwn(person, 'taskWorkflowRoles') ||
+      workflowRoles.length !== (person.taskWorkflowRoles ?? []).length
+    ) {
+      patch.taskWorkflowRoles = workflowRoles;
+    }
+
+    // Mirna's review desk is intentionally narrow: she may inspect, return,
+    // approve and score Marketing submissions without inheriting task planning.
+    // Seddik's separate responsibility is only the final move to Done. The
+    // durable roles above are what runtime checks; display names are only the
+    // deployment-time bridge to the accounts that already exist.
+    if (inferredRoles.includes(TASK_WORKFLOW_ROLES.MARKETING_REVIEWER)) {
+      const access = [
+        PERMISSIONS.APPS_VIEW,
+        PERMISSIONS.TASKS_VIEW,
+        PERMISSIONS.TASKS_VIEW_TEAM,
+        PERMISSIONS.TASKS_REVIEW,
+        PERMISSIONS.TASKS_APPROVE,
+        PERMISSIONS.TASKS_SCORE,
+      ];
+      patch.permissions = [...new Set([...permissionsFor(person), ...access])].filter(
+        (permission) => permission !== PERMISSIONS.TASKS_PUBLISH
+      );
+      patch.visibilityScope = 'department';
+    }
+    if (inferredRoles.includes(TASK_WORKFLOW_ROLES.MARKETING_FINAL_APPROVER)) {
+      const access = [
+        PERMISSIONS.APPS_VIEW,
+        PERMISSIONS.TASKS_VIEW,
+        PERMISSIONS.TASKS_VIEW_TEAM,
+        PERMISSIONS.TASKS_PUBLISH,
+      ];
+      patch.permissions = [...new Set([...(patch.permissions ?? permissionsFor(person)), ...access])];
+      patch.visibilityScope = 'department';
+    }
     if (Object.keys(patch).length) await store.update('users', person.id, patch);
   }
 
@@ -365,6 +410,11 @@ async function migrateOrganisationAndTasks(store) {
     if (!Object.hasOwn(task, 'publishedAt')) patch.publishedAt = null;
     if (!Object.hasOwn(task, 'publishedBy')) patch.publishedBy = null;
     if (!Object.hasOwn(task, 'reworkCount')) patch.reworkCount = 0;
+    if (!Object.hasOwn(task, 'scoreBeforeReworkPenalty')) patch.scoreBeforeReworkPenalty = null;
+    if (!Object.hasOwn(task, 'scorePenaltyPercent')) {
+      patch.scorePenaltyPercent = Math.min(100, (task.reworkCount ?? 0) * 10);
+    }
+    if (!Object.hasOwn(task, 'reworkAcknowledgedBy')) patch.reworkAcknowledgedBy = {};
     if (!Object.hasOwn(task, 'reviewedAt')) {
       const scored = Number.isFinite(task.score);
       patch.reviewedAt = closed && scored ? (task.scoredAt ?? patch.completedAt ?? null) : null;
