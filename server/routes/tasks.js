@@ -38,10 +38,6 @@ import {
   stageWriteVerdict,
   taskState,
 } from '../../shared/workflow.js';
-import {
-  TASK_WORKFLOW_ROLES,
-  hasTaskWorkflowRole,
-} from '../../shared/marketingWorkflow.js';
 import { notifyUser } from '../push.js';
 import { publishNotification } from '../notificationStream.js';
 import {
@@ -1062,7 +1058,8 @@ router.post('/:id/publish', async (req, res) => {
 });
 
 /**
- * Mirna or Seddik may return any Marketing task to the start of the board.
+ * A user carrying the reset permission may return any Marketing task to the
+ * start of the board.
  *
  * This is not a plain stage edit. A task cannot honestly be Pending while it
  * still carries a current hand-in, approval, completion or score, so all of
@@ -1376,25 +1373,22 @@ function assignmentNotificationTitle(action) {
 }
 
 /**
- * Who should hear that work is waiting. Marketing has a named review desk;
- * other departments retain the creator-plus-reviewers fallback so a submission
- * never sits unseen because one person is away.
+ * Who should hear that work is waiting. The audience follows the review
+ * permission, so changing the checkbox in Users changes both the available
+ * action and its notifications.
  */
 async function reviewAudience(task, actorId) {
   const people = await find('users', isActiveUser);
   if ((task.department ?? DEFAULT_DEPARTMENT) === 'marketing') {
-    const mirna = people.filter(
+    const appointed = people.filter(
       (person) =>
+        person.role !== 'admin' &&
         organizationOf(person) === organizationOf(task) &&
-        hasTaskWorkflowRole(person, TASK_WORKFLOW_ROLES.MARKETING_REVIEWER) &&
         isReviewer(person) &&
         canViewTask(person, task) &&
         person.id !== actorId
     );
-    // Once the named review desk exists, Marketing submissions go there alone.
-    // The fallback below keeps work moving during a first deploy before the
-    // account has been created or matched by the migration.
-    if (mirna.length > 0) return mirna.map((person) => person.id);
+    if (appointed.length > 0) return appointed.map((person) => person.id);
   }
 
   const audience = new Set();
@@ -1408,30 +1402,18 @@ async function reviewAudience(task, actorId) {
   return [...audience];
 }
 
-/** Who owns Marketing's second gate after the reviewer approves the work. */
+/** Everybody appointed to Marketing's second gate through permissions. */
 async function finalApprovalAudience(task, actorId) {
   const people = await find('users', isActiveUser);
-  const designated = people.filter(
+  const eligible = people.filter(
     (person) =>
       organizationOf(person) === organizationOf(task) &&
-      hasTaskWorkflowRole(person, TASK_WORKFLOW_ROLES.MARKETING_FINAL_APPROVER) &&
       canPublish(person, task) &&
       canViewTask(person, task) &&
       person.id !== actorId
   );
-  if (designated.length > 0) return designated.map((person) => person.id);
-
-  // An admin is the safe operational fallback if the named account has not
-  // been provisioned yet; the task never disappears between the two gates.
-  return people
-    .filter(
-      (person) =>
-        organizationOf(person) === organizationOf(task) &&
-        canPublish(person, task) &&
-        canViewTask(person, task) &&
-        person.id !== actorId
-    )
-    .map((person) => person.id);
+  const appointed = eligible.filter((person) => person.role !== 'admin');
+  return (appointed.length > 0 ? appointed : eligible).map((person) => person.id);
 }
 
 /**

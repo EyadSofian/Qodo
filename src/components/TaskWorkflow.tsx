@@ -538,7 +538,7 @@ export function SubmissionSummary({ task }: { task: Task }) {
 
 /* ── the gates ───────────────────────────────────────────────────── */
 
-/** The named Marketing desks' hard reset, kept visible beside every gate. */
+/** The permission-controlled Marketing reset, kept visible beside every gate. */
 export function ResetToPendingAction({
   task,
   onChanged,

@@ -293,6 +293,10 @@ const ERRORS: Record<string, { ar: string; en: string }> = {
     ar: 'أعد فتح المهمة المعتمدة أولاً قبل تغيير مرحلتها.',
     en: 'Reopen the approved task before changing its stage.',
   },
+  reset_pending_required: {
+    ar: 'استخدم إجراء «إرجاع إلى Pending» حتى تُمسح حالة المراجعة والتقييم بشكل صحيح.',
+    en: 'Use “Return to Pending” so the review and score state is cleared correctly.',
+  },
   not_submitted: {
     ar: 'هذه المهمة ليست قيد المراجعة.',
     en: 'This task is not waiting for review.',

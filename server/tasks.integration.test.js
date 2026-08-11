@@ -16,6 +16,8 @@ import {
 import { PERMISSIONS, can, visibilityFor } from '../shared/permissions.js';
 import {
   canApproveWork,
+  canPublish,
+  canResetToPending,
   canReopen,
   canReview,
   canScoreWork,
@@ -531,6 +533,7 @@ test('assign → deliver → review → approve, including the rework loop', asy
   );
   assert.ok(finalApprover.user.taskWorkflowRoles.includes('marketing_final_approver'));
   assert.ok(finalApprover.user.effectivePermissions.includes(PERMISSIONS.TASKS_PUBLISH));
+  assert.ok(finalApprover.user.effectivePermissions.includes(PERMISSIONS.TASKS_RESET_PENDING));
   finalApproverCookie = await login('seddik@test.local', 'SeddikPass123!');
 
   const { task } = await create(
@@ -1109,7 +1112,7 @@ test('the overview counts rework, queue depth and first-pass approvals', async (
   assert.equal(typeof overview.data.summary.awaitingReview, 'number');
 });
 
-test('Mirna and Seddik can return any Marketing stage to Pending', async () => {
+test('the Marketing Pending reset follows the user permission', async () => {
   const employeeReset = await request(
     `/tasks/${completedMarketingTaskId}/reset-to-pending`,
     { method: 'POST', cookie: creativeCookie }
@@ -1165,6 +1168,36 @@ test('Mirna and Seddik can return any Marketing stage to Pending', async () => {
   });
   assert.equal(started.status, 200);
   assert.equal(started.data.task.stage, 'working');
+
+  // The name/legacy workflow role is only the initial default. Once an admin
+  // unticks the permission it must stop immediately, then work again when the
+  // same permission is granted back.
+  assert.ok(manager.user.effectivePermissions.includes(PERMISSIONS.TASKS_RESET_PENDING));
+  const withoutReset = manager.user.effectivePermissions.filter(
+    (permission) => permission !== PERMISSIONS.TASKS_RESET_PENDING
+  );
+  const revoked = await request(`/users/${manager.user.id}`, {
+    method: 'PATCH',
+    body: { permissions: withoutReset },
+    cookie: adminCookie,
+  });
+  assert.equal(revoked.status, 200);
+  assert.equal(
+    revoked.data.user.effectivePermissions.includes(PERMISSIONS.TASKS_RESET_PENDING),
+    false
+  );
+  const mirnaDenied = await request(`/tasks/${workingTask.id}/reset-to-pending`, {
+    method: 'POST',
+    cookie: managerCookie,
+  });
+  assert.equal(mirnaDenied.status, 403);
+
+  const granted = await request(`/users/${manager.user.id}`, {
+    method: 'PATCH',
+    body: { permissions: [...withoutReset, PERMISSIONS.TASKS_RESET_PENDING] },
+    cookie: adminCookie,
+  });
+  assert.equal(granted.status, 200);
 
   const mirnaReset = await request(`/tasks/${workingTask.id}/reset-to-pending`, {
     method: 'POST',
@@ -1292,6 +1325,8 @@ test('each authority is its own key, and legacy overrides keep all four', () => 
   const archived = { ...task, archivedAt: '2026-01-01T00:00:00.000Z' };
   assert.equal(canArchiveTask(employee, task), false);
   assert.equal(canArchiveTask(boss, task), true);
+  assert.equal(can(boss, PERMISSIONS.TASKS_PUBLISH), false);
+  assert.equal(can(boss, PERMISSIONS.TASKS_RESET_PENDING), false);
   assert.equal(can(boss, PERMISSIONS.TASKS_DELETE_ANY), false);
   assert.equal(canDeleteTask(employee, archived), false);
   assert.equal(canDeleteTask(boss, archived), false);
@@ -1307,6 +1342,30 @@ test('each authority is its own key, and legacy overrides keep all four', () => 
   assert.equal(canReview(readOnlyReviewer, task), true);
   assert.equal(canApproveWork(readOnlyReviewer), false);
   assert.equal(canScoreWork(readOnlyReviewer), false);
+
+  // Marketing's two operational exceptions are permissions too: a name or
+  // legacy workflow role grants nothing after its initial provisioning, while
+  // an explicitly appointed member can use either action.
+  const signoffTask = { ...task, stage: 'approved' };
+  const namedWithoutPermissions = {
+    ...base,
+    role: 'member',
+    permissions: [PERMISSIONS.TASKS_VIEW],
+    taskWorkflowRoles: ['marketing_final_approver'],
+  };
+  assert.equal(canPublish(namedWithoutPermissions, signoffTask), false);
+  assert.equal(canResetToPending(namedWithoutPermissions, signoffTask), false);
+  const appointed = {
+    ...namedWithoutPermissions,
+    permissions: [
+      PERMISSIONS.TASKS_VIEW,
+      PERMISSIONS.TASKS_PUBLISH,
+      PERMISSIONS.TASKS_RESET_PENDING,
+    ],
+    taskWorkflowRoles: [],
+  };
+  assert.equal(canPublish(appointed, signoffTask), true);
+  assert.equal(canResetToPending(appointed, signoffTask), true);
 
   // An override saved before the split carries the old key alone, and must not
   // silently lose the three authorities that used to be bundled into it.

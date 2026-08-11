@@ -16,6 +16,7 @@ import {
 import { DEFAULT_ORGANIZATION_ID, organizationOf } from '../shared/organization.js';
 import { PERMISSIONS, permissionsFor } from '../shared/permissions.js';
 import {
+  TASK_WORKFLOW_PERMISSION_VERSION,
   TASK_WORKFLOW_ROLES,
   inferredMarketingWorkflowRoles,
 } from '../shared/marketingWorkflow.js';
@@ -284,35 +285,40 @@ async function migrateOrganisationAndTasks(store) {
       patch.taskWorkflowRoles = workflowRoles;
     }
 
-    // Mirna's review desk is intentionally narrow: she may inspect, return,
-    // approve and score Marketing submissions without inheriting task planning.
-    // Seddik's separate responsibility is only the final move to Done. The
-    // durable roles above are what runtime checks; display names are only the
-    // deployment-time bridge to the accounts that already exist.
-    if (inferredRoles.includes(TASK_WORKFLOW_ROLES.MARKETING_REVIEWER)) {
-      const access = [
-        PERMISSIONS.APPS_VIEW,
-        PERMISSIONS.TASKS_VIEW,
-        PERMISSIONS.TASKS_VIEW_TEAM,
-        PERMISSIONS.TASKS_REVIEW,
-        PERMISSIONS.TASKS_APPROVE,
-        PERMISSIONS.TASKS_SCORE,
-      ];
-      patch.permissions = [...new Set([...permissionsFor(person), ...access])].filter(
-        (permission) => permission !== PERMISSIONS.TASKS_PUBLISH
-      );
-      patch.visibilityScope = 'department';
-    }
-    if (inferredRoles.includes(TASK_WORKFLOW_ROLES.MARKETING_FINAL_APPROVER)) {
-      const access = [
-        PERMISSIONS.APPS_VIEW,
-        PERMISSIONS.TASKS_VIEW,
-        PERMISSIONS.TASKS_VIEW_TEAM,
-        PERMISSIONS.TASKS_PUBLISH,
-        PERMISSIONS.TASKS_SCORE,
-      ];
-      patch.permissions = [...new Set([...(patch.permissions ?? permissionsFor(person)), ...access])];
-      patch.visibilityScope = 'department';
+    // Seed the two current desks once, including the new reset permission. From
+    // then on the explicit permission array is owned entirely by the Users UI;
+    // a restart must never restore a box an administrator deliberately unticked.
+    if ((person.taskWorkflowPermissionVersion ?? 0) < TASK_WORKFLOW_PERMISSION_VERSION) {
+      if (workflowRoles.includes(TASK_WORKFLOW_ROLES.MARKETING_REVIEWER)) {
+        const access = [
+          PERMISSIONS.APPS_VIEW,
+          PERMISSIONS.TASKS_VIEW,
+          PERMISSIONS.TASKS_VIEW_TEAM,
+          PERMISSIONS.TASKS_REVIEW,
+          PERMISSIONS.TASKS_APPROVE,
+          PERMISSIONS.TASKS_SCORE,
+          PERMISSIONS.TASKS_RESET_PENDING,
+        ];
+        patch.permissions = [...new Set([...permissionsFor(person), ...access])].filter(
+          (permission) => permission !== PERMISSIONS.TASKS_PUBLISH
+        );
+        patch.visibilityScope = 'department';
+      }
+      if (workflowRoles.includes(TASK_WORKFLOW_ROLES.MARKETING_FINAL_APPROVER)) {
+        const access = [
+          PERMISSIONS.APPS_VIEW,
+          PERMISSIONS.TASKS_VIEW,
+          PERMISSIONS.TASKS_VIEW_TEAM,
+          PERMISSIONS.TASKS_PUBLISH,
+          PERMISSIONS.TASKS_SCORE,
+          PERMISSIONS.TASKS_RESET_PENDING,
+        ];
+        patch.permissions = [
+          ...new Set([...(patch.permissions ?? permissionsFor(person)), ...access]),
+        ];
+        patch.visibilityScope = 'department';
+      }
+      patch.taskWorkflowPermissionVersion = TASK_WORKFLOW_PERMISSION_VERSION;
     }
     if (Object.keys(patch).length) await store.update('users', person.id, patch);
   }

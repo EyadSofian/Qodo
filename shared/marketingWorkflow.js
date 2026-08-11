@@ -11,6 +11,9 @@ export const TASK_WORKFLOW_ROLES = {
   MARKETING_FINAL_APPROVER: 'marketing_final_approver',
 };
 
+/** Version of the one-time permission defaults attached to those legacy desks. */
+export const TASK_WORKFLOW_PERMISSION_VERSION = 1;
+
 const REVIEWER_NAMES = new Set(['ميرنا', 'mirna', 'merna']);
 const FINAL_APPROVER_NAMES = new Set([
   'صديق',

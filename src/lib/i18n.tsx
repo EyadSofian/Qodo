@@ -608,6 +608,10 @@ const STRINGS = {
   'perm.tasks.approve': { ar: 'اعتماد المهام وإعادة فتحها', en: 'Approve and reopen tasks' },
   'perm.tasks.score': { ar: 'تقييم الأداء ورؤية تقييمات الفريق', en: 'Score work and see team scores' },
   'perm.tasks.publish': { ar: 'الاعتماد النهائي ونقل المهمة لمنجزة', en: 'Final approval and mark work done' },
+  'perm.tasks.reset_pending': {
+    ar: 'إرجاع مهام التسويق من أي مرحلة إلى Pending',
+    en: 'Return Marketing tasks from any stage to Pending',
+  },
   'management.title': { ar: 'الإدارة', en: 'Management' },
   'perm.management.view': { ar: 'فتح لوحة الإدارة', en: 'Open the management desk' },
   'perm.management.manage': {

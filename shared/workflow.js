@@ -40,7 +40,6 @@
 
 import { PERMISSIONS, can } from './permissions.js';
 import { DEFAULT_DEPARTMENT, getStages, stageType } from './departments.js';
-import { TASK_WORKFLOW_ROLES, hasTaskWorkflowRole } from './marketingWorkflow.js';
 
 /**
  * The lifecycle, in order. Maps 1:1 onto the canonical stage types.
@@ -308,35 +307,21 @@ export function canReview(user, task) {
 }
 
 /**
- * Publishing is the one move out of sign-off. Marketing deliberately assigns
- * it to its final approver rather than the doer or the first reviewer; admins
- * retain emergency access, and the explicit permission remains the server-side
- * capability behind that named responsibility.
+ * Publishing is the one move out of sign-off. It is an explicit permission so
+ * the final approver is appointed from the Users screen rather than hidden in
+ * a display-name check.
  */
 export function canPublish(user, task) {
-  if (taskState(task) !== 'signed_off' || !canPublishWork(user)) return false;
-  if (departmentOfTask(task) !== 'marketing') return true;
-  return (
-    user?.role === 'admin' ||
-    hasTaskWorkflowRole(user, TASK_WORKFLOW_ROLES.MARKETING_FINAL_APPROVER)
-  );
+  return taskState(task) === 'signed_off' && canPublishWork(user);
 }
 
 /**
- * Marketing's two named desks may pull a task all the way back to Pending.
- *
- * This is deliberately narrower than ordinary review authority: Mirna and
- * Seddik need the operational escape hatch from every later column, while a
- * manager in another department must keep using that department's normal
- * review/reopen actions. Administrators retain emergency access.
+ * Whoever carries the Marketing reset permission may pull a task all the way
+ * back to Pending. The department check prevents this specialised board action
+ * from replacing other departments' normal review/reopen workflows.
  */
 export function canResetToPending(user, task) {
-  if (!user || departmentOfTask(task) !== 'marketing') return false;
-  return (
-    user.role === 'admin' ||
-    hasTaskWorkflowRole(user, TASK_WORKFLOW_ROLES.MARKETING_REVIEWER) ||
-    hasTaskWorkflowRole(user, TASK_WORKFLOW_ROLES.MARKETING_FINAL_APPROVER)
-  );
+  return departmentOfTask(task) === 'marketing' && can(user, PERMISSIONS.TASKS_RESET_PENDING);
 }
 
 /**
@@ -364,7 +349,7 @@ export function canScore(user) {
  *   'submit'     this is a hand-in; it needs a deliverable, so use the submit gate
  *   'review'     this is a review/final-approval gate, so use its explicit action
  *   'reopen'     approved work must be reopened explicitly before it can move
- *   'reset'      a named Marketing desk is returning it all the way to Pending
+ *   'reset'      a permitted Marketing desk is returning it all the way to Pending
  *   'forbidden'  the caller cannot make this transition
  *
  * The client turns every non-'ok' verdict into the matching task action rather
@@ -394,7 +379,7 @@ export function stageWriteVerdict(user, task, nextDepartment, nextStage) {
     departmentOfTask({ department: nextDepartment }) === departmentOfTask(task);
   if (sameStage) return 'ok';
 
-  // Mirna and Seddik have one explicit escape hatch from every later state.
+  // The explicit reset permission is the escape hatch from every later state.
   // It goes through its own endpoint because moving to Pending must clear the
   // current delivery, review, completion and score stamps as one transaction.
   if (to === 'assigned' && canResetToPending(user, task)) return 'reset';

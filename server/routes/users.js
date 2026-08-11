@@ -22,6 +22,7 @@ import { canUseDepartment, visiblePeople } from '../taskAccess.js';
 import { organizationOf } from '../../shared/organization.js';
 import { assigneesOf, assignmentRows } from '../../shared/workflow.js';
 import {
+  TASK_WORKFLOW_PERMISSION_VERSION,
   TASK_WORKFLOW_ROLES,
   inferredMarketingWorkflowRoles,
 } from '../../shared/marketingWorkflow.js';
@@ -86,6 +87,7 @@ router.post('/', requirePermission(PERMISSIONS.USERS_MANAGE), async (req, res) =
     // null = as wide as the role allows. Anything else narrows it.
     visibilityScope: workflow.visibilityScope ?? normaliseScope(req.body?.visibilityScope),
     taskWorkflowRoles: workflow.taskWorkflowRoles,
+    taskWorkflowPermissionVersion: workflow.taskWorkflowPermissionVersion,
     title: req.body?.title ? String(req.body.title).trim() : null,
     avatarColor: pickAvatarColor(name),
     lastLoginAt: null,
@@ -304,8 +306,12 @@ function provisionMarketingWorkflow(user) {
   const taskWorkflowRoles = inferredMarketingWorkflowRoles(user);
   let permissions = user.permissions;
   let visibilityScope = null;
+  const followsRoleDefaults = user.permissions === null;
 
-  if (taskWorkflowRoles.includes(TASK_WORKFLOW_ROLES.MARKETING_REVIEWER)) {
+  if (
+    followsRoleDefaults &&
+    taskWorkflowRoles.includes(TASK_WORKFLOW_ROLES.MARKETING_REVIEWER)
+  ) {
     const access = [
       PERMISSIONS.APPS_VIEW,
       PERMISSIONS.TASKS_VIEW,
@@ -313,6 +319,7 @@ function provisionMarketingWorkflow(user) {
       PERMISSIONS.TASKS_REVIEW,
       PERMISSIONS.TASKS_APPROVE,
       PERMISSIONS.TASKS_SCORE,
+      PERMISSIONS.TASKS_RESET_PENDING,
     ];
     permissions = [...new Set([...permissionsFor(user), ...access])].filter(
       (permission) => permission !== PERMISSIONS.TASKS_PUBLISH
@@ -320,19 +327,28 @@ function provisionMarketingWorkflow(user) {
     visibilityScope = 'department';
   }
 
-  if (taskWorkflowRoles.includes(TASK_WORKFLOW_ROLES.MARKETING_FINAL_APPROVER)) {
+  if (
+    followsRoleDefaults &&
+    taskWorkflowRoles.includes(TASK_WORKFLOW_ROLES.MARKETING_FINAL_APPROVER)
+  ) {
     const access = [
       PERMISSIONS.APPS_VIEW,
       PERMISSIONS.TASKS_VIEW,
       PERMISSIONS.TASKS_VIEW_TEAM,
       PERMISSIONS.TASKS_PUBLISH,
       PERMISSIONS.TASKS_SCORE,
+      PERMISSIONS.TASKS_RESET_PENDING,
     ];
     permissions = [...new Set([...(permissions ?? permissionsFor(user)), ...access])];
     visibilityScope = 'department';
   }
 
-  return { permissions, visibilityScope, taskWorkflowRoles };
+  return {
+    permissions,
+    visibilityScope,
+    taskWorkflowRoles,
+    taskWorkflowPermissionVersion: TASK_WORKFLOW_PERMISSION_VERSION,
+  };
 }
 
 function normaliseAppIds(value) {
