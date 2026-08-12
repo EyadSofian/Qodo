@@ -429,6 +429,7 @@ function ElearningAnalysis({ version }: { version: number }) {
                 label="إيراد محصّل"
                 value={formatMoney(data.collectedCurrent.amount, data.currency)}
                 hint={comparisonHint(data.collectedCurrent.amount, data.collectedPrevious.amount)}
+                explanation="إجمالي ما تم تحصيله فعليًا بالدولار من الفواتير المدفوعة خلال الفترة، حسب تاريخ الدفع في Insights Hub. يشمل كورسات Recorded فقط، ولا يشمل البيع غير المدفوع أو الإيفينتات أو الحضوري أو المجاني."
                 tone={data.collectedCurrent.amount > data.collectedPrevious.amount ? 'good' : 'plain'}
                 icon={<BadgeDollarSign size={17} />}
               />
@@ -436,12 +437,14 @@ function ElearningAnalysis({ version }: { version: number }) {
             <StatTile
               label="مشتريات"
               value={data.commercialCurrent.purchases}
-              hint="الكورس المباشر أو الباقة = عملية واحدة"
+              hint="وحدات كورسات مباشرة + باقات"
+              explanation="إجمالي الوحدات المباعة: كل وحدة كورس مدفوع خارج باقة تُحسب واحدة، وكل باقة مكتملة تُحسب واحدة. لذلك الرقم قد يختلف عن عدد الطلبات؛ الطلب الواحد يمكن أن يحتوي أكثر من عملية شراء."
               icon={<ShoppingCart size={17} />}
             />
             <StatTile
               label="باقات مباعة"
               value={data.commercialCurrent.packagesSold}
+              explanation="عدد الباقات التي تم التعرف عليها داخل طلبات Odoo المؤكدة عن طريق مطابقة كورسات الطلب مع مكونات الباقة. الباقة ذات القيمة صفر لا تُحسب كبيع مدفوع."
               hint={comparisonHint(
                 data.commercialCurrent.packagesSold,
                 data.commercialPrevious.packagesSold
@@ -451,6 +454,7 @@ function ElearningAnalysis({ version }: { version: number }) {
             <StatTile
               label="طلبات بيع مؤكدة"
               value={data.commercialCurrent.paidOrders}
+              explanation="عدد طلبات Odoo المختلفة بحالة Sale أو Done التي تحتوي كورسًا مدفوعًا مباشرًا أو باقة مدفوعة واحدة على الأقل خلال الفترة، حسب تاريخ الطلب. الطلب يُحسب مرة واحدة مهما كان عدد الكورسات بداخله."
               hint={comparisonHint(
                 data.commercialCurrent.paidOrders,
                 data.commercialPrevious.paidOrders
@@ -461,17 +465,20 @@ function ElearningAnalysis({ version }: { version: number }) {
               label="بيع كورسات مباشر"
               value={data.commercialCurrent.directSales}
               hint="عدد الوحدات المباعة خارج الباقات"
+              explanation="عدد وحدات الكورسات المدفوعة التي بيعت منفردة خارج أي باقة مطابقة. هذا عدد بيع وليس إيرادًا، ولا تدخل فيه الكورسات المجانية أو سطور البيع صفر القيمة."
               icon={<BookOpen size={17} />}
             />
             <StatTile
               label="كورسات حققت بيعًا"
               value={data.commercialCurrent.coursesWithSales}
               hint={`من ${data.commercialCurrent.paidCourses.toLocaleString('ar-EG')} كورس قابل للبيع`}
+              explanation="عدد الكورسات المدفوعة القابلة للبيع التي ظهر لها بيع واحد على الأقل خلال الفترة، سواء بيعت منفردة أو كجزء من باقة. الكورس يُحسب مرة واحدة مهما تكرر بيعه."
               icon={<Layers size={17} />}
             />
             <StatTile
               label="بلا بيع مدفوع"
               value={data.commercialCurrent.noSales}
+              explanation="عدد الكورسات المدفوعة القابلة للبيع التي لم يظهر لها أي بيع مباشر ولا بيع داخل باقة خلال الفترة المختارة. الكورسات المجانية غير موجودة في هذا الرقم."
               hint={comparisonHint(
                 data.commercialCurrent.noSales,
                 data.commercialPrevious.noSales
@@ -483,6 +490,7 @@ function ElearningAnalysis({ version }: { version: number }) {
               label="مجاني مستبعد"
               value={data.commercialCurrent.freeExcluded}
               hint="لا يدخل في البيع أو المقارنة"
+              explanation="عدد الكورسات المعروفة كمجانية، مثل The Freelance Masterclass أو الكورس المتاح للعامة. يتم استبعادها بالكامل من المبيعات المدفوعة وترتيب الأكثر والأقل بيعًا حتى لا تفسد المقارنة."
               icon={<Users size={17} />}
             />
           </div>

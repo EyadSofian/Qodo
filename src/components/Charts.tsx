@@ -22,6 +22,7 @@
  */
 
 import type { ReactNode } from 'react';
+import { CircleHelp } from 'lucide-react';
 import { cx } from '../lib/utils';
 
 /** brand-500 stepped light→dark. More is darker, which is the whole encoding. */
@@ -45,12 +46,15 @@ export function StatTile({
   label,
   value,
   hint,
+  explanation,
   icon,
   tone = 'plain',
 }: {
   label: string;
   value: string | number;
   hint?: string;
+  /** A plain-language definition, available on hover, keyboard focus and tap. */
+  explanation?: string;
   icon?: ReactNode;
   tone?: 'plain' | 'good' | 'warn';
 }) {
@@ -68,8 +72,28 @@ export function StatTile({
           {icon}
         </span>
       )}
-      <div className="min-w-0">
-        <p className="text-[12px] font-semibold text-ink-muted">{label}</p>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5">
+          <p className="text-[12px] font-semibold text-ink-muted">{label}</p>
+          {explanation && (
+            <details className="group relative shrink-0">
+              <summary
+                className="grid h-5 w-5 cursor-help list-none place-items-center rounded-full text-ink-faint transition-colors hover:bg-brand-50 hover:text-brand-700 [&::-webkit-details-marker]:hidden"
+                aria-label={`شرح ${label}`}
+                title={`شرح ${label}`}
+              >
+                <CircleHelp size={14} strokeWidth={2.2} />
+              </summary>
+              <div
+                role="tooltip"
+                className="pointer-events-none invisible absolute end-0 top-7 z-50 w-64 translate-y-1 rounded-xl border border-brand-100 bg-navy px-3 py-2.5 text-start text-[11.5px] font-medium leading-relaxed text-white opacity-0 shadow-xl transition duration-150 group-hover:visible group-hover:translate-y-0 group-hover:opacity-100 group-open:visible group-open:translate-y-0 group-open:opacity-100"
+              >
+                {explanation}
+                <span className="absolute -top-1.5 end-2.5 h-3 w-3 rotate-45 border-s border-t border-brand-100 bg-navy" />
+              </div>
+            </details>
+          )}
+        </div>
         <p className="mt-0.5 text-[24px] font-extrabold leading-none tabular-nums text-ink">
           {typeof value === 'number' ? arabicNumber(value) : value}
         </p>
