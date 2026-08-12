@@ -267,5 +267,13 @@ test('Insights revenue follows the Odoo eLearning catalogue, not modality wordin
   );
   assert.equal(result.catalogProducts, 3);
   assert.equal(result.matchedAccountingProducts, 3);
+  assert.deepEqual(
+    result.products.map(({ name, amount }) => ({ name, amount })),
+    [
+      { name: '[64] CFM Preparation Course', amount: 2135.43 },
+      { name: '[110] Management - PRIMAVERA', amount: 1000 },
+      { name: '[847] PMP Exam Simulator (AR)', amount: 500 },
+    ]
+  );
   assert.equal(result.source.valueBasis, 'USD Paid');
 });

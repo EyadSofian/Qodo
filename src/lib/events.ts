@@ -266,6 +266,11 @@ export interface ElearningCollectedRevenue {
     invoices: number;
     productLines: number;
   }>;
+  products: Array<{
+    key: string;
+    name: string;
+    amount: number;
+  }>;
 }
 
 export interface ElearningRevenueSource {

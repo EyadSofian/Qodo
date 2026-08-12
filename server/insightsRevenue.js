@@ -106,6 +106,21 @@ export function buildElearningRevenueSnapshot(payload, catalog) {
   const matchedAccountingProducts = new Set(
     matchedProducts.map((product) => normalizedProductName(product?.name))
   ).size;
+  const products = matchedProducts
+    .map((product) => {
+      const key = normalizedProductName(product?.name);
+      const rows = detailRows.filter((row) => normalizedProductName(row?.product) === key);
+      const amount = invoiceCountExact
+        ? rows.reduce((sum, row) => sum + number(row?.usdPaid), 0)
+        : nonEventProductRevenue(product);
+      return {
+        key,
+        name: String(product?.name || 'بدون اسم'),
+        amount: money(amount),
+      };
+    })
+    .filter((product) => product.amount !== 0)
+    .sort((a, b) => b.amount - a.amount || a.name.localeCompare(b.name));
 
   return {
     amount: money(
@@ -121,6 +136,7 @@ export function buildElearningRevenueSnapshot(payload, catalog) {
       ? detailRows.length
       : families.reduce((sum, family) => sum + family.productLines, 0),
     families,
+    products,
     currency: 'USD',
     scope: 'odoo_elearning_catalog',
     catalogProducts: matcher.products.size,
