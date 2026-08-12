@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   AlertCircle,
+  BadgeDollarSign,
   BarChart3,
   CalendarClock,
   CalendarDays,
@@ -72,6 +73,14 @@ const hits = (query: string) => (course: Course) =>
 
 const odooEventUrl = (id: number) =>
   `https://engosoft.com/web#id=${id}&model=event.event&view_type=form`;
+
+function formatUsd(value: number): string {
+  return `${value.toLocaleString('ar-EG', { maximumFractionDigits: 2 })} دولار`;
+}
+
+function friendlyEventProduct(value: string): string {
+  return value.replace(/^\s*\[[^\]]+\]\s*/, '').replace(/\s+/g, ' ').trim();
+}
 
 function previousDaysHint(current: number | null, previous: number | null): string {
   if (current === null || previous === null) return 'مفيش مقارنة متاحة';
@@ -234,7 +243,7 @@ export function Events() {
           {lane === 'upcoming' && data && (
             <CourseGrid courses={data.upcoming.filter(hits(query))} onOpen={setOpenId} />
           )}
-          {lane === 'analysis' && <EventsAnalysis version={analysisVersion} />}
+          {lane === 'analysis' && <EventsAnalysis version={analysisVersion} onOpen={setOpenId} />}
         </>
       )}
 
@@ -455,7 +464,7 @@ function CourseCard({
  * Loaded only when the tab is opened: it is four `read_group` calls against
  * Odoo and nobody should pay for them to look at today's lectures.
  */
-function EventsAnalysis({ version }: { version: number }) {
+function EventsAnalysis({ version, onOpen }: { version: number; onOpen: (id: number) => void }) {
   const [range, setRange] = useState<AnalyticsRange>(DEFAULT_ANALYTICS_RANGE);
   const [data, setData] = useState<EventsAnalytics | null>(null);
   const [error, setError] = useState('');
@@ -478,6 +487,9 @@ function EventsAnalysis({ version }: { version: number }) {
   const current = data?.current;
   const previous = data?.previous;
   const top = data?.topDemand[0];
+  const collected = data?.collectedCurrent;
+  const collectedPrevious = data?.collectedPrevious;
+  const topPaid = collected?.products[0];
 
   return (
     <div className="grid gap-4">
@@ -510,8 +522,109 @@ function EventsAnalysis({ version }: { version: number }) {
         </p>
       )}
 
+      {data && !data.revenueAvailable && (
+        <p className="flex items-center gap-2 rounded-xl bg-status-warnBg px-3.5 py-3 text-[12.5px] leading-relaxed text-accent-600">
+          <AlertCircle size={15} />
+          Insights Hub مارِدّش، فمش هنعرض رقم تحصيل غير مؤكد. حجوزات وتشغيل أودو ما زالوا ظاهرين تحت.
+        </p>
+      )}
+
+      {data?.revenueStale && (
+        <p className="flex items-center gap-2 rounded-xl bg-status-warnBg px-3.5 py-3 text-[12.5px] leading-relaxed text-accent-600">
+          <AlertCircle size={15} />
+          رقم التحصيل الظاهر هو آخر رقم صحيح محفوظ من Insights Hub.
+        </p>
+      )}
+
       {data && current && previous && (
         <div className={cx('grid gap-4 transition-opacity', loading && 'opacity-55')}>
+          {data.revenueAvailable && collected && collectedPrevious && data.revenueSource && (
+            <section className="grid gap-3 rounded-2xl border border-brand-100 bg-brand-50/55 p-4 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-black text-brand-700">البيع المدفوع · Insights Hub · حسب يوم الدفع</p>
+                  <h2 className="mt-1 text-[18px] font-black leading-relaxed text-ink">
+                    {topPaid
+                      ? <><bdi dir="auto">«{friendlyEventProduct(topPaid.name)}»</bdi> جاب أعلى تحصيل حضوري في الأيام دي.</>
+                      : 'مفيش تحصيل حضوري واضح في الفواتير خلال الأيام دي.'}
+                  </h2>
+                  <p className="mt-1 max-w-3xl text-[11.5px] leading-relaxed text-ink-muted">
+                    هنا بنحسب سطور الفواتير المدفوعة اللي اسم المنتج فيها مكتوب بوضوح Offline Attendance أو Riyadh.
+                    الأونلاين وأي Event نوعه مش واضح مش داخلين في الرقم.
+                  </p>
+                </div>
+                <a
+                  href={data.revenueSource.appUrl}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="btn-ghost btn-sm bg-white"
+                >
+                  افتح Insights Hub
+                </a>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <StatTile
+                  label="فلوس إيفينتات حضورية"
+                  value={formatUsd(collected.amount)}
+                  hint={previousDaysHint(collected.amount, collectedPrevious.amount)}
+                  explanation="مجموع USD Paid في سطور الفواتير المدفوعة للحضور Offline/Riyadh خلال الأيام المختارة."
+                  tone={collected.amount > collectedPrevious.amount ? 'good' : 'plain'}
+                  icon={<BadgeDollarSign size={17} />}
+                />
+                <StatTile
+                  label="فواتير حضوري مدفوعة"
+                  value={collected.invoices}
+                  hint="كل رقم فاتورة بيتحسب مرة واحدة"
+                  explanation="عدد الفواتير المختلفة اللي فيها منتج حضور واضح. الفاتورة ممكن يكون جواها أكتر من منتج."
+                  icon={<TicketCheck size={17} />}
+                />
+                <StatTile
+                  label="منتجات حضوري دخل لها فلوس"
+                  value={collected.products.length}
+                  hint="حسب اسم المنتج في الفاتورة"
+                  explanation="عدد أسماء منتجات الحضور المختلفة اللي ظهر لها تحصيل فعلي. ده مش عدد الإيفينتات اللي بدأت."
+                  icon={<CalendarDays size={17} />}
+                />
+                <StatTile
+                  label="فواتير مش مربوطة بإيفينت"
+                  value={collected.unassignedInvoices}
+                  hint={collected.unassignedInvoices ? 'تحتاج ربط في المصدر' : 'كل الفواتير مربوطة'}
+                  explanation="الفلوس صحيحة، لكن خانة Event في سطر الفاتورة فاضية؛ لذلك ما نقدرش ننسبها لسجل إيفينت بعينه."
+                  tone={collected.unassignedInvoices > 0 ? 'warn' : 'good'}
+                  icon={<AlertCircle size={17} />}
+                />
+              </div>
+
+              <EventRevenueBreakdown
+                products={collected.products}
+                sourceUrl={data.revenueSource.appUrl}
+              />
+
+              {(collected.excludedOnlineInvoices > 0 || collected.excludedUnknownInvoices > 0) && (
+                <p className="rounded-xl bg-white px-3.5 py-3 text-[11.5px] leading-relaxed text-ink-muted">
+                  علشان شاشة الإيفينتات حضوري بس: استبعدنا {collected.excludedOnlineInvoices.toLocaleString('ar-EG')} فاتورة
+                  أونلاين بقيمة {formatUsd(collected.excludedOnlineAmount)}، و{collected.excludedUnknownInvoices.toLocaleString('ar-EG')} فاتورة
+                  Event نوع الحضور فيها مش واضح بقيمة {formatUsd(collected.excludedUnknownAmount)}. ما خمّناش النوع.
+                </p>
+              )}
+              {collected.authority === 'postgres-last-good' && (
+                <p className="rounded-xl bg-status-warnBg px-3.5 py-3 text-[11.5px] font-semibold leading-relaxed text-accent-600">
+                  Insights Hub معلّم مصدر المحاسبة حاليًا كـ «آخر نسخة سليمة محفوظة»؛ الرقم مطابق لنفس
+                  البيانات المعروضة هناك، لكنه مش اتصال لحظي مباشر بقاعدة المحاسبة.
+                </p>
+              )}
+            </section>
+          )}
+
+          <section className="rounded-2xl border border-surface-line bg-white px-4 py-3.5 shadow-sm">
+            <h2 className="text-[15px] font-black text-ink">التشغيل والحجوزات · أودو · حسب ميعاد بداية الإيفينت</h2>
+            <p className="mt-1 text-[11.5px] leading-relaxed text-ink-muted">
+              الجزء اللي تحت مش فلوس ومش فواتير: ده بيجيب الإيفينتات الحضورية اللي بدأت في الأيام المختارة،
+              وبعدها يعدّ الأشخاص المسجلين عليها. علشان كده ما ينفعش نقارن الرقم ده مباشرة برقم Insights Hub.
+            </p>
+          </section>
+
           <section className="relative overflow-hidden rounded-2xl bg-navy px-5 py-5 text-white shadow-card">
             <span className="absolute -end-12 -top-14 h-40 w-40 rounded-full border-[28px] border-white/[0.04]" />
             <div className="relative grid gap-4 lg:grid-cols-[1.3fr_1fr] lg:items-end">
@@ -552,7 +665,8 @@ function EventsAnalysis({ version }: { version: number }) {
               </p>
               <p>
                 نسبة المقاعد بتتحسب بس للإيفينتات اللي السعة مكتوبة فيها: الحجوزات المؤكدة ÷ عدد المقاعد.
-                اضغط اسم أي إيفينت في القوائم تحت علشان تفتح سجله نفسه في أودو وتراجع الأشخاص والحالات.
+                اضغط اسم أي إيفينت في القوائم تحت علشان تفتح تفاصيله هنا: الميعاد، المدرّب، المكان،
+                وعدد المسجلين والمحاضرات. رابط أودو موجود جوه التفاصيل كاختيار إضافي لو حسابك عنده صلاحية.
               </p>
             </div>
           </details>
@@ -621,7 +735,7 @@ function EventsAnalysis({ version }: { version: number }) {
                   name: event.name,
                   primary: event.bookings,
                   secondary: event.interested,
-                  href: odooEventUrl(event.id),
+                  onClick: () => onOpen(event.id),
                   note: [shortDate(event.startsAt), event.instructor].filter(Boolean).join(' · '),
                 }))}
                 empty="مفيش حجز أو اهتمام متسجل في الأيام دي"
@@ -637,7 +751,7 @@ function EventsAnalysis({ version }: { version: number }) {
                   name: event.name,
                   primary: event.bookings,
                   secondary: event.interested,
-                  href: odooEventUrl(event.id),
+                  onClick: () => onOpen(event.id),
                   note: [shortDate(event.startsAt), kindLabel(event.kind)].filter(Boolean).join(' · '),
                 }))}
                 empty="مفيش إيفينتات في الأيام دي"
@@ -675,6 +789,66 @@ function EventsAnalysis({ version }: { version: number }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function EventRevenueBreakdown({
+  products,
+  sourceUrl,
+}: {
+  products: NonNullable<EventsAnalytics['collectedCurrent']>['products'];
+  sourceUrl: string;
+}) {
+  if (products.length === 0) {
+    return (
+      <p className="rounded-xl bg-white px-3 py-6 text-center text-[12px] text-ink-muted">
+        مفيش منتج حضور واضح دخل له فلوس في الأيام دي.
+      </p>
+    );
+  }
+
+  return (
+    <div>
+      <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
+        <div>
+          <h3 className="text-[14px] font-black text-ink">التحصيل حسب منتج الحضور</h3>
+          <p className="text-[10.5px] text-ink-faint">اسم الكورس بالإنجليزي زي ما هو مكتوب في الفاتورة</p>
+        </div>
+        <span className="chip bg-white text-ink-muted">المصدر: Paid Invoices</span>
+      </div>
+      <ol className="grid gap-2 md:grid-cols-2">
+        {products.map((product, index) => (
+          <li
+            key={product.key}
+            className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 rounded-xl border border-surface-line bg-white px-3 py-2.5"
+          >
+            <span className="grid h-7 w-7 place-items-center rounded-lg bg-surface-sunken text-[11px] font-black text-ink-muted">
+              {index + 1}
+            </span>
+            <div className="min-w-0">
+              <a
+                href={sourceUrl}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="text-[12.5px] font-bold leading-relaxed text-brand-700 hover:underline"
+                title="راجع المنتج في Insights Hub"
+              >
+                <bdi dir="auto">{friendlyEventProduct(product.name)}</bdi>
+              </a>
+              <p className="text-[10.5px] text-ink-faint">
+                {product.invoices.toLocaleString('ar-EG')} فاتورة فيها المنتج
+                {product.events.length > 0
+                  ? ` · مربوط بـ ${product.events.length.toLocaleString('ar-EG')} إيفينت`
+                  : ' · سطر الفاتورة مش مربوط بإيفينت'}
+              </p>
+            </div>
+            <strong className="whitespace-nowrap text-[12.5px] font-black tabular-nums text-ink">
+              {formatUsd(product.amount)}
+            </strong>
+          </li>
+        ))}
+      </ol>
     </div>
   );
 }
@@ -787,6 +961,20 @@ function CoursePanel({ id, onClose }: { id: number | null; onClose: () => void }
                 ))}
               </div>
             )}
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-surface-sunken px-3.5 py-3">
+            <p className="text-[11px] leading-relaxed text-ink-muted">
+              التفاصيل دي مقروءة من سجل الإيفينت في أودو. الرابط المباشر محتاج صلاحية Events/User أو Events/Administrator.
+            </p>
+            <a
+              href={odooEventUrl(course.id)}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="btn-ghost btn-sm shrink-0 bg-white"
+            >
+              افتح السجل في أودو
+            </a>
           </div>
         </div>
       )}

@@ -179,7 +179,15 @@ export function DemandRanking({
   primaryLabel,
   secondaryLabel,
 }: {
-  rows: Array<{ id: number; name: string; primary: number; secondary: number; note?: string; href?: string }>;
+  rows: Array<{
+    id: number;
+    name: string;
+    primary: number;
+    secondary: number;
+    note?: string;
+    href?: string;
+    onClick?: () => void;
+  }>;
   empty: string;
   primaryLabel: string;
   secondaryLabel: string;
@@ -201,7 +209,16 @@ export function DemandRanking({
             <div className="min-w-0">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  {row.href ? (
+                  {row.onClick ? (
+                    <button
+                      type="button"
+                      onClick={row.onClick}
+                      className="flex max-w-full items-center gap-1 text-start text-[12.5px] font-bold text-brand-700 hover:underline"
+                      title={`${row.name} — افتح التفاصيل هنا`}
+                    >
+                      <span className="truncate">{row.name}</span>
+                    </button>
+                  ) : row.href ? (
                     <a
                       href={row.href}
                       target="_blank"

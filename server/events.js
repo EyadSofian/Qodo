@@ -24,6 +24,10 @@ import { OdooError, odooConfigured, readGroup, searchRead } from './odoo.js';
 
 import { makeCache } from './cache.js';
 import { analyticsPeriod, publicPeriod } from './analyticsPeriod.js';
+import {
+  clearInsightsRevenueCache,
+  eventsRevenueForPeriod,
+} from './insightsRevenue.js';
 
 const cache = makeCache(60_000);
 /** Aggregates change by the day, not the minute, and cost far more to fetch. */
@@ -593,6 +597,13 @@ export async function eventsAnalytics({ from, to } = {}) {
     ]);
     const current = buildEventsSnapshot(currentEvents, currentRegistrations);
     const previous = buildEventsSnapshot(previousEvents, previousRegistrations);
+    let revenue = null;
+    let revenueError = null;
+    try {
+      revenue = await eventsRevenueForPeriod(period);
+    } catch (error) {
+      revenueError = error instanceof Error ? error.message : 'insights_unavailable';
+    }
 
     return {
       period: { ...publicPeriod(period), basis: 'event_start' },
@@ -605,6 +616,13 @@ export async function eventsAnalytics({ from, to } = {}) {
       byKind: current.byKind,
       byInstructor: current.byInstructor,
       trend: current.trend,
+      revenueAvailable: Boolean(revenue?.current && revenue?.previous),
+      revenueError,
+      currency: revenue?.currency ?? null,
+      collectedCurrent: revenue?.current ?? null,
+      collectedPrevious: revenue?.previous ?? null,
+      revenueSource: revenue?.source ?? null,
+      revenueStale: Boolean(revenue?.stale),
       fetchedAt: new Date().toISOString(),
     };
   });
@@ -614,4 +632,5 @@ export async function eventsAnalytics({ from, to } = {}) {
 export function clearEventsCache() {
   cache.clear();
   slowCache.clear();
+  clearInsightsRevenueCache();
 }

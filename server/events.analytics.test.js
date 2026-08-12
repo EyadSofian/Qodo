@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { buildEventsSnapshot } from './events.js';
+import { buildOfflineEventsRevenueSnapshot } from './insightsRevenue.js';
 
 test('event demand separates confirmed bookings, interest and no-demand events', () => {
   const events = [
@@ -75,4 +76,45 @@ test('most requested event is ranked by confirmed bookings before unconfirmed in
 
   const result = buildEventsSnapshot(events, registrations);
   assert.equal(result.topDemand[0].name, 'Confirmed');
+});
+
+test('event revenue keeps explicit classroom invoices and reports ambiguous mapping separately', () => {
+  const result = buildOfflineEventsRevenueSnapshot({
+    source: { tab: 'Paid Invoices', dateBasis: 'Payment Date', valueBasis: 'USD Paid' },
+    detail: {
+      truncated: false,
+      rows: [
+        {
+          product: '[5] AutoCAD - Event (Offline Attendance (Riyadh))',
+          movement: 'INV-1',
+          usdPaid: 150,
+        },
+        {
+          product: '[7] Photoshop - Event (Offline Attendance (Riyadh))',
+          movement: 'INV-1',
+          usdPaid: 150,
+        },
+        {
+          product: '[4] AutoCAD - Event (Online Attendance)',
+          movement: 'INV-2',
+          event: 'AutoCAD Online',
+          usdPaid: 100,
+        },
+        {
+          product: '[65] CFM - Event',
+          movement: 'INV-3',
+          usdPaid: 500,
+        },
+        { product: '[110] Management - PRIMAVERA', movement: 'INV-4', usdPaid: 200 },
+      ],
+    },
+  });
+
+  assert.equal(result.amount, 300);
+  assert.equal(result.invoices, 1);
+  assert.equal(result.products.length, 2);
+  assert.equal(result.unassignedInvoices, 1);
+  assert.equal(result.excludedOnlineAmount, 100);
+  assert.equal(result.excludedUnknownAmount, 500);
+  assert.equal(result.invoiceCountExact, true);
 });

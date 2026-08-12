@@ -18,6 +18,7 @@ import { findOne } from './store.js';
 const DEFAULT_INSIGHTS_URL = 'https://engosoft-insights-hub-production.up.railway.app';
 const FETCH_TIMEOUT_MS = 75_000;
 const cache = makeCache(15 * 60_000);
+const accountingCache = makeCache(15 * 60_000);
 
 const number = (value) => (Number.isFinite(Number(value)) ? Number(value) : 0);
 const money = (value) => Math.round((number(value) + Number.EPSILON) * 100) / 100;
@@ -62,6 +63,106 @@ function nonEventProductRevenue(product) {
     0
   );
   return number(product?.revenueUsd) - eventRevenue;
+}
+
+function eventBillingMode(row) {
+  const product = normalizedProductName(row?.product);
+  const event = normalizedProductName(row?.event);
+  if (!/(^| )event( |$)|attendance/.test(product)) return null;
+  if (/offline|riyadh/.test(product) || /offline|riyadh/.test(event)) return 'offline';
+  if (/online/.test(product) || /online/.test(event)) return 'online';
+  return 'unknown';
+}
+
+function exactInvoiceCount(rows) {
+  return new Set(
+    rows
+      .filter((row) => !row?.isCreditNote)
+      .map((row) => row?.movement)
+      .filter(Boolean)
+  ).size;
+}
+
+/**
+ * Paid classroom-event revenue that can be proved from Insights Hub.
+ *
+ * Generic "Event" products are deliberately not guessed as classroom sales:
+ * several of them point at events whose names say Online, while other invoice
+ * lines carry no event relation at all. Only an explicit Offline/Riyadh marker
+ * is allowed into the amount shown to management. The excluded buckets make
+ * the data-quality gap visible instead of silently inventing a mapping.
+ */
+export function buildOfflineEventsRevenueSnapshot(payload) {
+  const detail = payload?.detail;
+  const allRows = Array.isArray(detail?.rows) ? detail.rows : [];
+  const exact = Array.isArray(detail?.rows) && detail?.truncated === false;
+  const eventRows = allRows.filter((row) => eventBillingMode(row));
+  const offlineRows = eventRows.filter((row) => eventBillingMode(row) === 'offline');
+  const onlineRows = eventRows.filter((row) => eventBillingMode(row) === 'online');
+  const unknownRows = eventRows.filter((row) => eventBillingMode(row) === 'unknown');
+
+  const productsByName = new Map();
+  for (const row of offlineRows) {
+    const key = normalizedProductName(row?.product) || `line-${row?.id}`;
+    const product = productsByName.get(key) ?? {
+      key,
+      name: String(row?.product || 'بدون اسم'),
+      amount: 0,
+      movements: new Set(),
+      events: new Set(),
+      unassignedLines: 0,
+    };
+    product.amount += number(row?.usdPaid);
+    if (!row?.isCreditNote && row?.movement) product.movements.add(row.movement);
+    if (row?.event) product.events.add(String(row.event));
+    else product.unassignedLines += 1;
+    productsByName.set(key, product);
+  }
+
+  const products = [...productsByName.values()]
+    .map((product) => ({
+      key: product.key,
+      name: product.name,
+      amount: money(product.amount),
+      invoices: product.movements.size,
+      events: [...product.events],
+      unassignedLines: product.unassignedLines,
+    }))
+    .sort((a, b) => b.amount - a.amount || b.invoices - a.invoices || a.name.localeCompare(b.name));
+
+  const unassignedRows = offlineRows.filter((row) => !row?.event);
+  return {
+    amount: money(offlineRows.reduce((sum, row) => sum + number(row?.usdPaid), 0)),
+    invoices: exactInvoiceCount(offlineRows),
+    invoiceCountExact: exact,
+    productLines: offlineRows.length,
+    products,
+    unassignedInvoices: exactInvoiceCount(unassignedRows),
+    unassignedProductLines: unassignedRows.length,
+    excludedOnlineAmount: money(onlineRows.reduce((sum, row) => sum + number(row?.usdPaid), 0)),
+    excludedOnlineInvoices: exactInvoiceCount(onlineRows),
+    excludedUnknownAmount: money(unknownRows.reduce((sum, row) => sum + number(row?.usdPaid), 0)),
+    excludedUnknownInvoices: exactInvoiceCount(unknownRows),
+    currency: 'USD',
+    scope: 'explicit_offline_event_invoice_lines',
+    source: {
+      app: 'Insights Hub',
+      tab: payload?.source?.tab || 'Paid Invoices',
+      dateBasis: payload?.source?.dateBasis || 'Payment Date',
+      valueBasis: payload?.source?.valueBasis || 'USD Paid',
+      grain: payload?.source?.grain || 'invoice_product_line',
+      matchingBasis: 'Explicit Offline Attendance/Riyadh event products',
+      repository: 'https://github.com/EyadSofian/Engosoft-Insights-Hub',
+      appUrl: DEFAULT_INSIGHTS_URL,
+    },
+    authority:
+      payload?.health?.accountingAuthority ||
+      payload?.health?.accounting?.authority ||
+      payload?.health?.accounting?.source ||
+      null,
+    syncedAt: payload?.health?.lastSuccessfulSyncAt || payload?.syncedAt || null,
+    stale: Boolean(payload?.stale),
+  };
 }
 
 /** Pure reducer kept exported so the catalogue/accounting join is regression-tested. */
@@ -149,6 +250,7 @@ export function buildElearningRevenueSnapshot(payload, catalog) {
       grain: payload?.source?.grain || 'invoice_product_line',
       matchingBasis: 'Odoo eLearning product catalogue',
       repository: 'https://github.com/EyadSofian/Engosoft-Insights-Hub',
+      appUrl: DEFAULT_INSIGHTS_URL,
     },
     authority:
       payload?.health?.accountingAuthority ||
@@ -156,6 +258,7 @@ export function buildElearningRevenueSnapshot(payload, catalog) {
       payload?.health?.accounting?.source ||
       null,
     syncedAt: payload?.health?.lastSuccessfulSyncAt || payload?.syncedAt || null,
+    stale: Boolean(payload?.stale),
   };
 }
 
@@ -165,6 +268,19 @@ async function insightsBaseUrl() {
 }
 
 async function fetchAccountingSnapshot(base, from, to, catalog) {
+  const payload = await fetchAccountingPayload(base, from, to);
+  const matcher = catalogMatcher(catalog);
+  return cache.get(`elearning:${from}:${to}:${matcher.key}`, async () => {
+    const value = buildElearningRevenueSnapshot(payload, catalog);
+    return {
+      ...value,
+      source: { ...value.source, appUrl: base },
+      fetchedAt: new Date().toISOString(),
+    };
+  });
+}
+
+async function fetchAccountingPayload(base, from, to) {
   const url = new URL('/api/accounting', base);
   url.searchParams.set('from', from);
   url.searchParams.set('to', to);
@@ -172,8 +288,7 @@ async function fetchAccountingSnapshot(base, from, to, catalog) {
   // payment period selected by the manager, never silently switch to invoice date.
   url.searchParams.set('dateBasis', 'payment');
 
-  const matcher = catalogMatcher(catalog);
-  return cache.get(`${url}:${matcher.key}`, async () => {
+  return accountingCache.get(String(url), async () => {
     let lastError = null;
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const controller = new AbortController();
@@ -184,8 +299,7 @@ async function fetchAccountingSnapshot(base, from, to, catalog) {
           headers: { Accept: 'application/json', 'User-Agent': 'Engosoft-Workspace/1.0' },
         });
         if (!response.ok) throw new Error(`insights_http_${response.status}`);
-        const value = buildElearningRevenueSnapshot(await response.json(), catalog);
-        return { ...value, fetchedAt: new Date().toISOString() };
+        return await response.json();
       } catch (error) {
         lastError = error;
         if (attempt === 0) await pause(350);
@@ -195,6 +309,16 @@ async function fetchAccountingSnapshot(base, from, to, catalog) {
     }
     throw lastError;
   });
+}
+
+async function fetchOfflineEventsSnapshot(base, from, to) {
+  const payload = await fetchAccountingPayload(base, from, to);
+  const value = buildOfflineEventsRevenueSnapshot(payload);
+  return {
+    ...value,
+    source: { ...value.source, appUrl: base },
+    fetchedAt: new Date().toISOString(),
+  };
 }
 
 export async function elearningRevenueForPeriod(period, catalog) {
@@ -214,6 +338,20 @@ export async function elearningRevenueForPeriod(period, catalog) {
   };
 }
 
+export async function eventsRevenueForPeriod(period) {
+  const base = await insightsBaseUrl();
+  const current = await fetchOfflineEventsSnapshot(base, period.from, period.to);
+  const previous = await fetchOfflineEventsSnapshot(base, period.previousFrom, period.previousTo);
+  return {
+    current,
+    previous,
+    currency: 'USD',
+    source: current.source,
+    stale: Boolean(current.stale || previous.stale),
+  };
+}
+
 export function clearInsightsRevenueCache() {
   cache.clear();
+  accountingCache.clear();
 }

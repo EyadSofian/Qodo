@@ -144,6 +144,40 @@ export interface EventsAnalytics {
     bookings: number;
     interested: number;
   }>;
+  revenueAvailable: boolean;
+  revenueError?: string | null;
+  revenueStale: boolean;
+  currency: 'USD' | null;
+  collectedCurrent: EventsCollectedRevenue | null;
+  collectedPrevious: EventsCollectedRevenue | null;
+  revenueSource: ElearningRevenueSource | null;
+}
+
+export interface EventsCollectedRevenue {
+  amount: number;
+  invoices: number;
+  invoiceCountExact: boolean;
+  productLines: number;
+  currency: 'USD';
+  scope: 'explicit_offline_event_invoice_lines';
+  unassignedInvoices: number;
+  unassignedProductLines: number;
+  excludedOnlineAmount: number;
+  excludedOnlineInvoices: number;
+  excludedUnknownAmount: number;
+  excludedUnknownInvoices: number;
+  stale?: boolean;
+  fetchedAt?: string;
+  syncedAt?: string | null;
+  authority?: string | null;
+  products: Array<{
+    key: string;
+    name: string;
+    amount: number;
+    invoices: number;
+    events: string[];
+    unassignedLines: number;
+  }>;
 }
 
 const rangeQuery = (range: AnalyticsRange) =>
@@ -283,6 +317,7 @@ export interface ElearningRevenueSource {
   grain: string;
   matchingBasis: string;
   repository: string;
+  appUrl: string;
 }
 
 export interface ElearningCourseSalesRow {
