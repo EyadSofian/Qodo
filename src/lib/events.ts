@@ -209,7 +209,13 @@ export interface ElearningAnalytics {
   available: string[];
   salesAvailable: boolean;
   salesError?: string | null;
+  revenueAvailable: boolean;
+  revenueError?: string | null;
   currency: string | null;
+  collectedCurrent: ElearningCollectedRevenue | null;
+  collectedPrevious: ElearningCollectedRevenue | null;
+  revenueSource: ElearningRevenueSource | null;
+  revenueStale: boolean;
   commercialCurrent: ElearningCommercialTotals | null;
   commercialPrevious: ElearningCommercialTotals | null;
   topPaidCourses: ElearningCourseSalesRow[];
@@ -234,13 +240,38 @@ export interface ElearningCommercialTotals {
   purchases: number;
   directSales: number;
   packagesSold: number;
-  revenue: number;
-  directRevenue: number;
-  packageRevenue: number;
   paidCourses: number;
   coursesWithSales: number;
   noSales: number;
   freeExcluded: number;
+}
+
+export interface ElearningCollectedRevenue {
+  amount: number;
+  invoices: number;
+  productLines: number;
+  currency: 'USD';
+  modality: 'recorded';
+  stale?: boolean;
+  fetchedAt?: string;
+  syncedAt?: string | null;
+  authority?: string | null;
+  families: Array<{
+    key: string;
+    name: string;
+    amount: number;
+    invoices: number;
+    productLines: number;
+  }>;
+}
+
+export interface ElearningRevenueSource {
+  app: 'Insights Hub';
+  tab: string;
+  dateBasis: string;
+  valueBasis: string;
+  grain: string;
+  repository: string;
 }
 
 export interface ElearningCourseSalesRow {
@@ -251,7 +282,6 @@ export interface ElearningCourseSalesRow {
   directSales: number;
   packageSales: number;
   totalSales: number;
-  directRevenue: number;
   directOrders: number;
   packageOrders: number;
   packages: string[];
@@ -263,10 +293,8 @@ export interface ElearningPackageSalesRow {
   componentCount: number;
   components: string[];
   sales: number;
-  revenue: number;
   orders: number;
   previousSales: number;
-  previousRevenue: number;
 }
 
 export interface ElearningPeriodTotals {

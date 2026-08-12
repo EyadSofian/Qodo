@@ -62,7 +62,7 @@ function formatMoney(value: number, currency: string | null): string {
     return new Intl.NumberFormat('ar-EG', {
       style: 'currency',
       currency,
-      maximumFractionDigits: 0,
+      maximumFractionDigits: 2,
     }).format(value);
   } catch {
     return `${value.toLocaleString('ar-EG', { maximumFractionDigits: 0 })} ${currency}`;
@@ -318,7 +318,7 @@ function ElearningAnalysis({ version }: { version: number }) {
         value={range}
         onApply={setRange}
         loading={loading}
-        basis="البيع المؤكد بتاريخ الطلب، ونشاط التعلّم بتاريخ إنشاء العضوية داخل الفترة"
+        basis="الإيراد المحصّل بتاريخ الدفع من Insights Hub، والبيع المؤكد بتاريخ الطلب ونشاط التعلّم من Odoo"
       />
 
       {error && (
@@ -350,6 +350,19 @@ function ElearningAnalysis({ version }: { version: number }) {
         </p>
       )}
 
+      {data && !data.revenueAvailable && (
+        <p className="rounded-xl bg-status-warnBg px-3.5 py-3 text-[12.5px] leading-relaxed text-accent-600">
+          تعذّر الوصول إلى إيراد الفواتير المدفوعة من Insights Hub، لذلك لن نعرض رقمًا ماليًا بديلًا من
+          Odoo أو نفترض عملة. أعداد الطلبات والحجوزات بالأسفل ما زالت متاحة من Odoo.
+        </p>
+      )}
+
+      {data?.revenueStale && (
+        <p className="rounded-xl bg-status-warnBg px-3.5 py-3 text-[12.5px] leading-relaxed text-accent-600">
+          Insights Hub لم يرد في آخر تحديث؛ الإيراد الظاهر هو آخر نتيجة مالية ناجحة محفوظة.
+        </p>
+      )}
+
       {data?.salesAvailable && data.commercialCurrent && data.commercialPrevious && (
         <div className={cx('grid gap-4 transition-opacity', loading && 'opacity-55')}>
           <section className="relative overflow-hidden rounded-2xl bg-navy px-5 py-5 text-white shadow-card">
@@ -370,14 +383,18 @@ function ElearningAnalysis({ version }: { version: number }) {
                   )}
                 </h2>
                 <p className="mt-2 text-[12.5px] text-white/60">
-                  المجاني وسطور البيع صفر القيمة خارج هذه المقارنة بالكامل. إيراد الباقة يُحسب مرة واحدة فقط،
-                  ولا يتكرر على كل كورس بداخلها.
+                  المجاني وسطور البيع صفر القيمة خارج ترتيب الطلبات. الإيراد المحصّل منفصل ويأتي من الفواتير
+                  المدفوعة في Insights Hub للكورسات المسجّلة فقط.
                 </p>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <LearningQuickFact
-                  label="إجمالي الإيراد"
-                  value={formatMoney(data.commercialCurrent.revenue, data.currency)}
+                  label="إيراد محصّل"
+                  value={
+                    data.revenueAvailable && data.collectedCurrent
+                      ? formatMoney(data.collectedCurrent.amount, data.currency)
+                      : 'غير متاح'
+                  }
                 />
                 <LearningQuickFact
                   label="باقات مباعة"
@@ -387,14 +404,35 @@ function ElearningAnalysis({ version }: { version: number }) {
             </div>
           </section>
 
+          {data.revenueAvailable && data.collectedCurrent && data.revenueSource && (
+            <section className="rounded-2xl border border-brand-100 bg-brand-50/55 px-4 py-3.5">
+              <h3 className="text-[13px] font-extrabold text-ink">مصدر الإيراد المالي</h3>
+              <p className="mt-1 text-[11.5px] leading-relaxed text-ink-muted">
+                <a
+                  className="font-bold text-brand-700 underline underline-offset-2"
+                  href={data.revenueSource.repository}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Insights Hub
+                </a>{' '}
+                · {data.revenueSource.tab} · {data.revenueSource.dateBasis} ·{' '}
+                {data.revenueSource.valueBasis}. المعروض بالدولار كما هو من المصدر، ومفلتر على تصنيف{' '}
+                <bdi dir="ltr">Recorded</bdi> فقط؛ لا يدخل Event أو Attendance أو الكورسات المجانية.
+              </p>
+            </section>
+          )}
+
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <StatTile
-              label="إيراد مدفوع"
-              value={formatMoney(data.commercialCurrent.revenue, data.currency)}
-              hint={comparisonHint(data.commercialCurrent.revenue, data.commercialPrevious.revenue)}
-              tone={data.commercialCurrent.revenue > data.commercialPrevious.revenue ? 'good' : 'plain'}
-              icon={<BadgeDollarSign size={17} />}
-            />
+            {data.revenueAvailable && data.collectedCurrent && data.collectedPrevious && (
+              <StatTile
+                label="إيراد محصّل"
+                value={formatMoney(data.collectedCurrent.amount, data.currency)}
+                hint={comparisonHint(data.collectedCurrent.amount, data.collectedPrevious.amount)}
+                tone={data.collectedCurrent.amount > data.collectedPrevious.amount ? 'good' : 'plain'}
+                icon={<BadgeDollarSign size={17} />}
+              />
+            )}
             <StatTile
               label="مشتريات"
               value={data.commercialCurrent.purchases}
@@ -422,7 +460,7 @@ function ElearningAnalysis({ version }: { version: number }) {
             <StatTile
               label="بيع كورسات مباشر"
               value={data.commercialCurrent.directSales}
-              hint={formatMoney(data.commercialCurrent.directRevenue, data.currency)}
+              hint="عدد الوحدات المباعة خارج الباقات"
               icon={<BookOpen size={17} />}
             />
             <StatTile
@@ -457,9 +495,11 @@ function ElearningAnalysis({ version }: { version: number }) {
                   name: course.name,
                   primary: course.directSales,
                   secondary: course.packageSales,
-                  note: `إيراد مباشر ${formatMoney(course.directRevenue, data.currency)}${
-                    course.packages.length ? ` · ضمن ${course.packages.join('، ')}` : ''
-                  }`,
+                  note: `${course.directOrders.toLocaleString('ar-EG')} طلب مباشر${
+                    course.packageOrders
+                      ? ` · ${course.packageOrders.toLocaleString('ar-EG')} طلب باقة`
+                      : ''
+                  }${course.packages.length ? ` · ضمن ${course.packages.join('، ')}` : ''}`,
                 }))}
                 empty="لا توجد مبيعات مدفوعة"
                 primaryLabel="مباشر"
@@ -474,10 +514,7 @@ function ElearningAnalysis({ version }: { version: number }) {
                   name: item.name,
                   primary: item.sales,
                   secondary: item.previousSales,
-                  note: `${item.componentCount.toLocaleString('ar-EG')} كورسات مدفوعة · ${formatMoney(
-                    item.revenue,
-                    data.currency
-                  )}`,
+                  note: `${item.componentCount.toLocaleString('ar-EG')} كورسات مدفوعة · ${item.orders.toLocaleString('ar-EG')} طلب`,
                 }))}
                 empty="لم تُبع باقات في الفترة"
                 primaryLabel="الحالية"
@@ -489,22 +526,20 @@ function ElearningAnalysis({ version }: { version: number }) {
               <NoPaidSales rows={data.noPaidSales} />
             </ChartCard>
 
-            <ChartCard title="مصدر الإيراد" hint="الإيراد لا يتكرر بين الباقة ومكوناتها">
-              <BarList
-                data={[
-                  {
-                    label: 'بيع مباشر',
-                    value: data.commercialCurrent.directRevenue,
-                    display: formatMoney(data.commercialCurrent.directRevenue, data.currency),
-                  },
-                  {
-                    label: 'بيع باقات',
-                    value: data.commercialCurrent.packageRevenue,
-                    display: formatMoney(data.commercialCurrent.packageRevenue, data.currency),
-                  },
-                ]}
-              />
-            </ChartCard>
+            {data.revenueAvailable && data.collectedCurrent && (
+              <ChartCard
+                title="الإيراد المحصّل حسب مجموعة الكورس"
+                hint={`${data.collectedCurrent.invoices.toLocaleString('ar-EG')} فاتورة مدفوعة · Recorded فقط`}
+              >
+                <BarList
+                  data={data.collectedCurrent.families.slice(0, 10).map((family) => ({
+                    label: family.name,
+                    value: family.amount,
+                    display: `${formatMoney(family.amount, data.currency)} · ${family.invoices.toLocaleString('ar-EG')} فاتورة`,
+                  }))}
+                />
+              </ChartCard>
+            )}
           </div>
         </div>
       )}

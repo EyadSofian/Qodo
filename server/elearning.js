@@ -22,6 +22,7 @@ import { OdooError, existingFields, odooConfigured, readGroup, searchRead } from
 
 import { makeCache } from './cache.js';
 import { analyticsPeriod, publicPeriod } from './analyticsPeriod.js';
+import { clearInsightsRevenueCache, recordedRevenueForPeriod } from './insightsRevenue.js';
 
 const cache = makeCache(5 * 60_000);
 const cached = (key, load) => cache.get(key, load);
@@ -293,7 +294,6 @@ export function buildElearningPeriodSnapshot(courses, membershipRows) {
 }
 
 const number = (value) => (Number.isFinite(Number(value)) ? Number(value) : 0);
-const money = (value) => Math.round((number(value) + Number.EPSILON) * 100) / 100;
 
 function earlierThanOrEqual(left, right) {
   return !left || !right || String(left) <= String(right);
@@ -323,7 +323,9 @@ function canonicalCourseByTemplate(courses) {
  * We recognise the mapped set inside an order, assign the order to the largest
  * matching package, and remove those lines from direct-course sales. Components
  * still receive `packageSales` so the manager can see how often a course moved
- * inside packages, but package revenue is kept on the package only.
+ * inside packages. Money deliberately does not leave this reducer: accounting
+ * revenue comes from Insights Hub's paid invoices, not mixed-currency Odoo sale
+ * line subtotals.
  */
 export function buildElearningSalesSnapshot(courses, products, packages, saleLines) {
   const freeTemplates = freeCourseTemplateIds();
@@ -346,7 +348,6 @@ export function buildElearningSalesSnapshot(courses, products, packages, saleLin
         published: course?.published ?? true,
         directSales: 0,
         packageSales: 0,
-        directRevenue: 0,
         directOrders: new Set(),
         packageOrders: new Set(),
         packageNames: new Set(),
@@ -364,7 +365,6 @@ export function buildElearningSalesSnapshot(courses, products, packages, saleLin
           .length,
         components: item.components.map((component) => component.name),
         sales: 0,
-        revenue: 0,
         orders: new Set(),
       },
     ])
@@ -390,8 +390,6 @@ export function buildElearningSalesSnapshot(courses, products, packages, saleLin
 
   const paidOrders = new Set();
   let directSales = 0;
-  let directRevenue = 0;
-
   for (const [orderId, order] of orders) {
     const quantities = new Map();
     for (const line of order.lines) {
@@ -437,17 +435,21 @@ export function buildElearningSalesSnapshot(courses, products, packages, saleLin
         )
         .reduce((sum, line) => sum + line.subtotal, 0);
       const state = packageStates.get(matched.item.id);
-      state.sales += units;
-      state.revenue += revenue;
-      state.orders.add(orderId);
-      if (units > 0 || revenue > 0) paidOrders.add(orderId);
+      // A package whose component lines are all zero is a free inclusion, not
+      // paid demand. One positive component is enough because Odoo distributes
+      // a package price over its component lines instead of selling one SKU.
+      if (revenue > 0 && units > 0) {
+        state.sales += units;
+        state.orders.add(orderId);
+        paidOrders.add(orderId);
 
-      for (const templateId of matched.required) {
-        const course = catalogByTemplate.get(templateId);
-        if (!course) continue;
-        course.packageSales += units;
-        course.packageOrders.add(orderId);
-        course.packageNames.add(matched.item.name);
+        for (const templateId of matched.required) {
+          const course = catalogByTemplate.get(templateId);
+          if (!course) continue;
+          course.packageSales += units;
+          course.packageOrders.add(orderId);
+          course.packageNames.add(matched.item.name);
+        }
       }
     }
 
@@ -458,10 +460,8 @@ export function buildElearningSalesSnapshot(courses, products, packages, saleLin
       const course = catalogByTemplate.get(line.templateId);
       if (!course) continue;
       course.directSales += line.quantity;
-      course.directRevenue += line.subtotal;
       course.directOrders.add(orderId);
       directSales += line.quantity;
-      directRevenue += line.subtotal;
       paidOrders.add(orderId);
     }
   }
@@ -474,7 +474,6 @@ export function buildElearningSalesSnapshot(courses, products, packages, saleLin
     directSales: course.directSales,
     packageSales: course.packageSales,
     totalSales: course.directSales + course.packageSales,
-    directRevenue: money(course.directRevenue),
     directOrders: course.directOrders.size,
     packageOrders: course.packageOrders.size,
     packages: [...course.packageNames].sort((a, b) => a.localeCompare(b, 'ar')),
@@ -486,13 +485,11 @@ export function buildElearningSalesSnapshot(courses, products, packages, saleLin
       componentCount: item.componentCount,
       components: item.components,
       sales: item.sales,
-      revenue: money(item.revenue),
       orders: item.orders.size,
     }))
-    .sort((a, b) => b.sales - a.sales || b.revenue - a.revenue || a.name.localeCompare(b.name, 'ar'));
+    .sort((a, b) => b.sales - a.sales || b.orders - a.orders || a.name.localeCompare(b.name, 'ar'));
 
   const packagesSold = packageRows.reduce((sum, item) => sum + item.sales, 0);
-  const packageRevenue = packageRows.reduce((sum, item) => sum + item.revenue, 0);
   const withSales = courseRows.filter((course) => course.totalSales > 0);
 
   return {
@@ -501,9 +498,6 @@ export function buildElearningSalesSnapshot(courses, products, packages, saleLin
       purchases: directSales + packagesSold,
       directSales,
       packagesSold,
-      revenue: money(directRevenue + packageRevenue),
-      directRevenue: money(directRevenue),
-      packageRevenue: money(packageRevenue),
       paidCourses: courseRows.length,
       coursesWithSales: withSales.length,
       noSales: courseRows.length - withSales.length,
@@ -513,7 +507,7 @@ export function buildElearningSalesSnapshot(courses, products, packages, saleLin
       .sort(
         (a, b) =>
           b.totalSales - a.totalSales ||
-          b.directRevenue - a.directRevenue ||
+          b.directOrders - a.directOrders ||
           a.name.localeCompare(b.name, 'ar')
       )
       .slice(0, 12),
@@ -636,7 +630,7 @@ async function commercialSales(courses, period) {
   const productIds = [...new Set(products.map((product) => product.id).filter(Boolean))];
   if (!productIds.length) {
     const empty = buildElearningSalesSnapshot(courses, products, packages, []);
-    return { current: empty, previous: empty, currency: null };
+    return { current: empty, previous: empty };
   }
   const saleFields = await existingFields('sale.order.line', [
     'order_id',
@@ -672,7 +666,6 @@ async function commercialSales(courses, period) {
   return {
     current: buildElearningSalesSnapshot(courses, products, packages, currentRows),
     previous: buildElearningSalesSnapshot(courses, products, packages, previousRows),
-    currency: courses.find((course) => course.currency)?.currency ?? packages.find((item) => item.currency)?.currency ?? null,
   };
 }
 
@@ -718,6 +711,13 @@ export async function elearningAnalytics({ from, to } = {}) {
   const period = analyticsPeriod({ from, to });
 
   return cached(`analytics:${period.from}:${period.to}`, async () => {
+    // Start the external accounting read while Odoo is doing its own catalogue
+    // and membership work. They are independent authorities and often have very
+    // different response times.
+    const revenuePromise = recordedRevenueForPeriod(period).then(
+      (value) => ({ value, error: null }),
+      (error) => ({ value: null, error })
+    );
     const { courses, available } = await elearningOverview();
     const has = (field) => available.includes(field);
 
@@ -754,6 +754,15 @@ export async function elearningAnalytics({ from, to } = {}) {
       salesAvailable = false;
       salesError = error?.message || 'sales_analytics_unavailable';
     }
+
+    const revenueResult = await revenuePromise;
+    const collected = revenueResult.value;
+    const revenueAvailable = Boolean(collected);
+    const revenueError = revenueResult.error
+      ? revenueResult.error?.name === 'AbortError'
+        ? 'insights_timeout'
+        : revenueResult.error?.message || 'insights_unavailable'
+      : null;
 
     const base = {
       period: publicPeriod(period),
@@ -794,7 +803,13 @@ export async function elearningAnalytics({ from, to } = {}) {
       available,
       salesAvailable,
       salesError,
-      currency: sales?.currency ?? null,
+      revenueAvailable,
+      revenueError,
+      currency: collected?.currency ?? null,
+      collectedCurrent: collected?.current ?? null,
+      collectedPrevious: collected?.previous ?? null,
+      revenueSource: collected?.source ?? null,
+      revenueStale: collected?.stale ?? false,
       commercialCurrent: sales?.current?.totals ?? null,
       commercialPrevious: sales?.previous?.totals ?? null,
       topPaidCourses: sales?.current?.topCourses ?? [],
@@ -803,8 +818,6 @@ export async function elearningAnalytics({ from, to } = {}) {
         ...item,
         previousSales:
           sales?.previous?.packages.find((previous) => previous.id === item.id)?.sales ?? 0,
-        previousRevenue:
-          sales?.previous?.packages.find((previous) => previous.id === item.id)?.revenue ?? 0,
       })),
       fetchedAt: new Date().toISOString(),
     };
@@ -863,5 +876,6 @@ export async function elearningAnalytics({ from, to } = {}) {
 
 export function clearElearningCache() {
   cache.clear();
+  clearInsightsRevenueCache();
   channelFieldsCache = null;
 }
