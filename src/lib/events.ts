@@ -472,16 +472,16 @@ export function sessionsLeftLabel(left: number): string {
   if (left <= 0) return 'خلصت محاضراتها';
   if (left === 1) return 'فاضل محاضرة واحدة';
   if (left === 2) return 'فاضل محاضرتين';
-  if (left <= 10) return `فاضل ${left} محاضرات`;
-  return `فاضل ${left} محاضرة`;
+  if (left <= 10) return `فاضل ${left.toLocaleString('ar-EG')} محاضرات`;
+  return `فاضل ${left.toLocaleString('ar-EG')} محاضرة`;
 }
 
 export function attendeesLabel(count: number): string {
   if (count === 0) return 'لسه محدش سجّل';
   if (count === 1) return 'طالب واحد';
   if (count === 2) return 'طالبين';
-  if (count <= 10) return `${count} طلاب`;
-  return `${count} طالب`;
+  if (count <= 10) return `${count.toLocaleString('ar-EG')} طلاب`;
+  return `${count.toLocaleString('ar-EG')} طالب`;
 }
 
 /** Where it happens, as one phrase instead of three coded fields. */

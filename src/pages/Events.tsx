@@ -909,7 +909,7 @@ function CoursePanel({ id, onClose }: { id: number | null; onClose: () => void }
 
           <div className="rounded-xl bg-surface-sunken px-3.5 py-3 text-[13px] text-ink-muted">
             من <b className="text-ink">{shortDate(course.startsAt)}</b> لـ{' '}
-            <b className="text-ink">{shortDate(course.endsAt)}</b> · {course.sessionsTotal} محاضرة ·{' '}
+            <b className="text-ink">{shortDate(course.endsAt)}</b> · {course.sessionsTotal.toLocaleString('ar-EG')} محاضرة ·{' '}
             {sessionsLeftLabel(course.sessionsLeft)}
           </div>
 
@@ -965,7 +965,7 @@ function CoursePanel({ id, onClose }: { id: number | null; onClose: () => void }
 
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-surface-sunken px-3.5 py-3">
             <p className="text-[11px] leading-relaxed text-ink-muted">
-              التفاصيل دي مقروءة من سجل الإيفينت في أودو. الرابط المباشر محتاج صلاحية Events/User أو Events/Administrator.
+              التفاصيل دي مقروءة من سجل الإيفينت في أودو. الرابط المباشر محتاج صلاحية الإيفينتات في أودو.
             </p>
             <a
               href={odooEventUrl(course.id)}
