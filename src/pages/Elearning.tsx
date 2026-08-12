@@ -72,103 +72,9 @@ function formatMoney(value: number, currency: string | null): string {
 }
 
 function friendlyCourseName(value: string): string {
-  const name = value.replace(/^\s*\[[^\]]+\]\s*/, '').trim();
-  const rules: Array<[RegExp, string]> = [
-    [/^CFM Preparation Course$/i, 'كورس التحضير لشهادة CFM'],
-    [/^CFM Exam Simulator$/i, 'محاكي امتحان CFM'],
-    [/^PMP Exam Simulator \(AR\)$/i, 'محاكي امتحان PMP بالعربي'],
-    [/^PMP Exam Simulator \(EN\)$/i, 'محاكي امتحان PMP بالإنجليزي'],
-    [/^PMP Preparation Course - 8th Edition$/i, 'كورس التحضير لشهادة PMP – الإصدار الثامن'],
-    [/^PMP Preparation Course By Ayman Atef$/i, 'كورس التحضير لشهادة PMP – م. أيمن عاطف'],
-    [/^PMP - Dr\.Muhammad Gamal - Material Only$/i, 'مواد كورس PMP – د. محمد جمال'],
-    [/^PMP Preparation Course$/i, 'كورس التحضير لشهادة PMP'],
-    [/^Management - PRIMAVERA$/i, 'كورس بريمافيرا لإدارة المشروعات'],
-    [/^Planning & Control Using Primavera P6$/i, 'التخطيط ومتابعة المشروعات ببرنامج بريمافيرا'],
-    [/^Occupational Safety and Health Administration \(OSHA\)$/i, 'السلامة والصحة المهنية (OSHA)'],
-    [/^CMRP.*Recorded$/i, 'كورس التحضير لشهادة CMRP – مسجّل'],
-    [/^CMRP.*Certified Maintenance.*$/i, 'كورس التحضير لشهادة CMRP'],
-    [/^CMRP Exam Simulator$/i, 'محاكي امتحان CMRP'],
-    [/^Transportation and Traffic Engineering$/i, 'هندسة النقل والمرور'],
-    [/^Interior Design Basics Using SketchUp$/i, 'أساسيات التصميم الداخلي ببرنامج SketchUp'],
-    [/^Mechanical Site Execution$/i, 'التنفيذ الميكانيكي في الموقع'],
-    [/^Civil Structural Design of Bridges & Tunnels$/i, 'التصميم الإنشائي للكباري والأنفاق'],
-    [/^Light Current$/i, 'أنظمة التيار الخفيف'],
-    [/^Medical Gas Systems Design$/i, 'تصميم أنظمة الغازات الطبية'],
-    [/^AI Tools for Interior Design$/i, 'أدوات الذكاء الاصطناعي للتصميم الداخلي'],
-    [/^The Freelance Masterclass$/i, 'كورس العمل الحر'],
-    [/^AutoCAD for Interior Design$/i, 'أوتوكاد للتصميم الداخلي'],
-    [/^3ds Max for Interior Design$/i, 'ثري دي ماكس للتصميم الداخلي'],
-    [/^Photoshop for Interior Design$/i, 'فوتوشوب للتصميم الداخلي'],
-    [/^Finishing for Interior Design$/i, 'تشطيبات التصميم الداخلي'],
-    [/^Kitchen Design Interiors$/i, 'تصميم المطابخ'],
-    [/^Advanced AI Tools for Interior Design$/i, 'أدوات متقدمة للذكاء الاصطناعي في التصميم الداخلي'],
-    [/^Advanced Applied Interior Design$/i, 'التطبيقات المتقدمة في التصميم الداخلي'],
-    [/^BIM Fundamentals \(ARC\)$/i, 'أساسيات BIM للعمارة'],
-    [/^BIM Fundamentals? Architecture$/i, 'أساسيات BIM للعمارة'],
-    [/^BIM - Revit Architecture$/i, 'Revit BIM للعمارة'],
-    [/^Revit Architecture$/i, 'برنامج Revit للعمارة'],
-    [/^Autodesk Revit Architecture - Recorded$/i, 'كورس Revit للعمارة – مسجّل'],
-    [/^Revit Work ?Sharing \(ARC\)$/i, 'العمل الجماعي على Revit للعمارة'],
-    [/^Revit Work Sharing Architecture$/i, 'العمل الجماعي على Revit للعمارة'],
-    [/^Revit Family Creation ?-? ?Archit(?:ecture|ure)$/i, 'إنشاء عائلات Revit للعمارة'],
-    [/^NavisWorks? \(ARC\)$/i, 'برنامج Navisworks للعمارة'],
-    [/^Navisworks Architecture$/i, 'برنامج Navisworks للعمارة'],
-    [/^BIM Fundamentals? \(MEP\)$/i, 'أساسيات BIM للأعمال الكهروميكانيكية'],
-    [/^BIM Fundamentals? MEP$/i, 'أساسيات BIM للأعمال الكهروميكانيكية'],
-    [/^BIM - Revit \(MEP\)$/i, 'Revit BIM للأعمال الكهروميكانيكية'],
-    [/^Revit Work ?Sharing \(MEP\)$/i, 'العمل الجماعي على Revit للأعمال الكهروميكانيكية'],
-    [/^Revit Work Sharing MEP$/i, 'العمل الجماعي على Revit للأعمال الكهروميكانيكية'],
-    [/^Revit Family Creation - MEP$/i, 'إنشاء عائلات Revit للأعمال الكهروميكانيكية'],
-    [/^NavisWorks? \(MEP\)$/i, 'برنامج Navisworks للأعمال الكهروميكانيكية'],
-    [/^Navisworks MEP$/i, 'برنامج Navisworks للأعمال الكهروميكانيكية'],
-    [/^BIM - Revit Structure$/i, 'Revit BIM للإنشاءات'],
-    [/^BIM Fundamentals \(STR\)$/i, 'أساسيات BIM للإنشاءات'],
-    [/^Revit Worksharing Structural.*$/i, 'العمل الجماعي على Revit للإنشاءات'],
-    [/^Revit Family Creation- Structure$/i, 'إنشاء عائلات Revit للإنشاءات'],
-    [/^Navisworks Structural.*$/i, 'برنامج Navisworks للإنشاءات'],
-    [/^HVAC System Design$/i, 'تصميم أنظمة التكييف والتهوية'],
-    [/^Fire ?Fighting Design System$/i, 'تصميم أنظمة مكافحة الحريق'],
-    [/^Plumbing Systems Design$/i, 'تصميم أنظمة السباكة'],
-    [/^Mechanical Systems Design and Shop Drawing Basics$/i, 'أساسيات تصميم ورسم الأنظمة الميكانيكية'],
-    [/^Mechanical - Water Treatment$/i, 'معالجة المياه للمهندسين الميكانيكيين'],
-    [/^Water Treatment$/i, 'معالجة المياه'],
-    [/^Pumps Design, Operation & Maintenance$/i, 'تصميم وتشغيل وصيانة المضخات'],
-    [/^Piping Design, Welding & Fabrication$/i, 'تصميم المواسير واللحام والتصنيع'],
-    [/^Lighting$/i, 'تصميم الإضاءة'],
-    [/^Power$/i, 'أنظمة القوى الكهربائية'],
-    [/^Electrical - Power Distribution$/i, 'توزيع القوى الكهربائية'],
-    [/^Electrical - Shop Drawing$/i, 'الرسومات التنفيذية للأعمال الكهربائية'],
-    [/^Autodesk Revit Electrical - Recorded$/i, 'كورس Revit للأعمال الكهربائية – مسجّل'],
-    [/^Electrical Elevator Design Systems$/i, 'تصميم الأنظمة الكهربائية للمصاعد'],
-    [/^Automotive Electrical & Mechanical Systems$/i, 'أنظمة كهرباء وميكانيكا السيارات'],
-    [/^Sustainable Building Design . LEED GA$/i, 'تصميم المباني المستدامة – LEED GA'],
-    [/^Analysis and Design of Buildings Using ETABS$/i, 'تحليل وتصميم المباني ببرنامج ETABS'],
-    [/^Fundamentals and Slab Design Using SAFE Course$/i, 'أساسيات وتصميم البلاطات ببرنامج SAFE'],
-    [/^Structural Analysis Using SAP 2000$/i, 'التحليل الإنشائي ببرنامج SAP 2000'],
-    [/^Civil Hydrology Engineering$/i, 'هندسة الهيدرولوجيا المدنية'],
-    [/^WaterGEMS Program$/i, 'تصميم شبكات المياه ببرنامج WaterGEMS'],
-    [/^SewerGEMS Program$/i, 'تصميم شبكات الصرف ببرنامج SewerGEMS'],
-    [/^StormCAD Program$/i, 'تصميم شبكات الأمطار ببرنامج StormCAD'],
-    [/^Civil Infrastructure Shop Drawings$/i, 'الرسومات التنفيذية للبنية التحتية'],
-    [/^Building Management System \(BMS\)$/i, 'أنظمة إدارة المباني (BMS)'],
-    [/^Lumion Program for Architects$/i, 'برنامج Lumion للمعماريين'],
-    [/^Steel Basics, Shop drawings & Site works record$/i, 'أساسيات المنشآت المعدنية ورسوماتها وتنفيذها'],
-    [/^Steel Design$/i, 'تصميم المنشآت المعدنية'],
-    [/^Roadway Design in Autodesk Civil 3D$/i, 'تصميم الطرق ببرنامج Civil 3D'],
-    [/^Introduction to Civil Road Construction$/i, 'مقدمة في تنفيذ الطرق'],
-    [/^Road Construction Fundamentals$/i, 'أساسيات تنفيذ الطرق'],
-    [/^Graphic Design Masterclass$/i, 'كورس التصميم الجرافيكي'],
-    [/^Architecture Workshop$/i, 'ورشة العمارة والتصميم'],
-    [/^Architecture Basics$/i, 'أساسيات العمارة'],
-    [/^Autodesk AutoCAD for Mechanical Systems$/i, 'أوتوكاد للأنظمة الميكانيكية'],
-    [/^Hydraulic Systems Design$/i, 'تصميم الأنظمة الهيدروليكية'],
-    [/^Geographic Information Systems & Spatial Analysis Using ArcGIS \(GIS\)$/i, 'نظم المعلومات الجغرافية والتحليل المكاني ببرنامج ArcGIS'],
-    [/^Civil & Structural Engineering Workshop$/i, 'ورشة الهندسة المدنية والإنشائية'],
-    [/^Engineering and Design of Natural Gas Networks Distribution$/i, 'تصميم شبكات توزيع الغاز الطبيعي'],
-    [/^FMP Preparation Course.*$/i, 'كورس التحضير لشهادة FMP'],
-    [/^Odoo Test$/i, 'كورس تجريبي على أودو'],
-  ];
-  return rules.find(([pattern]) => pattern.test(name))?.[1] ?? name;
+  // Course names stay exactly as the team wrote them in Odoo; only the
+  // internal product code is hidden because it is not useful to managers.
+  return value.replace(/^\s*\[[^\]]+\]\s*/, '').trim();
 }
 
 function friendlyPackageName(value: string): string {
@@ -629,7 +535,7 @@ function ElearningAnalysis({ version }: { version: number }) {
 
               <div className="mt-3 grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
                 <ManagementSignal
-                  label="الطلبات المؤكدة"
+                  label="طلبات اتأكدت في أودو"
                   value={data.commercialCurrent.paidOrders.toLocaleString('ar-EG')}
                   detail={`${movementLabel(executive.orderChange)} مقارنة بالأيام اللي قبلها`}
                   tone={
@@ -665,7 +571,7 @@ function ElearningAnalysis({ version }: { version: number }) {
                 <ManagementSignal
                   label="الباقات عملت كام من البيع؟"
                   value={executive.packageShare === null ? '—' : `${executive.packageShare.toLocaleString('ar-EG')}٪`}
-                  detail={`${data.commercialCurrent.packagesSold.toLocaleString('ar-EG')} باقات من أصل ${data.commercialCurrent.purchases.toLocaleString('ar-EG')} بيعة`}
+                  detail={`${data.commercialCurrent.packagesSold.toLocaleString('ar-EG')} باقات من أصل ${data.commercialCurrent.purchases.toLocaleString('ar-EG')} كورس أو باقة اتباعت`}
                   tone="plain"
                 />
               </div>
@@ -722,10 +628,10 @@ function ElearningAnalysis({ version }: { version: number }) {
               />
             )}
             <StatTile
-              label="كام حاجة اتباعت؟"
+              label="كورسات وباقات اتباعت"
               value={data.commercialCurrent.purchases}
-              hint="كورسات اتباعت لوحدها + باقات"
-              explanation="كل كورس اتباع لوحده يتحسب مرة، وكل باقة اتباعت تتحسب مرة. الطلب الواحد ممكن يكون فيه أكتر من كورس، علشان كده الرقم ده ممكن يكون أكبر من عدد الطلبات."
+              hint={`${data.commercialCurrent.directSales.toLocaleString('ar-EG')} كورس لوحده + ${data.commercialCurrent.packagesSold.toLocaleString('ar-EG')} باقات`}
+              explanation="ده عدد القطع اللي اتباعت، مش عدد الطلبات. كل كورس اتباع لوحده يتحسب قطعة، وكل باقة تتحسب قطعة. الطلب الواحد ممكن يكون جواه أكتر من قطعة."
               icon={<ShoppingCart size={17} />}
             />
             <StatTile
@@ -739,13 +645,13 @@ function ElearningAnalysis({ version }: { version: number }) {
               icon={<PackageCheck size={17} />}
             />
             <StatTile
-              label="طلبات مؤكدة"
+              label="طلبات اتأكدت في أودو"
               value={data.commercialCurrent.paidOrders}
-              explanation="عدد الطلبات المؤكدة اللي فيها كورس مدفوع أو باقة. كل طلب يتحسب مرة واحدة حتى لو جواه أكتر من كورس."
-              hint={previousDaysHint(
+              explanation="بنعدّ أرقام الطلبات المختلفة اللي حالتها بيع مؤكد أو تم في أودو، وفيها كورس مدفوع أو باقة. كل طلب بيتحسب مرة واحدة مهما كان جواه كام كورس."
+              hint={`كل طلب مرة · ${previousDaysHint(
                 data.commercialCurrent.paidOrders,
                 data.commercialPrevious.paidOrders
-              )}
+              )}`}
               icon={<CheckCircle2 size={17} />}
             />
             <StatTile
