@@ -27,7 +27,6 @@ import {
   RefreshCw,
   Search,
   Send,
-  ShoppingCart,
   UserPlus,
   Users,
 } from 'lucide-react';
@@ -126,7 +125,6 @@ function executiveAssessment(data: ElearningAnalytics) {
       : null;
   const soldCoverage = sharePercent(current.coursesWithSales, current.paidCourses);
   const dormantShare = sharePercent(current.noSales, current.paidCourses);
-  const packageShare = sharePercent(current.packagesSold, current.purchases);
   const needsAttention =
     (orderChange !== null && orderChange <= -10) ||
     (revenueChange !== null && revenueChange <= -10) ||
@@ -155,11 +153,6 @@ function executiveAssessment(data: ElearningAnalytics) {
       `${current.noSales.toLocaleString('ar-EG')} كورس من غير بيع (${dormantShare.toLocaleString('ar-EG')}٪ من الكورسات المعروضة): حدّد اللي يحتاج إعلان أو عرض أو إيقاف.`
     );
   }
-  if (packageShare !== null && packageShare < 10) {
-    actions.push(
-      `الباقات عملت ${packageShare.toLocaleString('ar-EG')}٪ بس من البيع؛ راجع سعر الباقة وطريقة عرضها للعميل.`
-    );
-  }
   actions.push('حطّ هدف شهري واضح للفلوس والطلبات؛ من غير هدف نقدر نقول الأرقام طلعت أو نزلت، لكن مش نقدر نقول الخطة اتحققت.');
 
   return {
@@ -174,7 +167,6 @@ function executiveAssessment(data: ElearningAnalytics) {
     revenueChange,
     soldCoverage,
     dormantShare,
-    packageShare,
     actions,
   };
 }
@@ -533,7 +525,7 @@ function ElearningAnalysis({ version }: { version: number }) {
                 <span className="chip bg-white text-ink-muted">مقارنة بنفس عدد الأيام اللي قبلها</span>
               </div>
 
-              <div className="mt-3 grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="mt-3 grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
                 <ManagementSignal
                   label="طلبات اتأكدت في أودو"
                   value={data.commercialCurrent.paidOrders.toLocaleString('ar-EG')}
@@ -567,12 +559,6 @@ function ElearningAnalysis({ version }: { version: number }) {
                   value={executive.soldCoverage === null ? '—' : `${executive.soldCoverage.toLocaleString('ar-EG')}٪`}
                   detail={`${data.commercialCurrent.coursesWithSales.toLocaleString('ar-EG')} من ${data.commercialCurrent.paidCourses.toLocaleString('ar-EG')} كورس باع مرة على الأقل`}
                   tone={executive.soldCoverage !== null && executive.soldCoverage < 65 ? 'warn' : 'good'}
-                />
-                <ManagementSignal
-                  label="الباقات عملت كام من البيع؟"
-                  value={executive.packageShare === null ? '—' : `${executive.packageShare.toLocaleString('ar-EG')}٪`}
-                  detail={`${data.commercialCurrent.packagesSold.toLocaleString('ar-EG')} باقات من أصل ${data.commercialCurrent.purchases.toLocaleString('ar-EG')} كورس أو باقة اتباعت`}
-                  tone="plain"
                 />
               </div>
 
@@ -627,13 +613,6 @@ function ElearningAnalysis({ version }: { version: number }) {
                 icon={<BadgeDollarSign size={17} />}
               />
             )}
-            <StatTile
-              label="كورسات وباقات اتباعت"
-              value={data.commercialCurrent.purchases}
-              hint={`${data.commercialCurrent.directSales.toLocaleString('ar-EG')} كورس لوحده + ${data.commercialCurrent.packagesSold.toLocaleString('ar-EG')} باقات`}
-              explanation="ده عدد القطع اللي اتباعت، مش عدد الطلبات. كل كورس اتباع لوحده يتحسب قطعة، وكل باقة تتحسب قطعة. الطلب الواحد ممكن يكون جواه أكتر من قطعة."
-              icon={<ShoppingCart size={17} />}
-            />
             <StatTile
               label="باقات اتباعت"
               value={data.commercialCurrent.packagesSold}
