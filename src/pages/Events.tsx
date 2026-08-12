@@ -24,7 +24,6 @@ import {
   RefreshCw,
   Search,
   TicketCheck,
-  TrendingUp,
   UserRoundSearch,
   Users,
   Video,
@@ -60,7 +59,6 @@ import {
   AnalyticsPeriodPicker,
   DEFAULT_ANALYTICS_RANGE,
   DemandRanking,
-  comparisonHint,
   dateRangeLabel,
 } from '../components/TrainingAnalytics';
 import { EmptyState, Modal, Segmented, Spinner, useToast } from '../components/ui';
@@ -71,6 +69,17 @@ type Lane = 'today' | 'running' | 'upcoming' | 'analysis';
 /** A course matches on anything somebody would plausibly remember about it. */
 const hits = (query: string) => (course: Course) =>
   matches(query, course.name, course.code, course.instructor, course.branch, course.venue);
+
+const odooEventUrl = (id: number) =>
+  `https://engosoft.com/web#id=${id}&model=event.event&view_type=form`;
+
+function previousDaysHint(current: number | null, previous: number | null): string {
+  if (current === null || previous === null) return 'مفيش مقارنة متاحة';
+  if (current === previous) return 'زي الأيام اللي قبلها';
+  if (previous === 0) return current > 0 ? 'ظهر جديد في الأيام دي' : 'مفيش تغيير';
+  const change = Math.round(((current - previous) / Math.abs(previous)) * 100);
+  return `${change > 0 ? '↑' : '↓'} ${Math.abs(change).toLocaleString('ar-EG')}٪ عن الأيام اللي قبلها`;
+}
 
 export function Events() {
   const { push } = useToast();
@@ -476,7 +485,7 @@ function EventsAnalysis({ version }: { version: number }) {
         value={range}
         onApply={setRange}
         loading={loading}
-        basis="الإيفينتات الحضورية فقط التي يبدأ موعدها داخل الفترة المختارة"
+        basis="الإيفينتات الحضورية اللي ميعاد بدايتها جوه الأيام المختارة — مش حسب يوم عمل الحجز"
       />
 
       {error && (
@@ -512,109 +521,132 @@ function EventsAnalysis({ version }: { version: number }) {
                 </p>
                 <h2 className="mt-2 max-w-2xl text-[19px] font-black leading-relaxed sm:text-[22px]">
                   {top
-                    ? <><bdi dir="auto">«{top.name}»</bdi> هو الأعلى طلبًا بـ {top.bookings.toLocaleString('ar-EG')} حجز مؤكد.</>
-                    : 'لا يوجد أي حجز أو اهتمام مسجّل على إيفينتات هذه الفترة.'}
+                    ? top.bookings > 0
+                      ? <><bdi dir="auto">«{top.name}»</bdi> عليه أكتر حجز في الأيام دي: {top.bookings.toLocaleString('ar-EG')} حجز مؤكد.</>
+                      : <><bdi dir="auto">«{top.name}»</bdi> عليه {top.interested.toLocaleString('ar-EG')} مهتم ولسه مفيش حجز مؤكد.</>
+                    : 'مفيش حجز أو اهتمام متسجل على إيفينتات الأيام دي.'}
                 </h2>
                 <p className="mt-2 text-[12.5px] text-white/60">
                   {current.noDemand > 0
                     ? `${current.noDemand.toLocaleString('ar-EG')} إيفينت بلا حجز أو اهتمام ويحتاج مراجعة التسويق أو الموعد.`
-                    : 'كل الإيفينتات في الفترة عليها طلب مسجّل.'}
+                    : 'كل الإيفينتات في الأيام دي عليها حجز أو اهتمام.'}
                 </p>
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <QuickFact label="تغطية الطلب" value={current.demandRate === null ? '—' : `${current.demandRate}٪`} />
-                <QuickFact label="تحويل الاهتمام" value={current.confirmationRate === null ? '—' : `${current.confirmationRate}٪`} />
+                <QuickFact label="إيفينتات عليها حركة" value={current.demandRate === null ? '—' : `${current.demandRate.toLocaleString('ar-EG')}٪`} />
+                <QuickFact label="نسبة الحجوزات المؤكدة" value={current.confirmationRate === null ? '—' : `${current.confirmationRate.toLocaleString('ar-EG')}٪`} />
               </div>
             </div>
           </section>
 
+          <details className="group rounded-2xl border border-surface-line bg-white px-4 py-3.5">
+            <summary className="cursor-pointer list-none text-[12.5px] font-extrabold text-ink [&::-webkit-details-marker]:hidden">
+              الأرقام دي جاية منين وأتابع الإيفينت فين؟ <span className="text-brand-600 group-open:hidden">＋</span>
+              <span className="hidden text-brand-600 group-open:inline">−</span>
+            </summary>
+            <div className="mt-2 grid gap-2 text-[11.5px] leading-relaxed text-ink-muted">
+              <p>
+                الإيفينت نفسه جاي من أودو، وبنحسب الحضوري بس لو ميعاد بدايته جوه الأيام المختارة. الحجز
+                المؤكد هو الشخص اللي حالته «مفتوح» أو «تم»، و«لسه مش مؤكد» هو اللي حالته مسودة، والملغي
+                حالته إلغاء. تاريخ عمل الحجز مش هو فلتر الفترة.
+              </p>
+              <p>
+                نسبة المقاعد بتتحسب بس للإيفينتات اللي السعة مكتوبة فيها: الحجوزات المؤكدة ÷ عدد المقاعد.
+                اضغط اسم أي إيفينت في القوائم تحت علشان تفتح سجله نفسه في أودو وتراجع الأشخاص والحالات.
+              </p>
+            </div>
+          </details>
+
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <StatTile
-              label="إجمالي الإيفينتات"
+              label="إيفينتات بدأت في الأيام دي"
               value={current.events}
-              hint={comparisonHint(current.events, previous.events)}
+              hint={previousDaysHint(current.events, previous.events)}
+              explanation="عدد الإيفينتات الحضورية اللي ميعاد بدايتها واقع بين التاريخين المختارين."
               icon={<CalendarDays size={17} />}
             />
             <StatTile
-              label="الحجوزات المؤكدة"
+              label="ناس حجزت واتأكدت"
               value={current.bookings}
-              hint={comparisonHint(current.bookings, previous.bookings)}
+              hint={previousDaysHint(current.bookings, previous.bookings)}
+              explanation="عدد الأشخاص في أودو وحالة حجزهم مفتوح أو تم، على إيفينتات الأيام المختارة."
               tone={current.bookings > previous.bookings ? 'good' : 'plain'}
               icon={<TicketCheck size={17} />}
             />
             <StatTile
-              label="المهتمون — غير مؤكد"
+              label="ناس لسه مش مؤكدة"
               value={current.interested}
-              hint={comparisonHint(current.interested, previous.interested)}
+              hint={previousDaysHint(current.interested, previous.interested)}
+              explanation="أشخاص موجودون على الإيفينت لكن حالة تسجيلهم ما زالت مسودة؛ ما بنحسبهمش حجز مؤكد."
               icon={<UserRoundSearch size={17} />}
             />
             <StatTile
-              label="بلا أي طلب"
+              label="إيفينتات من غير حجز أو اهتمام"
               value={current.noDemand}
-              hint={comparisonHint(current.noDemand, previous.noDemand)}
+              hint={previousDaysHint(current.noDemand, previous.noDemand)}
+              explanation="إيفينتات ما عليهاش ولا حجز مؤكد ولا تسجيل مسودة."
               tone={current.noDemand > 0 ? 'warn' : 'good'}
               icon={<CircleSlash2 size={17} />}
             />
             <StatTile
-              label="نسبة الإشغال"
-              value={current.fillRate === null ? '—' : `${current.fillRate}٪`}
-              hint={current.seats ? `${current.bookings.toLocaleString('ar-EG')} من ${current.seats.toLocaleString('ar-EG')} مقعد` : 'السعة غير مسجّلة'}
+              label="نسبة المقاعد المحجوزة"
+              value={current.fillRate === null ? '—' : `${current.fillRate.toLocaleString('ar-EG')}٪`}
+              hint={current.seats ? `${current.capacityBookings.toLocaleString('ar-EG')} حجز من ${current.seats.toLocaleString('ar-EG')} مقعد` : 'السعة مش مكتوبة في أودو'}
+              explanation="الحجوزات المؤكدة مقسومة على عدد المقاعد، للإيفينتات اللي السعة مكتوبة فيها بس."
               tone={current.fillRate !== null && current.fillRate >= 70 ? 'good' : 'plain'}
               icon={<Users size={17} />}
             />
             <StatTile
-              label="حضروا بالفعل"
+              label="ناس حضورها اتسجل"
               value={current.attended}
-              hint={comparisonHint(current.attended, previous.attended)}
+              hint={previousDaysHint(current.attended, previous.attended)}
+              explanation="عدد الأشخاص اللي حالة تسجيلهم في أودو بقت تم."
               icon={<GraduationCap size={17} />}
             />
             <StatTile
-              label="إيفينتات عليها طلب"
-              value={current.withDemand}
-              hint={current.demandRate === null ? '—' : `${current.demandRate}٪ من إيفينتات الفترة`}
-              icon={<TrendingUp size={17} />}
-            />
-            <StatTile
-              label="حجوزات ملغاة"
+              label="حجوزات اتلغت"
               value={current.cancelled}
-              hint={comparisonHint(current.cancelled, previous.cancelled)}
+              hint={previousDaysHint(current.cancelled, previous.cancelled)}
+              explanation="عدد تسجيلات الأشخاص اللي حالتها إلغاء في أودو."
               tone={current.cancelled > previous.cancelled ? 'warn' : 'plain'}
               icon={<AlertCircle size={17} />}
             />
           </div>
 
           <div className="grid gap-3 lg:grid-cols-2">
-            <ChartCard title="الأعلى طلبًا" hint="الحجز المؤكد والاهتمام غير المؤكد لكل إيفينت">
+            <ChartCard title="أكتر إيفينتات عليها حجز" hint="مرتبة بالحجز المؤكد الأول، وبعده اللي لسه مش مؤكد">
               <DemandRanking
                 rows={data.topDemand.map((event) => ({
                   id: event.id,
                   name: event.name,
                   primary: event.bookings,
                   secondary: event.interested,
+                  href: odooEventUrl(event.id),
                   note: [shortDate(event.startsAt), event.instructor].filter(Boolean).join(' · '),
                 }))}
-                empty="لا يوجد طلب مسجّل في الفترة"
-                primaryLabel="حجز"
-                secondaryLabel="مهتم"
+                empty="مفيش حجز أو اهتمام متسجل في الأيام دي"
+                primaryLabel="مؤكد"
+                secondaryLabel="مش مؤكد"
               />
             </ChartCard>
 
-            <ChartCard title="الأقل طلبًا" hint="تبدأ بالتي بلا حجز أو اهتمام لتسهيل اتخاذ إجراء">
+            <ChartCard title="إيفينتات محتاجة متابعة" hint="اللي من غير حجز أو اهتمام بتظهر الأول">
               <DemandRanking
                 rows={data.lowDemand.map((event) => ({
                   id: event.id,
                   name: event.name,
                   primary: event.bookings,
                   secondary: event.interested,
+                  href: odooEventUrl(event.id),
                   note: [shortDate(event.startsAt), kindLabel(event.kind)].filter(Boolean).join(' · '),
                 }))}
-                empty="لا توجد إيفينتات في الفترة"
-                primaryLabel="حجز"
-                secondaryLabel="مهتم"
+                empty="مفيش إيفينتات في الأيام دي"
+                primaryLabel="مؤكد"
+                secondaryLabel="مش مؤكد"
               />
             </ChartCard>
 
-            <ChartCard title="الحجوزات شهرًا بشهر" hint="يربط الطلب بالشهر الذي يبدأ فيه الإيفينت">
+            <ChartCard title="الحجوزات شهر بشهر" hint="كل إيفينت بيتحسب في الشهر اللي بدأ فيه">
               <DemandRanking
                 rows={data.trend.map((point, index) => ({
                   id: index,
@@ -623,9 +655,9 @@ function EventsAnalysis({ version }: { version: number }) {
                   secondary: point.interested,
                   note: `${point.events.toLocaleString('ar-EG')} إيفينت`,
                 }))}
-                empty="لا توجد بيانات شهرية"
-                primaryLabel="حجز"
-                secondaryLabel="مهتم"
+                empty="مفيش بيانات شهرية"
+                primaryLabel="مؤكد"
+                secondaryLabel="مش مؤكد"
               />
             </ChartCard>
 
@@ -633,11 +665,11 @@ function EventsAnalysis({ version }: { version: number }) {
               <BarList data={data.byKind} />
             </ChartCard>
 
-            <ChartCard title="حسب المرحلة" hint="حالة الإيفينتات التي تبدأ داخل الفترة">
+            <ChartCard title="الإيفينتات وصلت لفين؟" hint="مرحلة كل إيفينت في أودو">
               <BarList data={data.byStage.map((row) => ({ ...row, label: stageLabel(row.label) }))} />
             </ChartCard>
 
-            <ChartCard title="تحميل المدرّبين" hint="عدد الإيفينتات لكل مدرّب في الفترة">
+            <ChartCard title="كل مدرّب عنده كام إيفينت؟" hint="عدد الإيفينتات اللي بدأت في الأيام دي">
               <BarList data={data.byInstructor} />
             </ChartCard>
           </div>

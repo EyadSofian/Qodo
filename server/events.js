@@ -487,6 +487,9 @@ export function buildEventsSnapshot(eventRows, registrationRows) {
       attended: sum.attended + event.attended,
       cancelled: sum.cancelled + event.cancelled,
       seats: sum.seats + event.seats,
+      // Occupancy is only meaningful where a capacity was actually entered.
+      // Bookings on an event with no capacity must not inflate the numerator.
+      capacityBookings: sum.capacityBookings + (event.seats > 0 ? event.bookings : 0),
       noBookings: sum.noBookings + (event.bookings === 0 ? 1 : 0),
       noDemand: sum.noDemand + (event.demand === 0 ? 1 : 0),
       withDemand: sum.withDemand + (event.demand > 0 ? 1 : 0),
@@ -498,6 +501,7 @@ export function buildEventsSnapshot(eventRows, registrationRows) {
       attended: 0,
       cancelled: 0,
       seats: 0,
+      capacityBookings: 0,
       noBookings: 0,
       noDemand: 0,
       withDemand: 0,
@@ -528,14 +532,17 @@ export function buildEventsSnapshot(eventRows, registrationRows) {
   return {
     totals: {
       ...totals,
-      fillRate: totals.seats > 0 ? Math.round((totals.bookings / totals.seats) * 100) : null,
+      fillRate: totals.seats > 0 ? Math.round((totals.capacityBookings / totals.seats) * 100) : null,
       demandRate: totals.events > 0 ? Math.round((totals.withDemand / totals.events) * 100) : null,
       confirmationRate:
         totals.bookings + totals.interested > 0
           ? Math.round((totals.bookings / (totals.bookings + totals.interested)) * 100)
           : null,
     },
-    topDemand: [...events].filter((event) => event.demand > 0).sort(demandOrder).slice(0, 10),
+    topDemand: [...events]
+      .filter((event) => event.demand > 0)
+      .sort((a, b) => b.bookings - a.bookings || b.interested - a.interested || demandOrder(a, b))
+      .slice(0, 10),
     lowDemand: [...events].sort(lowOrder).slice(0, 10),
     byStage: tally(events, (event) => event.stage ?? 'بدون مرحلة'),
     byMode: tally(events, (event) => eventMode(event.mode)),

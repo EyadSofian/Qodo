@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CalendarRange, Check, SlidersHorizontal } from 'lucide-react';
+import { CalendarRange, Check, ExternalLink, SlidersHorizontal } from 'lucide-react';
 import type { AnalyticsRange } from '../lib/events';
 import { cx } from '../lib/utils';
 
@@ -179,7 +179,7 @@ export function DemandRanking({
   primaryLabel,
   secondaryLabel,
 }: {
-  rows: Array<{ id: number; name: string; primary: number; secondary: number; note?: string }>;
+  rows: Array<{ id: number; name: string; primary: number; secondary: number; note?: string; href?: string }>;
   empty: string;
   primaryLabel: string;
   secondaryLabel: string;
@@ -201,7 +201,20 @@ export function DemandRanking({
             <div className="min-w-0">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="truncate text-[12.5px] font-bold text-ink" title={row.name}>{row.name}</p>
+                  {row.href ? (
+                    <a
+                      href={row.href}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      className="flex items-center gap-1 text-[12.5px] font-bold text-brand-700 hover:underline"
+                      title={`${row.name} — افتح في أودو`}
+                    >
+                      <span className="truncate">{row.name}</span>
+                      <ExternalLink size={12} className="shrink-0" />
+                    </a>
+                  ) : (
+                    <p className="truncate text-[12.5px] font-bold text-ink" title={row.name}>{row.name}</p>
+                  )}
                   {row.note && <p className="truncate text-[10.5px] text-ink-faint">{row.note}</p>}
                 </div>
                 <div className="flex shrink-0 items-center gap-1 text-[10.5px] font-bold">

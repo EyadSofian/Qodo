@@ -41,6 +41,38 @@ test('event demand separates confirmed bookings, interest and no-demand events',
   assert.equal(result.totals.attended, 0);
   assert.equal(result.totals.noDemand, 0);
   assert.equal(result.totals.fillRate, 20);
+  assert.equal(result.totals.capacityBookings, 4);
   assert.equal(result.topDemand[0].name, 'BIM');
   assert.equal(result.lowDemand[0].name, 'BIM');
+});
+
+test('occupancy ignores bookings where no event capacity is entered', () => {
+  const events = [
+    { id: 1, name: 'Known capacity', date_begin: '2026-08-01 10:00:00', attendance_method: 'offline', seats_max: 10 },
+    { id: 2, name: 'No capacity', date_begin: '2026-08-02 10:00:00', attendance_method: 'offline', seats_max: 0 },
+  ];
+  const registrations = [
+    { event_id: [1, 'Known capacity'], state: 'open', __count: 5 },
+    { event_id: [2, 'No capacity'], state: 'open', __count: 7 },
+  ];
+
+  const result = buildEventsSnapshot(events, registrations);
+  assert.equal(result.totals.bookings, 12);
+  assert.equal(result.totals.capacityBookings, 5);
+  assert.equal(result.totals.seats, 10);
+  assert.equal(result.totals.fillRate, 50);
+});
+
+test('most requested event is ranked by confirmed bookings before unconfirmed interest', () => {
+  const events = [
+    { id: 1, name: 'Interest only', date_begin: '2026-08-01 10:00:00', attendance_method: 'offline', seats_max: 30 },
+    { id: 2, name: 'Confirmed', date_begin: '2026-08-02 10:00:00', attendance_method: 'offline', seats_max: 30 },
+  ];
+  const registrations = [
+    { event_id: [1, 'Interest only'], state: 'draft', __count: 20 },
+    { event_id: [2, 'Confirmed'], state: 'open', __count: 3 },
+  ];
+
+  const result = buildEventsSnapshot(events, registrations);
+  assert.equal(result.topDemand[0].name, 'Confirmed');
 });

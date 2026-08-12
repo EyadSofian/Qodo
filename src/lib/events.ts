@@ -97,6 +97,8 @@ export interface EventAnalyticsTotals {
   attended: number;
   cancelled: number;
   seats: number;
+  /** Confirmed bookings only for events whose capacity is filled in. */
+  capacityBookings: number;
   noBookings: number;
   noDemand: number;
   withDemand: number;
