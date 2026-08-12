@@ -374,15 +374,19 @@ export async function courseDetail(id) {
     });
     if (!row) throw new OdooError('course_not_found', 404);
 
-    const tracks = await searchRead('event.track', [['event_id', '=', courseId]], TRACK_FIELDS, {
-      limit: 300,
-      order: 'date',
-    });
+    const [tracks, attendeeCounts] = await Promise.all([
+      searchRead('event.track', [['event_id', '=', courseId]], TRACK_FIELDS, {
+        limit: 300,
+        order: 'date',
+      }),
+      registrationCounts([courseId]),
+    ]);
     const sessions = tracks.map(shapeTrack);
     const now = Date.now();
 
     return {
       ...shapeEvent(row),
+      attendees: attendeeCounts.get(courseId) ?? 0,
       sessions,
       sessionsTotal: sessions.length,
       sessionsLeft: sessions.filter((session) => session.at && new Date(session.at) >= now).length,
