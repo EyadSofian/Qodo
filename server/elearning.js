@@ -22,7 +22,7 @@ import { OdooError, existingFields, odooConfigured, readGroup, searchRead } from
 
 import { makeCache } from './cache.js';
 import { analyticsPeriod, publicPeriod } from './analyticsPeriod.js';
-import { clearInsightsRevenueCache, recordedRevenueForPeriod } from './insightsRevenue.js';
+import { clearInsightsRevenueCache, elearningRevenueForPeriod } from './insightsRevenue.js';
 
 const cache = makeCache(5 * 60_000);
 const cached = (key, load) => cache.get(key, load);
@@ -625,8 +625,8 @@ async function salesCatalog(courses) {
   return { products, packages };
 }
 
-async function commercialSales(courses, period) {
-  const { products, packages } = await salesCatalog(courses);
+async function commercialSales(courses, period, catalog = null) {
+  const { products, packages } = catalog ?? (await salesCatalog(courses));
   const productIds = [...new Set(products.map((product) => product.id).filter(Boolean))];
   if (!productIds.length) {
     const empty = buildElearningSalesSnapshot(courses, products, packages, []);
@@ -711,13 +711,6 @@ export async function elearningAnalytics({ from, to } = {}) {
   const period = analyticsPeriod({ from, to });
 
   return cached(`analytics:${period.from}:${period.to}`, async () => {
-    // Start the external accounting read while Odoo is doing its own catalogue
-    // and membership work. They are independent authorities and often have very
-    // different response times.
-    const revenuePromise = recordedRevenueForPeriod(period).then(
-      (value) => ({ value, error: null }),
-      (error) => ({ value: null, error })
-    );
     const { courses, available } = await elearningOverview();
     const has = (field) => available.includes(field);
 
@@ -728,6 +721,26 @@ export async function elearningAnalytics({ from, to } = {}) {
     const completed = courses.reduce((sum, course) => sum + course.completed, 0);
     const lessons = courses.reduce((sum, course) => sum + course.lessons, 0);
     const hours = courses.reduce((sum, course) => sum + course.hours, 0);
+
+    // Build the product catalogue once. Package configuration can introduce
+    // additional variants of a course, and those names must be part of the
+    // accounting join too or package revenue would disappear from the report.
+    const catalogPromise = salesCatalog(courses);
+    const revenuePromise = catalogPromise
+      .then(({ products }) => {
+        const freeTemplates = freeCourseTemplateIds();
+        for (const course of freeCourses) {
+          if (course.productTemplateId) freeTemplates.add(course.productTemplateId);
+        }
+        const paidProducts = products.filter(
+          (product) => !freeTemplates.has(product.templateId)
+        );
+        return elearningRevenueForPeriod(period, [...commercialCourses, ...paidProducts]);
+      })
+      .then(
+        (value) => ({ value, error: null }),
+        (error) => ({ value: null, error })
+      );
 
     let byKind = [];
     if (has('channel_type')) {
@@ -749,7 +762,7 @@ export async function elearningAnalytics({ from, to } = {}) {
     let salesError = null;
     let sales = null;
     try {
-      sales = await commercialSales(courses, period);
+      sales = await commercialSales(courses, period, await catalogPromise);
     } catch (error) {
       salesAvailable = false;
       salesError = error?.message || 'sales_analytics_unavailable';

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { buildElearningPeriodSnapshot, buildElearningSalesSnapshot } from './elearning.js';
-import { buildRecordedRevenueSnapshot } from './insightsRevenue.js';
+import { buildElearningRevenueSnapshot } from './insightsRevenue.js';
 
 test('eLearning period snapshot ranks new enrollment and keeps invitations separate', () => {
   const courses = [
@@ -157,8 +157,8 @@ test('zero-value package lines do not become paid demand', () => {
   assert.equal(result.totals.purchases, 0);
 });
 
-test('Insights accounting revenue keeps only the recorded course modality in USD', () => {
-  const result = buildRecordedRevenueSnapshot({
+test('Insights revenue follows the Odoo eLearning catalogue, not modality wording', () => {
+  const result = buildElearningRevenueSnapshot({
     source: {
       tab: 'Paid Invoices',
       dateBasis: 'Payment Date',
@@ -180,26 +180,92 @@ test('Insights accounting revenue keeps only the recorded course modality in USD
             { key: 'recorded', invoices: 2, revenueUsd: 2135.426 },
           ],
           products: [
-            { variantKey: 'recorded', lines: 2 },
-            { variantKey: 'event', lines: 10 },
+            {
+              name: '[64] CFM Preparation Course',
+              variantKey: 'recorded',
+              lines: 2,
+              invoices: 2,
+              revenueUsd: 2335.426,
+              events: [{ key: 'CFM Event', revenueUsd: 200 }],
+            },
+            {
+              name: '[65] CFM Event',
+              variantKey: 'event',
+              lines: 10,
+              invoices: 8,
+              revenueUsd: 5000,
+            },
           ],
         },
         {
           familyKey: 'pmp',
           family: 'PMP',
-          variants: [{ key: 'event', invoices: 12, revenueUsd: 4000 }],
-          products: [{ variantKey: 'event', lines: 12 }],
+          variants: [{ key: 'exam_simulator', invoices: 2, revenueUsd: 500 }],
+          products: [
+            {
+              name: '[847] PMP Exam Simulator (AR)',
+              variantKey: 'exam_simulator',
+              lines: 2,
+              invoices: 2,
+              revenueUsd: 500,
+            },
+          ],
+        },
+        {
+          familyKey: 'primavera',
+          family: 'PRIMAVERA',
+          variants: [{ key: 'standard', invoices: 1, revenueUsd: 1000 }],
+          products: [
+            {
+              name: '[110] Management - PRIMAVERA',
+              variantKey: 'standard',
+              lines: 1,
+              invoices: 1,
+              revenueUsd: 1000,
+            },
+          ],
         },
       ],
     },
-  });
+    detail: {
+      truncated: false,
+      rows: [
+        { product: '[64] CFM Preparation Course', movement: 'INV-1', usdPaid: 2135.426 },
+        {
+          product: '[64] CFM Preparation Course',
+          movement: 'INV-EVENT',
+          event: 'CFM Event',
+          eventStage: 'Open',
+          usdPaid: 200,
+        },
+        { product: '[847] PMP Exam Simulator (AR)', movement: 'INV-1', usdPaid: 250 },
+        { product: '[847] PMP Exam Simulator (AR)', movement: 'INV-2', usdPaid: 250 },
+        { product: '[110] Management - PRIMAVERA', movement: 'INV-3', usdPaid: 1000 },
+        { product: '[65] CFM Event', movement: 'INV-4', usdPaid: 5000 },
+      ],
+    },
+  }, [
+    { name: 'CFM', productName: '[64] CFM Preparation Course' },
+    { name: 'PMP simulator', productName: '[847] PMP Exam Simulator (AR)' },
+    // No "Recorded" word and a standard Insights variant: catalogue matching
+    // is what correctly keeps this digital course in eLearning revenue.
+    { name: 'Primavera', productName: '[110] Management - PRIMAVERA' },
+  ]);
 
-  assert.equal(result.amount, 3035.53);
+  assert.equal(result.amount, 3635.43);
   assert.equal(result.currency, 'USD');
   assert.equal(result.invoices, 3);
-  assert.equal(result.productLines, 2);
-  assert.deepEqual(result.families, [
-    { key: 'cfm', name: 'CFM', amount: 2135.43, invoices: 2, productLines: 2 },
-  ]);
+  assert.equal(result.invoiceCountExact, true);
+  assert.equal(result.productLines, 4);
+  assert.deepEqual(
+    result.families.map(({ key, amount }) => ({ key, amount })),
+    [
+      { key: 'cfm', amount: 2135.43 },
+      { key: 'primavera', amount: 1000 },
+      { key: 'pmp', amount: 500 },
+    ]
+  );
+  assert.equal(result.catalogProducts, 3);
+  assert.equal(result.matchedAccountingProducts, 3);
   assert.equal(result.source.valueBasis, 'USD Paid');
 });

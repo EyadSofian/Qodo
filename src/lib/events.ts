@@ -249,9 +249,12 @@ export interface ElearningCommercialTotals {
 export interface ElearningCollectedRevenue {
   amount: number;
   invoices: number;
+  invoiceCountExact: boolean;
   productLines: number;
   currency: 'USD';
-  modality: 'recorded';
+  scope: 'odoo_elearning_catalog';
+  catalogProducts: number;
+  matchedAccountingProducts: number;
   stale?: boolean;
   fetchedAt?: string;
   syncedAt?: string | null;
@@ -271,6 +274,7 @@ export interface ElearningRevenueSource {
   dateBasis: string;
   valueBasis: string;
   grain: string;
+  matchingBasis: string;
   repository: string;
 }
 

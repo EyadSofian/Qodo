@@ -69,6 +69,86 @@ function formatMoney(value: number, currency: string | null): string {
   }
 }
 
+function changePercent(current: number, previous: number): number | null {
+  if (!Number.isFinite(current) || !Number.isFinite(previous) || previous === 0) return null;
+  return Math.round(((current - previous) / Math.abs(previous)) * 100);
+}
+
+function sharePercent(part: number, total: number): number | null {
+  return total > 0 ? Math.round((part / total) * 100) : null;
+}
+
+function movementLabel(value: number | null): string {
+  if (value === null) return 'لا توجد فترة سابقة صالحة';
+  if (value === 0) return 'بدون تغيير';
+  return `${value > 0 ? '↑' : '↓'} ${Math.abs(value).toLocaleString('ar-EG')}٪`;
+}
+
+function executiveAssessment(data: ElearningAnalytics) {
+  const current = data.commercialCurrent;
+  const previous = data.commercialPrevious;
+  if (!current || !previous) return null;
+
+  const orderChange = changePercent(current.paidOrders, previous.paidOrders);
+  const revenueChange =
+    data.collectedCurrent && data.collectedPrevious
+      ? changePercent(data.collectedCurrent.amount, data.collectedPrevious.amount)
+      : null;
+  const soldCoverage = sharePercent(current.coursesWithSales, current.paidCourses);
+  const dormantShare = sharePercent(current.noSales, current.paidCourses);
+  const packageShare = sharePercent(current.packagesSold, current.purchases);
+  const needsAttention =
+    (orderChange !== null && orderChange <= -10) ||
+    (revenueChange !== null && revenueChange <= -10) ||
+    (dormantShare !== null && dormantShare >= 35);
+  const improving =
+    orderChange !== null &&
+    orderChange >= 10 &&
+    revenueChange !== null &&
+    revenueChange >= 10 &&
+    (dormantShare === null || dormantShare < 30);
+
+  const status = needsAttention ? 'attention' : improving ? 'improving' : 'watch';
+  const actions = [];
+  if (orderChange !== null && orderChange < 0) {
+    actions.push(
+      `راجع سبب انخفاض الطلبات ${Math.abs(orderChange).toLocaleString('ar-EG')}٪: القنوات والحملات والكورسات التي فقدت بيعًا عن الفترة السابقة.`
+    );
+  }
+  if (revenueChange !== null && revenueChange < 0) {
+    actions.push(
+      `راجع التحصيل والفواتير؛ إيراد منتجات التعليم الإلكتروني انخفض ${Math.abs(revenueChange).toLocaleString('ar-EG')}٪.`
+    );
+  }
+  if (dormantShare !== null && dormantShare >= 30) {
+    actions.push(
+      `${current.noSales.toLocaleString('ar-EG')} كورس لم يبع (${dormantShare.toLocaleString('ar-EG')}٪ من الكتالوج): حدّد ما يحتاج حملة أو عرضًا أو إيقافًا.`
+    );
+  }
+  if (packageShare !== null && packageShare < 10) {
+    actions.push(
+      `الباقات تمثل ${packageShare.toLocaleString('ar-EG')}٪ فقط من الوحدات المباعة؛ راجع وضوح العرض وتسعيره قبل اعتبارها قناة نمو.`
+    );
+  }
+  actions.push('أضف Target شهريًا للإيراد والطلبات؛ بدون مستهدف يمكن الحكم على الاتجاه، وليس على تحقيق خطة الإدارة.');
+
+  return {
+    status,
+    title:
+      status === 'attention'
+        ? 'الأداء أضعف من الفترة السابقة ويحتاج تدخلًا.'
+        : status === 'improving'
+          ? 'الأداء يتحسن مقارنة بالفترة السابقة.'
+          : 'الأداء قريب من الفترة السابقة ويحتاج متابعة.',
+    orderChange,
+    revenueChange,
+    soldCoverage,
+    dormantShare,
+    packageShare,
+    actions,
+  };
+}
+
 type Tab = 'courses' | 'analysis';
 
 export function Elearning() {
@@ -310,7 +390,7 @@ function ElearningAnalysis({ version }: { version: number }) {
 
   const totals = data?.totals;
   const has = (field: string) => Boolean(data?.available.includes(field));
-  const topPaid = data?.topPaidCourses[0];
+  const executive = data ? executiveAssessment(data) : null;
 
   return (
     <div className="grid gap-4">
@@ -369,45 +449,128 @@ function ElearningAnalysis({ version }: { version: number }) {
             <span className="absolute -end-12 -top-14 h-40 w-40 rounded-full border-[28px] border-white/[0.04]" />
             <div className="relative grid gap-4 lg:grid-cols-[1.35fr_1fr] lg:items-end">
               <div>
-                <p className="text-[11.5px] font-bold text-brand-200">
-                  المبيعات المدفوعة · {dateRangeLabel(data.period.from, data.period.to)}
-                </p>
-                <h2 className="mt-2 max-w-2xl text-[19px] font-black leading-relaxed sm:text-[22px]">
-                  {topPaid ? (
-                    <>
-                      <bdi dir="auto">«{topPaid.name}»</bdi> الأكثر بيعًا بـ{' '}
-                      {topPaid.totalSales.toLocaleString('ar-EG')} مرة مباشرة أو داخل باقة.
-                    </>
-                  ) : (
-                    'لم تُسجّل مبيعات مدفوعة للكورسات في الفترة المختارة.'
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-[11.5px] font-bold text-brand-200">
+                    قراءة الإدارة · {dateRangeLabel(data.period.from, data.period.to)}
+                  </p>
+                  {executive && (
+                    <span
+                      className={cx(
+                        'rounded-full px-2.5 py-1 text-[10.5px] font-black',
+                        executive.status === 'attention' && 'bg-accent-500 text-white',
+                        executive.status === 'improving' && 'bg-status-ok text-white',
+                        executive.status === 'watch' && 'bg-white/10 text-white/80'
+                      )}
+                    >
+                      {executive.status === 'attention'
+                        ? 'يحتاج تدخل'
+                        : executive.status === 'improving'
+                          ? 'يتحسن'
+                          : 'تحت المتابعة'}
+                    </span>
                   )}
+                </div>
+                <h2 className="mt-2 max-w-2xl text-[19px] font-black leading-relaxed sm:text-[22px]">
+                  {executive?.title ?? 'لا توجد بيانات كافية لإصدار قراءة إدارية.'}
                 </h2>
                 <p className="mt-2 text-[12.5px] text-white/60">
-                  المجاني وسطور البيع صفر القيمة خارج ترتيب الطلبات. الإيراد المحصّل منفصل ويأتي من الفواتير
-                  المدفوعة في Insights Hub للكورسات المسجّلة فقط.
+                  الحكم هنا على الاتجاه مقابل فترة سابقة مساوية، وليس على تحقيق الخطة؛ لا يوجد Target إداري
+                  مسجل للإيراد أو الطلبات حتى الآن.
                 </p>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <LearningQuickFact
-                  label="إيراد محصّل"
-                  value={
-                    data.revenueAvailable && data.collectedCurrent
-                      ? formatMoney(data.collectedCurrent.amount, data.currency)
-                      : 'غير متاح'
-                  }
+                  label="حركة الإيراد"
+                  value={movementLabel(executive?.revenueChange ?? null)}
                 />
                 <LearningQuickFact
-                  label="باقات مباعة"
-                  value={data.commercialCurrent.packagesSold.toLocaleString('ar-EG')}
+                  label="حركة الطلبات"
+                  value={movementLabel(executive?.orderChange ?? null)}
                 />
               </div>
             </div>
           </section>
 
+          {executive && (
+            <section className="rounded-2xl border border-brand-100 bg-brand-50/60 p-4 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <h3 className="text-[15px] font-black text-ink">ما الذي تقوله الأرقام للإدارة؟</h3>
+                  <p className="mt-1 text-[11.5px] text-ink-muted">
+                    أربع إشارات مختصرة، ثم الإجراءات المقترحة. يظهر «يحتاج تدخل» عند تراجع ١٠٪ أو أكثر،
+                    أو عندما لا يبيع ٣٥٪ على الأقل من الكتالوج.
+                  </p>
+                </div>
+                <span className="chip bg-white text-ink-muted">مقارنة بفترة مساوية</span>
+              </div>
+
+              <div className="mt-3 grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
+                <ManagementSignal
+                  label="الطلبات المؤكدة"
+                  value={data.commercialCurrent.paidOrders.toLocaleString('ar-EG')}
+                  detail={`${movementLabel(executive.orderChange)} عن الفترة السابقة`}
+                  tone={
+                    executive.orderChange === null
+                      ? 'plain'
+                      : executive.orderChange < 0
+                        ? 'warn'
+                        : 'good'
+                  }
+                />
+                <ManagementSignal
+                  label="الإيراد المحصّل"
+                  value={
+                    data.collectedCurrent
+                      ? formatMoney(data.collectedCurrent.amount, data.currency)
+                      : 'غير متاح'
+                  }
+                  detail={`${movementLabel(executive.revenueChange)} عن الفترة السابقة`}
+                  tone={
+                    executive.revenueChange === null
+                      ? 'plain'
+                      : executive.revenueChange < 0
+                        ? 'warn'
+                        : 'good'
+                  }
+                />
+                <ManagementSignal
+                  label="تغطية الكتالوج بالبيع"
+                  value={executive.soldCoverage === null ? '—' : `${executive.soldCoverage.toLocaleString('ar-EG')}٪`}
+                  detail={`${data.commercialCurrent.coursesWithSales.toLocaleString('ar-EG')} من ${data.commercialCurrent.paidCourses.toLocaleString('ar-EG')} كورس باع مرة على الأقل`}
+                  tone={executive.soldCoverage !== null && executive.soldCoverage < 65 ? 'warn' : 'good'}
+                />
+                <ManagementSignal
+                  label="حصة الباقات"
+                  value={executive.packageShare === null ? '—' : `${executive.packageShare.toLocaleString('ar-EG')}٪`}
+                  detail={`${data.commercialCurrent.packagesSold.toLocaleString('ar-EG')} باقات من ${data.commercialCurrent.purchases.toLocaleString('ar-EG')} وحدة مباعة`}
+                  tone="plain"
+                />
+              </div>
+
+              <div className="mt-3 rounded-xl border border-white bg-white/80 px-3.5 py-3">
+                <p className="text-[12px] font-black text-ink">أولويات القرار الآن</p>
+                <ol className="mt-2 grid gap-1.5 text-[11.5px] leading-relaxed text-ink-muted lg:grid-cols-2">
+                  {executive.actions.map((action, index) => (
+                    <li key={action} className="flex gap-2">
+                      <span className="grid h-5 w-5 shrink-0 place-items-center rounded-md bg-brand-50 text-[10px] font-black text-brand-700">
+                        {index + 1}
+                      </span>
+                      <span>{action}</span>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            </section>
+          )}
+
           {data.revenueAvailable && data.collectedCurrent && data.revenueSource && (
-            <section className="rounded-2xl border border-brand-100 bg-brand-50/55 px-4 py-3.5">
-              <h3 className="text-[13px] font-extrabold text-ink">مصدر الإيراد المالي</h3>
-              <p className="mt-1 text-[11.5px] leading-relaxed text-ink-muted">
+            <details className="group rounded-2xl border border-surface-line bg-white px-4 py-3.5">
+              <summary className="cursor-pointer list-none text-[12.5px] font-extrabold text-ink [&::-webkit-details-marker]:hidden">
+                كيف حُسبت الأرقام وما مصادرها؟ <span className="text-brand-600 group-open:hidden">＋</span>
+                <span className="hidden text-brand-600 group-open:inline">−</span>
+              </summary>
+              <p className="mt-2 text-[11.5px] leading-relaxed text-ink-muted">
+                الإيراد من{' '}
                 <a
                   className="font-bold text-brand-700 underline underline-offset-2"
                   href={data.revenueSource.repository}
@@ -416,26 +579,28 @@ function ElearningAnalysis({ version }: { version: number }) {
                 >
                   Insights Hub
                 </a>{' '}
-                · {data.revenueSource.tab} · {data.revenueSource.dateBasis} ·{' '}
-                {data.revenueSource.valueBasis}. المعروض بالدولار كما هو من المصدر، ومفلتر على تصنيف{' '}
-                <bdi dir="ltr">Recorded</bdi> فقط؛ لا يدخل Event أو Attendance أو الكورسات المجانية.
+                ({data.revenueSource.tab} · {data.revenueSource.dateBasis} · {data.revenueSource.valueBasis})،
+                ثم تتم مطابقته بمنتجات كتالوج eLearning المدفوعة الفعلية في Odoo. لذلك يدخل الكورس المسجل
+                ومحاكي الاختبار وأي منتج رقمي مطابق حتى لو لم توجد كلمة Recorded في اسمه، بينما لا يدخل
+                Event أو Attendance أو المجاني. أعداد الطلبات والوحدات والباقات من طلبات Odoo المؤكدة حسب
+                تاريخ الطلب؛ لذلك لا نقسم الإيراد على الطلبات لأن تاريخ ومصدر كل منهما مختلفان.
               </p>
-            </section>
+            </details>
           )}
 
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {data.revenueAvailable && data.collectedCurrent && data.collectedPrevious && (
               <StatTile
-                label="إيراد محصّل"
+                label="إيراد التعليم الإلكتروني"
                 value={formatMoney(data.collectedCurrent.amount, data.currency)}
                 hint={comparisonHint(data.collectedCurrent.amount, data.collectedPrevious.amount)}
-                explanation="إجمالي ما تم تحصيله فعليًا بالدولار من الفواتير المدفوعة خلال الفترة، حسب تاريخ الدفع في Insights Hub. يشمل كورسات Recorded فقط، ولا يشمل البيع غير المدفوع أو الإيفينتات أو الحضوري أو المجاني."
+                explanation="إجمالي USD Paid المحصّل فعليًا خلال الفترة حسب تاريخ الدفع. يدخل فقط منتج الفاتورة المطابق لكتالوج eLearning المدفوع في Odoo، بما فيه الكورسات المسجلة والمحاكيات؛ ولا يدخل Event أو Attendance أو المجاني."
                 tone={data.collectedCurrent.amount > data.collectedPrevious.amount ? 'good' : 'plain'}
                 icon={<BadgeDollarSign size={17} />}
               />
             )}
             <StatTile
-              label="مشتريات"
+              label="وحدات مباعة"
               value={data.commercialCurrent.purchases}
               hint="وحدات كورسات مباشرة + باقات"
               explanation="إجمالي الوحدات المباعة: كل وحدة كورس مدفوع خارج باقة تُحسب واحدة، وكل باقة مكتملة تُحسب واحدة. لذلك الرقم قد يختلف عن عدد الطلبات؛ الطلب الواحد يمكن أن يحتوي أكثر من عملية شراء."
@@ -462,21 +627,21 @@ function ElearningAnalysis({ version }: { version: number }) {
               icon={<CheckCircle2 size={17} />}
             />
             <StatTile
-              label="بيع كورسات مباشر"
+              label="وحدات منفردة"
               value={data.commercialCurrent.directSales}
               hint="عدد الوحدات المباعة خارج الباقات"
               explanation="عدد وحدات الكورسات المدفوعة التي بيعت منفردة خارج أي باقة مطابقة. هذا عدد بيع وليس إيرادًا، ولا تدخل فيه الكورسات المجانية أو سطور البيع صفر القيمة."
               icon={<BookOpen size={17} />}
             />
             <StatTile
-              label="كورسات حققت بيعًا"
+              label="كورسات باعت"
               value={data.commercialCurrent.coursesWithSales}
               hint={`من ${data.commercialCurrent.paidCourses.toLocaleString('ar-EG')} كورس قابل للبيع`}
               explanation="عدد الكورسات المدفوعة القابلة للبيع التي ظهر لها بيع واحد على الأقل خلال الفترة، سواء بيعت منفردة أو كجزء من باقة. الكورس يُحسب مرة واحدة مهما تكرر بيعه."
               icon={<Layers size={17} />}
             />
             <StatTile
-              label="بلا بيع مدفوع"
+              label="كورسات لم تُبع"
               value={data.commercialCurrent.noSales}
               explanation="عدد الكورسات المدفوعة القابلة للبيع التي لم يظهر لها أي بيع مباشر ولا بيع داخل باقة خلال الفترة المختارة. الكورسات المجانية غير موجودة في هذا الرقم."
               hint={comparisonHint(
@@ -487,7 +652,7 @@ function ElearningAnalysis({ version }: { version: number }) {
               icon={<CircleSlash2 size={17} />}
             />
             <StatTile
-              label="مجاني مستبعد"
+              label="مجاني خارج القياس"
               value={data.commercialCurrent.freeExcluded}
               hint="لا يدخل في البيع أو المقارنة"
               explanation="عدد الكورسات المعروفة كمجانية، مثل The Freelance Masterclass أو الكورس المتاح للعامة. يتم استبعادها بالكامل من المبيعات المدفوعة وترتيب الأكثر والأقل بيعًا حتى لا تفسد المقارنة."
@@ -537,13 +702,13 @@ function ElearningAnalysis({ version }: { version: number }) {
             {data.revenueAvailable && data.collectedCurrent && (
               <ChartCard
                 title="الإيراد المحصّل حسب مجموعة الكورس"
-                hint={`${data.collectedCurrent.invoices.toLocaleString('ar-EG')} فاتورة مدفوعة · Recorded فقط`}
+                hint={`${data.collectedCurrent.invoices.toLocaleString('ar-EG')} ${data.collectedCurrent.invoiceCountExact ? 'فاتورة مدفوعة' : 'فاتورة تقريبًا'} · مطابقة بكتالوج eLearning`}
               >
                 <BarList
                   data={data.collectedCurrent.families.slice(0, 10).map((family) => ({
                     label: family.name,
                     value: family.amount,
-                    display: `${formatMoney(family.amount, data.currency)} · ${family.invoices.toLocaleString('ar-EG')} فاتورة`,
+                    display: formatMoney(family.amount, data.currency),
                   }))}
                 />
               </ChartCard>
@@ -757,6 +922,36 @@ function LearningQuickFact({ label, value }: { label: string; value: string }) {
     <div className="rounded-xl border border-white/10 bg-white/[0.07] px-3 py-2.5 backdrop-blur">
       <p className="text-[10.5px] font-semibold text-white/55">{label}</p>
       <p className="mt-0.5 text-[21px] font-black tabular-nums text-white">{value}</p>
+    </div>
+  );
+}
+
+function ManagementSignal({
+  label,
+  value,
+  detail,
+  tone = 'plain',
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  tone?: 'plain' | 'good' | 'warn';
+}) {
+  return (
+    <div className="rounded-xl border border-surface-line bg-white px-3.5 py-3 shadow-sm">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[11.5px] font-bold text-ink-muted">{label}</p>
+        <span
+          className={cx(
+            'h-2.5 w-2.5 rounded-full',
+            tone === 'good' && 'bg-status-ok',
+            tone === 'warn' && 'bg-accent-500',
+            tone === 'plain' && 'bg-brand-400'
+          )}
+        />
+      </div>
+      <p className="mt-1 text-[22px] font-black tabular-nums text-ink">{value}</p>
+      <p className="mt-1 text-[11px] leading-relaxed text-ink-faint">{detail}</p>
     </div>
   );
 }
