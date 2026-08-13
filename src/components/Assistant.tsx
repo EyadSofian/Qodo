@@ -12,6 +12,13 @@ interface ChatMessage {
   content: string;
 }
 
+interface PendingConfirmation {
+  actionId: string;
+  tool: 'create_task';
+  message: string;
+  arguments: Record<string, string>;
+}
+
 const SUGGESTION_KEYS: StringKey[] = [
   'assistant.suggest1',
   'assistant.suggest2',
@@ -35,7 +42,9 @@ export function Assistant({ open, onClose }: { open: boolean; onClose: () => voi
   const [activity, setActivity] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const [available, setAvailable] = useState<boolean | null>(null);
+  const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation | null>(null);
 
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -121,7 +130,15 @@ export function Assistant({ open, onClose }: { open: boolean; onClose: () => voi
           for (const frame of frames) {
             const line = frame.split('\n').find((l) => l.startsWith('data: '));
             if (!line) continue;
-            let event: { type: string; delta?: string; label?: string; message?: string };
+            let event: {
+              type: string;
+              delta?: string;
+              label?: string;
+              message?: string;
+              actionId?: string;
+              tool?: string;
+              arguments?: Record<string, string>;
+            };
             try {
               event = JSON.parse(line.slice(6));
             } catch {
@@ -134,6 +151,19 @@ export function Assistant({ open, onClose }: { open: boolean; onClose: () => voi
               setStreaming(answer);
             } else if (event.type === 'tool') {
               setActivity(event.label ?? null);
+            } else if (
+              event.type === 'confirmation' &&
+              event.actionId &&
+              event.tool === 'create_task' &&
+              event.message
+            ) {
+              setPendingConfirmation({
+                actionId: event.actionId,
+                tool: 'create_task',
+                message: event.message,
+                arguments: event.arguments ?? {},
+              });
+              setActivity(null);
             } else if (event.type === 'error') {
               setError(event.message ?? t('assistant.connError'));
             }
@@ -156,6 +186,43 @@ export function Assistant({ open, onClose }: { open: boolean; onClose: () => voi
     },
     [messages, busy, lang, t]
   );
+
+  const confirmPending = useCallback(async () => {
+    if (!pendingConfirmation || confirming) return;
+    setConfirming(true);
+    setError('');
+    try {
+      const response = await fetch('/api/assistant/confirm', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ actionId: pendingConfirmation.actionId, lang }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.message || t('assistant.confirmFailed'));
+      setMessages((current) => [
+        ...current,
+        { role: 'assistant', content: t('assistant.taskCreated') },
+      ]);
+      setPendingConfirmation(null);
+    } catch (err) {
+      setError((err as Error)?.message || t('assistant.confirmFailed'));
+    } finally {
+      setConfirming(false);
+    }
+  }, [confirming, lang, pendingConfirmation, t]);
+
+  const cancelPending = useCallback(async () => {
+    if (!pendingConfirmation || confirming) return;
+    const actionId = pendingConfirmation.actionId;
+    setPendingConfirmation(null);
+    await fetch('/api/assistant/cancel', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ actionId }),
+    }).catch(() => undefined);
+  }, [confirming, pendingConfirmation]);
 
   if (!open) return null;
 
@@ -185,6 +252,7 @@ export function Assistant({ open, onClose }: { open: boolean; onClose: () => voi
               onClick={() => {
                 setMessages([]);
                 setError('');
+                setPendingConfirmation(null);
               }}
               className="btn-quiet !min-h-9 rounded-lg px-2"
               aria-label={t('assistant.newChat')}
@@ -253,6 +321,37 @@ export function Assistant({ open, onClose }: { open: boolean; onClose: () => voi
                   {activity ?? t('assistant.thinking')}
                   <Dots />
                 </span>
+              </div>
+            )}
+
+            {pendingConfirmation && (
+              <div className="ms-9 rounded-2xl border border-brand-200 bg-brand-50 p-3.5">
+                <p className="text-[13.5px] font-semibold leading-relaxed text-ink">
+                  {pendingConfirmation.message}
+                </p>
+                {pendingConfirmation.arguments.dueDate && (
+                  <p className="mt-1 text-[12px] text-ink-muted">
+                    {t('assistant.dueDate')}: {pendingConfirmation.arguments.dueDate}
+                  </p>
+                )}
+                <div className="mt-3 flex gap-2">
+                  <button
+                    type="button"
+                    className="btn-primary !min-h-9 px-3 text-[12.5px]"
+                    disabled={confirming}
+                    onClick={confirmPending}
+                  >
+                    {confirming ? t('assistant.confirming') : t('assistant.confirm')}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-ghost !min-h-9 px-3 text-[12.5px]"
+                    disabled={confirming}
+                    onClick={cancelPending}
+                  >
+                    {t('assistant.cancel')}
+                  </button>
+                </div>
               </div>
             )}
           </div>

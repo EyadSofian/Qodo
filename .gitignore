@@ -14,3 +14,17 @@ Thumbs.db
 .vscode/
 .idea/
 .claude/
+
+# Qodo AI — local Python environment, downloaded weights and training outputs.
+ai/qodo-model/.venv/
+ai/qodo-model/artifacts/
+ai/qodo-model/models/
+ai/qodo-model/data/generated/
+ai/qodo-model/scripts/__pycache__/
+
+# Keep the synthetic source set and frozen evaluation cases reproducible even
+# though the application-wide `data/` directory above is ignored.
+!ai/qodo-model/data/
+!ai/qodo-model/data/golden.jsonl
+!ai/qodo-model/data/tools.json
+ai/qodo-model/data/generated/

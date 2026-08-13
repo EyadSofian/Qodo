@@ -182,9 +182,12 @@ npm start          # http://localhost:3000
 | `SSO_SECRET` | للدخول الموحّد | القيمة نفسها في التطبيقات التابعة. [docs/SSO.md](docs/SSO.md) |
 | `DATABASE_URL` | مستحسن | Postgres. بدونه البيانات في ملف محلي. |
 | `GOOGLE_CLIENT_ID` | اختياري | دخول الموظف بحساب Google المضاف مسبقاً؛ لا يمنح Qodo صلاحية Gmail. [docs/QODO_MAIL.md](docs/QODO_MAIL.md) |
-| `OPENAI_API_KEY` | للمساعد | بدونه المساحة تعمل والمساعد وحده مقفل. [docs/ASSISTANT.md](docs/ASSISTANT.md) |
+| `OPENAI_API_KEY` | بديل اختياري | يستخدم OpenAI عندما لا تضبط خادم Qodo AI. [docs/ASSISTANT.md](docs/ASSISTANT.md) |
 | `OPENAI_MODEL` | لا | افتراضياً `gpt-4o-mini`. |
-| `MAIL_AI_MODEL` | لا | نموذج مستقل لأدوات Qodo Mail؛ يرجع إلى `OPENAI_MODEL` عند تركه فارغاً. |
+| `QODO_AI_BASE_URL` | للموديل المدرّب | عنوان `/v1` لخادم OpenAI-compatible محلي أو مستضاف. عند ضبطه لا تحتاج OpenAI. |
+| `QODO_AI_API_KEY` | حسب الخادم | مفتاح خادم Qodo AI إن كان يحمي الـendpoint. |
+| `QODO_AI_MODEL` | لا | معرّف الموديل المرسل لخادم Qodo AI. |
+| `MAIL_AI_MODEL` | لا | نموذج مستقل لأدوات Qodo Mail؛ يرجع إلى `QODO_AI_MODEL` ثم `OPENAI_MODEL`. |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | لإشعارات الهاتف | `npx web-push generate-vapid-keys` |
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | لا | حساب المدير الأول. |
 | `NODE_ENV=production` | في الإنتاج | كوكيز آمنة + رفض المفاتيح الناقصة. |
@@ -218,10 +221,13 @@ npx web-push generate-vapid-keys
 3. في متغيّرات الخدمة:
    - `DATABASE_URL` = `${{Postgres.DATABASE_URL}}`
    - `SESSION_SECRET` و `SSO_SECRET` = قيم عشوائية
-   - `OPENAI_API_KEY` = مفتاحك (اختياري)
+   - `QODO_AI_BASE_URL` و`QODO_AI_MODEL` لخادم Qodo المدرّب، أو `OPENAI_API_KEY` كبديل (اختياري)
    - `VAPID_PUBLIC_KEY` و `VAPID_PRIVATE_KEY` (اختياري)
    - `NODE_ENV` = `production`
 4. `railway.json` يتكفّل بالباقي — البناء و`npm start` وفحص `/api/health`.
+
+لنشر الموديل نفسه كخدمة Railway منفصلة، اتبع
+[`ai/qodo-model/deploy/railway/README.md`](ai/qodo-model/deploy/railway/README.md).
 
 > بدون `DATABASE_URL` يعمل التطبيق، لكن البيانات في ملف على قرص الحاوية — ويُمحى
 > مع كل نشر جديد.
@@ -285,9 +291,9 @@ docs/
 | البحث الموحّد | ✅ يعمل |
 | Qodo Mail — رسائل رسمية، قنوات الأقسام، محادثات خاصة ومرفقات | ✅ يعمل |
 | الدخول بـGoogle كهوية فقط دون قراءة Gmail | ✅ يعمل (يحتاج `GOOGLE_CLIENT_ID`) |
-| Qodo Mail AI — تلخيص، رد مقترح واستخراج مهام بعد التأكيد | ✅ يعمل (يحتاج `OPENAI_API_KEY`) |
+| Qodo Mail AI — تلخيص، رد مقترح واستخراج مهام بعد التأكيد | ✅ يعمل (Qodo AI أو OpenAI) |
 | الفتح داخل المساحة مع فحص تلقائي وبديل واضح | ✅ يعمل |
-| المساعد — يقرأ المهام والفريق والتطبيقات ويضيف مهام | ✅ يعمل (يحتاج `OPENAI_API_KEY`) |
+| المساعد — يقرأ المهام والفريق والتطبيقات ويضيف مهام بعد التأكيد | ✅ يعمل (Qodo AI أو OpenAI) |
 | إشعارات الهاتف | ✅ يعمل (يحتاج مفاتيح VAPID) |
-| المساعد يقرأ **داخل بيانات** التطبيقات الأربعة | ⏳ يحتاج واجهة قراءة من كل تطبيق — [ASSISTANT.md](docs/ASSISTANT.md) |
+| المساعد يقرأ بيانات الموارد البشرية ولوحة أداء الأقسام | ⏳ يحتاج واجهتي قراءة للتطبيقين — [ASSISTANT.md](docs/ASSISTANT.md) |
 | الدخول الموحّد في التطبيقات التابعة | ⏳ جاهز في تحليلات خدمة العملاء؛ البقية بلا نظام دخول — [SSO.md](docs/SSO.md) |

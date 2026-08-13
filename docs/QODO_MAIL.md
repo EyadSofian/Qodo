@@ -54,11 +54,18 @@ GOOGLE_CLIENT_ID=123456789-example.apps.googleusercontent.com
 
 ## Qodo AI
 
-الـAI اختياري ولا يؤثر في عمل البريد عند غياب المفتاح:
+الـAI اختياري ولا يؤثر في عمل البريد عند غياب المزوّد. يمكن استخدام موديل Qodo
+المدرّب أو OpenAI كبديل:
 
 ```dotenv
+QODO_AI_BASE_URL=https://qodo-model.example/v1
+QODO_AI_API_KEY=
+QODO_AI_MODEL=qodo-ai-qwen3-1.7b
+MAIL_AI_MODEL=qodo-ai-qwen3-1.7b
+
+# بديل عند عدم تشغيل خادم Qodo AI
 OPENAI_API_KEY=
-MAIL_AI_MODEL=gpt-4o-mini
+OPENAI_MODEL=gpt-4o-mini
 ```
 
 كل طلب AI:

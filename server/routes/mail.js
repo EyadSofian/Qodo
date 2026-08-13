@@ -28,6 +28,7 @@ import { organizationOf } from '../../shared/organization.js';
 import { isActiveUser } from '../../shared/permissions.js';
 import { DEPARTMENT_IDS } from '../../shared/departments.js';
 import mailFiles, { MAX_MAIL_FILES, publicMailAttachment } from './mailFiles.js';
+import { aiConfigured, aiModel, getAiClient } from '../ai/provider.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -40,7 +41,7 @@ const MAX_RECIPIENTS = 40;
 const MESSAGE_PAGE = 80;
 const AI_CONTEXT_MESSAGES = 60;
 const AI_CONTEXT_CHARS = 36_000;
-const AI_MODEL = process.env.MAIL_AI_MODEL || process.env.OPENAI_MODEL || 'gpt-4o-mini';
+const AI_MODEL = process.env.MAIL_AI_MODEL || aiModel();
 
 /* ── live stream ─────────────────────────────────────────────────── */
 
@@ -128,8 +129,8 @@ router.get('/bootstrap', async (req, res) => {
     conversations: presented,
     people,
     unread: presented.reduce((sum, row) => sum + row.unreadCount, 0),
-    aiAvailable: Boolean(process.env.OPENAI_API_KEY),
-    aiModel: Boolean(process.env.OPENAI_API_KEY) ? AI_MODEL : null,
+    aiAvailable: aiConfigured(),
+    aiModel: aiConfigured() ? AI_MODEL : null,
   });
 });
 
@@ -425,10 +426,9 @@ router.post('/conversations/:id/messages', async (req, res) => {
 const aiWindows = new Map();
 const AI_WINDOW_MS = 10 * 60 * 1000;
 const AI_MAX_REQUESTS = 12;
-let aiClient = null;
 
 router.post('/conversations/:id/ai', async (req, res) => {
-  if (!process.env.OPENAI_API_KEY) {
+  if (!aiConfigured()) {
     return res.status(503).json({ error: 'mail_ai_not_configured' });
   }
   const conversation = await loadConversation(req, res);
@@ -650,10 +650,7 @@ function consumeAiQuota(userId) {
 }
 
 async function mailAiClient() {
-  if (aiClient) return aiClient;
-  const { default: OpenAI } = await import('openai');
-  aiClient = new OpenAI();
-  return aiClient;
+  return getAiClient();
 }
 
 function boundedTranscript(rows, names) {

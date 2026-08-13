@@ -1,39 +1,32 @@
 /**
- * The workspace assistant — OpenAI.
+ * The workspace assistant behind an OpenAI-compatible provider.
  *
- * There is no trained or fine-tuned "Engosoft model" here, and there doesn't
- * need to be. What makes a general model understand this workspace is (a) a
- * system prompt describing what each app is for, rebuilt from the live app
- * registry on every request, and (b) the functions in ./assistant/tools.js that
- * read the real data. Fine-tuning would freeze last week's tasks into weights;
- * function calling reads them at question time. See docs/ASSISTANT.md.
+ * The Qodo model is fine-tuned for Arabic behaviour and tool selection, never
+ * for live company facts. A system prompt is rebuilt from the app registry on
+ * every request, and ./assistant/tools.js reads current data under the signed-in
+ * user's permissions. See docs/ASSISTANT.md and ai/qodo-model/MODEL_CARD.md.
  *
- * The model id is an environment variable on purpose — OpenAI renames and
- * retires models faster than this file gets redeployed, so switching is a
- * Railway variable change rather than a code change.
+ * The endpoint and model id are environment variables so the local Qodo model,
+ * a hosted compatible endpoint, or OpenAI can be selected without a code edit.
  */
 
+import nodeCrypto from 'node:crypto';
 import { Router } from 'express';
 import { find } from '../store.js';
 import { requireAuth } from '../auth.js';
 import { permissionsFor } from '../../shared/permissions.js';
 import { DEPARTMENTS } from '../../shared/departments.js';
+import { organizationOf } from '../../shared/organization.js';
 import { TOOL_DEFINITIONS, TOOL_LABELS, runTool } from '../assistant/tools.js';
+import { aiConfigured, aiModel, aiProviderName, getAiClient } from '../ai/provider.js';
 
 const router = Router();
 router.use(requireAuth);
 
-const MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 const MAX_TOOL_ROUNDS = 6;
 const MAX_HISTORY = 20;
-
-let client = null;
-async function openai() {
-  if (client) return client;
-  const { default: OpenAI } = await import('openai');
-  client = new OpenAI(); // reads OPENAI_API_KEY from the environment
-  return client;
-}
+const CONFIRM_TTL_MS = 10 * 60 * 1000;
+const pendingActions = new Map();
 
 /** Anthropic-shaped definitions in tools.js → OpenAI's function schema. */
 const OPENAI_TOOLS = TOOL_DEFINITIONS.map((tool) => ({
@@ -46,11 +39,11 @@ const OPENAI_TOOLS = TOOL_DEFINITIONS.map((tool) => ({
 }));
 
 router.get('/status', (_req, res) => {
-  res.json({ available: Boolean(process.env.OPENAI_API_KEY), model: MODEL });
+  res.json({ available: aiConfigured(), model: aiModel(), provider: aiProviderName() });
 });
 
 router.post('/chat', async (req, res) => {
-  if (!process.env.OPENAI_API_KEY) {
+  if (!aiConfigured()) {
     return res.status(503).json({ error: 'assistant_not_configured' });
   }
 
@@ -80,7 +73,7 @@ router.post('/chat', async (req, res) => {
   });
 
   try {
-    const api = await openai();
+    const api = await getAiClient();
     const conversation = [
       { role: 'system', content: await buildSystemPrompt(req.user, lang) },
       ...messages,
@@ -115,6 +108,22 @@ router.post('/chat', async (req, res) => {
           args = { __parseError: true };
         }
 
+        // A model is an untrusted planner. Reads may run after the tool's own
+        // permission check; writes pause here until the signed-in person clicks
+        // Confirm. The model never gets a direct path to the store.
+        if (call.function.name === 'create_task' && !args.__parseError) {
+          const pending = queueWriteConfirmation(req.user, args, lang);
+          send({
+            type: 'confirmation',
+            actionId: pending.id,
+            tool: 'create_task',
+            message: pending.message,
+            arguments: pending.arguments,
+          });
+          send({ type: 'done' });
+          return;
+        }
+
         const output = args.__parseError
           ? { error: 'Arguments were not valid JSON. Call the function again with valid JSON.' }
           : await runTool(call.function.name, args, req.user, lang);
@@ -147,12 +156,12 @@ router.post('/chat', async (req, res) => {
         message:
           status === 401
             ? lang === 'en'
-              ? 'The OpenAI key is not valid. Check OPENAI_API_KEY.'
-              : 'مفتاح OpenAI غير صالح. راجع OPENAI_API_KEY.'
+              ? 'The configured AI provider rejected its credentials.'
+              : 'مزود الذكاء الاصطناعي رفض بيانات الدخول المهيأة.'
             : status === 429
               ? lang === 'en'
-                ? 'Rate limited or out of quota on the OpenAI account.'
-                : 'تم تجاوز الحد المسموح أو نفد رصيد حساب OpenAI.'
+                ? 'The configured AI provider is rate limited or out of capacity.'
+                : 'تجاوز مزود الذكاء الاصطناعي الحد المسموح أو نفدت سعته.'
               : lang === 'en'
                 ? 'The assistant failed. Try again shortly.'
                 : 'تعذّر تشغيل المساعد. حاول مرة أخرى بعد قليل.',
@@ -161,6 +170,44 @@ router.post('/chat', async (req, res) => {
   } finally {
     if (!closed) res.end();
   }
+});
+
+router.post('/confirm', async (req, res) => {
+  prunePendingActions();
+  const actionId = String(req.body?.actionId || '');
+  const pending = pendingActions.get(actionId);
+  if (!pending || pending.expiresAt <= Date.now()) {
+    pendingActions.delete(actionId);
+    return res.status(410).json({ error: 'confirmation_expired' });
+  }
+  if (
+    pending.userId !== req.user.id ||
+    pending.organizationId !== organizationOf(req.user)
+  ) {
+    return res.status(404).json({ error: 'confirmation_not_found' });
+  }
+
+  // Consume before execution so a retry cannot create the task twice.
+  pendingActions.delete(actionId);
+  const lang = req.body?.lang === 'en' ? 'en' : 'ar';
+  const result = await runTool('create_task', pending.arguments, req.user, lang);
+  if (result?.error) {
+    return res.status(400).json({ error: 'tool_rejected', message: result.error });
+  }
+  return res.status(201).json({ result });
+});
+
+router.post('/cancel', (req, res) => {
+  const actionId = String(req.body?.actionId || '');
+  const pending = pendingActions.get(actionId);
+  if (
+    pending &&
+    pending.userId === req.user.id &&
+    pending.organizationId === organizationOf(req.user)
+  ) {
+    pendingActions.delete(actionId);
+  }
+  res.status(204).end();
 });
 
 /**
@@ -172,7 +219,7 @@ router.post('/chat', async (req, res) => {
  */
 async function streamRound(api, messages, onText) {
   const stream = await api.chat.completions.create({
-    model: MODEL,
+    model: aiModel(),
     messages,
     tools: OPENAI_TOOLS,
     tool_choice: 'auto',
@@ -209,6 +256,52 @@ async function streamRound(api, messages, onText) {
     .filter((call) => call.function.name);
 
   return { text, toolCalls };
+}
+
+function queueWriteConfirmation(user, input, lang) {
+  prunePendingActions();
+  const arguments2 = normaliseTaskDraft(input);
+  const id = nodeCrypto.randomUUID();
+  const title = arguments2.title || (lang === 'en' ? 'Untitled task' : 'مهمة بلا عنوان');
+  const message =
+    lang === 'en'
+      ? `Create the task “${title}”? Nothing will be written until you confirm.`
+      : `إنشاء المهمة «${title}»؟ لن يتم تسجيل أي شيء قبل تأكيدك.`;
+  const pending = {
+    id,
+    userId: user.id,
+    organizationId: organizationOf(user),
+    arguments: arguments2,
+    message,
+    expiresAt: Date.now() + CONFIRM_TTL_MS,
+  };
+  pendingActions.set(id, pending);
+  return pending;
+}
+
+function normaliseTaskDraft(input) {
+  const output = {};
+  for (const key of [
+    'title',
+    'description',
+    'department',
+    'assigneeName',
+    'dueDate',
+    'priority',
+    'appId',
+  ]) {
+    if (typeof input?.[key] === 'string' && input[key].trim()) {
+      output[key] = input[key].trim().slice(0, key === 'description' ? 2_000 : 200);
+    }
+  }
+  return output;
+}
+
+function prunePendingActions() {
+  const now = Date.now();
+  for (const [id, pending] of pendingActions) {
+    if (pending.expiresAt <= now) pendingActions.delete(id);
+  }
 }
 
 /**

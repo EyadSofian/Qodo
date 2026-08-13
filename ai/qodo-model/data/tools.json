@@ -1,0 +1,99 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "list_apps",
+      "description": "List applications available in Qodo and what each app is for.",
+      "parameters": {"type": "object", "properties": {}, "additionalProperties": false}
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "list_departments",
+      "description": "List Qodo departments and their task-board stages.",
+      "parameters": {"type": "object", "properties": {}, "additionalProperties": false}
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "search_tasks",
+      "description": "Search live Qodo tasks by text, department, progress, assignee, overdue state, or due window.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {"type": "string"},
+          "department": {"type": "string", "enum": ["general", "sales", "operations", "complaints", "marketing", "hr", "training", "finance", "it"]},
+          "progress": {"type": "string", "enum": ["open", "active", "review", "signoff", "done"]},
+          "assigneeName": {"type": "string"},
+          "overdueOnly": {"type": "boolean"},
+          "dueWithinDays": {"type": "integer"},
+          "limit": {"type": "integer"}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "task_summary",
+      "description": "Return live aggregate task counts and performance breakdowns.",
+      "parameters": {"type": "object", "properties": {}, "additionalProperties": false}
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "list_team",
+      "description": "List visible Qodo people and their departments; use before assigning by name.",
+      "parameters": {"type": "object", "properties": {}, "additionalProperties": false}
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "create_task",
+      "description": "Draft a task from an explicit user request. The server requires confirmation before executing this write.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "title": {"type": "string"},
+          "description": {"type": "string"},
+          "department": {"type": "string", "enum": ["general", "sales", "operations", "complaints", "marketing", "hr", "training", "finance", "it"]},
+          "assigneeName": {"type": "string"},
+          "dueDate": {"type": "string"},
+          "priority": {"type": "string", "enum": ["low", "normal", "high", "urgent"]},
+          "appId": {"type": "string"}
+        },
+        "required": ["title"],
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "recent_activity",
+      "description": "Read Qodo's live audit log when the user asks who changed something or what happened lately.",
+      "parameters": {"type": "object", "properties": {"limit": {"type": "integer"}}, "additionalProperties": false}
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "insights_metrics",
+      "description": "Read live marketing and sales figures: spend, leads, deals, conversion, and revenue.",
+      "parameters": {"type": "object", "properties": {}, "additionalProperties": false}
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "support_metrics",
+      "description": "Read live customer-service figures: conversations, response time, resolution time, and SLA breaches.",
+      "parameters": {"type": "object", "properties": {}, "additionalProperties": false}
+    }
+  }
+]

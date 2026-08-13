@@ -1,0 +1,26 @@
+model: mlx-community/Qwen3-1.7B-4bit
+train: true
+data: data/generated
+fine_tune_type: lora
+mask_prompt: true
+seed: 20260813
+
+# Continue from the first behaviour adapter after adding production-context
+# negative examples. A lower LR protects capabilities already learned.
+num_layers: 16
+batch_size: 2
+iters: 60
+val_batches: -1
+learning_rate: 0.00003
+steps_per_report: 10
+steps_per_eval: 20
+save_every: 20
+max_seq_length: 1536
+grad_checkpoint: true
+resume_adapter_file: artifacts/qwen3-1.7b-lora/adapters.safetensors
+adapter_path: artifacts/qwen3-1.7b-safety
+
+lora_parameters:
+  rank: 16
+  dropout: 0.05
+  scale: 2.0
