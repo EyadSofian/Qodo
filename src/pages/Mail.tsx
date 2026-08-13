@@ -40,7 +40,6 @@ import { PERMISSIONS } from '@shared/permissions';
 import { DEPARTMENTS, getSubteams } from '@shared/departments';
 import { cx } from '../lib/utils';
 import { Avatar, EmptyState, Field, Modal, Spinner, useToast } from '../components/ui';
-import { LogoMark } from '../components/Brand';
 import type {
   MailAttachment,
   MailBootstrap,
@@ -460,9 +459,8 @@ function MailRail({
       <span className="pointer-events-none absolute -start-24 -top-20 h-72 w-72 rounded-full bg-brand-500/25 blur-3xl" />
       <span className="pointer-events-none absolute -bottom-24 -end-16 h-64 w-64 rounded-full bg-[#2AA7F0]/15 blur-3xl" />
       <div className="relative border-b border-white/10 px-5 pb-5 pt-6">
-        <div className="flex items-center gap-3">
-          <LogoMark size={43} className="rounded-[13px] shadow-[0_12px_28px_-14px_rgba(42,167,240,.9)]" />
-          <div className="min-w-0">
+        <div className="flex items-center">
+          <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <p className="text-[15px] font-extrabold tracking-tight">Qodo Mail</p>
               <span className="rounded-full border border-[#2AA7F0]/30 bg-[#2AA7F0]/15 px-2 py-0.5 text-[8px] font-extrabold uppercase tracking-[.16em] text-[#7CC9F5]">Workspace</span>
@@ -546,7 +544,7 @@ function ConversationList({
     <aside className={cx('min-h-0 flex-col border-e border-surface-line bg-white md:flex', hiddenOnMobile ? 'hidden' : 'flex')}>
       <header className="border-b border-surface-line px-4 pb-4 pt-4">
         <div className="mb-3 flex items-center justify-between lg:hidden">
-          <span className="flex items-center gap-2 text-[16px] font-extrabold text-ink"><LogoMark size={31} />Qodo Mail</span>
+          <span className="flex items-center gap-2 text-[16px] font-extrabold text-ink"><MailIcon size={19} className="text-brand-500" />Qodo Mail</span>
           <button type="button" onClick={onCompose} className="grid h-9 w-9 place-items-center rounded-xl bg-brand-500 text-white shadow-sm" aria-label={c.newMessage}><Plus size={17} /></button>
         </div>
         <div className="mb-3 hidden items-end justify-between lg:flex">
