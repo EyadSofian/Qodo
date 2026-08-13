@@ -20,6 +20,19 @@ QODO_THREADS=4
 QODO_THREADS_BATCH=4
 ```
 
+For hosts that are more reliable with smaller files, split the GGUF into
+numbered parts and use these variables instead of relying on the single URL:
+
+```dotenv
+QODO_MODEL_PART_URL_PREFIX=https://your-model-host/qodo-ai-qwen3-1.7b-Q6_K.gguf.part-
+QODO_MODEL_PART_COUNT=7
+```
+
+Parts must use zero-padded suffixes (`00`, `01`, ...). The startup script
+downloads and concatenates them in order, then validates the same full-model
+SHA-256 before starting inference. `QODO_MODEL_URL` can remain configured as a
+fallback; the multipart variables take precedence when present.
+
 If the model host is a private Hugging Face repository, also set `HF_TOKEN` on
 the model service. Never put the token in Git.
 
