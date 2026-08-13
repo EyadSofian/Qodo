@@ -127,6 +127,75 @@ export interface DirectoryUser {
   role: Role;
 }
 
+export type MailConversationKind = 'channel' | 'direct' | 'mail';
+export type MailChannelScope = 'public' | 'department' | 'private';
+
+export interface MailPerson {
+  id: string;
+  name: string;
+  email: string;
+  title: string | null;
+  department: string;
+  avatarColor: string;
+  role: Role;
+}
+
+export interface MailConversation {
+  id: string;
+  kind: MailConversationKind;
+  scope: MailChannelScope;
+  subject: string | null;
+  nameAr: string | null;
+  nameEn: string | null;
+  descriptionAr: string;
+  descriptionEn: string;
+  department: string | null;
+  memberIds: string[];
+  announcementOnly: boolean;
+  builtin: boolean;
+  createdBy: string | null;
+  lastMessageAt: string | null;
+  lastMessagePreview: string;
+  lastSenderId: string | null;
+  unreadCount: number;
+  canManage: boolean;
+  canPost: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MailAttachment {
+  id: string;
+  conversationId: string;
+  messageId: string | null;
+  userId: string;
+  name: string;
+  size: number;
+  type: string;
+  createdAt: string;
+}
+
+export interface MailMessage {
+  id: string;
+  conversationId: string;
+  senderId: string;
+  body: string;
+  replyToId: string | null;
+  mentionIds: string[];
+  editedAt: string | null;
+  attachments: MailAttachment[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MailBootstrap {
+  conversations: MailConversation[];
+  people: MailPerson[];
+  unread: number;
+  aiAvailable: boolean;
+  aiModel: string | null;
+}
+
 export interface WorkspaceApp {
   id: string;
   kind: 'internal' | 'external';

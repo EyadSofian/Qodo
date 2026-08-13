@@ -16,6 +16,7 @@ import { Elearning } from './pages/Elearning';
 import { Users } from './pages/Users';
 import { Profile } from './pages/Profile';
 import { Settings } from './pages/Settings';
+import { Mail } from './pages/Mail';
 
 export default function App() {
   return (
@@ -61,6 +62,7 @@ function Gate() {
         <Route path="/" element={<Launcher />} />
         <Route path="/app/:appId" element={<AppFrame />} />
         <Route path="/tasks" element={<Tasks />} />
+        <Route path="/mail" element={<Mail />} />
         {/* The route exists for everybody; the API is what refuses. Hiding it
             from the router instead would mean a bookmarked link lands on the
             launcher with no explanation. */}

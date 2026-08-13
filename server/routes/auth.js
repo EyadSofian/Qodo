@@ -2,11 +2,13 @@ import { Router } from 'express';
 import { find, findOne, getStore } from '../store.js';
 import {
   clearSession,
+  googleClientId,
   hashPassword,
   issueSession,
   issueSsoToken,
   logActivity,
   requireAuth,
+  verifyGoogleCredential,
   verifyPassword,
   verifySsoToken,
 } from '../auth.js';
@@ -15,6 +17,11 @@ import { visiblePeople } from '../taskAccess.js';
 import { organizationOf } from '../../shared/organization.js';
 
 const router = Router();
+
+/** Public bootstrap for Google Identity Services. No secret is returned. */
+router.get('/google/config', (_req, res) => {
+  res.json({ enabled: Boolean(googleClientId()), clientId: googleClientId() || null });
+});
 
 /**
  * Failed logins are throttled per email+IP. Small in-memory window — enough to
@@ -85,6 +92,46 @@ router.post('/login', async (req, res) => {
   await logActivity({ actorId: user.id, action: 'login', subject: 'session', subjectId: user.id });
 
   const fresh = await findOne('users', (u) => u.id === user.id);
+  res.json({ user: publicUser(fresh) });
+});
+
+router.post('/google', async (req, res) => {
+  if (!googleClientId()) return res.status(503).json({ error: 'google_not_configured' });
+
+  let identity;
+  try {
+    identity = await verifyGoogleCredential(req.body?.credential);
+  } catch (error) {
+    const code = ['google_email_unverified', 'google_not_configured'].includes(error?.code)
+      ? error.code
+      : 'google_token_invalid';
+    return res.status(code === 'google_not_configured' ? 503 : 401).json({ error: code });
+  }
+
+  // Exact pre-provisioning is the admission policy. Owning any Gmail account
+  // proves identity; it does not make that person an Engosoft employee.
+  const user = await findOne('users', (candidate) => candidate.email === identity.email);
+  if (!user) return res.status(403).json({ error: 'google_account_not_invited' });
+  if (user.googleSub && user.googleSub !== identity.sub) {
+    return res.status(403).json({ error: 'google_account_mismatch' });
+  }
+  if (user.status === 'pending') return res.status(403).json({ error: 'account_pending' });
+  if (!isActiveUser(user)) return res.status(403).json({ error: 'account_disabled' });
+
+  const store = await getStore();
+  await store.update('users', user.id, {
+    googleSub: user.googleSub || identity.sub,
+    googleLinkedAt: user.googleLinkedAt || new Date().toISOString(),
+    lastLoginAt: new Date().toISOString(),
+  });
+  const fresh = await findOne('users', (candidate) => candidate.id === user.id);
+  await issueSession(res, fresh);
+  await logActivity({
+    actorId: fresh.id,
+    action: 'login.google',
+    subject: 'session',
+    subjectId: fresh.id,
+  });
   res.json({ user: publicUser(fresh) });
 });
 

@@ -22,6 +22,7 @@ _One hub that launches, embeds and links every Engosoft app._
 - **لوحة مهام لكل قسم** — مراحل مختلفة لكل قسم، على طريقة Odoo. [التفاصيل أدناه](#لوحة-المهام--لماذا-لكل-قسم-مراحله).
 - **دورة مهمة كاملة** — المدير يُسند، الموظف يسلّم ومعه المرفقات، المدير يعتمد ويقيّم. [docs/TASK_FLOW.md](docs/TASK_FLOW.md)
 - **مساعد ذكي** — محادثة تقرأ بيانات المساحة الحيّة وتجيب بأرقام حقيقية. [كيف يعمل](docs/ASSISTANT.md)
+- **Qodo Mail** — رسائل رسمية، وقنوات الأقسام، ومحادثات خاصة داخلية مع دخول اختياري بحساب Google وAI مساعد. [التفاصيل](docs/QODO_MAIL.md)
 - **بحث موحّد** — `Ctrl K` يبحث في التطبيقات والمهام والموظفين دفعة واحدة.
 - **إشعارات على الهاتف** — عند إسناد مهمة، يصل إشعار حتى والمساحة مغلقة.
 - **عربي وإنجليزي بالكامل** مع تبديل اتجاه الصفحة، وتعمل على الهاتف كما على الحاسوب.
@@ -40,7 +41,7 @@ _One hub that launches, embeds and links every Engosoft app._
 | تحليلات خدمة العملاء | [chatwootdashpoard-production.up.railway.app](https://chatwootdashpoard-production.up.railway.app/) | [chatwoot_dashpoard](https://github.com/EyadSofian/chatwoot_dashpoard) |
 | شات وت | [chat.engosoft.com](https://chat.engosoft.com) | — |
 
-**المهام** و**المستخدمون** و**الإعدادات** وحدات داخل المساحة نفسها.
+**Qodo Mail** و**المهام** و**المستخدمون** و**الإعدادات** وحدات داخل المساحة نفسها.
 
 أي تطبيق جديد يُضاف من **الإعدادات ← التطبيقات**: اسم ورابط وأيقونة ولون — ويظهر
 في الشبكة فوراً.
@@ -179,8 +180,10 @@ npm start          # http://localhost:3000
 | `SESSION_SECRET` | في الإنتاج | يوقّع كوكي الجلسة. ٣٢ حرفاً عشوائياً. |
 | `SSO_SECRET` | للدخول الموحّد | القيمة نفسها في التطبيقات التابعة. [docs/SSO.md](docs/SSO.md) |
 | `DATABASE_URL` | مستحسن | Postgres. بدونه البيانات في ملف محلي. |
+| `GOOGLE_CLIENT_ID` | اختياري | دخول الموظف بحساب Google المضاف مسبقاً؛ لا يمنح Qodo صلاحية Gmail. [docs/QODO_MAIL.md](docs/QODO_MAIL.md) |
 | `OPENAI_API_KEY` | للمساعد | بدونه المساحة تعمل والمساعد وحده مقفل. [docs/ASSISTANT.md](docs/ASSISTANT.md) |
 | `OPENAI_MODEL` | لا | افتراضياً `gpt-4o-mini`. |
+| `MAIL_AI_MODEL` | لا | نموذج مستقل لأدوات Qodo Mail؛ يرجع إلى `OPENAI_MODEL` عند تركه فارغاً. |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | لإشعارات الهاتف | `npx web-push generate-vapid-keys` |
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | لا | حساب المدير الأول. |
 | `NODE_ENV=production` | في الإنتاج | كوكيز آمنة + رفض المفاتيح الناقصة. |
@@ -279,6 +282,9 @@ docs/
 | جدول مهام + Kanban بمراحل خاصة لكل قسم | ✅ يعمل |
 | أداء شخصي/فريق، تقييم ٠–١٠٠، وتصدير CSV | ✅ يعمل |
 | البحث الموحّد | ✅ يعمل |
+| Qodo Mail — رسائل رسمية، قنوات الأقسام، محادثات خاصة ومرفقات | ✅ يعمل |
+| الدخول بـGoogle كهوية فقط دون قراءة Gmail | ✅ يعمل (يحتاج `GOOGLE_CLIENT_ID`) |
+| Qodo Mail AI — تلخيص، رد مقترح واستخراج مهام بعد التأكيد | ✅ يعمل (يحتاج `OPENAI_API_KEY`) |
 | الفتح داخل المساحة مع فحص تلقائي وبديل واضح | ✅ يعمل |
 | المساعد — يقرأ المهام والفريق والتطبيقات ويضيف مهام | ✅ يعمل (يحتاج `OPENAI_API_KEY`) |
 | إشعارات الهاتف | ✅ يعمل (يحتاج مفاتيح VAPID) |

@@ -14,6 +14,7 @@ interface AuthState {
   user: User | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<User>;
+  signInWithGoogle: (credential: string) => Promise<User>;
   signOut: () => Promise<void>;
   refresh: () => Promise<void>;
   can: (permission: string) => boolean;
@@ -47,6 +48,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return me;
   }, []);
 
+  const signInWithGoogle = useCallback(async (credential: string) => {
+    const { user: me } = await api.post<{ user: User }>('/auth/google', { credential });
+    setUser(me);
+    return me;
+  }, []);
+
   const signOut = useCallback(async () => {
     try {
       await api.post('/auth/logout');
@@ -60,11 +67,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       loading,
       signIn,
+      signInWithGoogle,
       signOut,
       refresh,
       can: (permission) => Boolean(user?.effectivePermissions?.includes(permission)),
     }),
-    [user, loading, signIn, signOut, refresh]
+    [user, loading, signIn, signInWithGoogle, signOut, refresh]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

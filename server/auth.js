@@ -8,7 +8,7 @@
 
 import nodeCrypto from 'node:crypto';
 import bcrypt from 'bcryptjs';
-import { SignJWT, jwtVerify } from 'jose';
+import { SignJWT, createRemoteJWKSet, jwtVerify } from 'jose';
 import { findOne, getStore } from './store.js';
 import { can, isActiveUser, publicUser } from '../shared/permissions.js';
 import { organizationOf } from '../shared/organization.js';
@@ -16,6 +16,8 @@ import { organizationOf } from '../shared/organization.js';
 const SESSION_COOKIE = 'engosoft_session';
 const SESSION_TTL = '12h';
 const SSO_TTL = '5m';
+const GOOGLE_ISSUERS = ['https://accounts.google.com', 'accounts.google.com'];
+const GOOGLE_JWKS = createRemoteJWKSet(new URL('https://www.googleapis.com/oauth2/v3/certs'));
 
 /**
  * In production the secret must come from the environment. Falling back to a
@@ -43,6 +45,45 @@ const ssoSecret = () => secret('SSO_SECRET', 'SSO tokens reset on restart');
 
 export const hashPassword = (plain) => bcrypt.hash(plain, 10);
 export const verifyPassword = (plain, hash) => bcrypt.compare(plain, hash || '');
+
+/**
+ * Google is an identity provider here, not a mailbox provider.
+ *
+ * The browser sends the one-time ID credential produced by Google Identity
+ * Services. We verify its signature, issuer and audience against Google's
+ * rotating public keys, then keep only the stable account id and verified
+ * email. No Gmail access token or password ever reaches the workspace.
+ */
+export function googleClientId() {
+  return String(process.env.GOOGLE_CLIENT_ID || '').trim();
+}
+
+export async function verifyGoogleCredential(credential) {
+  const audience = googleClientId();
+  if (!audience) {
+    throw Object.assign(new Error('google_not_configured'), { code: 'google_not_configured' });
+  }
+
+  const { payload } = await jwtVerify(String(credential || ''), GOOGLE_JWKS, {
+    audience,
+    issuer: GOOGLE_ISSUERS,
+  });
+
+  const email = String(payload.email || '').trim().toLowerCase();
+  if (!email || payload.email_verified !== true) {
+    throw Object.assign(new Error('google_email_unverified'), { code: 'google_email_unverified' });
+  }
+  if (!payload.sub) {
+    throw Object.assign(new Error('google_token_invalid'), { code: 'google_token_invalid' });
+  }
+
+  return {
+    sub: String(payload.sub),
+    email,
+    name: String(payload.name || '').trim(),
+    picture: typeof payload.picture === 'string' ? payload.picture : null,
+  };
+}
 
 export async function issueSession(res, user) {
   const token = await new SignJWT({ role: user.role })

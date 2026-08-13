@@ -39,6 +39,14 @@ export const COLLECTIONS = [
   'attachments',
   'notifications',
   'activity',
+  // Qodo Mail — one conversation model powers formal mail threads, channels
+  // and direct chat. Membership is separate because read state belongs to a
+  // person, not to the conversation itself.
+  'mailConversations',
+  'mailMemberships',
+  'mailMessages',
+  'mailAttachments',
+  'mailAiRuns',
   'pushSubscriptions',
   'settings',
   // The management desk — the executive's own tasks, meetings, appointments,

@@ -40,6 +40,19 @@ export const DEFAULT_ORGANIZATION = {
  */
 export const DEFAULT_APPS = [
   {
+    id: 'mail',
+    kind: 'internal',
+    nameAr: 'Qodo Mail',
+    nameEn: 'Qodo Mail',
+    descAr: 'الإيميل الداخلي، قنوات الأقسام، والمحادثات المباشرة في مكان واحد.',
+    url: '/mail',
+    icon: 'mail',
+    color: '#0F766E',
+    group: 'workspace',
+    embed: 'internal',
+    order: 4,
+  },
+  {
     id: 'sla',
     kind: 'external',
     nameAr: 'أداء الأقسام',

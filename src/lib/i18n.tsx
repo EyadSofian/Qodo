@@ -38,6 +38,8 @@ const STRINGS = {
   'common.unknown': { ar: 'غير معروف', en: 'Unknown' },
   'common.removedUser': { ar: 'مستخدم محذوف', en: 'Removed user' },
 
+  'mail.title': { ar: 'Qodo Mail', en: 'Qodo Mail' },
+
   /* ── auth ────────────────────────────────────────────────── */
   'auth.tagline': { ar: 'جميع تطبيقات إنجوسوفت في مكان واحد', en: 'Every Engosoft app in one place' },
   'auth.signIn': { ar: 'تسجيل الدخول', en: 'Sign in' },

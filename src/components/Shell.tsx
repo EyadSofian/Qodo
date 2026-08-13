@@ -12,6 +12,7 @@ import {
   LayoutGrid,
   ListChecks,
   LogOut,
+  Mail,
   Search,
   Send,
   Settings2,
@@ -133,6 +134,7 @@ export function Shell({ children }: { children: ReactNode }) {
   };
 
   const isFramed = location.pathname.startsWith('/app/');
+  const isFullHeight = isFramed || location.pathname.startsWith('/mail');
   // On iPhone, web push only exists once the site is on the home screen — so a
   // plain Safari tab reports unsupported and the row is hidden rather than
   // offering a button that cannot work. Every desktop browser that matters
@@ -230,6 +232,19 @@ export function Shell({ children }: { children: ReactNode }) {
               <span className="hidden lg:inline">{t('tasks.title')}</span>
             </NavLink>
           )}
+
+          <NavLink
+            to="/mail"
+            className={({ isActive }) =>
+              cx(
+                'btn !min-h-10 hidden shrink-0 gap-1.5 rounded-xl px-2.5 text-[13px] font-semibold md:flex',
+                isActive ? 'bg-[#0F766E] text-white' : 'text-ink-muted hover:bg-surface-sunken hover:text-ink'
+              )
+            }
+          >
+            <Mail size={18} />
+            <span className="hidden lg:inline">{t('mail.title')}</span>
+          </NavLink>
 
           {/* Only the people actually on the management desk ever see this —
               no role carries the key, it is granted one person at a time. */}
@@ -401,7 +416,7 @@ export function Shell({ children }: { children: ReactNode }) {
       </header>
 
       {/* A framed app manages its own height; normal pages scroll the document. */}
-      <main className={cx('flex-1', isFramed ? 'flex min-h-0 flex-col' : 'pb-24 md:pb-10')}>
+      <main className={cx('flex-1', isFullHeight ? 'flex min-h-0 flex-col' : 'pb-24 md:pb-10')}>
         {children}
       </main>
 
@@ -444,6 +459,7 @@ function BottomNav({ onOpenSwitcher }: { onOpenSwitcher: () => void }) {
 
   const items = [
     { to: '/', label: t('common.home'), icon: Home, end: true, badge: 0, urgent: false },
+    { to: '/mail', label: t('mail.title'), icon: Mail, end: false, badge: 0, urgent: false },
     ...(can(PERMISSIONS.TASKS_VIEW)
       ? [
           {

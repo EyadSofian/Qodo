@@ -268,7 +268,12 @@ export function canOpenApp(user, appId) {
 /** Strip everything the browser has no business seeing. */
 export function publicUser(user) {
   if (!user) return null;
-  const { passwordHash: _ignored, ...rest } = user;
+  const {
+    passwordHash: _password,
+    googleSub: _googleSub,
+    googleLinkedAt: _googleLinkedAt,
+    ...rest
+  } = user;
   return {
     ...rest,
     effectivePermissions: permissionsFor(user),

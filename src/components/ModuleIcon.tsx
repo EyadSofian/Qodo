@@ -12,7 +12,7 @@ import type { ReactElement } from 'react';
 import { hexWithAlpha } from '../lib/utils';
 
 export const ICON_KEYS = [
-  'gauge', 'funnel', 'people', 'chat', 'headset', 'kanban',
+  'gauge', 'funnel', 'people', 'chat', 'headset', 'mail', 'kanban',
   'shield', 'sliders', 'grid', 'chart', 'calendar', 'folder', 'bolt', 'globe',
 ] as const;
 
@@ -111,6 +111,14 @@ const GLYPHS: Record<IconKey, Glyph> = {
       <rect x="2.8" y="12.6" width="4.2" height="6.2" rx="2.1" fill={solid} />
       <rect x="17" y="12.6" width="4.2" height="6.2" rx="2.1" fill={solid} />
       <path d="M19.1 18.8v.6a2.6 2.6 0 0 1-2.6 2.6H13" stroke={soft} strokeWidth="2" {...round} />
+    </g>
+  ),
+  // Envelope + live dot — internal mail and chat in one module.
+  mail: (solid, soft) => (
+    <g>
+      <rect x="2.8" y="5" width="18.4" height="14" rx="3" fill={soft} />
+      <path d="m4.5 7 7.5 6 7.5-6" stroke={solid} strokeWidth="2.2" {...round} />
+      <circle cx="18.2" cy="17.2" r="3.2" fill={solid} stroke="#fff" strokeWidth="1.4" />
     </g>
   ),
   // Board columns — the task module.
