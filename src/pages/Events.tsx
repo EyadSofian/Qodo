@@ -627,6 +627,12 @@ function EventsAnalysis({ version, onOpen }: { version: number; onOpen: (id: num
                   {collected.syncedAt ? ` · آخر مزامنة ${staleLabel(collected.syncedAt)}` : ''}.
                 </p>
               )}
+              {collected.authority === 'postgres-live' && (
+                <p className="rounded-xl bg-status-okBg px-3.5 py-3 text-[11.5px] font-semibold leading-relaxed text-status-ok">
+                  بيانات التحصيل متزامنة من Odoo عن طريق n8n إلى PostgreSQL
+                  {collected.syncedAt ? ` · آخر مزامنة ${staleLabel(collected.syncedAt)}` : ''}.
+                </p>
+              )}
             </section>
           )}
 

@@ -360,6 +360,41 @@ export async function eventsRevenueForPeriod(period) {
  * response is partial, its last-good PostgreSQL numbers stay authoritative.
  */
 export async function refreshInsightsRevenueSource() {
+  const n8nRefreshUrl = String(process.env.INSIGHTS_N8N_REFRESH_URL || '').trim();
+  if (n8nRefreshUrl) {
+    const parsed = new URL(n8nRefreshUrl);
+    if (parsed.protocol !== 'https:') throw new Error('insights_refresh_url_must_be_https');
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 210_000);
+    try {
+      const response = await fetch(parsed, {
+        method: 'POST',
+        signal: controller.signal,
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          'User-Agent': 'Engosoft-Workspace/1.0',
+        },
+        body: JSON.stringify({ source: 'engosoft-workspace' }),
+      });
+      if (!response.ok) throw new Error(`n8n_refresh_http_${response.status}`);
+      const result = await response.json();
+      if (result?.status !== 'COMPLETED') throw new Error('n8n_refresh_not_completed');
+      clearInsightsRevenueCache();
+      return {
+        ok: true,
+        authority: 'n8n-postgres',
+        directAccepted: true,
+        directAttempted: true,
+        syncedAt: result?.syncedAt ?? null,
+        rows: Number(result?.rows) || null,
+        warning: null,
+      };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   const base = await insightsBaseUrl();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 105_000);

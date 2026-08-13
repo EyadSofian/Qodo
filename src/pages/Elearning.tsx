@@ -497,6 +497,12 @@ function ElearningAnalysis({ version }: { version: number }) {
                   {collected.syncedAt ? ` · آخر مزامنة ${staleLabel(collected.syncedAt)}` : ''}.
                 </p>
               )}
+              {collected.authority === 'postgres-live' && (
+                <p className="font-semibold text-status-ok">
+                  بيانات التحصيل متزامنة من Odoo عن طريق n8n إلى PostgreSQL
+                  {collected.syncedAt ? ` · آخر مزامنة ${staleLabel(collected.syncedAt)}` : ''}.
+                </p>
+              )}
             </div>
           </details>
         </div>
