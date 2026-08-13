@@ -53,6 +53,7 @@ before(async () => {
       ADMIN_PASSWORD: 'AdminPass123!',
       SESSION_SECRET: 'test-session-secret-123456789012345',
       SSO_SECRET: 'test-sso-secret-123456789012345678',
+      GOOGLE_CLIENT_ID: '',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
@@ -1438,6 +1439,15 @@ test('an invite link creates a pending account that cannot sign in until approve
   assert.equal(publicView.data.invite.role, undefined);
   assert.equal(publicView.data.invite.permissions, undefined);
   assert.equal(publicView.data.invite.token, undefined);
+
+  // The public invite supports Google identity, but never pretends it worked
+  // when this deployment has not configured a Google web client.
+  const googleWithoutConfig = await request(`/invites/token/${token}/accept-google`, {
+    method: 'POST',
+    body: { credential: 'not-a-token', department: 'marketing', subteam: 'creative' },
+  });
+  assert.equal(googleWithoutConfig.status, 503);
+  assert.equal(googleWithoutConfig.data.error, 'google_not_configured');
 
   const joinBody = {
     name: 'Video Editor',

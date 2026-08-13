@@ -17,10 +17,12 @@ import { useI18n } from '../lib/i18n';
 import { Logo } from '../components/Brand';
 import { ModuleIcon } from '../components/ModuleIcon';
 import { Field, Spinner } from '../components/ui';
+import { GoogleIdentityButton, GoogleMark } from '../components/GoogleIdentityButton';
 import { cx } from '../lib/utils';
 import type { PublicInvite } from '../lib/types';
 
 type Phase = 'loading' | 'form' | 'done' | 'dead';
+type GoogleIdentity = { credential: string; name: string; email: string };
 
 export function Join() {
   const { token = '' } = useParams();
@@ -39,6 +41,11 @@ export function Join() {
   const [jobRole, setJobRole] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [googleConfig, setGoogleConfig] = useState<{
+    enabled: boolean;
+    clientId: string | null;
+  } | null>(null);
+  const [googleIdentity, setGoogleIdentity] = useState<GoogleIdentity | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -65,6 +72,13 @@ export function Join() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
+  useEffect(() => {
+    api
+      .get<{ enabled: boolean; clientId: string | null }>('/auth/google/config')
+      .then(setGoogleConfig)
+      .catch(() => setGoogleConfig({ enabled: false, clientId: null }));
+  }, []);
+
   const chosen = useMemo(
     () => invite?.departments.find((item) => item.id === department) ?? null,
     [invite, department]
@@ -75,26 +89,50 @@ export function Join() {
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError('');
-    if (!name.trim()) return setError(t('join.nameRequired'));
-    if (password.length < 8) return setError(t('auth.passwordTooShort'));
-    if (password !== confirm) return setError(t('auth.passwordMismatch'));
+    if (!googleIdentity) {
+      if (!name.trim()) return setError(t('join.nameRequired'));
+      if (password.length < 8) return setError(t('auth.passwordTooShort'));
+      if (password !== confirm) return setError(t('auth.passwordMismatch'));
+    }
     if (!department) return setError(t('join.pickDepartment'));
     if (subteams.length > 0 && !subteam) return setError(t('join.pickSubteam'));
 
     setSaving(true);
     try {
-      await api.post(`/invites/token/${encodeURIComponent(token)}/accept`, {
-        name: name.trim(),
-        email: email.trim(),
-        password,
+      const placement = {
         department,
         subteam: subteam || null,
         jobRole: jobRole || null,
-      });
+      };
+      if (googleIdentity) {
+        await api.post(`/invites/token/${encodeURIComponent(token)}/accept-google`, {
+          ...placement,
+          credential: googleIdentity.credential,
+        });
+      } else {
+        await api.post(`/invites/token/${encodeURIComponent(token)}/accept`, {
+          ...placement,
+          name: name.trim(),
+          email: email.trim(),
+          password,
+        });
+      }
       setPhase('done');
     } catch (err) {
       setError(errorMessage(err, lang));
       setSaving(false);
+    }
+  };
+
+  const selectGoogle = (credential: string) => {
+    try {
+      const claims = previewGoogleCredential(credential);
+      setGoogleIdentity({ credential, name: claims.name, email: claims.email });
+      setName(claims.name);
+      setEmail(claims.email);
+      setError('');
+    } catch {
+      setError(t('join.googleInvalid'));
     }
   };
 
@@ -147,10 +185,12 @@ export function Join() {
             <div className="py-4 text-center">
               <CheckCircle2 size={34} className="mx-auto mb-3 text-status-ok" />
               <h1 className="mb-1.5 text-base font-bold text-ink">{t('join.doneTitle')}</h1>
-              <p className="text-[13px] leading-relaxed text-ink-muted">{t('join.doneBody')}</p>
+              <p className="text-[13px] leading-relaxed text-ink-muted">
+                {t(googleIdentity ? 'join.doneBodyGoogle' : 'join.doneBody')}
+              </p>
               <p className="mt-4 flex items-start gap-2 rounded-xl bg-status-warnBg px-3 py-2.5 text-start text-[12.5px] leading-relaxed text-accent-600">
                 <Clock size={15} className="mt-0.5 shrink-0" />
-                {t('join.doneWait')}
+                {t(googleIdentity ? 'join.doneWaitGoogle' : 'join.doneWait')}
               </p>
               <Link to="/" className="btn-primary btn-sm mt-5">
                 {t('auth.signIn')}
@@ -172,56 +212,104 @@ export function Join() {
                 {t('join.approvalNotice')}
               </p>
 
-              <Field label={t('users.name')} required>
-                <input
-                  className="field"
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                  autoComplete="name"
-                  autoFocus
-                  required
-                />
-              </Field>
+              {googleIdentity ? (
+                <div className="flex items-center gap-3 rounded-xl border border-status-ok/25 bg-status-okBg px-3 py-3">
+                  <span className="grid size-9 shrink-0 place-items-center rounded-full bg-white shadow-sm">
+                    <GoogleMark />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <strong className="block truncate text-[13px] text-ink">{googleIdentity.name}</strong>
+                    <span className="block truncate text-[11.5px] text-ink-muted" dir="ltr">
+                      {googleIdentity.email}
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    className="shrink-0 text-[11px] font-bold text-brand-600 hover:underline"
+                    onClick={() => setGoogleIdentity(null)}
+                  >
+                    {t('join.changeGoogle')}
+                  </button>
+                </div>
+              ) : (
+                <>
+                  {googleConfig && (
+                    <>
+                      <GoogleIdentityButton
+                        clientId={googleConfig.clientId}
+                        configured={googleConfig.enabled}
+                        lang={lang}
+                        mode="signup"
+                        busy={saving}
+                        onCredential={selectGoogle}
+                        onError={() => setError(t('join.googleLoadFailed'))}
+                        onUnavailable={() => setError(t('join.googleNotConfigured'))}
+                      />
+                      <p className="-mt-1 text-center text-[11px] leading-relaxed text-ink-faint">
+                        {t('join.googleHint')}
+                      </p>
+                      <div className="flex items-center gap-3 py-1 text-[10.5px] font-semibold text-ink-faint">
+                        <span className="h-px flex-1 bg-surface-line" />
+                        {t('join.orPassword')}
+                        <span className="h-px flex-1 bg-surface-line" />
+                      </div>
+                    </>
+                  )}
 
-              <Field
-                label={t('auth.email')}
-                hint={invite.emailDomain ? t('join.domainHint', { domain: invite.emailDomain }) : undefined}
-                required
-              >
-                <input
-                  type="email"
-                  className="field ltr text-start"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  placeholder={invite.emailDomain ? `you@${invite.emailDomain}` : 'you@engosoft.com'}
-                  autoComplete="username"
-                  required
-                />
-              </Field>
+                  <Field label={t('users.name')} required>
+                    <input
+                      className="field"
+                      value={name}
+                      onChange={(event) => setName(event.target.value)}
+                      autoComplete="name"
+                      autoFocus
+                      required
+                    />
+                  </Field>
 
-              <div className="grid gap-3.5 sm:grid-cols-2">
-                <Field label={t('auth.password')} hint={t('auth.passwordHint')} required>
-                  <input
-                    type="password"
-                    className="field"
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                    autoComplete="new-password"
+                  <Field
+                    label={t('auth.email')}
+                    hint={invite.emailDomain ? t('join.domainHint', { domain: invite.emailDomain }) : undefined}
                     required
-                  />
-                </Field>
-                <Field label={t('join.confirmPassword')} required>
-                  <input
-                    type="password"
-                    className="field"
-                    value={confirm}
-                    onChange={(event) => setConfirm(event.target.value)}
-                    autoComplete="new-password"
-                    required
-                  />
-                </Field>
-              </div>
+                  >
+                    <input
+                      type="email"
+                      className="field ltr text-start"
+                      value={email}
+                      onChange={(event) => setEmail(event.target.value)}
+                      placeholder={invite.emailDomain ? `you@${invite.emailDomain}` : 'you@engosoft.com'}
+                      autoComplete="username"
+                      required
+                    />
+                  </Field>
 
+                  <div className="grid gap-3.5 sm:grid-cols-2">
+                    <Field label={t('auth.password')} hint={t('auth.passwordHint')} required>
+                      <input
+                        type="password"
+                        className="field"
+                        value={password}
+                        onChange={(event) => setPassword(event.target.value)}
+                        autoComplete="new-password"
+                        required
+                      />
+                    </Field>
+                    <Field label={t('join.confirmPassword')} required>
+                      <input
+                        type="password"
+                        className="field"
+                        value={confirm}
+                        onChange={(event) => setConfirm(event.target.value)}
+                        autoComplete="new-password"
+                        required
+                      />
+                    </Field>
+                  </div>
+                </>
+              )}
+
+              {/* Google verifies identity; the invite still decides which
+                  department placements the visitor may request. */}
               {invite.departments.length > 1 && (
                 <Field label={t('join.department')} hint={t('join.departmentHint')} required>
                   <div className="grid gap-1.5 sm:grid-cols-2">
@@ -309,7 +397,9 @@ export function Join() {
 
               <button type="submit" className="btn-primary mt-1 w-full" disabled={saving}>
                 {saving && <Spinner size={16} />}
-                {saving ? t('join.creating') : t('join.submit')}
+                {saving
+                  ? t('join.creating')
+                  : t(googleIdentity ? 'join.submitGoogle' : 'join.submit')}
               </button>
 
               <p className="text-center text-[12px] text-ink-faint">
@@ -328,4 +418,17 @@ export function Join() {
       </div>
     </div>
   );
+}
+
+/** UI preview only; the server independently verifies signature/audience. */
+function previewGoogleCredential(credential: string) {
+  const encoded = credential.split('.')[1];
+  if (!encoded) throw new Error('invalid_google_credential');
+  const normalized = encoded.replace(/-/g, '+').replace(/_/g, '/');
+  const base64 = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+  const bytes = Uint8Array.from(window.atob(base64), (character) => character.charCodeAt(0));
+  const claims = JSON.parse(new TextDecoder().decode(bytes));
+  const email = String(claims.email || '').trim().toLowerCase();
+  if (!email) throw new Error('missing_google_email');
+  return { email, name: String(claims.name || email.split('@')[0]).trim() };
 }

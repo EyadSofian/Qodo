@@ -8,11 +8,11 @@
     "node": ">=20"
   },
   "scripts": {
-    "dev": "concurrently -n api,web -c blue,green \"node server/index.js\" \"vite\"",
+    "dev": "concurrently -n api,web -c blue,green \"node --env-file-if-exists=.env.local server/index.js\" \"vite\"",
     "dev:web": "vite",
-    "dev:api": "node server/index.js",
+    "dev:api": "node --env-file-if-exists=.env.local server/index.js",
     "build": "tsc --noEmit && vite build",
-    "start": "node server/index.js",
+    "start": "node --env-file-if-exists=.env.local server/index.js",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "node --test server/*.test.js"

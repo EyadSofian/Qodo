@@ -18,7 +18,13 @@
 import crypto from 'node:crypto';
 import { Router } from 'express';
 import { create, find, findOne, getStore } from '../store.js';
-import { hashPassword, logActivity, requirePermission } from '../auth.js';
+import {
+  googleClientId,
+  hashPassword,
+  logActivity,
+  requirePermission,
+  verifyGoogleCredential,
+} from '../auth.js';
 import { notifyUser } from '../push.js';
 import {
   ALL_PERMISSIONS,
@@ -267,6 +273,42 @@ router.post('/token/:token/accept', async (req, res) => {
   if (!EMAIL_RE.test(email)) return res.status(400).json({ error: 'invalid_email' });
   if (password.length < 8) return res.status(400).json({ error: 'weak_password', minLength: 8 });
 
+  return acceptInvite(req, res, {
+    name,
+    email,
+    passwordHash: await hashPassword(password),
+    googleSub: null,
+  });
+});
+
+/**
+ * Google signup is deliberately available only behind a valid invite link.
+ * Google proves the email; the invite still decides access and an administrator
+ * still approves the pending account before it can open the workspace.
+ */
+router.post('/token/:token/accept-google', async (req, res) => {
+  if (throttled(req)) return res.status(429).json({ error: 'too_many_attempts' });
+  if (!googleClientId()) return res.status(503).json({ error: 'google_not_configured' });
+
+  let identity;
+  try {
+    identity = await verifyGoogleCredential(req.body?.credential);
+  } catch (error) {
+    const code = error?.code === 'google_email_unverified' ? error.code : 'google_token_invalid';
+    return res.status(401).json({ error: code });
+  }
+
+  return acceptInvite(req, res, {
+    name: identity.name || identity.email.split('@')[0],
+    email: identity.email,
+    passwordHash: null,
+    googleSub: identity.sub,
+  });
+});
+
+async function acceptInvite(req, res, identity) {
+  const { name, email, passwordHash, googleSub } = identity;
+
   try {
     const result = await serialise(async () => {
       const invite = await findOne('invites', (item) => item.token === req.params.token);
@@ -310,7 +352,9 @@ router.post('/token/:token/accept', async (req, res) => {
       const user = await create('users', {
         name,
         email,
-        passwordHash: await hashPassword(password),
+        passwordHash,
+        googleSub,
+        googleLinkedAt: googleSub ? new Date().toISOString() : null,
         // Everything below comes from the invite, never from the request body.
         role: INVITABLE_ROLES.includes(invite.role) ? invite.role : 'member',
         organizationId: organizationOf(invite),
@@ -340,7 +384,11 @@ router.post('/token/:token/accept', async (req, res) => {
       action: 'invite.accept',
       subject: 'user',
       subjectId: result.user.id,
-      meta: { inviteId: result.invite.id, department: result.user.department },
+      meta: {
+        inviteId: result.invite.id,
+        department: result.user.department,
+        identityProvider: googleSub ? 'google' : 'password',
+      },
     });
     await alertApprovers(result.user);
 
@@ -349,7 +397,7 @@ router.post('/token/:token/accept', async (req, res) => {
     console.error('[invites] accept failed', error);
     res.status(500).json({ error: 'server_error' });
   }
-});
+}
 
 /* ── helpers ─────────────────────────────────────────────────────── */
 

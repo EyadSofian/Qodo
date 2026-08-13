@@ -648,9 +648,19 @@ const STRINGS = {
   'join.title': { ar: 'إنشاء حساب', en: 'Create your account' },
   'join.subtitle': { ar: 'املأ بياناتك واختر مكانك في الهيكل.', en: 'Fill in your details and pick where you sit.' },
   'join.approvalNotice': {
-    ar: 'أنت من تختار كلمة المرور — لن يراها أحد. الحساب يُفعّل بعد موافقة مدير النظام.',
-    en: 'You choose your own password — nobody else sees it. The account activates once an administrator approves it.',
+    ar: 'الرابط يسمح لك بإرسال طلب الانضمام فقط؛ الحساب يُفعّل بعد موافقة مدير النظام.',
+    en: 'This link lets you submit a join request; the account activates once an administrator approves it.',
   },
+  'join.googleHint': {
+    ar: 'جوجل يثبت اسمك وإيميلك فقط؛ Qodo لا يقرأ Gmail ولا تحتاج لإنشاء كلمة مرور.',
+    en: 'Google verifies only your name and email. Qodo never reads Gmail, and you do not need a password.',
+  },
+  'join.orPassword': { ar: 'أو أنشئ الحساب بكلمة مرور', en: 'or create it with a password' },
+  'join.changeGoogle': { ar: 'تغيير', en: 'Change' },
+  'join.submitGoogle': { ar: 'إرسال طلب الانضمام', en: 'Submit join request' },
+  'join.googleInvalid': { ar: 'بيانات حساب جوجل غير صالحة. حاول مرة أخرى.', en: 'That Google identity is invalid. Try again.' },
+  'join.googleLoadFailed': { ar: 'تعذّر تحميل تسجيل Google. أعد المحاولة.', en: 'Google sign-up could not load. Try again.' },
+  'join.googleNotConfigured': { ar: 'تسجيل Google غير مفعّل على الخادم بعد.', en: 'Google sign-up is not configured on the server yet.' },
   'join.department': { ar: 'القسم', en: 'Department' },
   'join.departmentHint': { ar: 'اختر القسم الذي تعمل به.', en: 'Pick the department you work in.' },
   'join.subteam': { ar: 'الفريق الفرعي', en: 'Sub-team' },
@@ -673,9 +683,17 @@ const STRINGS = {
     ar: 'بياناتك اتسجلت وكلمة المرور اتحفظت مشفّرة.',
     en: 'Your details are saved and your password is stored encrypted.',
   },
+  'join.doneBodyGoogle': {
+    ar: 'تم توثيق اسمك وإيميلك بحساب Google وتسجيل طلبك.',
+    en: 'Your name and email were verified by Google and your request was saved.',
+  },
   'join.doneWait': {
     ar: 'الحساب في انتظار موافقة مدير النظام. هيوصلك إشعار أول ما يتفعّل، وبعدها تقدر تسجّل الدخول بنفس الإيميل وكلمة المرور.',
     en: 'The account is waiting for an administrator to approve it. You will be notified once it is active, then you can sign in with the same email and password.',
+  },
+  'join.doneWaitGoogle': {
+    ar: 'الحساب في انتظار موافقة مدير النظام. بعد التفعيل ادخل من زر «المتابعة باستخدام Google» بنفس الحساب.',
+    en: 'The account is awaiting administrator approval. Once active, use “Continue with Google” with the same account.',
   },
 
   /* ── invite management ───────────────────────────────────── */
