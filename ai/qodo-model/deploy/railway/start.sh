@@ -12,17 +12,16 @@ if [ ! -s "$model_path" ]; then
   fi
   mkdir -p "$model_dir"
   temporary_path="${model_path}.download"
-  rm -f "$temporary_path"
 
   download_file() {
     download_url="$1"
     download_target="$2"
     if [ -n "${HF_TOKEN:-}" ]; then
-      curl --fail --location --retry 5 --retry-all-errors \
+      curl --fail --location --silent --show-error --retry 8 --retry-all-errors --continue-at - \
         -H "Authorization: Bearer ${HF_TOKEN}" \
         --output "$download_target" "$download_url"
     else
-      curl --fail --location --retry 5 --retry-all-errors \
+      curl --fail --location --silent --show-error --retry 8 --retry-all-errors --continue-at - \
         --output "$download_target" "$download_url"
     fi
   }
@@ -33,15 +32,33 @@ if [ ! -s "$model_path" ]; then
       echo "QODO_MODEL_PART_COUNT must be greater than zero for a multipart model." >&2
       exit 1
     fi
-    echo "Downloading Qodo model artifact in ${part_count} parts..."
-    : > "$temporary_path"
+    echo "Downloading Qodo model artifact in ${part_count} resumable parallel parts..."
+    download_pids=""
     part_number=0
     while [ "$part_number" -lt "$part_count" ]; do
       part_suffix="$(printf '%02d' "$part_number")"
       part_path="${temporary_path}.part-${part_suffix}"
-      download_file "${QODO_MODEL_PART_URL_PREFIX}${part_suffix}" "$part_path"
-      cat "$part_path" >> "$temporary_path"
-      rm -f "$part_path"
+      download_file "${QODO_MODEL_PART_URL_PREFIX}${part_suffix}" "$part_path" &
+      download_pids="${download_pids} $!"
+      part_number=$((part_number + 1))
+    done
+
+    download_failed=0
+    for download_pid in $download_pids; do
+      if ! wait "$download_pid"; then
+        download_failed=1
+      fi
+    done
+    if [ "$download_failed" -ne 0 ]; then
+      echo "One or more model parts failed to download; partial files were kept for the next retry." >&2
+      exit 1
+    fi
+
+    : > "$temporary_path"
+    part_number=0
+    while [ "$part_number" -lt "$part_count" ]; do
+      part_suffix="$(printf '%02d' "$part_number")"
+      cat "${temporary_path}.part-${part_suffix}" >> "$temporary_path"
       part_number=$((part_number + 1))
     done
   else
@@ -54,8 +71,13 @@ fi
 if [ -n "${QODO_MODEL_SHA256:-}" ]; then
   echo "${QODO_MODEL_SHA256}  ${model_path}" | sha256sum --check --status || {
     echo "Qodo model checksum validation failed." >&2
+    rm -f "$model_path"
     exit 1
   }
+fi
+
+if [ -n "${QODO_MODEL_PART_URL_PREFIX:-}" ]; then
+  rm -f "${model_path}.download.part-"??
 fi
 
 set -- \
