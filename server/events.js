@@ -28,6 +28,7 @@ import {
   clearInsightsRevenueCache,
   eventsRevenueForPeriod,
 } from './insightsRevenue.js';
+import { buildEventCourseComparison } from './trainingComparison.js';
 
 const cache = makeCache(60_000);
 /** Aggregates change by the day, not the minute, and cost far more to fetch. */
@@ -232,7 +233,7 @@ function monthLabel(iso) {
   if (!iso) return 'بدون تاريخ';
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return 'بدون تاريخ';
-  return new Intl.DateTimeFormat('ar-EG', {
+  return new Intl.DateTimeFormat('ar-EG-u-nu-latn', {
     month: 'short',
     year: '2-digit',
     timeZone: 'UTC',
@@ -552,6 +553,7 @@ export function buildEventsSnapshot(eventRows, registrationRows) {
       .sort((a, b) => b.bookings - a.bookings || b.interested - a.interested || demandOrder(a, b))
       .slice(0, 10),
     lowDemand: [...events].sort(lowOrder).slice(0, 10),
+    allDemand: [...events].sort(demandOrder),
     byStage: tally(events, (event) => event.stage ?? 'بدون مرحلة'),
     byMode: tally(events, (event) => eventMode(event.mode)),
     byKind: tally(events, (event) => eventKind(event.kind)),
@@ -615,6 +617,9 @@ export async function eventsAnalytics({ from, to } = {}) {
       previous: previous.totals,
       topDemand: current.topDemand,
       lowDemand: current.lowDemand,
+      comparison: revenue?.current
+        ? buildEventCourseComparison(revenue.current.products, current.allDemand)
+        : [],
       byStage: current.byStage,
       byMode: current.byMode,
       byKind: current.byKind,

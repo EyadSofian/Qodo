@@ -351,6 +351,40 @@ export async function eventsRevenueForPeriod(period) {
   };
 }
 
+/**
+ * Ask Insights Hub to reconcile Accounting with Odoo immediately.
+ *
+ * This is called only from the manager's explicit refresh button.  Normal page
+ * views continue reading the durable accounting snapshot and do not launch a
+ * broad Odoo invoice scan.  Insights Hub owns the safety gate: if the direct
+ * response is partial, its last-good PostgreSQL numbers stay authoritative.
+ */
+export async function refreshInsightsRevenueSource() {
+  const base = await insightsBaseUrl();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 105_000);
+  try {
+    const response = await fetch(new URL('/api/refresh', base), {
+      method: 'POST',
+      signal: controller.signal,
+      headers: { Accept: 'application/json', 'User-Agent': 'Engosoft-Workspace/1.0' },
+    });
+    if (!response.ok) throw new Error(`insights_refresh_http_${response.status}`);
+    const result = await response.json();
+    clearInsightsRevenueCache();
+    return {
+      ok: true,
+      authority: result?.accounting?.authority ?? null,
+      directAccepted: Boolean(result?.accounting?.direct?.accepted),
+      directAttempted: Boolean(result?.accounting?.direct?.attempted),
+      syncedAt: result?.accounting?.syncedAt ?? result?.syncedAt ?? null,
+      warning: result?.accounting?.direct?.error || null,
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export function clearInsightsRevenueCache() {
   cache.clear();
   accountingCache.clear();

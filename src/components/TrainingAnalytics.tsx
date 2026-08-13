@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { CalendarRange, Check, ExternalLink, SlidersHorizontal } from 'lucide-react';
-import type { AnalyticsRange } from '../lib/events';
+import type { AnalyticsRange, TrainingComparisonRow } from '../lib/events';
 import { cx } from '../lib/utils';
 
 const DAY_MS = 86_400_000;
@@ -28,9 +28,9 @@ export function rangeForCurrentMonth(now = new Date()): AnalyticsRange {
 export const DEFAULT_ANALYTICS_RANGE = rangeForCurrentMonth();
 
 const PRESETS = [
-  { days: 30, label: '٣٠ يوم' },
-  { days: 90, label: '٣ شهور' },
-  { days: 180, label: '٦ شهور' },
+  { days: 30, label: '30 يوم' },
+  { days: 90, label: '3 شهور' },
+  { days: 180, label: '6 شهور' },
   { days: 365, label: 'سنة' },
 ];
 
@@ -158,18 +158,18 @@ export function AnalyticsPeriodPicker({
   );
 }
 
-const arabicNumber = (value: number) => value.toLocaleString('ar-EG');
+const westernNumber = (value: number) => value.toLocaleString('en-US');
 
 export function comparisonHint(current: number | null, previous: number | null): string {
   if (current === null || previous === null) return 'المقارنة غير متاحة';
   if (current === previous) return 'نفس الفترة السابقة';
   if (previous === 0) return current > 0 ? 'جديد مقارنةً بالفترة السابقة' : 'لا تغيير';
   const delta = Math.round(((current - previous) / Math.abs(previous)) * 100);
-  return `${delta > 0 ? '↑' : '↓'} ${arabicNumber(Math.abs(delta))}٪ عن الفترة السابقة`;
+  return `${delta > 0 ? '↑' : '↓'} ${westernNumber(Math.abs(delta))}% عن الفترة السابقة`;
 }
 
 export function dateRangeLabel(from: string, to: string): string {
-  const format = new Intl.DateTimeFormat('ar-EG', { day: 'numeric', month: 'short', year: 'numeric' });
+  const format = new Intl.DateTimeFormat('ar-EG-u-nu-latn', { day: 'numeric', month: 'short', year: 'numeric' });
   return `${format.format(new Date(`${from}T12:00:00`))} — ${format.format(new Date(`${to}T12:00:00`))}`;
 }
 
@@ -236,10 +236,10 @@ export function DemandRanking({
                 </div>
                 <div className="flex shrink-0 items-center gap-1 text-[10.5px] font-bold">
                   <span className="rounded-md bg-brand-50 px-1.5 py-0.5 text-brand-700">
-                    {arabicNumber(row.primary)} {primaryLabel}
+                    {westernNumber(row.primary)} {primaryLabel}
                   </span>
                   <span className="rounded-md bg-status-warnBg px-1.5 py-0.5 text-accent-600">
-                    {arabicNumber(row.secondary)} {secondaryLabel}
+                    {westernNumber(row.secondary)} {secondaryLabel}
                   </span>
                 </div>
               </div>
@@ -254,5 +254,134 @@ export function DemandRanking({
         );
       })}
     </ol>
+  );
+}
+
+const cleanCourseName = (value: string) =>
+  value.replace(/^\s*\[[^\]]+\]\s*/, '').replace(/\s+/g, ' ').trim();
+
+function comparisonStatus(row: TrainingComparisonRow, mode: 'events' | 'elearning') {
+  const labels = {
+    paid_and_active: mode === 'events' ? 'عليه بيع وحجز' : 'عليه بيع واشتراك',
+    paid_and_interest: mode === 'events' ? 'اتباع وفيه اهتمام' : 'اتباع وفيه دعوات',
+    paid_only: mode === 'events' ? 'اتباع؛ مفيش حجز ظاهر' : 'اتباع؛ مفيش اشتراك جديد ظاهر',
+    active_only: mode === 'events' ? 'عليه حجز؛ مفيش تحصيل ظاهر' : 'فيه اشتراك؛ مفيش تحصيل ظاهر',
+    interest_only: mode === 'events' ? 'فيه اهتمام بس' : 'فيه دعوات بس',
+    no_demand: 'مفيش إقبال في الفترة',
+  } as const;
+  return labels[row.status];
+}
+
+/** One management view over accounting demand and real Odoo activity. */
+export function TrainingSourceComparison({
+  rows,
+  mode,
+  insightsUrl,
+}: {
+  rows: TrainingComparisonRow[];
+  mode: 'events' | 'elearning';
+  insightsUrl: string;
+}) {
+  const linked = rows.filter((row) => row.status === 'paid_and_active').length;
+  const paidOnly = rows.filter((row) => row.status === 'paid_only' || row.status === 'paid_and_interest').length;
+  const activityOnly = rows.filter((row) => row.status === 'active_only' || row.status === 'interest_only').length;
+  const noDemand = rows.filter((row) => row.status === 'no_demand').length;
+  const primaryLabel = mode === 'events' ? 'حجز مؤكد' : 'اشتراك جديد';
+  const secondaryLabel = mode === 'events' ? 'لسه مش مؤكد' : 'دعوة';
+  const model = mode === 'events' ? 'event.event' : 'slide.channel';
+
+  return (
+    <section className="overflow-hidden rounded-2xl border border-brand-100 bg-white shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-surface-line bg-brand-50/55 px-4 py-3.5">
+        <div>
+          <h2 className="text-[15px] font-black text-ink">البيع والإقبال جنب بعض</h2>
+          <p className="mt-1 max-w-4xl text-[11.5px] leading-relaxed text-ink-muted">
+            الفلوس من Insights Hub حسب يوم الدفع، و{mode === 'events' ? 'الحجز من أودو حسب بداية الإيفينت' : 'الاشتراك من أودو حسب يوم دخول الكورس'}.
+            الربط بالاسم فقط لما الاسم بعد شيل الكود وكلمات النوع يطابق بالظبط؛ غير كده بنسيب كل مصدر لوحده.
+          </p>
+        </div>
+        <a href={insightsUrl} target="_blank" rel="noreferrer noopener" className="btn-ghost btn-sm bg-white">
+          راجع Insights Hub <ExternalLink size={13} />
+        </a>
+      </div>
+
+      <div className="grid grid-cols-2 gap-px bg-surface-line sm:grid-cols-4">
+        {[
+          ['بيع + إقبال', linked, 'text-status-ok'],
+          ['بيع بس', paidOnly, 'text-accent-600'],
+          [mode === 'events' ? 'حجز بس' : 'اشتراك بس', activityOnly, 'text-brand-700'],
+          ['مفيش إقبال', noDemand, 'text-status-bad'],
+        ].map(([label, value, tone]) => (
+          <div key={String(label)} className="bg-white px-3 py-2.5">
+            <p className="text-[10.5px] font-semibold text-ink-faint">{label}</p>
+            <p className={cx('mt-0.5 text-[20px] font-black tabular-nums', String(tone))}>{westernNumber(Number(value))}</p>
+          </div>
+        ))}
+      </div>
+
+      {rows.length === 0 ? (
+        <p className="px-4 py-8 text-center text-[12px] text-ink-faint">مفيش بيانات نقدر نقارنها في الفترة دي.</p>
+      ) : (
+        <div className="max-h-[34rem] overflow-auto">
+          <table className="w-full min-w-[720px] border-collapse text-start">
+            <thead className="sticky top-0 z-10 bg-white text-[10.5px] font-bold text-ink-faint shadow-[0_1px_0_#E2E8F0]">
+              <tr>
+                <th className="px-4 py-2.5 text-start">الكورس</th>
+                <th className="px-3 py-2.5 text-start">Insights Hub · المدفوع</th>
+                <th className="px-3 py-2.5 text-start">Odoo · {primaryLabel}</th>
+                <th className="px-4 py-2.5 text-start">النتيجة</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-surface-line">
+              {rows.map((row) => {
+                const recordId = row.recordIds[0];
+                const href = recordId
+                  ? `https://engosoft.com/web#id=${recordId}&model=${model}&view_type=form`
+                  : insightsUrl;
+                const good = row.status === 'paid_and_active';
+                const bad = row.status === 'no_demand';
+                return (
+                  <tr key={`${row.kind}-${row.key}`} className="hover:bg-surface-sunken/55">
+                    <td className="px-4 py-3 align-top">
+                      <a href={href} target="_blank" rel="noreferrer noopener" className="font-bold text-brand-700 hover:underline">
+                        <bdi dir="auto">{cleanCourseName(row.name)}</bdi>
+                      </a>
+                      <p className="mt-0.5 text-[10px] text-ink-faint">
+                        {row.matchBasis === 'canonical_name'
+                          ? 'الاسم متطابق في المصدرين'
+                          : row.matchBasis === 'financial_only'
+                            ? 'موجود في الفواتير بس'
+                            : 'موجود في أودو بس'}
+                        {row.operationalRecords > 1 ? ` · ${westernNumber(row.operationalRecords)} سجلات أودو` : ''}
+                      </p>
+                    </td>
+                    <td className="px-3 py-3 align-top font-black tabular-nums text-ink">
+                      {row.paidAmount.toLocaleString('en-US', { maximumFractionDigits: 2 })} USD
+                    </td>
+                    <td className="px-3 py-3 align-top">
+                      <b className="tabular-nums text-ink">{westernNumber(row.primary)}</b>
+                      <p className="mt-0.5 text-[10px] text-ink-faint">{westernNumber(row.secondary)} {secondaryLabel}</p>
+                    </td>
+                    <td className="px-4 py-3 align-top">
+                      <span className={cx(
+                        'inline-flex rounded-full px-2.5 py-1 text-[10.5px] font-black',
+                        good && 'bg-status-okBg text-status-ok',
+                        bad && 'bg-status-badBg text-status-bad',
+                        !good && !bad && 'bg-status-warnBg text-accent-600'
+                      )}>
+                        {comparisonStatus(row, mode)}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p className="border-t border-surface-line px-4 py-2.5 text-[10.5px] leading-relaxed text-ink-faint">
+        مهم: المقارنة دي بتقول إن البيع والنشاط ظهروا لنفس اسم الكورس في نفس الفترة، مش إننا أثبتنا إن نفس الفاتورة تخص نفس الشخص أو نفس سجل الإيفينت.
+      </p>
+    </section>
   );
 }

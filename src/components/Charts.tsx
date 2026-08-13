@@ -34,7 +34,7 @@ const rampStep = (value: number, max: number) => {
   return RAMP[Math.max(0, index)];
 };
 
-const arabicNumber = (value: number) => value.toLocaleString('ar-EG');
+const westernNumber = (value: number) => value.toLocaleString('en-US');
 
 /* ── stat tiles ──────────────────────────────────────────────────── */
 
@@ -95,7 +95,7 @@ export function StatTile({
           )}
         </div>
         <p className="mt-0.5 text-[24px] font-extrabold leading-none tabular-nums text-ink">
-          {typeof value === 'number' ? arabicNumber(value) : value}
+          {typeof value === 'number' ? westernNumber(value) : value}
         </p>
         {hint && <p className="mt-1 truncate text-[11.5px] text-ink-faint">{hint}</p>}
       </div>
@@ -149,7 +149,7 @@ export function BarList({
             />
           </span>
           <span className="w-12 text-end text-[12.5px] font-bold tabular-nums text-ink">
-            {row.display ?? arabicNumber(row.value)}
+            {row.display ?? westernNumber(row.value)}
           </span>
         </li>
       ))}
@@ -172,7 +172,7 @@ export function ColumnChart({ data, empty = 'مفيش بيانات' }: { data: B
       {data.map((row) => (
         <div key={row.label} className="flex min-w-0 flex-1 flex-col items-center gap-1">
           <span className="text-[10.5px] font-bold tabular-nums text-ink-muted">
-            {row.value > 0 ? arabicNumber(row.value) : ''}
+            {row.value > 0 ? westernNumber(row.value) : ''}
           </span>
           <div
             className="w-full rounded-t-md transition-[height]"
@@ -180,7 +180,7 @@ export function ColumnChart({ data, empty = 'مفيش بيانات' }: { data: B
               height: `${Math.max(2, (row.value / max) * 100)}%`,
               backgroundColor: rampStep(row.value, max),
             }}
-            title={`${row.label}: ${arabicNumber(row.value)}`}
+            title={`${row.label}: ${westernNumber(row.value)}`}
           />
           <span className="w-full truncate text-center text-[10px] text-ink-faint">{row.label}</span>
         </div>
@@ -217,7 +217,7 @@ export function SplitBar({ parts }: { parts: { label: string; value: number }[] 
               width: `${(part.value / total) * 100}%`,
               backgroundColor: SPLIT_COLORS[index % SPLIT_COLORS.length],
             }}
-            title={`${part.label}: ${arabicNumber(part.value)}`}
+            title={`${part.label}: ${westernNumber(part.value)}`}
           />
         ))}
       </div>
@@ -229,7 +229,7 @@ export function SplitBar({ parts }: { parts: { label: string; value: number }[] 
               style={{ backgroundColor: SPLIT_COLORS[index % SPLIT_COLORS.length] }}
             />
             {part.label}
-            <b className="tabular-nums text-ink">{arabicNumber(part.value)}</b>
+            <b className="tabular-nums text-ink">{westernNumber(part.value)}</b>
             <span className="text-ink-faint">({Math.round((part.value / total) * 100)}٪)</span>
           </li>
         ))}

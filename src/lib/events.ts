@@ -58,6 +58,16 @@ export interface CoursesOverview {
   today: CourseSession[];
   stages: { id: number; name: string; running: boolean; finished: boolean }[];
   fetchedAt: string;
+  insightsSync?: InsightsSyncResult;
+}
+
+export interface InsightsSyncResult {
+  ok: boolean;
+  authority?: string | null;
+  directAccepted?: boolean;
+  directAttempted?: boolean;
+  syncedAt?: string | null;
+  warning?: string | null;
 }
 
 export const fetchStatus = () =>
@@ -133,6 +143,7 @@ export interface EventsAnalytics {
   previous: EventAnalyticsTotals;
   topDemand: EventDemandRow[];
   lowDemand: EventDemandRow[];
+  comparison: TrainingComparisonRow[];
   byStage: Bar[];
   byMode: Bar[];
   byKind: Bar[];
@@ -219,6 +230,7 @@ export interface ElearningOverview {
   /** Which fields this Odoo actually exposes — the page says so rather than lying. */
   available: string[];
   fetchedAt: string;
+  insightsSync?: InsightsSyncResult;
 }
 
 export interface ElearningAnalytics {
@@ -261,6 +273,7 @@ export interface ElearningAnalytics {
   previous: ElearningPeriodTotals | null;
   topDemand: ElearningDemandRow[];
   lowDemand: ElearningDemandRow[];
+  comparison: TrainingComparisonRow[];
   trend: Array<{
     key: string;
     label: string;
@@ -269,6 +282,27 @@ export interface ElearningAnalytics {
     completed: number;
   }>;
   freeActivity: ElearningPeriodTotals | null;
+}
+
+export interface TrainingComparisonRow {
+  key: string;
+  name: string;
+  kind: 'events' | 'elearning';
+  paidAmount: number;
+  /** Confirmed bookings for events; new enrollments for eLearning. */
+  primary: number;
+  /** Unconfirmed interest for events; invitations for eLearning. */
+  secondary: number;
+  operationalRecords: number;
+  recordIds: number[];
+  matchBasis: 'canonical_name' | 'financial_only' | 'operational_only';
+  status:
+    | 'paid_and_active'
+    | 'paid_and_interest'
+    | 'paid_only'
+    | 'active_only'
+    | 'interest_only'
+    | 'no_demand';
 }
 
 export interface ElearningCommercialTotals {
@@ -426,18 +460,18 @@ export function elearningKindLabel(kind: string | null): string {
 
 const CAIRO = 'Africa/Cairo';
 
-const dayFmt = new Intl.DateTimeFormat('ar-EG', {
+const dayFmt = new Intl.DateTimeFormat('ar-EG-u-nu-latn', {
   timeZone: CAIRO,
   weekday: 'long',
   day: 'numeric',
   month: 'long',
 });
-const timeFmt = new Intl.DateTimeFormat('ar-EG', {
+const timeFmt = new Intl.DateTimeFormat('ar-EG-u-nu-latn', {
   timeZone: CAIRO,
   hour: 'numeric',
   minute: '2-digit',
 });
-const shortFmt = new Intl.DateTimeFormat('ar-EG', {
+const shortFmt = new Intl.DateTimeFormat('ar-EG-u-nu-latn', {
   timeZone: CAIRO,
   day: 'numeric',
   month: 'short',
@@ -472,16 +506,16 @@ export function sessionsLeftLabel(left: number): string {
   if (left <= 0) return 'خلصت محاضراتها';
   if (left === 1) return 'فاضل محاضرة واحدة';
   if (left === 2) return 'فاضل محاضرتين';
-  if (left <= 10) return `فاضل ${left.toLocaleString('ar-EG')} محاضرات`;
-  return `فاضل ${left.toLocaleString('ar-EG')} محاضرة`;
+  if (left <= 10) return `فاضل ${left.toLocaleString('en-US')} محاضرات`;
+  return `فاضل ${left.toLocaleString('en-US')} محاضرة`;
 }
 
 export function attendeesLabel(count: number): string {
   if (count === 0) return 'لسه محدش سجّل';
   if (count === 1) return 'طالب واحد';
   if (count === 2) return 'طالبين';
-  if (count <= 10) return `${count.toLocaleString('ar-EG')} طلاب`;
-  return `${count.toLocaleString('ar-EG')} طالب`;
+  if (count <= 10) return `${count.toLocaleString('en-US')} طلاب`;
+  return `${count.toLocaleString('en-US')} طالب`;
 }
 
 /** Where it happens, as one phrase instead of three coded fields. */

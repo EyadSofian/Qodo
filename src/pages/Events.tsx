@@ -60,6 +60,7 @@ import {
   AnalyticsPeriodPicker,
   DEFAULT_ANALYTICS_RANGE,
   DemandRanking,
+  TrainingSourceComparison,
   dateRangeLabel,
 } from '../components/TrainingAnalytics';
 import { EmptyState, Modal, Segmented, Spinner, useToast } from '../components/ui';
@@ -75,7 +76,7 @@ const odooEventUrl = (id: number) =>
   `https://engosoft.com/web#id=${id}&model=event.event&view_type=form`;
 
 function formatUsd(value: number): string {
-  return `${value.toLocaleString('ar-EG', { maximumFractionDigits: 2 })} دولار`;
+  return `${value.toLocaleString('en-US', { maximumFractionDigits: 2 })} USD`;
 }
 
 function friendlyEventProduct(value: string): string {
@@ -87,7 +88,7 @@ function previousDaysHint(current: number | null, previous: number | null): stri
   if (current === previous) return 'زي الأيام اللي قبلها';
   if (previous === 0) return current > 0 ? 'ظهر جديد في الأيام دي' : 'مفيش تغيير';
   const change = Math.round(((current - previous) / Math.abs(previous)) * 100);
-  return `${change > 0 ? '↑' : '↓'} ${Math.abs(change).toLocaleString('ar-EG')}٪ عن الأيام اللي قبلها`;
+  return `${change > 0 ? '↑' : '↓'} ${Math.abs(change).toLocaleString('en-US')}% عن الأيام اللي قبلها`;
 }
 
 export function Events() {
@@ -128,9 +129,15 @@ export function Events() {
   const refresh = async () => {
     setBusy(true);
     try {
-      setData(await refreshCourses());
+      const refreshed = await refreshCourses();
+      setData(refreshed);
       setAnalysisVersion((version) => version + 1);
-      push('اتحدّثت من أودو.');
+      push(
+        refreshed.insightsSync?.directAccepted
+          ? 'اتعملت مزامنة مباشرة من أودو وInsights Hub.'
+          : 'أودو اتحدّث؛ Insights Hub حافظ على آخر نسخة مالية سليمة.',
+        refreshed.insightsSync?.directAccepted ? 'ok' : 'bad'
+      );
     } catch (err) {
       push(errorMessage(err, 'ar'), 'bad');
     } finally {
@@ -154,7 +161,7 @@ export function Events() {
           className="btn-ghost btn-sm gap-1.5"
         >
           {busy ? <Spinner size={15} /> : <RefreshCw size={15} />}
-          تحديث
+          مزامنة مباشرة
         </button>
       </header>
 
@@ -603,18 +610,32 @@ function EventsAnalysis({ version, onOpen }: { version: number; onOpen: (id: num
 
               {(collected.excludedOnlineInvoices > 0 || collected.excludedUnknownInvoices > 0) && (
                 <p className="rounded-xl bg-white px-3.5 py-3 text-[11.5px] leading-relaxed text-ink-muted">
-                  علشان شاشة الإيفينتات حضوري بس: استبعدنا {collected.excludedOnlineInvoices.toLocaleString('ar-EG')} فاتورة
-                  أونلاين بقيمة {formatUsd(collected.excludedOnlineAmount)}، و{collected.excludedUnknownInvoices.toLocaleString('ar-EG')} فاتورة
+                  علشان شاشة الإيفينتات حضوري بس: استبعدنا {collected.excludedOnlineInvoices.toLocaleString('en-US')} فاتورة
+                  أونلاين بقيمة {formatUsd(collected.excludedOnlineAmount)}، و{collected.excludedUnknownInvoices.toLocaleString('en-US')} فاتورة
                   Event نوع الحضور فيها مش واضح بقيمة {formatUsd(collected.excludedUnknownAmount)}. ما خمّناش النوع.
                 </p>
               )}
               {collected.authority === 'postgres-last-good' && (
                 <p className="rounded-xl bg-status-warnBg px-3.5 py-3 text-[11.5px] font-semibold leading-relaxed text-accent-600">
-                  Insights Hub معلّم مصدر المحاسبة حاليًا كـ «آخر نسخة سليمة محفوظة»؛ الرقم مطابق لنفس
-                  البيانات المعروضة هناك، لكنه مش اتصال لحظي مباشر بقاعدة المحاسبة.
+                  المزامنة المباشرة ما اتقبلتش، فـ Insights Hub حافظ على آخر نسخة مالية سليمة بدل ما يعرض
+                  رقم ناقص أو متغيّر. اضغط «مزامنة مباشرة» للمحاولة تاني.
+                </p>
+              )}
+              {collected.authority === 'odoo-direct' && (
+                <p className="rounded-xl bg-status-okBg px-3.5 py-3 text-[11.5px] font-semibold leading-relaxed text-status-ok">
+                  التحصيل اتراجع مباشرة من أودو وعدّى فحص اكتمال الفواتير قبل ما يظهر هنا
+                  {collected.syncedAt ? ` · آخر مزامنة ${staleLabel(collected.syncedAt)}` : ''}.
                 </p>
               )}
             </section>
+          )}
+
+          {data.revenueAvailable && data.revenueSource && (
+            <TrainingSourceComparison
+              rows={data.comparison}
+              mode="events"
+              insightsUrl={data.revenueSource.appUrl}
+            />
           )}
 
           <section className="rounded-2xl border border-surface-line bg-white px-4 py-3.5 shadow-sm">
@@ -635,19 +656,19 @@ function EventsAnalysis({ version, onOpen }: { version: number; onOpen: (id: num
                 <h2 className="mt-2 max-w-2xl text-[19px] font-black leading-relaxed sm:text-[22px]">
                   {top
                     ? top.bookings > 0
-                      ? <><bdi dir="auto">«{top.name}»</bdi> عليه أكتر حجز في الأيام دي: {top.bookings.toLocaleString('ar-EG')} حجز مؤكد.</>
-                      : <><bdi dir="auto">«{top.name}»</bdi> عليه {top.interested.toLocaleString('ar-EG')} مهتم ولسه مفيش حجز مؤكد.</>
+                      ? <><bdi dir="auto">«{top.name}»</bdi> عليه أكتر حجز في الأيام دي: {top.bookings.toLocaleString('en-US')} حجز مؤكد.</>
+                      : <><bdi dir="auto">«{top.name}»</bdi> عليه {top.interested.toLocaleString('en-US')} مهتم ولسه مفيش حجز مؤكد.</>
                     : 'مفيش حجز أو اهتمام متسجل على إيفينتات الأيام دي.'}
                 </h2>
                 <p className="mt-2 text-[12.5px] text-white/60">
                   {current.noDemand > 0
-                    ? `${current.noDemand.toLocaleString('ar-EG')} إيفينت بلا حجز أو اهتمام ويحتاج مراجعة التسويق أو الموعد.`
+                    ? `${current.noDemand.toLocaleString('en-US')} إيفينت بلا حجز أو اهتمام ويحتاج مراجعة التسويق أو الموعد.`
                     : 'كل الإيفينتات في الأيام دي عليها حجز أو اهتمام.'}
                 </p>
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <QuickFact label="إيفينتات عليها حركة" value={current.demandRate === null ? '—' : `${current.demandRate.toLocaleString('ar-EG')}٪`} />
-                <QuickFact label="نسبة الحجوزات المؤكدة" value={current.confirmationRate === null ? '—' : `${current.confirmationRate.toLocaleString('ar-EG')}٪`} />
+                <QuickFact label="إيفينتات عليها حركة" value={current.demandRate === null ? '—' : `${current.demandRate.toLocaleString('en-US')}%`} />
+                <QuickFact label="نسبة الحجوزات المؤكدة" value={current.confirmationRate === null ? '—' : `${current.confirmationRate.toLocaleString('en-US')}%`} />
               </div>
             </div>
           </section>
@@ -704,8 +725,8 @@ function EventsAnalysis({ version, onOpen }: { version: number; onOpen: (id: num
             />
             <StatTile
               label="نسبة المقاعد المحجوزة"
-              value={current.fillRate === null ? '—' : `${current.fillRate.toLocaleString('ar-EG')}٪`}
-              hint={current.seats ? `${current.capacityBookings.toLocaleString('ar-EG')} حجز من ${current.seats.toLocaleString('ar-EG')} مقعد` : 'السعة مش مكتوبة في أودو'}
+              value={current.fillRate === null ? '—' : `${current.fillRate.toLocaleString('en-US')}%`}
+              hint={current.seats ? `${current.capacityBookings.toLocaleString('en-US')} حجز من ${current.seats.toLocaleString('en-US')} مقعد` : 'السعة مش مكتوبة في أودو'}
               explanation="الحجوزات المؤكدة مقسومة على عدد المقاعد، للإيفينتات اللي السعة مكتوبة فيها بس."
               tone={current.fillRate !== null && current.fillRate >= 70 ? 'good' : 'plain'}
               icon={<Users size={17} />}
@@ -767,7 +788,7 @@ function EventsAnalysis({ version, onOpen }: { version: number; onOpen: (id: num
                   name: point.label,
                   primary: point.bookings,
                   secondary: point.interested,
-                  note: `${point.events.toLocaleString('ar-EG')} إيفينت`,
+                  note: `${point.events.toLocaleString('en-US')} إيفينت`,
                 }))}
                 empty="مفيش بيانات شهرية"
                 primaryLabel="مؤكد"
@@ -837,9 +858,9 @@ function EventRevenueBreakdown({
                 <bdi dir="auto">{friendlyEventProduct(product.name)}</bdi>
               </a>
               <p className="text-[10.5px] text-ink-faint">
-                {product.invoices.toLocaleString('ar-EG')} فاتورة فيها المنتج
+                {product.invoices.toLocaleString('en-US')} فاتورة فيها المنتج
                 {product.events.length > 0
-                  ? ` · مربوط بـ ${product.events.length.toLocaleString('ar-EG')} إيفينت`
+                  ? ` · مربوط بـ ${product.events.length.toLocaleString('en-US')} إيفينت`
                   : ' · سطر الفاتورة مش مربوط بإيفينت'}
               </p>
             </div>
@@ -909,7 +930,7 @@ function CoursePanel({ id, onClose }: { id: number | null; onClose: () => void }
 
           <div className="rounded-xl bg-surface-sunken px-3.5 py-3 text-[13px] text-ink-muted">
             من <b className="text-ink">{shortDate(course.startsAt)}</b> لـ{' '}
-            <b className="text-ink">{shortDate(course.endsAt)}</b> · {course.sessionsTotal.toLocaleString('ar-EG')} محاضرة ·{' '}
+            <b className="text-ink">{shortDate(course.endsAt)}</b> · {course.sessionsTotal.toLocaleString('en-US')} محاضرة ·{' '}
             {sessionsLeftLabel(course.sessionsLeft)}
           </div>
 

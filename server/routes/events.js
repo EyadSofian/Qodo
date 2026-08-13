@@ -17,6 +17,7 @@ import {
   elearningOverview,
 } from '../elearning.js';
 import { OdooError, odooConfigured, odooMissingConfig } from '../odoo.js';
+import { refreshInsightsRevenueSource } from '../insightsRevenue.js';
 
 const router = Router();
 
@@ -76,7 +77,14 @@ router.get('/elearning/analytics', gate(ELEARNING_APP_ID), async (req, res) => {
 router.post('/elearning/refresh', gate(ELEARNING_APP_ID), async (req, res) => {
   clearElearningCache();
   try {
-    res.json(await elearningOverview());
+    const [overview, insightsSync] = await Promise.all([
+      elearningOverview(),
+      refreshInsightsRevenueSource().catch((error) => ({
+        ok: false,
+        warning: error?.message || 'insights_refresh_failed',
+      })),
+    ]);
+    res.json({ ...overview, insightsSync });
   } catch (error) {
     fail(res, error);
   }
@@ -115,7 +123,14 @@ router.get('/:id', async (req, res) => {
 router.post('/refresh', async (req, res) => {
   clearEventsCache();
   try {
-    res.json(await coursesOverview({}));
+    const [overview, insightsSync] = await Promise.all([
+      coursesOverview({}),
+      refreshInsightsRevenueSource().catch((error) => ({
+        ok: false,
+        warning: error?.message || 'insights_refresh_failed',
+      })),
+    ]);
+    res.json({ ...overview, insightsSync });
   } catch (error) {
     fail(res, error);
   }

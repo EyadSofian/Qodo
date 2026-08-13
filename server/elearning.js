@@ -23,6 +23,7 @@ import { OdooError, existingFields, odooConfigured, readGroup, searchRead } from
 import { makeCache } from './cache.js';
 import { analyticsPeriod, publicPeriod } from './analyticsPeriod.js';
 import { clearInsightsRevenueCache, elearningRevenueForPeriod } from './insightsRevenue.js';
+import { buildElearningCourseComparison } from './trainingComparison.js';
 
 const cache = makeCache(5 * 60_000);
 const cached = (key, load) => cache.get(key, load);
@@ -290,6 +291,7 @@ export function buildElearningPeriodSnapshot(courses, membershipRows) {
     },
     topDemand: [...ranked].filter((course) => course.demand > 0).sort(demandOrder).slice(0, 10),
     lowDemand: [...ranked].sort(lowOrder).slice(0, 10),
+    allDemand: [...ranked].sort(demandOrder),
   };
 }
 
@@ -677,7 +679,7 @@ function membershipTrend(rows) {
     const key = `${year ?? ''}-${String(Object.keys(MONTHS_AR).indexOf(month?.toLowerCase()) + 1).padStart(2, '0')}`;
     const point = points.get(raw) ?? {
       key,
-      label: `${MONTHS_AR[month?.toLowerCase()] ?? month ?? '—'}${year ? ` ${Number(year).toLocaleString('ar-EG', { useGrouping: false })}` : ''}`,
+      label: `${MONTHS_AR[month?.toLowerCase()] ?? month ?? '—'}${year ? ` ${Number(year).toLocaleString('en-US', { useGrouping: false })}` : ''}`,
       enrollments: 0,
       invited: 0,
       completed: 0,
@@ -865,6 +867,9 @@ export async function elearningAnalytics({ from, to } = {}) {
         previous: previous.totals,
         topDemand: current.topDemand,
         lowDemand: current.lowDemand,
+        comparison: collected?.current
+          ? buildElearningCourseComparison(collected.current.products, current.allDemand)
+          : [],
         trend: membershipTrend(trendRows),
         freeActivity: freeActivity.totals,
       };
@@ -880,6 +885,7 @@ export async function elearningAnalytics({ from, to } = {}) {
         previous: null,
         topDemand: [],
         lowDemand: [],
+        comparison: [],
         trend: [],
         freeActivity: null,
       };

@@ -48,6 +48,7 @@ import {
   AnalyticsPeriodPicker,
   DEFAULT_ANALYTICS_RANGE,
   DemandRanking,
+  TrainingSourceComparison,
   dateRangeLabel,
 } from '../components/TrainingAnalytics';
 import { EmptyState, Segmented, Spinner, useToast } from '../components/ui';
@@ -55,17 +56,17 @@ import { cx } from '../lib/utils';
 
 function formatMoney(value: number, currency: string | null): string {
   if (currency === 'USD') {
-    return `${value.toLocaleString('ar-EG', { maximumFractionDigits: 2 })} دولار`;
+    return `${value.toLocaleString('en-US', { maximumFractionDigits: 2 })} USD`;
   }
-  if (!currency) return value.toLocaleString('ar-EG', { maximumFractionDigits: 0 });
+  if (!currency) return value.toLocaleString('en-US', { maximumFractionDigits: 0 });
   try {
-    return new Intl.NumberFormat('ar-EG', {
+    return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency,
       maximumFractionDigits: 2,
     }).format(value);
   } catch {
-    return `${value.toLocaleString('ar-EG', { maximumFractionDigits: 0 })} ${currency}`;
+    return `${value.toLocaleString('en-US', { maximumFractionDigits: 0 })} ${currency}`;
   }
 }
 
@@ -83,7 +84,7 @@ function changePercent(current: number, previous: number): number | null {
 function movementLabel(value: number | null): string {
   if (value === null) return 'مفيش أيام قبلها نقدر نقارن بيها';
   if (value === 0) return 'زي الأيام اللي قبلها';
-  return `${value > 0 ? '↑' : '↓'} ${Math.abs(value).toLocaleString('ar-EG')}٪`;
+  return `${value > 0 ? '↑' : '↓'} ${Math.abs(value).toLocaleString('en-US')}%`;
 }
 
 function previousDaysHint(current: number | null, previous: number | null): string {
@@ -91,7 +92,7 @@ function previousDaysHint(current: number | null, previous: number | null): stri
   if (current === previous) return 'زي الأيام اللي قبلها';
   if (previous === 0) return current > 0 ? 'ظهر بيع جديد' : 'مفيش تغيير';
   const change = Math.round(((current - previous) / Math.abs(previous)) * 100);
-  return `${change > 0 ? '↑' : '↓'} ${Math.abs(change).toLocaleString('ar-EG')}٪ عن الأيام اللي قبلها`;
+  return `${change > 0 ? '↑' : '↓'} ${Math.abs(change).toLocaleString('en-US')}% عن الأيام اللي قبلها`;
 }
 
 type Tab = 'courses' | 'analysis';
@@ -132,9 +133,15 @@ export function Elearning() {
   const refresh = async () => {
     setBusy(true);
     try {
-      setData(await refreshElearning());
+      const refreshed = await refreshElearning();
+      setData(refreshed);
       setAnalysisVersion((version) => version + 1);
-      push('اتحدّثت من أودو.');
+      push(
+        refreshed.insightsSync?.directAccepted
+          ? 'اتعملت مزامنة مباشرة من أودو وInsights Hub.'
+          : 'أودو اتحدّث؛ Insights Hub حافظ على آخر نسخة مالية سليمة.',
+        refreshed.insightsSync?.directAccepted ? 'ok' : 'bad'
+      );
     } catch (err) {
       push(errorMessage(err, 'ar'), 'bad');
     } finally {
@@ -158,7 +165,7 @@ export function Elearning() {
           className="btn-ghost btn-sm gap-1.5"
         >
           {busy ? <Spinner size={15} /> : <RefreshCw size={15} />}
-          تحديث
+          مزامنة مباشرة
         </button>
       </header>
 
@@ -411,7 +418,7 @@ function ElearningAnalysis({ version }: { version: number }) {
                 />
                 <LearningQuickFact
                   label="كورسات دخل لها فلوس"
-                  value={collected.products.length.toLocaleString('ar-EG')}
+                  value={collected.products.length.toLocaleString('en-US')}
                 />
               </div>
             </div>
@@ -480,13 +487,27 @@ function ElearningAnalysis({ version }: { version: number }) {
               </p>
               {collected.authority === 'postgres-last-good' && (
                 <p className="font-semibold text-accent-600">
-                  Insights Hub معلّم مصدر المحاسبة حاليًا كـ «آخر نسخة سليمة محفوظة»؛ الرقم من نفس بيانات
-                  Insights المعروضة، لكنه مش اتصال لحظي مباشر بقاعدة المحاسبة.
+                  المزامنة المباشرة ما اتقبلتش، فـ Insights Hub حافظ على آخر نسخة مالية سليمة بدل ما يعرض
+                  رقم ناقص أو متغيّر. اضغط «مزامنة مباشرة» للمحاولة تاني.
+                </p>
+              )}
+              {collected.authority === 'odoo-direct' && (
+                <p className="font-semibold text-status-ok">
+                  التحصيل اتراجع مباشرة من أودو وعدّى فحص اكتمال الفواتير قبل ما يظهر هنا
+                  {collected.syncedAt ? ` · آخر مزامنة ${staleLabel(collected.syncedAt)}` : ''}.
                 </p>
               )}
             </div>
           </details>
         </div>
+      )}
+
+      {data?.revenueAvailable && data.periodAvailable && data.revenueSource && (
+        <TrainingSourceComparison
+          rows={data.comparison}
+          mode="elearning"
+          insightsUrl={data.revenueSource.appUrl}
+        />
       )}
 
       {data && !data.periodAvailable && (
@@ -503,7 +524,7 @@ function ElearningAnalysis({ version }: { version: number }) {
             <p className="mt-1 text-[11.5px] leading-relaxed text-ink-muted">
               الجزء ده بيقول مين اشترك، ومين بدأ، ومين خلّص. البيع المؤكد والفلوس موجودين فوق.
               {data.freeActivity && data.freeActivity.courses > 0
-                ? ` الكورسات المجانية لوحدها: ${data.freeActivity.enrollments.toLocaleString('ar-EG')} اشتراك في ${data.freeActivity.courses.toLocaleString('ar-EG')} كورس مجاني خلال الأيام دي.`
+                ? ` الكورسات المجانية لوحدها: ${data.freeActivity.enrollments.toLocaleString('en-US')} اشتراك في ${data.freeActivity.courses.toLocaleString('en-US')} كورس مجاني خلال الأيام دي.`
                 : ''}
             </p>
           </section>
@@ -525,7 +546,7 @@ function ElearningAnalysis({ version }: { version: number }) {
             <StatTile
               label="ناس بدأت الكورس"
               value={data.current.started}
-              hint={data.current.startRate === null ? 'محدش اشترك' : `${data.current.startRate.toLocaleString('ar-EG')}٪ من الناس اللي اشتركت في الأيام دي`}
+              hint={data.current.startRate === null ? 'محدش اشترك' : `${data.current.startRate.toLocaleString('en-US')}% من الناس اللي اشتركت في الأيام دي`}
               icon={<PlayCircle size={17} />}
             />
             <StatTile
@@ -538,7 +559,7 @@ function ElearningAnalysis({ version }: { version: number }) {
             <StatTile
               label="كورسات عليها حركة"
               value={data.current.activeCourses}
-              hint={`${(data.current.courses - data.current.activeCourses).toLocaleString('ar-EG')} بدون حركة جديدة`}
+              hint={`${(data.current.courses - data.current.activeCourses).toLocaleString('en-US')} بدون حركة جديدة`}
               icon={<BookOpen size={17} />}
             />
             <StatTile
@@ -550,14 +571,14 @@ function ElearningAnalysis({ version }: { version: number }) {
             />
             <StatTile
               label="نسبة قبول الدعوات"
-              value={data.current.conversionRate === null ? '—' : `${data.current.conversionRate.toLocaleString('ar-EG')}٪`}
+              value={data.current.conversionRate === null ? '—' : `${data.current.conversionRate.toLocaleString('en-US')}%`}
               hint="كام دعوة اتحولت لاشتراك فعلي"
               icon={<Users size={17} />}
             />
             <StatTile
               label="كورسات مدفوعة"
               value={data.current.courses}
-              hint={`${data.current.published.toLocaleString('ar-EG')} ظاهر للناس`}
+              hint={`${data.current.published.toLocaleString('en-US')} ظاهر للناس`}
               icon={<Layers size={17} />}
             />
           </div>
@@ -570,7 +591,7 @@ function ElearningAnalysis({ version }: { version: number }) {
                   name: friendlyCourseName(course.name),
                   primary: course.enrollments,
                   secondary: course.invited,
-                  note: `${course.started.toLocaleString('ar-EG')} بدأوا · ${course.completed.toLocaleString('ar-EG')} أكملوا`,
+                  note: `${course.started.toLocaleString('en-US')} بدأوا · ${course.completed.toLocaleString('en-US')} أكملوا`,
                 }))}
                 empty="مفيش اشتراكات أو دعوات جديدة"
                 primaryLabel="مشترك"
@@ -585,7 +606,7 @@ function ElearningAnalysis({ version }: { version: number }) {
                   name: friendlyCourseName(course.name),
                   primary: course.enrollments,
                   secondary: course.invited,
-                  note: `${course.members.toLocaleString('ar-EG')} مشترك في الكورس دلوقتي`,
+                  note: `${course.members.toLocaleString('en-US')} مشترك في الكورس دلوقتي`,
                 }))}
                 empty="مفيش كورسات"
                 primaryLabel="مشترك"
@@ -600,7 +621,7 @@ function ElearningAnalysis({ version }: { version: number }) {
                   name: point.label,
                   primary: point.enrollments,
                   secondary: point.invited,
-                  note: `${point.completed.toLocaleString('ar-EG')} أكملوا`,
+                  note: `${point.completed.toLocaleString('en-US')} أكملوا`,
                 }))}
                 empty="مفيش اشتراكات شهرية"
                 primaryLabel="مشترك"
@@ -633,7 +654,7 @@ function ElearningAnalysis({ version }: { version: number }) {
             <StatTile
               label="خلّصوا الكورس"
               value={totals.completed}
-              hint={totals.completionRate === null ? 'النسخة دي مش بتوفّر الرقم' : `${totals.completionRate.toLocaleString('ar-EG')}٪ من المشتركين`}
+              hint={totals.completionRate === null ? 'النسخة دي مش بتوفّر الرقم' : `${totals.completionRate.toLocaleString('en-US')}% من المشتركين`}
               tone={totals.completionRate !== null && totals.completionRate >= 50 ? 'good' : 'plain'}
               icon={<CheckCircle2 size={17} />}
             />
@@ -646,7 +667,7 @@ function ElearningAnalysis({ version }: { version: number }) {
           </div>
 
           <div className="grid gap-3 lg:grid-cols-2">
-            <ChartCard title="أكتر كورسات الناس خلّصتها" hint="بنحسب الكورسات اللي فيها ٥ مشتركين أو أكتر">
+            <ChartCard title="أكتر كورسات الناس خلّصتها" hint="بنحسب الكورسات اللي فيها 5 مشتركين أو أكتر">
               <BarList
                 data={data.topByCompletion.map((item) => ({ ...item, label: friendlyCourseName(item.label) }))}
                 empty="مفيش كورس عليه مشتركين كفاية"
@@ -688,7 +709,7 @@ function RevenueBreakdown({
         <div>
           <p className="text-[11px] font-bold text-ink-muted">كل اللي اتدفع في الأيام دي</p>
           <p className="mt-0.5 text-[11px] text-ink-faint">
-            {products.length.toLocaleString('ar-EG')} كورس دخل لهم فلوس من فواتير مدفوعة
+            {products.length.toLocaleString('en-US')} كورس دخل لهم فلوس من فواتير مدفوعة
           </p>
         </div>
         <strong className="text-[19px] font-black tabular-nums text-brand-800">
