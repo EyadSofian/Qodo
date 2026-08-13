@@ -129,6 +129,7 @@ test('default channels follow department visibility and Google login stays optio
     password: 'Member123!',
     role: 'member',
     department: 'marketing',
+    subteam: 'creative',
   });
   sales = await createUser({
     name: 'Sales Member',
@@ -150,6 +151,7 @@ test('default channels follow department visibility and Google login stays optio
   assert.ok(marketing.data.conversations.some((row) => row.id.endsWith(':announcements')));
   assert.ok(marketing.data.conversations.some((row) => row.department === 'marketing'));
   assert.equal(marketing.data.conversations.some((row) => row.department === 'sales'), false);
+  assert.equal(marketing.data.people.find((person) => person.id === member.id)?.subteam, 'creative');
 
   const admin = await request('/mail/bootstrap', { cookie: adminCookie });
   assert.ok(admin.data.conversations.some((row) => row.department === 'marketing'));

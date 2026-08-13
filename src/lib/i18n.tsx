@@ -652,8 +652,8 @@ const STRINGS = {
     en: 'This link lets you submit a join request; the account activates once an administrator approves it.',
   },
   'join.googleHint': {
-    ar: 'جوجل يثبت اسمك وإيميلك فقط؛ Qodo لا يقرأ Gmail ولا تحتاج لإنشاء كلمة مرور.',
-    en: 'Google verifies only your name and email. Qodo never reads Gmail, and you do not need a password.',
+    ar: 'استخدم حساب Google لإكمال اسمك وإيميلك والدخول بدون كلمة مرور جديدة.',
+    en: 'Use Google to complete your name and email and sign in without creating another password.',
   },
   'join.orPassword': { ar: 'أو أنشئ الحساب بكلمة مرور', en: 'or create it with a password' },
   'join.changeGoogle': { ar: 'تغيير', en: 'Change' },

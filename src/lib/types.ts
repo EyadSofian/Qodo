@@ -136,6 +136,7 @@ export interface MailPerson {
   email: string;
   title: string | null;
   department: string;
+  subteam: string | null;
   avatarColor: string;
   role: Role;
 }

@@ -598,6 +598,7 @@ function publicMailPerson(user) {
     email: user.email,
     title: user.title ?? null,
     department: user.department ?? 'general',
+    subteam: user.subteam ?? null,
     avatarColor: user.avatarColor ?? '#1D6FB8',
     role: user.role,
   };

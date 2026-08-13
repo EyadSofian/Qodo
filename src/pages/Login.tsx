@@ -157,8 +157,8 @@ export function Login() {
             <p className="mt-3 flex items-start justify-center gap-1.5 text-center text-[11px] leading-relaxed text-ink-faint">
               <LockKeyhole size={13} className="mt-0.5 shrink-0 text-status-ok" />
               {lang === 'en'
-                ? 'Google verifies your identity only. Qodo never reads your Gmail inbox.'
-                : 'جوجل يتحقق من هويتك فقط؛ Qodo لا يقرأ رسائل Gmail.'}
+                ? 'Google Workspace sign-in is ready for your Engosoft account.'
+                : 'تسجيل Google Workspace جاهز لحساب إنجوسوفت.'}
             </p>
           )}
 
