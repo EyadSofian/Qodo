@@ -49,6 +49,48 @@ def request_completion(base_url, api_key, payload, timeout):
         raise RuntimeError(f"endpoint returned HTTP {error.code}: {detail}") from error
 
 
+def json_response_format(case):
+    required = case.get("required_keys", [])
+    if required == ["items"]:
+        schema = {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "title": {"type": "string"},
+                            "details": {"type": "string"},
+                            "dueDate": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+                        },
+                        "required": ["title", "details", "dueDate"],
+                        "additionalProperties": False,
+                    },
+                }
+            },
+            "required": ["items"],
+            "additionalProperties": False,
+        }
+    else:
+        array_keys = set(case.get("array_keys", []))
+        schema = {
+            "type": "object",
+            "properties": {
+                key: {"type": "array", "items": {"type": "string"}}
+                if key in array_keys
+                else {"type": "string"}
+                for key in required
+            },
+            "required": required,
+            "additionalProperties": False,
+        }
+    return {
+        "type": "json_schema",
+        "json_schema": {"name": f"qodo_eval_{case['id'].replace('-', '_')}", "strict": True, "schema": schema},
+    }
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--base-url", default="http://127.0.0.1:8090/v1")
@@ -78,6 +120,10 @@ def main():
         }
         if case.get("profile", "workspace") == "workspace":
             payload["tools"] = tools
+        if case["kind"] == "json":
+            # Match production: Qodo Mail uses constrained JSON decoding so a
+            # quantized model cannot silently omit mandatory UI fields.
+            payload["response_format"] = json_response_format(case)
 
         started = time.perf_counter()
         response = request_completion(args.base_url, args.api_key, payload, args.timeout)

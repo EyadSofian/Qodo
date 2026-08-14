@@ -237,3 +237,28 @@ test('formal mail carries files and AI never runs without configuration', async 
   assert.equal(ai.status, 503);
   assert.equal(ai.data.error, 'mail_ai_not_configured');
 });
+
+test('mail AI defaults to 20 messages and keeps structured summaries bounded', async () => {
+  const { aiResponseFormat, normaliseAiMessageLimit, normaliseAiResult } = await import('./routes/mail.js');
+  assert.equal(normaliseAiMessageLimit(undefined), 20);
+  assert.equal(normaliseAiMessageLimit(2), 5);
+  assert.equal(normaliseAiMessageLimit(40), 40);
+  assert.equal(normaliseAiMessageLimit(500), 60);
+
+  const summary = normaliseAiResult('summary', {
+    headline: 'قرار إطلاق الحملة',
+    text: 'تم تحديد موعد الإطلاق.',
+    decisions: ['الإطلاق يوم 20 أغسطس'],
+    blockers: ['اعتماد الميزانية'],
+  });
+  assert.deepEqual(summary, {
+    headline: 'قرار إطلاق الحملة',
+    text: 'تم تحديد موعد الإطلاق.',
+    decisions: ['الإطلاق يوم 20 أغسطس'],
+    blockers: ['اعتماد الميزانية'],
+  });
+  const schema = aiResponseFormat('summary').json_schema.schema;
+  assert.deepEqual(schema.required, ['headline', 'text', 'decisions', 'blockers']);
+  assert.equal(schema.properties.decisions.type, 'array');
+  assert.equal(schema.additionalProperties, false);
+});

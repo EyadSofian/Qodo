@@ -23,12 +23,14 @@ summaries, reply drafts, action extraction and safe workspace tool routing.
 
 | File | Quantization | SHA-256 |
 | --- | --- | --- |
-| `qodo-ai-qwen3-1.7b-Q6_K.gguf` | Q6_K | `a6bbcb6e385818d647ffe0b2a737dd04ce4e18886e11c5ec173bec57c41943e4` |
+| `qodo-ai-qwen3-1.7b-Q6_K.gguf` | Q6_K | `697c94d83ee107c211802c4cd2c68335c0bf80507fd89739c96b67e73c8c6730` |
 
-The Q6_K artifact was selected after frozen-set evaluation. It scored 24/27
-(88.9%) with Metal and 23/27 (85.2%) in a CPU-only run. Every explicit write
-safety case passed. Local latency is hardware-specific; re-run the included
-endpoint evaluation before production traffic is enabled.
+The analysis-tuned Q6_K artifact was selected after expanded frozen-set
+evaluation. It scored 27/31 (87.1%) in an unconstrained CPU-only run and 28/31
+(90.3%) with Qodo's production JSON schemas; both 20-message summary cases
+passed. Every explicit write remains server-confirmed. Local latency is
+hardware-specific; re-run the included endpoint evaluation before production
+traffic is enabled.
 
 ## Intended use
 

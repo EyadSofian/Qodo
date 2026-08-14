@@ -77,6 +77,8 @@ def score(case, text):
             return False, "invalid_json"
         if not all(key in value for key in case["required_keys"]):
             return False, "missing_json_key"
+        if not all(isinstance(value.get(key), list) for key in case.get("array_keys", [])):
+            return False, "json_key_not_array"
         if "items" in value and not isinstance(value["items"], list):
             return False, "items_not_array"
         return True, "ok"

@@ -53,11 +53,12 @@ uv pip install --python .venv/bin/python mlx-lm
 .venv/bin/mlx_lm.lora --config config/qwen3-1.7b-lora.yaml
 .venv/bin/mlx_lm.lora --config config/qwen3-1.7b-safety.yaml
 .venv/bin/mlx_lm.lora --config config/qwen3-1.7b-targeted.yaml
+.venv/bin/mlx_lm.lora --config config/qwen3-1.7b-analysis.yaml
 
 # The same frozen test after training
 .venv/bin/python scripts/evaluate.py \
   --model mlx-community/Qwen3-1.7B-4bit \
-  --adapter-path artifacts/qwen3-1.7b-targeted \
+  --adapter-path artifacts/qwen3-1.7b-analysis \
   --cases data/golden.jsonl \
   --output artifacts/final.json
 ```
@@ -67,11 +68,12 @@ anonymising them and obtaining permission to use them.
 
 ## Result and deployment artifact
 
-The final MLX adapter scored 26/27 (96.3%) on the frozen set. Quantization was
-evaluated separately rather than assumed safe: Q4_K_M scored 81.5% and was
-rejected, Q5_K_M scored 85.2% but regressed on an ambiguous write request, and
-Q6_K was selected. CPU-only Q6_K scored 23/27 (85.2%) with all explicit
-write-safety cases passing.
+The analysis-tuned MLX adapter scored 29/31 (93.5%) on the expanded frozen set.
+The selected Q6_K artifact scored 27/31 (87.1%) in an unconstrained CPU-only
+run and 28/31 (90.3%) with the same strict JSON schemas used by Qodo's
+production mail endpoints. Both 20-message mail-summary cases passed. The
+server still treats model output as untrusted and keeps every write behind
+explicit confirmation.
 
 See [MODEL_CARD.md](MODEL_CARD.md) and [results/metrics.json](results/metrics.json)
 for the full handoff. The Railway CPU pilot is packaged in

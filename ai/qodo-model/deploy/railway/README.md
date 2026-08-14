@@ -12,7 +12,7 @@ or object store, then configure the model service:
 ```dotenv
 PORT=8080
 QODO_MODEL_URL=https://your-model-host/qodo-ai-qwen3-1.7b-Q6_K.gguf
-QODO_MODEL_SHA256=a6bbcb6e385818d647ffe0b2a737dd04ce4e18886e11c5ec173bec57c41943e4
+QODO_MODEL_SHA256=697c94d83ee107c211802c4cd2c68335c0bf80507fd89739c96b67e73c8c6730
 QODO_MODEL_ID=qodo-ai-qwen3-1.7b
 QODO_SERVER_API_KEY=generate-a-long-random-secret
 QODO_CTX_SIZE=4096

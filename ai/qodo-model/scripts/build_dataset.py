@@ -78,7 +78,7 @@ def tool_answer(system, tools, user, name, arguments, result, response):
 
 def mail_sample(action, transcript, response, variant=0):
     instruction = {
-        "summary": 'Summarize decisions, blockers, owners, and deadlines. Return JSON exactly as {"text":"..."}.',
+        "summary": 'Summarize only the supplied messages. Return JSON exactly as {"headline":"...","text":"...","decisions":["..."],"blockers":["..."]}. All four keys are mandatory; decisions and blockers must always be arrays, including when empty. Never infer facts.',
         "reply": 'Draft one concise professional reply. Never claim an action was completed. Return JSON exactly as {"text":"..."}.',
         "actions": 'Extract only explicit actions. Return JSON as {"items":[{"title":"...","details":"...","dueDate":"YYYY-MM-DD or null"}]}. Never invent owners or dates.',
     }[action]
@@ -418,17 +418,17 @@ def build_examples():
     ]
     mail_outputs = [
         (
-            '{"text":"المطلوب من أحمد تجهيز العرض النهائي يوم الخميس. العائق الحالي هو انتظار الأسعار من المالية."}',
+            '{"headline":"العرض متوقف على أسعار المالية","text":"المطلوب من أحمد تجهيز العرض النهائي يوم الخميس.","decisions":[],"blockers":["انتظار الأسعار من المالية"]}',
             '{"text":"تمام، سأتابع مع المالية للحصول على الأسعار وتجهيز العرض النهائي قبل الخميس."}',
             '{"items":[{"title":"تجهيز العرض النهائي","details":"متابعة الأسعار مع المالية ثم إنهاء العرض.","dueDate":null}]}',
         ),
         (
-            '{"text":"Salma requested a landing-page update by 2026-08-18. Omar is blocked until design sends the assets."}',
+            '{"headline":"Landing-page update due 2026-08-18","text":"Salma requested the update and Omar will start after receiving the assets.","decisions":[],"blockers":["Design assets have not arrived"]}',
             '{"text":"Got it. I’ll coordinate with design for the assets and prepare the landing-page update for review."}',
             '{"items":[{"title":"Update the landing page","details":"Start after receiving the design assets.","dueDate":"2026-08-18"}]}',
         ),
         (
-            '{"text":"العميل أبلغ عن توقف الخدمة منذ الصباح. فريق الدعم صعّد المشكلة للعمليات وينتظر التشخيص."}',
+            '{"headline":"توقف الخدمة مُصعّد للعمليات","text":"العميل أبلغ عن توقف الخدمة منذ الصباح وفريق الدعم ينتظر التشخيص.","decisions":["تصعيد المشكلة لفريق العمليات"],"blockers":["لم يكتمل التشخيص بعد"]}',
             '{"text":"نعتذر عن التعطل. تم تصعيد المشكلة لفريق العمليات وسنشاركك بالتحديث فور اكتمال التشخيص."}',
             '{"items":[{"title":"تشخيص توقف الخدمة","details":"فحص سبب التوقف وإرسال تحديث لفريق الدعم.","dueDate":null}]}',
         ),
@@ -438,6 +438,65 @@ def build_examples():
             samples.append(mail_sample("summary", transcript, outputs[0], variant))
             samples.append(mail_sample("reply", transcript, outputs[1], variant))
             samples.append(mail_sample("actions", transcript, outputs[2], variant))
+
+    # Long-context summaries teach the exact product behaviour: the server
+    # supplies the selected tail (20 by default), and the model must ignore
+    # chatter while preserving only explicit decisions and blockers.
+    long_mail_sets = [
+        (
+            [
+                {"author": "منى", "body": "صباح الخير يا تيم."},
+                {"author": "Eyad", "body": "صباح النور، هنراجع إطلاق سبتمبر."},
+                {"author": "أحمد", "body": "الأرقام المبدئية وصلت."},
+                {"author": "منى", "body": "لسه مستنيين التصميم النهائي."},
+                {"author": "سارة", "body": "الـ copy خلص وداخل review."},
+                {"author": "Eyad", "body": "الـ landing page جاهزة 80%."},
+                {"author": "أحمد", "body": "الميزانية المقترحة 50000 جنيه."},
+                {"author": "منى", "body": "هل الرقم اتعتمد؟"},
+                {"author": "أحمد", "body": "لا، لسه موافقة المدير المالي."},
+                {"author": "سارة", "body": "صور الحملة لسه ماوصلتش."},
+                {"author": "Eyad", "body": "محتاجها قبل ما أقفل الصفحة."},
+                {"author": "منى", "body": "خلي الإطلاق يوم 2026-09-20."},
+                {"author": "أحمد", "body": "موافق على الموعد."},
+                {"author": "سارة", "body": "هسلّم النص النهائي 2026-09-17."},
+                {"author": "Eyad", "body": "وأنا هسلّم الصفحة 2026-09-18."},
+                {"author": "منى", "body": "قرار نهائي: لا صرف قبل اعتماد المالية."},
+                {"author": "أحمد", "body": "هتابع الاعتماد النهاردة."},
+                {"author": "سارة", "body": "محتاجين كمان مقاسات Snapchat."},
+                {"author": "Eyad", "body": "تمام، ضيفوها مع ملفات التصميم."},
+                {"author": "منى", "body": "نبعت تحديث بكرة الساعة 12."},
+            ],
+            '{"headline":"إطلاق سبتمبر يوم 20 سبتمبر مع إيقاف الصرف لحين الاعتماد","text":"سارة ستسلّم النص يوم 17 سبتمبر وEyad سيسلّم الـ landing page يوم 18 سبتمبر. أحمد سيتابع اعتماد الميزانية، والتحديث التالي غداً الساعة 12.","decisions":["الإطلاق يوم 2026-09-20","لا صرف قبل اعتماد المالية"],"blockers":["اعتماد المدير المالي للميزانية","صور الحملة ومقاسات Snapchat لم تصل"]}',
+        ),
+        (
+            [
+                {"author": "Support", "body": "We have 12 open conversations."},
+                {"author": "Ops", "body": "Morning team."},
+                {"author": "Support", "body": "Five are waiting on operations."},
+                {"author": "Ops", "body": "Which issue is highest impact?"},
+                {"author": "Support", "body": "Payment checkout affects three clients."},
+                {"author": "Ops", "body": "Logs show timeouts from the provider."},
+                {"author": "Manager", "body": "Do not claim it is fixed yet."},
+                {"author": "Ops", "body": "Understood."},
+                {"author": "Support", "body": "Two SLA breaches already."},
+                {"author": "Manager", "body": "Decision: payment incident is P1."},
+                {"author": "Ops", "body": "I will contact the provider by 10:30."},
+                {"author": "Support", "body": "We need a client update."},
+                {"author": "Manager", "body": "Send a status draft at 11:00, not a resolution notice."},
+                {"author": "Ops", "body": "Provider acknowledged the ticket."},
+                {"author": "Support", "body": "No ETA yet."},
+                {"author": "Manager", "body": "Keep the incident open."},
+                {"author": "Ops", "body": "Monitoring continues."},
+                {"author": "Support", "body": "One client asked for a callback."},
+                {"author": "Manager", "body": "Support owns the callback."},
+                {"author": "Support", "body": "Confirmed."},
+            ],
+            '{"headline":"Payment checkout incident is P1 and remains open","text":"Operations will contact the provider by 10:30. Support will prepare a status-only client draft at 11:00 and owns the requested callback.","decisions":["Treat the payment incident as P1","Keep the incident open","Send a status draft, not a resolution notice"],"blockers":["Provider timeouts","No resolution ETA"]}',
+        ),
+    ]
+    for transcript, output in long_mail_sets:
+        for variant in range(5):
+            samples.append(mail_sample("summary", transcript, output, variant))
 
     random.Random(SEED).shuffle(samples)
     unique = []

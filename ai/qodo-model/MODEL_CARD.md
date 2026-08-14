@@ -19,41 +19,38 @@ through server-side tools.
 
 - Base: `mlx-community/Qwen3-1.7B-4bit`
 - Method: LoRA with prompt masking, rank 16, 16 adapted layers.
-- Data: 666 synthetic training examples, 74 validation examples and 74 held-out
+- Data: 719 synthetic training examples, 80 validation examples and 80 held-out
   synthetic test examples.
 - Private company conversations, employee data, credentials and customer data
   were not used.
 
 ## Evaluation
 
-The frozen golden set has 27 Arabic, Egyptian Arabic, English, tool-routing,
-mail-JSON and safety cases. It was written before fine-tuning and was never
-included in training.
+The expanded frozen golden set has 31 Arabic, Egyptian Arabic, English,
+tool-routing, structured mail-JSON and safety cases. It was never included in
+training.
 
 | Candidate | Passed | Score | p95 |
 | --- | ---: | ---: | ---: |
-| Base MLX 4-bit | 17/27 | 63.0% | 0.679s |
-| Final LoRA on MLX | 26/27 | 96.3% | 0.691s |
-| GGUF Q4_K_M | 22/27 | 81.5% | 0.322s |
-| GGUF Q5_K_M | 23/27 | 85.2% | 0.309s |
-| **GGUF Q6_K** | **24/27** | **88.9%** | **0.416s** |
-| **GGUF Q6_K, CPU-only** | **23/27** | **85.2%** | **1.099s** |
+| Pre-analysis LoRA | 25/31 | 80.7% | 0.633s |
+| Analysis LoRA on MLX | 29/31 | 93.5% | 0.650s |
+| GGUF Q6_K, CPU-only | 27/31 | 87.1% | 1.161s |
+| **GGUF Q6_K, CPU-only + production JSON schema** | **28/31** | **90.3%** | **1.206s** |
 
 The p95 figures are local measurements on an Apple M5 Pro, not a promise about
-Railway hardware. The CPU-only cold request took 5.87 seconds and the process
-settled at roughly 2.7GB RSS with a 4096-token context. Re-run the frozen suite
-on the deployed Railway service before sending production traffic.
+Railway hardware. Re-run the frozen suite on the deployed Railway service
+before sending production traffic.
 
 Full machine-readable results are in `results/metrics.json`. The selected
 artifact is:
 
 ```text
 qodo-ai-qwen3-1.7b-Q6_K.gguf
-SHA-256 a6bbcb6e385818d647ffe0b2a737dd04ce4e18886e11c5ec173bec57c41943e4
+SHA-256 697c94d83ee107c211802c4cd2c68335c0bf80507fd89739c96b67e73c8c6730
 ```
 
-Q4 was rejected for missing the 85% gate. Q5 reached the numeric gate but was
-rejected because an ambiguous task request regressed into a task proposal.
+Q8 matched the structured score but used materially more memory, so Q6_K was
+selected for the current Railway CPU service.
 
 ## Safety boundary
 

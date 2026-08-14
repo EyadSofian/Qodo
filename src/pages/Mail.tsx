@@ -6,6 +6,7 @@ import {
   useState,
   type ChangeEvent,
   type FormEvent,
+  type ReactNode,
 } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
@@ -53,7 +54,13 @@ import type {
 type Filter = 'inbox' | MailConversationKind;
 type AiAction = 'summary' | 'reply' | 'actions';
 type RecipientView = 'people' | 'departments' | 'teams';
-type AiResult = { text: string } | { items: AiActionItem[] };
+type AiTextResult = {
+  text: string;
+  headline?: string;
+  decisions?: string[];
+  blockers?: string[];
+};
+type AiResult = AiTextResult | { items: AiActionItem[] };
 type AiActionItem = { title: string; details: string; dueDate: string | null };
 
 const POLL_MS = 15_000;
@@ -337,8 +344,9 @@ export function Mail() {
                 lang={lang}
                 dir={dir}
                 aiAvailable={bootstrap.aiAvailable}
+                aiOpen={aiOpen}
                 onBack={() => setMobileThread(false)}
-                onAi={() => setAiOpen(true)}
+                onAi={() => setAiOpen((value) => !value)}
               />
 
               <div className="relative flex min-h-0 flex-1 flex-col">
@@ -356,6 +364,36 @@ export function Mail() {
                     setReplyTo(message);
                     composer.current?.focus();
                   }}
+                  aiOpen={aiOpen}
+                  afterMessages={aiOpen ? (
+                    <AiStoryCard
+                      conversation={selected}
+                      lang={lang}
+                      available={bootstrap.aiAvailable}
+                      canCreateTask={can(PERMISSIONS.TASKS_CREATE)}
+                      onClose={() => setAiOpen(false)}
+                      onUseReply={(text) => {
+                        setDraft(text);
+                        setAiOpen(false);
+                        requestAnimationFrame(() => composer.current?.focus());
+                      }}
+                      onCreateTask={async (item) => {
+                        if (!user) return;
+                        if (!window.confirm(c.confirmTask.replace('{title}', item.title))) return;
+                        try {
+                          await api.post('/tasks', {
+                            title: item.title,
+                            description: item.details,
+                            dueDate: item.dueDate,
+                            department: user.department,
+                          });
+                          toast(c.taskCreated);
+                        } catch (error) {
+                          toast(errorMessage(error, lang), 'bad');
+                        }
+                      }}
+                    />
+                  ) : null}
                 />
 
                 <Composer
@@ -373,36 +411,6 @@ export function Mail() {
                   inputRef={composer}
                   lang={lang}
                 />
-
-                {aiOpen && (
-                  <AiDrawer
-                    conversation={selected}
-                    lang={lang}
-                    available={bootstrap.aiAvailable}
-                    canCreateTask={can(PERMISSIONS.TASKS_CREATE)}
-                    onClose={() => setAiOpen(false)}
-                    onUseReply={(text) => {
-                      setDraft(text);
-                      setAiOpen(false);
-                      requestAnimationFrame(() => composer.current?.focus());
-                    }}
-                    onCreateTask={async (item) => {
-                      if (!user) return;
-                      if (!window.confirm(c.confirmTask.replace('{title}', item.title))) return;
-                      try {
-                        await api.post('/tasks', {
-                          title: item.title,
-                          description: item.details,
-                          dueDate: item.dueDate,
-                          department: user.department,
-                        });
-                        toast(c.taskCreated);
-                      } catch (error) {
-                        toast(errorMessage(error, lang), 'bad');
-                      }
-                    }}
-                  />
-                )}
               </div>
             </>
           ) : (
@@ -651,6 +659,7 @@ function ThreadHeader({
   lang,
   dir,
   aiAvailable,
+  aiOpen,
   onBack,
   onAi,
 }: {
@@ -660,6 +669,7 @@ function ThreadHeader({
   lang: 'ar' | 'en';
   dir: 'rtl' | 'ltr';
   aiAvailable: boolean;
+  aiOpen: boolean;
   onBack: () => void;
   onAi: () => void;
 }) {
@@ -682,8 +692,24 @@ function ThreadHeader({
           {conversation.kind !== 'channel' && <>{conversation.memberIds.length} {c.participants}</>}
         </p>
       </div>
-      <button type="button" onClick={onAi} aria-label="Qodo AI" className={cx('btn !min-h-10 rounded-xl px-3.5 text-[11.5px] font-extrabold', aiAvailable ? 'bg-gradient-to-r from-brand-500 to-[#2AA7F0] text-white shadow-[0_10px_24px_-14px_rgba(29,111,184,.9)] hover:brightness-105' : 'bg-brand-50 text-brand-600')}>
-        <WandSparkles size={15} /> <span className="hidden sm:inline">Qodo AI</span>
+      <button
+        type="button"
+        onClick={onAi}
+        aria-label="Qodo AI"
+        aria-expanded={aiOpen}
+        className={cx(
+          'flex min-h-9 items-center gap-2 rounded-full border px-2 pe-3 text-[10.5px] font-extrabold transition-all',
+          aiOpen
+            ? 'border-navy bg-navy text-white shadow-md'
+            : aiAvailable
+              ? 'border-brand-200 bg-white text-brand-700 shadow-sm hover:border-brand-300 hover:bg-brand-50'
+              : 'border-surface-line bg-surface-sunken text-ink-faint'
+        )}
+      >
+        <span className={cx('grid h-7 w-7 place-items-center rounded-full', aiOpen ? 'bg-white/10' : 'bg-gradient-to-br from-brand-500 to-cyan-400 text-white')}>
+          <WandSparkles size={13} />
+        </span>
+        <span className="hidden sm:inline">Qodo AI</span>
       </button>
     </header>
   );
@@ -700,6 +726,8 @@ function MessageTimeline({
   loadingMore,
   onLoadMore,
   onReply,
+  aiOpen,
+  afterMessages,
 }: {
   conversation: MailConversation;
   messages: MailMessage[];
@@ -711,6 +739,8 @@ function MessageTimeline({
   loadingMore: boolean;
   onLoadMore: () => void;
   onReply: (message: MailMessage) => void;
+  aiOpen: boolean;
+  afterMessages?: ReactNode;
 }) {
   const c = copy(lang);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -718,7 +748,7 @@ function MessageTimeline({
   useEffect(() => {
     if (!lastId) return;
     requestAnimationFrame(() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' }));
-  }, [lastId]);
+  }, [lastId, aiOpen]);
 
   if (loading) return <div className="grid flex-1 place-items-center"><Spinner className="text-brand-500" /></div>;
   if (!messages.length) return <EmptyState icon={<MessageCircle size={30} />} title={c.startConversation} body={c.startConversationBody} />;
@@ -743,6 +773,7 @@ function MessageTimeline({
             </div>
           );
         })}
+        {afterMessages}
       </div>
     </div>
   );
@@ -1024,7 +1055,7 @@ function RecipientGroupRow({
   );
 }
 
-function AiDrawer({
+function AiStoryCard({
   conversation,
   lang,
   available,
@@ -1046,25 +1077,116 @@ function AiDrawer({
   const [result, setResult] = useState<AiResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const run = async (next: AiAction) => {
-    setAction(next); setBusy(true); setError(''); setResult(null);
+  const [messageLimit, setMessageLimit] = useState(20);
+  const [inputMessages, setInputMessages] = useState(0);
+
+  const run = useCallback(async (next: AiAction, limit: number) => {
+    setAction(next);
+    setBusy(true);
+    setError('');
+    setResult(null);
     try {
-      const data = await api.post<{ result: AiResult }>(`/mail/conversations/${encodeURIComponent(conversation.id)}/ai`, { action: next, lang });
+      const data = await api.post<{ result: AiResult; inputMessages: number }>(
+        `/mail/conversations/${encodeURIComponent(conversation.id)}/ai`,
+        { action: next, lang, messageLimit: limit }
+      );
       setResult(data.result);
+      setInputMessages(data.inputMessages);
     } catch (err) { setError(errorMessage(err, lang)); }
     finally { setBusy(false); }
+  }, [conversation.id, lang]);
+
+  useEffect(() => {
+    setMessageLimit(20);
+    setInputMessages(0);
+    if (available) void run('summary', 20);
+  }, [available, conversation.id, run]); // One automatic summary when this card opens.
+
+  const switchLimit = (limit: number) => {
+    setMessageLimit(limit);
+    void run(action, limit);
   };
+
   return (
-    <aside className="absolute inset-y-0 end-0 z-20 flex w-full flex-col border-s border-white/70 bg-[linear-gradient(180deg,rgba(248,251,255,.94),rgba(237,245,252,.94))] shadow-[-28px_0_70px_-36px_rgba(11,37,69,.6)] backdrop-blur-2xl animate-fade-up sm:w-[410px]">
-      <header className="relative overflow-hidden border-b border-white/10 bg-navy px-4 py-5 text-white"><span className="pointer-events-none absolute -end-8 -top-10 h-32 w-32 rounded-full bg-brand-500/35 blur-2xl" /><div className="relative flex items-center gap-3"><span className="grid h-10 w-10 place-items-center rounded-[14px] border border-white/15 bg-white/10 text-white shadow-inner"><Bot size={19} /></span><div className="min-w-0 flex-1"><h2 className="text-[14px] font-extrabold">Qodo AI</h2><p className="mt-0.5 text-[10px] text-white/55">{c.aiLastMessages}</p></div><button type="button" onClick={onClose} aria-label={c.close} className="grid h-9 w-9 place-items-center rounded-xl text-white/60 transition hover:bg-white/10 hover:text-white"><X size={17} /></button></div></header>
-      <div className="grid grid-cols-3 gap-1 border-b border-surface-line p-2">
-        {([['summary', c.summarize, Sparkles], ['reply', c.suggestReply, Reply], ['actions', c.extractActions, ListTodo]] as Array<[AiAction, string, typeof Sparkles]>).map(([id, label, Icon]) => <button key={id} type="button" onClick={() => run(id)} disabled={!available || busy} className={cx('flex min-h-16 flex-col items-center justify-center gap-1 rounded-xl px-1 text-center text-[9.5px] font-bold transition disabled:opacity-45', action === id && result ? 'bg-brand-50 text-brand-600' : 'text-ink-muted hover:bg-surface-sunken')}><Icon size={16} />{label}</button>)}
+    <section className="relative mt-3 overflow-hidden rounded-[25px] bg-[linear-gradient(135deg,#1d6fb8,#27b7ef_46%,#0b2545)] p-[2px] shadow-[0_22px_60px_-34px_rgba(11,37,69,.65)] animate-fade-up">
+      <div className="relative overflow-hidden rounded-[23px] bg-white/90 backdrop-blur-2xl">
+        <span className="pointer-events-none absolute -end-12 -top-16 h-44 w-44 rounded-full bg-cyan-300/20 blur-3xl" />
+        <header className="relative flex items-center gap-3 border-b border-surface-line/70 px-4 py-3.5">
+          <span className="relative grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[conic-gradient(from_30deg,#1d6fb8,#2ac6ef,#f5821f,#1d6fb8)] p-[2px]">
+            <span className="grid h-full w-full place-items-center rounded-full border-2 border-white bg-navy text-white"><Bot size={17} /></span>
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <h2 className="text-[12.5px] font-extrabold text-ink">Qodo AI</h2>
+              <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[8.5px] font-extrabold text-emerald-700">{c.aiInsideChat}</span>
+            </div>
+            <p className="mt-0.5 text-[9.5px] text-ink-faint">
+              {inputMessages > 0
+                ? c.aiAnalysedCount.replace('{count}', String(inputMessages))
+                : c.aiLastCount.replace('{count}', String(messageLimit))}
+            </p>
+          </div>
+          <button type="button" onClick={onClose} aria-label={c.close} className="grid h-8 w-8 place-items-center rounded-full text-ink-faint transition hover:bg-surface-sunken hover:text-ink"><X size={15} /></button>
+        </header>
+
+        <div className="relative grid grid-cols-3 gap-1.5 px-3 pt-3">
+          {([['summary', c.summarize, Sparkles], ['reply', c.suggestReply, Reply], ['actions', c.extractActions, ListTodo]] as Array<[AiAction, string, typeof Sparkles]>).map(([id, label, Icon]) => (
+            <button key={id} type="button" onClick={() => run(id, messageLimit)} disabled={!available || busy} className={cx('flex min-h-10 items-center justify-center gap-1.5 rounded-xl border px-2 text-[9.5px] font-extrabold transition disabled:opacity-45', action === id ? 'border-brand-200 bg-brand-50 text-brand-700' : 'border-transparent bg-surface-sunken/70 text-ink-muted hover:bg-white hover:text-ink')}><Icon size={13} />{label}</button>
+          ))}
+        </div>
+
+        <div className="relative flex items-center gap-2 px-3 py-2.5">
+          <span className="text-[9px] font-bold text-ink-faint">{c.aiMessageRange}</span>
+          <div className="flex gap-1 rounded-full bg-surface-sunken p-1">
+            {[10, 20, 40, 60].map((limit) => (
+              <button key={limit} type="button" onClick={() => switchLimit(limit)} disabled={busy} className={cx('ltr min-w-8 rounded-full px-2 py-1 text-[8.5px] font-extrabold transition', messageLimit === limit ? 'bg-white text-brand-700 shadow-sm' : 'text-ink-faint hover:text-ink')}>{limit}</button>
+            ))}
+          </div>
+        </div>
+
+        <div className="relative border-t border-surface-line/60 px-4 py-4">
+          {!available ? (
+            <EmptyState icon={<WandSparkles size={25} />} title={c.aiUnavailable} body={c.aiUnavailableBody} />
+          ) : busy ? (
+            <div className="flex min-h-28 items-center justify-center gap-3 text-center"><span className="grid h-10 w-10 place-items-center rounded-2xl bg-brand-50 text-brand-600"><Spinner size={18} /></span><div className="text-start"><p className="text-[11.5px] font-bold text-ink">{c.aiWorking}</p><p className="mt-0.5 text-[9.5px] text-ink-faint">{c.aiNoAction}</p></div></div>
+          ) : error ? (
+            <p className="rounded-xl bg-status-badBg p-3 text-[11px] font-semibold text-status-bad">{error}</p>
+          ) : result && 'text' in result ? (
+            <AiTextCard result={result} action={action} lang={lang} onUseReply={onUseReply} />
+          ) : result && 'items' in result ? (
+            <div className="grid gap-2.5">{result.items.length ? result.items.map((item, index) => <article key={`${item.title}-${index}`} className="rounded-2xl border border-surface-line bg-white p-3.5 shadow-sm"><div className="flex items-start gap-2"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-brand-50 text-[10px] font-extrabold text-brand-600">{index + 1}</span><div className="min-w-0 flex-1"><h3 className="text-[11.5px] font-extrabold text-ink">{item.title}</h3>{item.details && <p className="mt-1 text-[10.5px] leading-relaxed text-ink-muted">{item.details}</p>}{item.dueDate && <span className="ltr mt-2 inline-block rounded-full bg-status-warnBg px-2 py-1 text-[9px] font-bold text-status-warn">{item.dueDate}</span>}</div></div>{canCreateTask && <button type="button" onClick={() => onCreateTask(item)} className="mt-3 flex min-h-8 w-full items-center justify-center gap-1.5 rounded-lg border border-brand-200 text-[10px] font-bold text-brand-600 hover:bg-brand-50"><Plus size={12} />{c.createTask}</button>}</article>) : <EmptyState icon={<ListTodo size={25} />} title={c.noActions} body={c.noActionsBody} />}</div>
+          ) : null}
+        </div>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        {!available ? <EmptyState icon={<WandSparkles size={27} />} title={c.aiUnavailable} body={c.aiUnavailableBody} /> : busy ? <div className="flex h-full flex-col items-center justify-center gap-3 text-center"><span className="grid h-12 w-12 place-items-center rounded-2xl bg-brand-50 text-brand-600"><Spinner size={21} /></span><p className="text-[12px] font-bold text-ink">{c.aiWorking}</p><p className="max-w-[240px] text-[10.5px] leading-relaxed text-ink-faint">{c.aiNoAction}</p></div> : error ? <p className="rounded-xl bg-status-badBg p-3 text-[11.5px] font-semibold text-status-bad">{error}</p> : result && 'text' in result ? <div className="ai-glass-card overflow-hidden"><div className="flex items-center gap-2 border-b border-white/70 bg-white/35 px-4 py-3 text-[10px] font-extrabold text-brand-700"><Sparkles size={14} />{action === 'summary' ? c.summarize : c.suggestReply}</div><p className="whitespace-pre-wrap px-4 py-4 text-[12.5px] leading-7 text-ink">{result.text}</p>{action === 'reply' && <div className="px-4 pb-4"><button type="button" onClick={() => onUseReply(result.text)} className="flex min-h-9 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-brand-500 to-brand-700 px-3 text-[11px] font-bold text-white"><Reply size={14} />{c.useReply}</button></div>}</div> : result && 'items' in result ? <div className="grid gap-2.5">{result.items.length ? result.items.map((item, index) => <article key={`${item.title}-${index}`} className="ai-glass-card p-3.5"><div className="flex items-start gap-2"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-brand-50 text-[10px] font-extrabold text-brand-600">{index + 1}</span><div className="min-w-0 flex-1"><h3 className="text-[11.5px] font-extrabold text-ink">{item.title}</h3>{item.details && <p className="mt-1 text-[10.5px] leading-relaxed text-ink-muted">{item.details}</p>}{item.dueDate && <span className="ltr mt-2 inline-block rounded-full bg-status-warnBg px-2 py-1 text-[9px] font-bold text-status-warn">{item.dueDate}</span>}</div></div>{canCreateTask && <button type="button" onClick={() => onCreateTask(item)} className="mt-3 flex min-h-8 w-full items-center justify-center gap-1.5 rounded-lg border border-brand-200 text-[10px] font-bold text-brand-600 hover:bg-brand-50"><Plus size={12} />{c.createTask}</button>}</article>) : <EmptyState icon={<ListTodo size={25} />} title={c.noActions} body={c.noActionsBody} />}</div> : <EmptyState icon={<WandSparkles size={28} />} title={c.aiChoose} body={c.aiChooseBody} />}
-      </div>
-      <footer className="border-t border-white/80 bg-white/45 px-4 py-3 text-[9.5px] leading-relaxed text-ink-muted backdrop-blur-xl"><Sparkles size={11} className="me-1 inline text-brand-500" />{c.aiPrivacy}</footer>
-    </aside>
+    </section>
+  );
+}
+
+function AiTextCard({ result, action, lang, onUseReply }: { result: AiTextResult; action: AiAction; lang: 'ar' | 'en'; onUseReply: (text: string) => void }) {
+  const c = copy(lang);
+  const decisions = result.decisions ?? [];
+  const blockers = result.blockers ?? [];
+  return (
+    <article>
+      {result.headline && <h3 className="text-[14px] font-extrabold leading-relaxed text-ink">{result.headline}</h3>}
+      <p className={cx('whitespace-pre-wrap text-[12px] leading-7 text-ink', result.headline && 'mt-2')}>{result.text}</p>
+      {(decisions.length > 0 || blockers.length > 0) && (
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          {decisions.length > 0 && <AiFactList title={c.aiDecisions} items={decisions} tone="decision" />}
+          {blockers.length > 0 && <AiFactList title={c.aiBlockers} items={blockers} tone="blocker" />}
+        </div>
+      )}
+      {action === 'reply' && <button type="button" onClick={() => onUseReply(result.text)} className="mt-4 flex min-h-9 w-full items-center justify-center gap-2 rounded-xl bg-navy px-3 text-[10.5px] font-bold text-white"><Reply size={13} />{c.useReply}</button>}
+    </article>
+  );
+}
+
+function AiFactList({ title, items, tone }: { title: string; items: string[]; tone: 'decision' | 'blocker' }) {
+  return (
+    <section className={cx('rounded-2xl border p-3', tone === 'decision' ? 'border-emerald-100 bg-emerald-50/70' : 'border-amber-100 bg-amber-50/70')}>
+      <h4 className={cx('text-[9.5px] font-extrabold', tone === 'decision' ? 'text-emerald-800' : 'text-amber-800')}>{title}</h4>
+      <ul className="mt-1.5 grid gap-1.5">{items.map((item, index) => <li key={`${item}-${index}`} className="flex gap-1.5 text-[9.5px] leading-relaxed text-ink-muted"><span className={cx('mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full', tone === 'decision' ? 'bg-emerald-500' : 'bg-amber-500')} />{item}</li>)}</ul>
+    </section>
   );
 }
 
@@ -1108,11 +1230,11 @@ function copy(lang: 'ar' | 'en') {
 const AR = {
   officialMail: 'الرسائل الرسمية', privateChats: 'المحادثات الخاصة', emptyGroup: 'لا يوجد شيء هنا بعد.',
   from: 'من', to: 'إلى', currentAccount: 'حسابك الحالي', senderAccount: 'حساب المرسل', individuals: 'أفراد', groups: 'أقسام', teams: 'تيمات', selectedCount: '{count} محدد', searchGroups: 'ابحث في الأقسام والتيمات…', noGroups: 'لا توجد أقسام مطابقة.', noTeams: 'لا توجد تيمات مطابقة.',
-  inbox: 'الوارد', mail: 'الرسائل', channels: 'القنوات', channel: 'قناة', direct: 'المحادثات', close: 'إغلاق', internalWorkspace: 'مساحة تواصل إنجوسوفت', communicationHub: 'صندوق التواصل', workspaceSignature: 'البريد والقنوات والعمل في مكان واحد', newMessage: 'رسالة جديدة', search: 'ابحث في الرسائل والقنوات…', noMessages: 'لا توجد رسائل بعد', noConversations: 'لا توجد محادثات', noConversationsBody: 'ابدأ رسالة أو محادثة جديدة مع فريقك.', back: 'رجوع', announcementsOnly: 'قناة إعلانات', teamChannel: 'قناة القسم', publicChannelShort: 'قناة عامة لكل الشركة', privateChannelShort: 'قناة خاصة', members: 'أعضاء', participants: 'مشاركون', chooseConversation: 'اختر محادثة', chooseConversationBody: 'اختر رسالة أو قناة من القائمة للبدء.', olderMessages: 'عرض رسائل أقدم', loading: 'جارٍ التحميل…', startConversation: 'ابدأ المحادثة', startConversationBody: 'أرسل أول رسالة أو ملف هنا.', removedUser: 'مستخدم غير متاح', reply: 'رد', attach: 'إرفاق ملف', send: 'إرسال', writeReply: 'اكتب ردك…', writeMessage: 'اكتب رسالة…', readOnlyChannel: 'هذه قناة إعلانات؛ الكتابة متاحة للمديرين.', newConversation: 'بدء تواصل جديد', cancel: 'إلغاء', createChannel: 'إنشاء القناة', openChat: 'فتح المحادثة', channelName: 'اسم القناة', description: 'الوصف', channelAccess: 'من يمكنه رؤية القناة؟', departmentChannel: 'القسم', privateChannel: 'خاصة', publicChannel: 'الشركة كلها', announcementChannel: 'قناة إعلانات: المديرون يكتبون والموظفون يقرؤون', subject: 'عنوان الرسالة', message: 'الرسالة', attachments: 'المرفقات', choosePerson: 'اختر موظفًا', recipients: 'المستلمون', searchPeople: 'ابحث بالاسم أو الإيميل…', aiLastMessages: 'مساعد مساحة العمل', summarize: 'تلخيص', suggestReply: 'اقتراح رد', extractActions: 'استخراج مهام', aiUnavailable: 'Qodo AI قيد التجهيز', aiUnavailableBody: 'سيظهر مساعد المحادثة هنا فور اكتمال تشغيله.', aiWorking: 'Qodo AI يحضّر النتيجة…', aiNoAction: 'النتيجة ستكون جاهزة للمراجعة والاستخدام.', useReply: 'استخدام الرد في المحرر', createTask: 'إنشاء مهمة', noActions: 'لا توجد إجراءات واضحة', noActionsBody: 'لم يجد AI طلبات تنفيذ صريحة في المحادثة.', aiChoose: 'ماذا تريد من Qodo AI؟', aiChooseBody: 'لخّص المحادثة، حضّر ردًا، أو حوّل نقاط العمل إلى مهام.', aiPrivacy: 'راجع النتيجة واستخدمها في المحادثة أو حوّلها إلى مهمة.', confirmTask: 'إنشاء مهمة بعنوان «{title}»؟', taskCreated: 'تم إنشاء المهمة من المحادثة.', untitled: 'بدون عنوان', publicChannelForbidden: 'القناة العامة للإدارة فقط.',
+  inbox: 'الوارد', mail: 'الرسائل', channels: 'القنوات', channel: 'قناة', direct: 'المحادثات', close: 'إغلاق', internalWorkspace: 'مساحة تواصل إنجوسوفت', communicationHub: 'صندوق التواصل', workspaceSignature: 'البريد والقنوات والعمل في مكان واحد', newMessage: 'رسالة جديدة', search: 'ابحث في الرسائل والقنوات…', noMessages: 'لا توجد رسائل بعد', noConversations: 'لا توجد محادثات', noConversationsBody: 'ابدأ رسالة أو محادثة جديدة مع فريقك.', back: 'رجوع', announcementsOnly: 'قناة إعلانات', teamChannel: 'قناة القسم', publicChannelShort: 'قناة عامة لكل الشركة', privateChannelShort: 'قناة خاصة', members: 'أعضاء', participants: 'مشاركون', chooseConversation: 'اختر محادثة', chooseConversationBody: 'اختر رسالة أو قناة من القائمة للبدء.', olderMessages: 'عرض رسائل أقدم', loading: 'جارٍ التحميل…', startConversation: 'ابدأ المحادثة', startConversationBody: 'أرسل أول رسالة أو ملف هنا.', removedUser: 'مستخدم غير متاح', reply: 'رد', attach: 'إرفاق ملف', send: 'إرسال', writeReply: 'اكتب ردك…', writeMessage: 'اكتب رسالة…', readOnlyChannel: 'هذه قناة إعلانات؛ الكتابة متاحة للمديرين.', newConversation: 'بدء تواصل جديد', cancel: 'إلغاء', createChannel: 'إنشاء القناة', openChat: 'فتح المحادثة', channelName: 'اسم القناة', description: 'الوصف', channelAccess: 'من يمكنه رؤية القناة؟', departmentChannel: 'القسم', privateChannel: 'خاصة', publicChannel: 'الشركة كلها', announcementChannel: 'قناة إعلانات: المديرون يكتبون والموظفون يقرؤون', subject: 'عنوان الرسالة', message: 'الرسالة', attachments: 'المرفقات', choosePerson: 'اختر موظفًا', recipients: 'المستلمون', searchPeople: 'ابحث بالاسم أو الإيميل…', aiLastMessages: 'مساعد مساحة العمل', summarize: 'تلخيص', suggestReply: 'اقتراح رد', extractActions: 'استخراج مهام', aiUnavailable: 'Qodo AI قيد التجهيز', aiUnavailableBody: 'سيظهر مساعد المحادثة هنا فور اكتمال تشغيله.', aiWorking: 'Qodo AI يحلّل الرسائل…', aiNoAction: 'لن ينفّذ أي شيء من تلقاء نفسه.', aiInsideChat: 'داخل المحادثة', aiLastCount: 'يلخّص آخر {count} رسالة', aiAnalysedCount: 'تم تحليل {count} رسالة فعلية', aiMessageRange: 'نطاق التحليل', aiDecisions: 'القرارات', aiBlockers: 'العوائق', useReply: 'استخدام الرد في المحرر', createTask: 'إنشاء مهمة', noActions: 'لا توجد إجراءات واضحة', noActionsBody: 'لم يجد AI طلبات تنفيذ صريحة في المحادثة.', aiChoose: 'ماذا تريد من Qodo AI؟', aiChooseBody: 'لخّص المحادثة، حضّر ردًا، أو حوّل نقاط العمل إلى مهام.', aiPrivacy: 'راجع النتيجة واستخدمها في المحادثة أو حوّلها إلى مهمة.', confirmTask: 'إنشاء مهمة بعنوان «{title}»؟', taskCreated: 'تم إنشاء المهمة من المحادثة.', untitled: 'بدون عنوان', publicChannelForbidden: 'القناة العامة للإدارة فقط.',
 };
 
 const EN: typeof AR = {
   officialMail: 'Official mail', privateChats: 'Private chats', emptyGroup: 'Nothing here yet.',
   from: 'From', to: 'To', currentAccount: 'Your current account', senderAccount: 'Sender account', individuals: 'People', groups: 'Groups', teams: 'Teams', selectedCount: '{count} selected', searchGroups: 'Search groups and teams…', noGroups: 'No matching groups.', noTeams: 'No matching teams.',
-  inbox: 'Inbox', mail: 'Mail', channels: 'Channels', channel: 'Channel', direct: 'Direct', close: 'Close', internalWorkspace: 'Engosoft communication hub', communicationHub: 'Communication hub', workspaceSignature: 'Mail, channels and teamwork in one place', newMessage: 'New message', search: 'Search mail and channels…', noMessages: 'No messages yet', noConversations: 'No conversations', noConversationsBody: 'Start a mail thread or chat with your team.', back: 'Back', announcementsOnly: 'Announcements', teamChannel: 'Department channel', publicChannelShort: 'Public company channel', privateChannelShort: 'Private channel', members: 'members', participants: 'participants', chooseConversation: 'Choose a conversation', chooseConversationBody: 'Pick a mail thread or channel from the list.', olderMessages: 'Load older messages', loading: 'Loading…', startConversation: 'Start the conversation', startConversationBody: 'Send the first message or file here.', removedUser: 'Unavailable user', reply: 'Reply', attach: 'Attach file', send: 'Send', writeReply: 'Write a reply…', writeMessage: 'Write a message…', readOnlyChannel: 'This is an announcement channel; only managers can post.', newConversation: 'Start a new conversation', cancel: 'Cancel', createChannel: 'Create channel', openChat: 'Open chat', channelName: 'Channel name', description: 'Description', channelAccess: 'Who can see this channel?', departmentChannel: 'Department', privateChannel: 'Private', publicChannel: 'Whole company', announcementChannel: 'Announcement channel: managers post and employees read', subject: 'Subject', message: 'Message', attachments: 'Attachments', choosePerson: 'Choose a person', recipients: 'Recipients', searchPeople: 'Search by name or email…', aiLastMessages: 'Workspace assistant', summarize: 'Summarize', suggestReply: 'Draft reply', extractActions: 'Action items', aiUnavailable: 'Qodo AI is being prepared', aiUnavailableBody: 'The conversation assistant will appear here as soon as setup is complete.', aiWorking: 'Qodo AI is preparing the result…', aiNoAction: 'Your result will be ready to review and use.', useReply: 'Use this reply', createTask: 'Create task', noActions: 'No clear actions found', noActionsBody: 'AI did not find explicit action requests in this conversation.', aiChoose: 'What should Qodo AI do?', aiChooseBody: 'Summarize the conversation, draft a reply, or turn action points into tasks.', aiPrivacy: 'Review the result, use it in the conversation, or turn it into a task.', confirmTask: 'Create a task called “{title}”?', taskCreated: 'Task created from the conversation.', untitled: 'Untitled', publicChannelForbidden: 'Only administrators can create public channels.',
+  inbox: 'Inbox', mail: 'Mail', channels: 'Channels', channel: 'Channel', direct: 'Direct', close: 'Close', internalWorkspace: 'Engosoft communication hub', communicationHub: 'Communication hub', workspaceSignature: 'Mail, channels and teamwork in one place', newMessage: 'New message', search: 'Search mail and channels…', noMessages: 'No messages yet', noConversations: 'No conversations', noConversationsBody: 'Start a mail thread or chat with your team.', back: 'Back', announcementsOnly: 'Announcements', teamChannel: 'Department channel', publicChannelShort: 'Public company channel', privateChannelShort: 'Private channel', members: 'members', participants: 'participants', chooseConversation: 'Choose a conversation', chooseConversationBody: 'Pick a mail thread or channel from the list.', olderMessages: 'Load older messages', loading: 'Loading…', startConversation: 'Start the conversation', startConversationBody: 'Send the first message or file here.', removedUser: 'Unavailable user', reply: 'Reply', attach: 'Attach file', send: 'Send', writeReply: 'Write a reply…', writeMessage: 'Write a message…', readOnlyChannel: 'This is an announcement channel; only managers can post.', newConversation: 'Start a new conversation', cancel: 'Cancel', createChannel: 'Create channel', openChat: 'Open chat', channelName: 'Channel name', description: 'Description', channelAccess: 'Who can see this channel?', departmentChannel: 'Department', privateChannel: 'Private', publicChannel: 'Whole company', announcementChannel: 'Announcement channel: managers post and employees read', subject: 'Subject', message: 'Message', attachments: 'Attachments', choosePerson: 'Choose a person', recipients: 'Recipients', searchPeople: 'Search by name or email…', aiLastMessages: 'Workspace assistant', summarize: 'Summarize', suggestReply: 'Draft reply', extractActions: 'Action items', aiUnavailable: 'Qodo AI is being prepared', aiUnavailableBody: 'The conversation assistant will appear here as soon as setup is complete.', aiWorking: 'Qodo AI is analysing messages…', aiNoAction: 'It will not execute anything on its own.', aiInsideChat: 'Inside conversation', aiLastCount: 'Summarising the last {count} messages', aiAnalysedCount: 'Analysed {count} actual messages', aiMessageRange: 'Analysis range', aiDecisions: 'Decisions', aiBlockers: 'Blockers', useReply: 'Use this reply', createTask: 'Create task', noActions: 'No clear actions found', noActionsBody: 'AI did not find explicit action requests in this conversation.', aiChoose: 'What should Qodo AI do?', aiChooseBody: 'Summarize the conversation, draft a reply, or turn action points into tasks.', aiPrivacy: 'Review the result, use it in the conversation, or turn it into a task.', confirmTask: 'Create a task called “{title}”?', taskCreated: 'Task created from the conversation.', untitled: 'Untitled', publicChannelForbidden: 'Only administrators can create public channels.',
 };

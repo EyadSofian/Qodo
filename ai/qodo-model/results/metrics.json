@@ -1,6 +1,6 @@
 {
-  "evaluatedAt": "2026-08-13",
-  "goldenSetCases": 27,
+  "evaluatedAt": "2026-08-14",
+  "goldenSetCases": 31,
   "promotionGate": {
     "minimumScore": 0.85,
     "maximumP95Seconds": 12,
@@ -8,66 +8,48 @@
   },
   "trainingData": {
     "source": "synthetic",
-    "train": 666,
-    "validation": 74,
-    "test": 74,
+    "train": 719,
+    "validation": 80,
+    "test": 80,
     "containsCompanyMessages": false
   },
   "runs": [
     {
-      "name": "base-mlx-4bit",
+      "name": "qodo-lora-pre-analysis",
       "runtime": "MLX/Metal",
-      "score": 0.63,
-      "passed": 17,
-      "p95Seconds": 0.679
+      "score": 0.8065,
+      "passed": 25,
+      "p95Seconds": 0.633
     },
     {
-      "name": "qodo-lora-final",
+      "name": "qodo-lora-analysis",
       "runtime": "MLX/Metal",
-      "score": 0.963,
-      "passed": 26,
-      "p95Seconds": 0.691
+      "score": 0.9355,
+      "passed": 29,
+      "p95Seconds": 0.65
     },
     {
-      "name": "qodo-gguf-q4-k-m",
-      "runtime": "llama.cpp/Metal",
-      "score": 0.8148,
-      "passed": 22,
-      "p95Seconds": 0.322,
-      "promoted": false
-    },
-    {
-      "name": "qodo-gguf-q5-k-m",
-      "runtime": "llama.cpp/Metal",
-      "score": 0.8519,
-      "passed": 23,
-      "p95Seconds": 0.309,
-      "promoted": false,
-      "reason": "Ambiguous task request regressed to a create_task proposal."
-    },
-    {
-      "name": "qodo-gguf-q6-k",
-      "runtime": "llama.cpp/Metal",
-      "score": 0.8889,
-      "passed": 24,
-      "p95Seconds": 0.416,
-      "promoted": true
-    },
-    {
-      "name": "qodo-gguf-q6-k-cpu",
+      "name": "qodo-analysis-gguf-q6-k-cpu",
       "runtime": "llama.cpp CPU, 4 threads, 4096 context",
-      "score": 0.8519,
-      "passed": 23,
-      "p95Seconds": 1.099,
-      "coldStartSeconds": 5.87,
-      "residentMemoryMiB": 2697,
+      "score": 0.871,
+      "passed": 27,
+      "p95Seconds": 1.161,
+      "promoted": false,
+      "note": "Unconstrained JSON generation retained as a diagnostic run."
+    },
+    {
+      "name": "qodo-analysis-gguf-q6-k-cpu-structured",
+      "runtime": "llama.cpp CPU, 4 threads, 4096 context, strict JSON schema",
+      "score": 0.9032,
+      "passed": 28,
+      "p95Seconds": 1.206,
       "promoted": true,
-      "note": "Measured on Apple M5 Pro. Railway x86 latency must be measured after deployment."
+      "note": "Matches the production mail response schema. Measured on Apple M5 Pro; Railway x86 latency must be measured after deployment."
     }
   ],
   "selectedArtifact": {
     "file": "qodo-ai-qwen3-1.7b-Q6_K.gguf",
-    "sizeMiB": 1346.4,
-    "sha256": "a6bbcb6e385818d647ffe0b2a737dd04ce4e18886e11c5ec173bec57c41943e4"
+    "sizeMiB": 1352.1,
+    "sha256": "697c94d83ee107c211802c4cd2c68335c0bf80507fd89739c96b67e73c8c6730"
   }
 }
