@@ -104,6 +104,16 @@
     @apply border-b border-white/60 bg-white/80 backdrop-blur-xl backdrop-saturate-150;
   }
 
+  /* AI answers need to feel like an intelligence surface, not another grey
+     chat bubble. Kept in the shared layer so Mail and the global assistant use
+     exactly the same material. */
+  .ai-glass-card {
+    @apply rounded-[20px] border border-white/80 bg-white/60 text-ink backdrop-blur-2xl backdrop-saturate-150;
+    box-shadow:
+      0 22px 55px -34px rgba(11, 37, 69, 0.52),
+      inset 0 1px 0 rgba(255, 255, 255, 0.92);
+  }
+
   /* Loading placeholder that doesn't flash — used while the grid resolves. */
   .skeleton {
     @apply relative overflow-hidden rounded-xl bg-slate-200/70;

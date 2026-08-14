@@ -18,6 +18,7 @@
  */
 
 import { findOne } from '../store.js';
+import { canOpenApp } from '../../shared/permissions.js';
 
 /** Dashboards change on a sync cadence, not per request — a short cache is plenty. */
 const CACHE_MS = 5 * 60 * 1000;
@@ -59,7 +60,10 @@ const seconds = (n) =>
 
 /* ------------------------------------------------------------------ */
 
-export async function insightsMetrics(_input, _user, lang) {
+export async function insightsMetrics(_input, user, lang) {
+  if (!canOpenApp(user, 'insights')) {
+    return { error: lang === 'en' ? 'You do not have access to Insights Hub.' : 'لا تملك صلاحية الوصول إلى Insights Hub.' };
+  }
   const base = await appUrl('insights', 'https://engosoft-insights-hub-production.up.railway.app');
   if (!base) return { error: 'The Insights Hub app is not registered in the workspace.' };
 
@@ -113,7 +117,10 @@ export async function insightsMetrics(_input, _user, lang) {
   };
 }
 
-export async function supportMetrics(_input, _user, lang) {
+export async function supportMetrics(_input, user, lang) {
+  if (!canOpenApp(user, 'support')) {
+    return { error: lang === 'en' ? 'You do not have access to Support Analytics.' : 'لا تملك صلاحية الوصول إلى تحليلات خدمة العملاء.' };
+  }
   const base = await appUrl('support', 'https://chatwootdashpoard-production.up.railway.app');
   if (!base) return { error: 'The Support Analytics app is not registered in the workspace.' };
 

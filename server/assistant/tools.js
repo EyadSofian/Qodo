@@ -160,6 +160,25 @@ export const TOOL_DEFINITIONS = [
     input_schema: { type: 'object', properties: {}, additionalProperties: false },
   },
   {
+    name: 'decision_brief',
+    description:
+      'Build a live cross-workspace evidence pack for a management decision: task delivery, marketing and ' +
+      'sales, customer service, and the management desk when permitted. Call this when the user asks for an ' +
+      'overall analysis, priorities, risks, an executive summary, or what decision to take next. The result ' +
+      'contains observations, not permission to execute a recommendation.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        focus: {
+          type: 'string',
+          enum: ['company', 'delivery', 'growth', 'support', 'management'],
+          description: 'The area the user explicitly wants to prioritise. Defaults to company.',
+        },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'list_team',
     description:
       'List the people in the workspace with their department, role and job title. Call this to answer ' +
@@ -371,6 +390,61 @@ const EXECUTORS = {
       ).length,
       perPerson,
       perDepartment,
+    };
+  },
+
+  async decision_brief(input, user, lang) {
+    const focus = ['company', 'delivery', 'growth', 'support', 'management'].includes(input.focus)
+      ? input.focus
+      : 'company';
+    const [delivery, growth, support] = await Promise.all([
+      EXECUTORS.task_summary({}, user, lang),
+      APP_DATA_EXECUTORS.insights_metrics({}, user, lang),
+      APP_DATA_EXECUTORS.support_metrics({}, user, lang),
+    ]);
+
+    let management = null;
+    if (can(user, PERMISSIONS.MANAGEMENT_VIEW)) {
+      const rows = await find(
+        'managementItems',
+        (row) => organizationOf(row) === organizationOf(user)
+      );
+      const open = rows.filter((row) => row.status === 'todo' || row.status === 'doing');
+      const now = Date.now();
+      const endOfToday = new Date();
+      endOfToday.setHours(23, 59, 59, 999);
+      management = {
+        source: 'Management Desk',
+        open: open.length,
+        overdue: open.filter(
+          (row) => row.dueAt && new Date(row.dueAt).getTime() < now
+        ).length,
+        dueToday: open.filter((row) => {
+          if (!row.dueAt) return false;
+          const time = new Date(row.dueAt).getTime();
+          return time >= now && time <= endOfToday.getTime();
+        }).length,
+        needsReview: rows.filter((row) => row.needsReview).length,
+        openDecisions: open.filter((row) => row.kind === 'decision').length,
+      };
+    }
+
+    const sources = [];
+    if (!delivery?.error) sources.push(lang === 'en' ? 'Task board' : 'لوحة المهام');
+    if (!growth?.error) sources.push('Insights Hub');
+    if (!support?.error) sources.push('Support Analytics');
+    if (management) sources.push(lang === 'en' ? 'Management desk' : 'مكتب الإدارة');
+
+    return {
+      generatedAt: new Date().toISOString(),
+      focus,
+      scope: taskScope(user),
+      sources,
+      evidence: { delivery, growth, support, management },
+      responseContract:
+        lang === 'en'
+          ? 'Separate facts from inference. Give one prioritised recommendation, its evidence, risk, and a next step. Never claim it was executed.'
+          : 'افصل الحقائق عن الاستنتاج. قدّم توصية واحدة مرتبة، ودليلها، ومخاطرها، وخطوة تالية. لا تدّعِ أنها نُفذت.',
     };
   },
 
@@ -631,11 +705,29 @@ export const TOOL_LABELS = {
   list_departments: { ar: 'يراجع الأقسام ومراحلها', en: 'Checking departments and stages' },
   search_tasks: { ar: 'يبحث في المهام', en: 'Searching tasks' },
   task_summary: { ar: 'يحسب أرقام اللوحة', en: 'Crunching board numbers' },
+  decision_brief: { ar: 'يربط مؤشرات الشركة ويحلّل الأولويات', en: 'Connecting company signals' },
   list_team: { ar: 'يراجع أسماء الفريق', en: 'Checking the team directory' },
   create_task: { ar: 'يضيف المهمة', en: 'Creating the task' },
   recent_activity: { ar: 'يقرأ سجل الحركة', en: 'Reading the activity log' },
   ...APP_DATA_LABELS,
 };
+
+/** Source chips shown under the final answer; no raw payload is sent to the UI. */
+export function toolSources(name, output, lang = 'ar') {
+  if (output?.error) return [];
+  if (name === 'decision_brief') return Array.isArray(output?.sources) ? output.sources : [];
+  const sources = {
+    list_apps: lang === 'en' ? 'App registry' : 'سجل التطبيقات',
+    list_departments: lang === 'en' ? 'Departments' : 'هيكل الأقسام',
+    search_tasks: lang === 'en' ? 'Task board' : 'لوحة المهام',
+    task_summary: lang === 'en' ? 'Task board' : 'لوحة المهام',
+    list_team: lang === 'en' ? 'Team directory' : 'دليل الفريق',
+    recent_activity: lang === 'en' ? 'Audit log' : 'سجل الحركة',
+    insights_metrics: 'Insights Hub',
+    support_metrics: 'Support Analytics',
+  };
+  return sources[name] ? [sources[name]] : [];
+}
 
 // Referenced by the system prompt builder for stage listings.
 export { getStages };

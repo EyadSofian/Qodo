@@ -302,8 +302,8 @@ export function Mail() {
   }
 
   return (
-    <div className="mx-auto h-[calc(100dvh-var(--topbar-h)-var(--sat)-78px)] w-full max-w-[1840px] overflow-hidden md:h-[calc(100dvh-var(--topbar-h)-var(--sat))] md:px-4 md:py-4">
-      <section className="relative grid h-full overflow-hidden bg-white md:rounded-[28px] md:border md:border-white md:shadow-[0_24px_70px_-38px_rgba(11,37,69,.5)] lg:grid-cols-[248px_350px_minmax(0,1fr)]">
+    <div className="mx-auto h-[calc(100dvh-var(--topbar-h)-var(--sat)-78px)] w-full max-w-[1600px] overflow-hidden md:h-[calc(100dvh-var(--topbar-h)-var(--sat))] md:px-5 md:py-5">
+      <section className="relative grid h-full overflow-hidden border-surface-line bg-white/80 backdrop-blur-xl md:rounded-2xl md:border md:shadow-card lg:grid-cols-[224px_340px_minmax(0,1fr)]">
         <MailRail
           filter={filter}
           onFilter={setFilter}
@@ -327,7 +327,7 @@ export function Mail() {
           hiddenOnMobile={mobileThread}
         />
 
-        <main className={cx('relative min-w-0 flex-col overflow-hidden bg-[#F4F7FB]', mobileThread ? 'flex' : 'hidden md:flex')}>
+        <main className={cx('relative min-w-0 flex-col overflow-hidden bg-surface-bg/70', mobileThread ? 'flex' : 'hidden md:flex')}>
           {selected ? (
             <>
               <ThreadHeader
@@ -455,46 +455,45 @@ function MailRail({
     { id: 'direct', label: c.direct, icon: MessageCircle, count: unread('direct') },
   ];
   return (
-    <aside className="relative hidden min-h-0 flex-col overflow-hidden border-e border-white/10 bg-[#081F39] text-white lg:flex">
-      <span className="pointer-events-none absolute -start-24 -top-20 h-72 w-72 rounded-full bg-brand-500/25 blur-3xl" />
-      <span className="pointer-events-none absolute -bottom-24 -end-16 h-64 w-64 rounded-full bg-[#2AA7F0]/15 blur-3xl" />
-      <div className="relative border-b border-white/10 px-5 pb-5 pt-6">
+    <aside className="relative hidden min-h-0 flex-col overflow-hidden border-e border-surface-line bg-white/65 text-ink backdrop-blur-xl lg:flex">
+      <span className="pointer-events-none absolute -start-20 -top-24 h-64 w-64 rounded-full bg-brand-100/70 blur-3xl" />
+      <div className="relative border-b border-surface-line px-4 pb-4 pt-5">
         <div className="flex items-center">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <p className="text-[15px] font-extrabold tracking-tight">Qodo Mail</p>
-              <span className="rounded-full border border-[#2AA7F0]/30 bg-[#2AA7F0]/15 px-2 py-0.5 text-[8px] font-extrabold uppercase tracking-[.16em] text-[#7CC9F5]">Workspace</span>
+              <span className="grid h-8 w-8 place-items-center rounded-xl bg-brand-50 text-brand-600"><MessageCircle size={15} /></span>
+              <p className="text-[14px] font-extrabold tracking-tight">{c.communicationHub}</p>
             </div>
-            <p className="mt-0.5 truncate text-[10.5px] text-white/55">{c.internalWorkspace}</p>
+            <p className="mt-1 truncate ps-10 text-[10px] text-ink-faint">{c.internalWorkspace}</p>
           </div>
         </div>
-        <button type="button" onClick={onCompose} className="mt-5 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#1686E5] to-[#2AA7F0] px-3 text-[13px] font-extrabold text-white shadow-[0_14px_30px_-16px_rgba(42,167,240,.9)] transition hover:brightness-110 active:scale-[.98]">
+        <button type="button" onClick={onCompose} className="btn-primary mt-4 !min-h-10 w-full !rounded-xl px-3 text-[12px]">
           <Plus size={17} strokeWidth={2.5} /> {c.newMessage}
         </button>
       </div>
-      <nav className="relative grid gap-1.5 px-3 py-4">
+      <nav className="relative grid gap-1 px-3 py-3">
         {items.map(({ id, label, icon: Icon, count }) => (
           <button
             key={id}
             type="button"
             onClick={() => onFilter(id)}
             className={cx(
-              'group flex min-h-11 items-center gap-3 rounded-xl px-3 text-start text-[12.5px] font-semibold transition',
-              filter === id ? 'bg-white/[.13] text-white shadow-[inset_0_1px_0_rgba(255,255,255,.08)]' : 'text-white/60 hover:bg-white/[.07] hover:text-white'
+              'group flex min-h-10 items-center gap-2.5 rounded-xl px-2.5 text-start text-[12px] font-semibold transition',
+              filter === id ? 'bg-brand-50 text-brand-700' : 'text-ink-muted hover:bg-surface-sunken hover:text-ink'
             )}
           >
-            <span className={cx('grid h-7 w-7 place-items-center rounded-lg transition', filter === id ? 'bg-[#2AA7F0] text-white' : 'bg-white/[.06] text-white/65 group-hover:text-white')}><Icon size={15} /></span>
+            <span className={cx('grid h-7 w-7 place-items-center rounded-lg transition', filter === id ? 'bg-brand-500 text-white' : 'bg-white text-ink-faint shadow-sm group-hover:text-brand-600')}><Icon size={14} /></span>
             <span className="flex-1">{label}</span>
-            {count > 0 && <span className="grid min-h-5 min-w-5 place-items-center rounded-full bg-[#2AA7F0] px-1.5 text-[9px] font-extrabold text-white">{count > 99 ? '99+' : count}</span>}
+            {count > 0 && <span className="grid min-h-5 min-w-5 place-items-center rounded-full bg-brand-500 px-1.5 text-[9px] font-extrabold text-white">{count > 99 ? '99+' : count}</span>}
           </button>
         ))}
       </nav>
-      <div className="relative mx-3 mb-3 mt-auto rounded-2xl border border-white/10 bg-white/[.06] p-3.5">
+      <div className="relative mx-3 mb-3 mt-auto rounded-2xl border border-brand-100 bg-gradient-to-br from-brand-50/90 to-white p-3.5">
         <div className="flex items-center gap-2.5">
-          <span className="grid h-8 w-8 place-items-center rounded-xl bg-[#2AA7F0]/15 text-[#7CC9F5]"><Sparkles size={15} /></span>
+          <span className="grid h-8 w-8 place-items-center rounded-xl bg-brand-500 text-white"><Sparkles size={15} /></span>
           <div>
-            <p className="text-[10.5px] font-extrabold text-white">Engosoft Workspace</p>
-            <p className="mt-0.5 text-[9.5px] leading-relaxed text-white/45">{c.workspaceSignature}</p>
+            <p className="text-[10.5px] font-extrabold text-ink">Qodo AI</p>
+            <p className="mt-0.5 text-[9.5px] leading-relaxed text-ink-faint">{c.workspaceSignature}</p>
           </div>
         </div>
       </div>
@@ -725,7 +724,7 @@ function MessageTimeline({
   if (!messages.length) return <EmptyState icon={<MessageCircle size={30} />} title={c.startConversation} body={c.startConversationBody} />;
 
   return (
-    <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto bg-[radial-gradient(circle_at_15%_0%,rgba(42,167,240,.07),transparent_28%),radial-gradient(circle_at_90%_80%,rgba(29,111,184,.055),transparent_30%)] px-3 py-5 sm:px-6">
+    <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto bg-[radial-gradient(circle_at_15%_0%,rgba(29,111,184,.07),transparent_28%),radial-gradient(circle_at_90%_80%,rgba(11,37,69,.045),transparent_30%)] px-3 py-5 sm:px-6">
       {hasMore && (
         <div className="mb-5 text-center"><button type="button" onClick={onLoadMore} disabled={loadingMore} className="rounded-full bg-white px-3 py-1.5 text-[11px] font-bold text-ink-muted shadow-sm hover:text-brand-600">{loadingMore ? c.loading : c.olderMessages}</button></div>
       )}
@@ -1056,15 +1055,15 @@ function AiDrawer({
     finally { setBusy(false); }
   };
   return (
-    <aside className="absolute inset-y-0 end-0 z-20 flex w-full flex-col border-s border-surface-line bg-white shadow-[-28px_0_70px_-36px_rgba(11,37,69,.6)] animate-fade-up sm:w-[390px]">
-      <header className="relative overflow-hidden bg-[#081F39] px-4 py-5 text-white"><span className="pointer-events-none absolute -end-8 -top-10 h-32 w-32 rounded-full bg-[#2AA7F0]/25 blur-2xl" /><div className="relative flex items-center gap-3"><span className="grid h-10 w-10 place-items-center rounded-[14px] bg-gradient-to-br from-brand-500 to-[#2AA7F0] text-white shadow-lg"><Bot size={19} /></span><div className="min-w-0 flex-1"><h2 className="text-[14px] font-extrabold">Qodo AI</h2><p className="mt-0.5 text-[10px] text-white/55">{c.aiLastMessages}</p></div><button type="button" onClick={onClose} aria-label={c.close} className="grid h-9 w-9 place-items-center rounded-xl text-white/60 transition hover:bg-white/10 hover:text-white"><X size={17} /></button></div></header>
+    <aside className="absolute inset-y-0 end-0 z-20 flex w-full flex-col border-s border-white/70 bg-[linear-gradient(180deg,rgba(248,251,255,.94),rgba(237,245,252,.94))] shadow-[-28px_0_70px_-36px_rgba(11,37,69,.6)] backdrop-blur-2xl animate-fade-up sm:w-[410px]">
+      <header className="relative overflow-hidden border-b border-white/10 bg-navy px-4 py-5 text-white"><span className="pointer-events-none absolute -end-8 -top-10 h-32 w-32 rounded-full bg-brand-500/35 blur-2xl" /><div className="relative flex items-center gap-3"><span className="grid h-10 w-10 place-items-center rounded-[14px] border border-white/15 bg-white/10 text-white shadow-inner"><Bot size={19} /></span><div className="min-w-0 flex-1"><h2 className="text-[14px] font-extrabold">Qodo AI</h2><p className="mt-0.5 text-[10px] text-white/55">{c.aiLastMessages}</p></div><button type="button" onClick={onClose} aria-label={c.close} className="grid h-9 w-9 place-items-center rounded-xl text-white/60 transition hover:bg-white/10 hover:text-white"><X size={17} /></button></div></header>
       <div className="grid grid-cols-3 gap-1 border-b border-surface-line p-2">
         {([['summary', c.summarize, Sparkles], ['reply', c.suggestReply, Reply], ['actions', c.extractActions, ListTodo]] as Array<[AiAction, string, typeof Sparkles]>).map(([id, label, Icon]) => <button key={id} type="button" onClick={() => run(id)} disabled={!available || busy} className={cx('flex min-h-16 flex-col items-center justify-center gap-1 rounded-xl px-1 text-center text-[9.5px] font-bold transition disabled:opacity-45', action === id && result ? 'bg-brand-50 text-brand-600' : 'text-ink-muted hover:bg-surface-sunken')}><Icon size={16} />{label}</button>)}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        {!available ? <EmptyState icon={<WandSparkles size={27} />} title={c.aiUnavailable} body={c.aiUnavailableBody} /> : busy ? <div className="flex h-full flex-col items-center justify-center gap-3 text-center"><span className="grid h-12 w-12 place-items-center rounded-2xl bg-brand-50 text-brand-600"><Spinner size={21} /></span><p className="text-[12px] font-bold text-ink">{c.aiWorking}</p><p className="max-w-[240px] text-[10.5px] leading-relaxed text-ink-faint">{c.aiNoAction}</p></div> : error ? <p className="rounded-xl bg-status-badBg p-3 text-[11.5px] font-semibold text-status-bad">{error}</p> : result && 'text' in result ? <div className="rounded-2xl border border-brand-200 bg-gradient-to-br from-brand-50 to-white p-4 shadow-sm"><p className="whitespace-pre-wrap text-[12.5px] leading-7 text-ink">{result.text}</p>{action === 'reply' && <button type="button" onClick={() => onUseReply(result.text)} className="mt-4 flex min-h-9 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-brand-500 to-[#2AA7F0] px-3 text-[11px] font-bold text-white"><Reply size={14} />{c.useReply}</button>}</div> : result && 'items' in result ? <div className="grid gap-2.5">{result.items.length ? result.items.map((item, index) => <article key={`${item.title}-${index}`} className="rounded-2xl border border-surface-line bg-white p-3.5 shadow-sm"><div className="flex items-start gap-2"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-brand-50 text-[10px] font-extrabold text-brand-600">{index + 1}</span><div className="min-w-0 flex-1"><h3 className="text-[11.5px] font-extrabold text-ink">{item.title}</h3>{item.details && <p className="mt-1 text-[10.5px] leading-relaxed text-ink-muted">{item.details}</p>}{item.dueDate && <span className="ltr mt-2 inline-block rounded-full bg-status-warnBg px-2 py-1 text-[9px] font-bold text-status-warn">{item.dueDate}</span>}</div></div>{canCreateTask && <button type="button" onClick={() => onCreateTask(item)} className="mt-3 flex min-h-8 w-full items-center justify-center gap-1.5 rounded-lg border border-brand-200 text-[10px] font-bold text-brand-600 hover:bg-brand-50"><Plus size={12} />{c.createTask}</button>}</article>) : <EmptyState icon={<ListTodo size={25} />} title={c.noActions} body={c.noActionsBody} />}</div> : <EmptyState icon={<WandSparkles size={28} />} title={c.aiChoose} body={c.aiChooseBody} />}
+        {!available ? <EmptyState icon={<WandSparkles size={27} />} title={c.aiUnavailable} body={c.aiUnavailableBody} /> : busy ? <div className="flex h-full flex-col items-center justify-center gap-3 text-center"><span className="grid h-12 w-12 place-items-center rounded-2xl bg-brand-50 text-brand-600"><Spinner size={21} /></span><p className="text-[12px] font-bold text-ink">{c.aiWorking}</p><p className="max-w-[240px] text-[10.5px] leading-relaxed text-ink-faint">{c.aiNoAction}</p></div> : error ? <p className="rounded-xl bg-status-badBg p-3 text-[11.5px] font-semibold text-status-bad">{error}</p> : result && 'text' in result ? <div className="ai-glass-card overflow-hidden"><div className="flex items-center gap-2 border-b border-white/70 bg-white/35 px-4 py-3 text-[10px] font-extrabold text-brand-700"><Sparkles size={14} />{action === 'summary' ? c.summarize : c.suggestReply}</div><p className="whitespace-pre-wrap px-4 py-4 text-[12.5px] leading-7 text-ink">{result.text}</p>{action === 'reply' && <div className="px-4 pb-4"><button type="button" onClick={() => onUseReply(result.text)} className="flex min-h-9 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-brand-500 to-brand-700 px-3 text-[11px] font-bold text-white"><Reply size={14} />{c.useReply}</button></div>}</div> : result && 'items' in result ? <div className="grid gap-2.5">{result.items.length ? result.items.map((item, index) => <article key={`${item.title}-${index}`} className="ai-glass-card p-3.5"><div className="flex items-start gap-2"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-brand-50 text-[10px] font-extrabold text-brand-600">{index + 1}</span><div className="min-w-0 flex-1"><h3 className="text-[11.5px] font-extrabold text-ink">{item.title}</h3>{item.details && <p className="mt-1 text-[10.5px] leading-relaxed text-ink-muted">{item.details}</p>}{item.dueDate && <span className="ltr mt-2 inline-block rounded-full bg-status-warnBg px-2 py-1 text-[9px] font-bold text-status-warn">{item.dueDate}</span>}</div></div>{canCreateTask && <button type="button" onClick={() => onCreateTask(item)} className="mt-3 flex min-h-8 w-full items-center justify-center gap-1.5 rounded-lg border border-brand-200 text-[10px] font-bold text-brand-600 hover:bg-brand-50"><Plus size={12} />{c.createTask}</button>}</article>) : <EmptyState icon={<ListTodo size={25} />} title={c.noActions} body={c.noActionsBody} />}</div> : <EmptyState icon={<WandSparkles size={28} />} title={c.aiChoose} body={c.aiChooseBody} />}
       </div>
-      <footer className="border-t border-surface-line bg-[#F8FAFC] px-4 py-3 text-[9.5px] leading-relaxed text-ink-muted"><Sparkles size={11} className="me-1 inline text-brand-500" />{c.aiPrivacy}</footer>
+      <footer className="border-t border-white/80 bg-white/45 px-4 py-3 text-[9.5px] leading-relaxed text-ink-muted backdrop-blur-xl"><Sparkles size={11} className="me-1 inline text-brand-500" />{c.aiPrivacy}</footer>
     </aside>
   );
 }
@@ -1078,7 +1077,7 @@ function ConversationAvatar({ conversation, person, compact = false }: { convers
 }
 
 function MailSkeleton() {
-  return <div className="mx-auto grid h-[calc(100dvh-var(--topbar-h))] max-w-[1840px] gap-px overflow-hidden bg-surface-line md:grid-cols-[248px_350px_1fr] md:p-4"><div className="hidden bg-[#081F39] md:block" /><div className="grid gap-px bg-white p-4">{Array.from({ length: 8 }).map((_, index) => <div key={index} className="skeleton h-16" />)}</div><div className="hidden place-items-center bg-[#F4F7FB] md:grid"><Spinner className="text-brand-500" /></div></div>;
+  return <div className="mx-auto grid h-[calc(100dvh-var(--topbar-h))] max-w-[1600px] gap-px overflow-hidden bg-surface-line md:grid-cols-[224px_340px_1fr] md:p-5"><div className="hidden bg-white/65 md:block" /><div className="grid gap-px bg-white p-4">{Array.from({ length: 8 }).map((_, index) => <div key={index} className="skeleton h-16" />)}</div><div className="hidden place-items-center bg-surface-bg/70 md:grid"><Spinner className="text-brand-500" /></div></div>;
 }
 
 function conversationTitle(conversation: MailConversation, people: Map<string, MailPerson>, currentUserId: string, lang: 'ar' | 'en') {

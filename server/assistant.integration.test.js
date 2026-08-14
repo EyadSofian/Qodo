@@ -196,3 +196,17 @@ test('the compatible provider drafts a write and only confirmation creates it on
   const afterReplay = await request('/tasks', { cookie: adminCookie });
   assert.equal(afterReplay.data.tasks.length, afterTasks.data.tasks.length);
 });
+
+test('decision intelligence exposes a bounded read-only input contract', async () => {
+  const { TOOL_DEFINITIONS } = await import('./assistant/tools.js');
+  const definition = TOOL_DEFINITIONS.find((tool) => tool.name === 'decision_brief');
+  assert.ok(definition);
+  assert.deepEqual(definition.input_schema.properties.focus.enum, [
+    'company',
+    'delivery',
+    'growth',
+    'support',
+    'management',
+  ]);
+  assert.equal(definition.input_schema.additionalProperties, false);
+});

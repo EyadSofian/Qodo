@@ -1,6 +1,25 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AlertCircle, ArrowUp, Bot, Square, Trash2, X } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
+import {
+  AlertCircle,
+  ArrowUp,
+  BarChart3,
+  BrainCircuit,
+  BriefcaseBusiness,
+  CheckCircle2,
+  Compass,
+  Database,
+  ListTodo,
+  Mail,
+  ShieldCheck,
+  Sparkles,
+  Square,
+  Target,
+  Trash2,
+  Users,
+  X,
+} from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { useI18n, type StringKey } from '../lib/i18n';
 import { cx } from '../lib/utils';
@@ -10,6 +29,7 @@ import { LogoMark } from './Brand';
 interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
+  sources?: string[];
 }
 
 interface PendingConfirmation {
@@ -19,7 +39,7 @@ interface PendingConfirmation {
   arguments: Record<string, string>;
 }
 
-const SUGGESTION_KEYS: StringKey[] = [
+const FALLBACK_SUGGESTION_KEYS: StringKey[] = [
   'assistant.suggest1',
   'assistant.suggest2',
   'assistant.suggest3',
@@ -36,6 +56,9 @@ const SUGGESTION_KEYS: StringKey[] = [
 export function Assistant({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { user } = useAuth();
   const { t, lang } = useI18n();
+  const location = useLocation();
+  const page = pageContext(location.pathname, lang);
+  const PageIcon = page.icon;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState('');
   const [streaming, setStreaming] = useState('');
@@ -45,6 +68,7 @@ export function Assistant({ open, onClose }: { open: boolean; onClose: () => voi
   const [confirming, setConfirming] = useState(false);
   const [available, setAvailable] = useState<boolean | null>(null);
   const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation | null>(null);
+  const [liveSources, setLiveSources] = useState<string[]>([]);
 
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -88,19 +112,25 @@ export function Assistant({ open, onClose }: { open: boolean; onClose: () => voi
       setDraft('');
       setStreaming('');
       setActivity(null);
+      setLiveSources([]);
       setError('');
       setBusy(true);
 
       const controller = new AbortController();
       abortRef.current = controller;
       let answer = '';
+      const answerSources = new Set<string>();
 
       try {
         const response = await fetch('/api/assistant/chat', {
           method: 'POST',
           credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ messages: next, lang }),
+          body: JSON.stringify({
+            messages: next.map(({ role, content }) => ({ role, content })),
+            lang,
+            context: { path: location.pathname },
+          }),
           signal: controller.signal,
         });
 
@@ -138,6 +168,7 @@ export function Assistant({ open, onClose }: { open: boolean; onClose: () => voi
               actionId?: string;
               tool?: string;
               arguments?: Record<string, string>;
+              source?: string;
             };
             try {
               event = JSON.parse(line.slice(6));
@@ -151,6 +182,9 @@ export function Assistant({ open, onClose }: { open: boolean; onClose: () => voi
               setStreaming(answer);
             } else if (event.type === 'tool') {
               setActivity(event.label ?? null);
+            } else if (event.type === 'source' && event.source) {
+              answerSources.add(event.source);
+              setLiveSources([...answerSources]);
             } else if (
               event.type === 'confirmation' &&
               event.actionId &&
@@ -170,13 +204,17 @@ export function Assistant({ open, onClose }: { open: boolean; onClose: () => voi
           }
         }
 
-        if (answer.trim()) setMessages([...next, { role: 'assistant', content: answer }]);
+        if (answer.trim()) {
+          setMessages([...next, { role: 'assistant', content: answer, sources: [...answerSources] }]);
+        }
       } catch (err) {
         if ((err as Error)?.name !== 'AbortError') {
           setError((err as Error)?.message || t('assistant.connError'));
         }
         // Keep a partial answer rather than throwing away what already arrived.
-        if (answer.trim()) setMessages([...next, { role: 'assistant', content: answer }]);
+        if (answer.trim()) {
+          setMessages([...next, { role: 'assistant', content: answer, sources: [...answerSources] }]);
+        }
       } finally {
         setStreaming('');
         setActivity(null);
@@ -184,7 +222,7 @@ export function Assistant({ open, onClose }: { open: boolean; onClose: () => voi
         abortRef.current = null;
       }
     },
-    [messages, busy, lang, t]
+    [messages, busy, lang, t, location.pathname]
   );
 
   const confirmPending = useCallback(async () => {
@@ -238,13 +276,23 @@ export function Assistant({ open, onClose }: { open: boolean; onClose: () => voi
         role="dialog"
         aria-modal="true"
         aria-label={t('assistant.title')}
-        className="relative z-10 flex h-full w-full flex-col bg-white shadow-panel animate-fade-up sm:max-w-lg"
+        className="relative z-10 flex h-full w-full flex-col overflow-hidden bg-[linear-gradient(180deg,#f8fbff_0%,#eef5fb_100%)] shadow-panel animate-fade-up sm:max-w-xl"
       >
-        <header className="flex items-center gap-3 border-b border-surface-line px-4 py-3 pt-safe">
-          <LogoMark size={32} />
+        <header className="relative overflow-hidden border-b border-white/10 bg-navy px-4 py-4 text-white pt-safe">
+          <span className="pointer-events-none absolute -end-10 -top-16 h-44 w-44 rounded-full bg-brand-500/35 blur-3xl" />
+          <span className="pointer-events-none absolute -bottom-16 start-20 h-32 w-40 rounded-full bg-cyan-400/15 blur-3xl" />
+          <div className="relative flex items-center gap-3">
+          <span className="grid h-10 w-10 place-items-center rounded-[14px] border border-white/15 bg-white/10 shadow-inner backdrop-blur-xl">
+            <LogoMark size={28} />
+          </span>
           <div className="min-w-0 flex-1">
-            <h2 className="text-[14px] font-bold leading-tight text-ink">{t('assistant.title')}</h2>
-            <p className="text-[11.5px] leading-tight text-ink-faint">{t('assistant.subtitle')}</p>
+            <div className="flex items-center gap-2">
+              <h2 className="text-[14px] font-extrabold leading-tight">Qodo AI</h2>
+              <span className="rounded-full border border-emerald-300/25 bg-emerald-300/10 px-2 py-0.5 text-[8.5px] font-extrabold uppercase tracking-[.12em] text-emerald-200">
+                {lang === 'ar' ? 'بيانات حيّة' : 'Live data'}
+              </span>
+            </div>
+            <p className="mt-0.5 truncate text-[10.5px] leading-tight text-white/55">{page.label}</p>
           </div>
           {messages.length > 0 && !busy && (
             <button
@@ -254,16 +302,17 @@ export function Assistant({ open, onClose }: { open: boolean; onClose: () => voi
                 setError('');
                 setPendingConfirmation(null);
               }}
-              className="btn-quiet !min-h-9 rounded-lg px-2"
+              className="grid h-9 w-9 place-items-center rounded-xl text-white/55 transition hover:bg-white/10 hover:text-white"
               aria-label={t('assistant.newChat')}
               title={t('assistant.newChat')}
             >
               <Trash2 size={16} />
             </button>
           )}
-          <button type="button" onClick={onClose} className="btn-quiet !min-h-9 rounded-lg px-2" aria-label={t('common.close')}>
+          <button type="button" onClick={onClose} className="grid h-9 w-9 place-items-center rounded-xl text-white/55 transition hover:bg-white/10 hover:text-white" aria-label={t('common.close')}>
             <X size={18} />
           </button>
+          </div>
         </header>
 
         <div ref={scrollRef} className="flex-1 overflow-y-auto overscroll-contain px-4 py-4">
@@ -275,24 +324,41 @@ export function Assistant({ open, onClose }: { open: boolean; onClose: () => voi
           )}
 
           {messages.length === 0 && !streaming && (
-            <div className="flex flex-col items-center gap-4 px-2 py-8 text-center">
-              <span className="grid h-14 w-14 place-items-center rounded-2xl bg-brand-50 text-brand-500">
-                <Bot size={26} />
-              </span>
-              <div>
-                <p className="text-[15px] font-bold text-ink">{t('assistant.emptyTitle')}</p>
-                <p className="mt-1 text-[12.5px] leading-relaxed text-ink-muted">{t('assistant.emptyBody')}</p>
+            <div className="px-1 py-4">
+              <div className="ai-glass-card relative overflow-hidden p-5 text-start">
+                <span className="pointer-events-none absolute -end-10 -top-12 h-36 w-36 rounded-full bg-brand-300/20 blur-3xl" />
+                <div className="relative flex items-start gap-3">
+                  <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-navy text-white shadow-lg">
+                    <PageIcon size={20} />
+                  </span>
+                  <div>
+                    <p className="text-[10px] font-extrabold uppercase tracking-[.13em] text-brand-600">
+                      {lang === 'ar' ? 'ذكاء الصفحة الحالية' : 'Current-page intelligence'}
+                    </p>
+                    <p className="mt-1 text-[16px] font-extrabold text-ink">{page.title}</p>
+                    <p className="mt-1 text-[11.5px] leading-relaxed text-ink-muted">{page.body}</p>
+                  </div>
+                </div>
+                <div className="relative mt-4 flex items-center gap-2 rounded-xl border border-white/80 bg-white/55 px-3 py-2 text-[10px] text-ink-muted backdrop-blur-xl">
+                  <ShieldCheck size={13} className="shrink-0 text-emerald-600" />
+                  {lang === 'ar'
+                    ? 'يقرأ فقط ما تسمح به صلاحياتك، وأي تنفيذ يحتاج تأكيدك.'
+                    : 'Reads only what your access allows; every write still needs confirmation.'}
+                </div>
               </div>
-              <div className="grid w-full gap-2">
-                {SUGGESTION_KEYS.map((key) => (
+              <div className="mt-3 grid w-full gap-2 sm:grid-cols-2">
+                {page.suggestions.map((suggestion, index) => (
                   <button
-                    key={key}
+                    key={suggestion}
                     type="button"
-                    onClick={() => ask(t(key))}
+                    onClick={() => ask(suggestion)}
                     disabled={available === false}
-                    className="rounded-xl border border-surface-line px-3 py-2.5 text-start text-[13px] text-ink transition-colors hover:border-brand-200 hover:bg-brand-50 disabled:opacity-50"
+                    className="group flex min-h-[62px] items-start gap-2.5 rounded-2xl border border-white/80 bg-white/65 px-3 py-3 text-start text-[11.5px] font-semibold leading-relaxed text-ink shadow-sm backdrop-blur-xl transition hover:-translate-y-0.5 hover:border-brand-200 hover:bg-white disabled:opacity-50"
                   >
-                    {t(key)}
+                    <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-600 transition group-hover:bg-brand-500 group-hover:text-white">
+                      {index === 0 ? <BarChart3 size={13} /> : index === 1 ? <Target size={13} /> : index === 2 ? <ListTodo size={13} /> : <Compass size={13} />}
+                    </span>
+                    {suggestion}
                   </button>
                 ))}
               </div>
@@ -301,7 +367,7 @@ export function Assistant({ open, onClose }: { open: boolean; onClose: () => voi
 
           <div className="grid gap-3">
             {messages.map((message, index) => (
-              <Bubble key={index} message={message} userName={user?.name ?? ''} userColor={user?.avatarColor} />
+              <Bubble key={index} message={message} userName={user?.name ?? ''} userColor={user?.avatarColor} lang={lang} />
             ))}
 
             {streaming && (
@@ -309,13 +375,15 @@ export function Assistant({ open, onClose }: { open: boolean; onClose: () => voi
                 message={{ role: 'assistant', content: streaming }}
                 userName={user?.name ?? ''}
                 userColor={user?.avatarColor}
+                sources={liveSources}
+                lang={lang}
               />
             )}
 
             {busy && !streaming && (
-              <div className="flex items-center gap-2.5 text-[12.5px] text-ink-muted">
-                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-brand-50 text-brand-500">
-                  <Bot size={15} />
+              <div className="flex items-center gap-2.5 rounded-2xl border border-white/80 bg-white/55 px-3 py-2.5 text-[11.5px] font-semibold text-ink-muted shadow-sm backdrop-blur-xl">
+                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-500">
+                  <BrainCircuit size={15} />
                 </span>
                 <span className="flex items-center gap-1.5">
                   {activity ?? t('assistant.thinking')}
@@ -325,7 +393,12 @@ export function Assistant({ open, onClose }: { open: boolean; onClose: () => voi
             )}
 
             {pendingConfirmation && (
-              <div className="ms-9 rounded-2xl border border-brand-200 bg-brand-50 p-3.5">
+              <div className="ai-glass-card ms-9 overflow-hidden p-0">
+                <div className="flex items-center gap-2 border-b border-white/70 bg-brand-50/60 px-3.5 py-2.5 text-[10px] font-extrabold text-brand-700">
+                  <CheckCircle2 size={14} />
+                  {lang === 'ar' ? 'تنفيذ ينتظر موافقتك' : 'Action awaiting your approval'}
+                </div>
+                <div className="p-3.5">
                 <p className="text-[13.5px] font-semibold leading-relaxed text-ink">
                   {pendingConfirmation.message}
                 </p>
@@ -352,6 +425,7 @@ export function Assistant({ open, onClose }: { open: boolean; onClose: () => voi
                     {t('assistant.cancel')}
                   </button>
                 </div>
+                </div>
               </div>
             )}
           </div>
@@ -372,9 +446,10 @@ export function Assistant({ open, onClose }: { open: boolean; onClose: () => voi
             event.preventDefault();
             ask(draft);
           }}
-          className="border-t border-surface-line p-3 pb-safe"
+          className="border-t border-white/80 bg-white/75 p-3 backdrop-blur-xl pb-safe"
         >
           <div className="flex items-end gap-2">
+            <div className="flex flex-1 items-end gap-2 rounded-[18px] border border-white/90 bg-white/75 p-1.5 shadow-[0_14px_38px_-28px_rgba(11,37,69,.55)] backdrop-blur-xl transition focus-within:border-brand-300 focus-within:ring-2 focus-within:ring-brand-100">
             <textarea
               ref={inputRef}
               value={draft}
@@ -388,22 +463,23 @@ export function Assistant({ open, onClose }: { open: boolean; onClose: () => voi
               rows={1}
               disabled={available === false}
               placeholder={t('assistant.placeholder')}
-              className="field max-h-32 min-h-[46px] flex-1 resize-y py-3"
+              className="max-h-32 min-h-[40px] flex-1 resize-y bg-transparent px-2 py-2.5 text-[13px] text-ink outline-none placeholder:text-ink-faint"
             />
             {busy ? (
-              <button type="button" onClick={stop} className="btn-ghost !min-h-[46px] px-3.5" aria-label={t('assistant.stop')}>
+              <button type="button" onClick={stop} className="grid h-10 w-10 place-items-center rounded-xl bg-surface-sunken text-ink-muted" aria-label={t('assistant.stop')}>
                 <Square size={16} />
               </button>
             ) : (
               <button
                 type="submit"
-                className="btn-primary !min-h-[46px] px-3.5"
+                className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 text-white shadow-md transition hover:brightness-110 disabled:opacity-40"
                 disabled={!draft.trim() || available === false}
                 aria-label={t('assistant.send')}
               >
                 <ArrowUp size={17} />
               </button>
             )}
+            </div>
           </div>
         </form>
       </aside>
@@ -416,10 +492,14 @@ function Bubble({
   message,
   userName,
   userColor,
+  sources,
+  lang,
 }: {
   message: ChatMessage;
   userName: string;
   userColor?: string;
+  sources?: string[];
+  lang: 'ar' | 'en';
 }) {
   const mine = message.role === 'user';
   return (
@@ -427,20 +507,106 @@ function Bubble({
       {mine ? (
         <Avatar name={userName} color={userColor} size={28} className="mt-0.5 shrink-0" />
       ) : (
-        <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-brand-50 text-brand-500">
-          <Bot size={15} />
+        <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-navy text-white shadow-sm">
+          <BrainCircuit size={16} />
         </span>
       )}
-      <div
-        className={cx(
-          'max-w-[85%] whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2.5 text-[13.5px] leading-relaxed',
-          mine ? 'bg-navy text-white' : 'bg-surface-sunken text-ink'
-        )}
-      >
-        {message.content}
-      </div>
+      {mine ? (
+        <div className="max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-se-md bg-navy px-3.5 py-2.5 text-[13px] leading-relaxed text-white">
+          {message.content}
+        </div>
+      ) : (
+        <AssistantCard content={message.content} sources={sources ?? message.sources ?? []} lang={lang} />
+      )}
     </div>
   );
+}
+
+function AssistantCard({ content, sources, lang }: { content: string; sources: string[]; lang: 'ar' | 'en' }) {
+  const lines = content.split('\n').map((line) => line.trim()).filter(Boolean);
+  const hasDecision = /قرار|توصي|recommend|decision/i.test(content);
+  const title = hasDecision
+    ? lang === 'ar' ? 'موجز القرار' : 'Decision brief'
+    : lang === 'ar' ? 'ملخص Qodo' : 'Qodo brief';
+
+  return (
+    <article className="ai-glass-card max-w-[88%] overflow-hidden">
+      <header className="flex items-center gap-2 border-b border-white/70 bg-white/35 px-3.5 py-2.5 backdrop-blur-xl">
+        <span className="grid h-6 w-6 place-items-center rounded-lg bg-brand-500 text-white shadow-sm">
+          {hasDecision ? <Target size={13} /> : <Sparkles size={13} />}
+        </span>
+        <span className="flex-1 text-[10.5px] font-extrabold uppercase tracking-[.08em] text-brand-700">{title}</span>
+        <span className="flex items-center gap-1 text-[8.5px] font-bold text-emerald-700"><ShieldCheck size={10} />{lang === 'ar' ? 'مؤمّن' : 'Grounded'}</span>
+      </header>
+      <div className="break-words px-3.5 py-3 text-[13px] leading-7 text-ink">
+        {lines.map((line, index) => {
+          const heading = /^(?:#{1,3}\s*)?(?:\*\*)?(الخلاصة|المؤشرات|المخاطر|التوصية|القرار المقترح|الخطوة التالية|summary|signals|risks|recommendation|next step)(?:\*\*)?\s*[:：]?/i.exec(line);
+          const bullet = /^[-•]\s+/.test(line);
+          if (heading) {
+            const rest = line.slice(heading[0].length).trim();
+            return <div key={index} className={cx(index > 0 && 'mt-3')}><p className="text-[10px] font-extrabold uppercase tracking-[.08em] text-brand-600">{heading[1]}</p>{rest && <p className="mt-0.5">{rest}</p>}</div>;
+          }
+          if (bullet) return <p key={index} className="flex gap-2"><span className="mt-[11px] h-1.5 w-1.5 shrink-0 rounded-full bg-brand-400" />{line.replace(/^[-•]\s+/, '')}</p>;
+          return <p key={index} className={cx(index > 0 && 'mt-1.5')}>{line}</p>;
+        })}
+      </div>
+      {sources.length > 0 && (
+        <footer className="flex flex-wrap items-center gap-1.5 border-t border-white/70 bg-white/30 px-3.5 py-2 backdrop-blur-xl">
+          <Database size={11} className="text-ink-faint" />
+          <span className="me-0.5 text-[8.5px] font-bold text-ink-faint">{lang === 'ar' ? 'المصادر' : 'Sources'}</span>
+          {[...new Set(sources)].map((source) => <span key={source} className="rounded-full border border-white/80 bg-white/70 px-2 py-0.5 text-[8.5px] font-bold text-ink-muted">{source}</span>)}
+        </footer>
+      )}
+    </article>
+  );
+}
+
+function pageContext(pathname: string, lang: 'ar' | 'en') {
+  const fallbackSuggestions = FALLBACK_SUGGESTION_KEYS.map((key) =>
+    lang === 'ar'
+      ? ({
+          'assistant.suggest1': 'ما المهام المتأخرة لدينا؟',
+          'assistant.suggest2': 'من المسؤول عن ماذا الآن؟',
+          'assistant.suggest3': 'حلّل أداء الشركة واقترح الأولوية التالية',
+          'assistant.suggest4': 'لخّص لي أعمال هذا الأسبوع',
+        } as Record<StringKey, string>)[key]
+      : ({
+          'assistant.suggest1': 'Which tasks are overdue?',
+          'assistant.suggest2': 'Who is working on what right now?',
+          'assistant.suggest3': 'Analyse company performance and suggest the next priority',
+          'assistant.suggest4': 'Summarise this week’s work',
+        } as Record<StringKey, string>)[key]
+  );
+  const contexts = [
+    {
+      match: '/tasks', icon: ListTodo,
+      ar: ['ذكاء لوحة المهام', 'حلّل ضغط العمل والتأخير قبل ما يتحول لمشكلة.', ['اديني موجز قرار عن تنفيذ المهام', 'إيه أكبر مخاطر التسليم دلوقتي؟', 'مين عنده مهام متأخرة أو حمل زائد؟', 'لخّص إنجاز الفريق هذا الأسبوع']],
+      en: ['Task-board intelligence', 'Analyse workload and delays before they become delivery problems.', ['Give me a delivery decision brief', 'What are the biggest delivery risks?', 'Who has overdue work or a heavy load?', 'Summarise the team’s wins this week']],
+    },
+    {
+      match: '/management', icon: BriefcaseBusiness,
+      ar: ['ذكاء الإدارة', 'حوّل الأجندة والقرارات المفتوحة إلى أولويات واضحة.', ['اديني موجز قرار للإدارة النهاردة', 'إيه المتأخر ومحتاج تدخل؟', 'لخّص القرارات المفتوحة والمخاطر', 'رتّب الأولويات حسب التأثير والاستعجال']],
+      en: ['Management intelligence', 'Turn the agenda and open decisions into clear priorities.', ['Give me today’s management decision brief', 'What is late and needs intervention?', 'Summarise open decisions and risks', 'Rank priorities by impact and urgency']],
+    },
+    {
+      match: '/mail', icon: Mail,
+      ar: ['ذكاء التواصل', 'اربط المحادثات بأداء العمل والمهام من نفس مساحة Qodo.', ['اديني موجز قرار عن وضع الشركة', 'إيه المهام المتأخرة المرتبطة بفريقي؟', 'حلّل ضغط خدمة العملاء الآن', 'إيه الأولوية اللي لازم نتحرك فيها؟']],
+      en: ['Communication intelligence', 'Connect conversations to work and performance across Qodo.', ['Give me a company decision brief', 'Which overdue tasks affect my team?', 'Analyse the current support load', 'What priority should we act on next?']],
+    },
+    {
+      match: '/users', icon: Users,
+      ar: ['ذكاء الفريق', 'افهم توزيع العمل والفِرق بدون تجاوز صلاحيات البيانات.', ['مين عنده أكبر حمل عمل؟', 'وريني توزيع المهام على الأقسام', 'مين متاح لمهمة جديدة؟', 'إيه اختناقات الفريق الحالية؟']],
+      en: ['Team intelligence', 'Understand workload and team structure within your access.', ['Who has the largest workload?', 'Show task distribution by department', 'Who may be available for new work?', 'What are the current team bottlenecks?']],
+    },
+    {
+      match: '/', icon: BrainCircuit,
+      ar: ['ذكاء مساحة العمل', 'اسأل Qodo عن المهام والتسويق والمبيعات وخدمة العملاء في مكان واحد.', fallbackSuggestions],
+      en: ['Workspace intelligence', 'Ask Qodo about tasks, marketing, sales and support from one place.', fallbackSuggestions],
+    },
+  ];
+  const current = contexts.find((item) => item.match === '/' ? true : pathname.startsWith(item.match))!;
+  const [title, body, suggestions] = current[lang] as [string, string, string[]];
+  return { icon: current.icon, title, body, suggestions, label: title };
 }
 
 function Dots() {

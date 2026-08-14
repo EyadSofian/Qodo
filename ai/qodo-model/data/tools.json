@@ -46,6 +46,20 @@
   {
     "type": "function",
     "function": {
+      "name": "decision_brief",
+      "description": "Build a grounded cross-workspace evidence pack for analysis, risks, priorities and management decisions.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "focus": {"type": "string", "enum": ["company", "delivery", "growth", "support", "management"]}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
       "name": "list_team",
       "description": "List visible Qodo people and their departments; use before assigning by name.",
       "parameters": {"type": "object", "properties": {}, "additionalProperties": false}

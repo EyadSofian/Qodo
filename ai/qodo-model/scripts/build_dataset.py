@@ -286,10 +286,22 @@ def build_examples():
             "كام عميل مستني رد؟",
             "أداء خدمة العملاء عامل إيه؟",
         ],
+        "decision_brief": [
+            "اديني موجز قرار عن وضع الشركة",
+            "حلل أداء الداشبورد كلها وقولي نبدأ بإيه",
+            "إيه أهم خطر محتاج تدخل الإدارة؟",
+            "اربط التسليم بالمبيعات وخدمة العملاء",
+            "عايز executive summary وتوصية واضحة",
+            "what should management prioritise next?",
+            "حلّل البيانات وخدلي قرار بس ما تنفذش حاجة",
+            "اعمل decision brief مبني على الأرقام الحقيقية",
+        ],
     }
     for name, phrases in routed.items():
         for phrase in phrases:
             arguments = {"limit": 10} if name == "recent_activity" and "10" in phrase else {}
+            if name == "decision_brief":
+                arguments = {"focus": "company"}
             for suffix in ["", " لو سمحت", " النهاردة", " في Qodo", " حالاً", " من النظام"]:
                 samples.append(tool_call(system, tools, phrase + suffix, name, arguments))
 
@@ -368,9 +380,26 @@ def build_examples():
                 {"error": "تعذّر الوصول إلى Insights Hub. لا تُخمّن رقماً."},
                 "تعذّر الوصول إلى Insights Hub حالياً، لذلك لن أخمّن رقم المصروفات.",
             ),
+            tool_answer(
+                system,
+                tools,
+                "حلل وضع الشركة وقولي نعمل إيه",
+                "decision_brief",
+                {"focus": "company"},
+                {
+                    "sources": ["لوحة المهام", "Insights Hub", "Support Analytics", "مكتب الإدارة"],
+                    "evidence": {
+                        "delivery": {"total": 31, "overdue": 7, "dueToday": 3},
+                        "growth": {"outcomes": {"conversionRatePercent": 8.2, "revenue": 310000}},
+                        "support": {"conversations": {"openNow": 19, "awaitingReply": 8}, "slaBreaches": 5},
+                        "management": {"open": 12, "overdue": 2, "openDecisions": 3},
+                    },
+                },
+                "الخلاصة: ضغط خدمة العملاء هو الأولوية الأولى.\n\nالمؤشرات:\n- 5 حالات تجاوزت SLA و8 محادثات تنتظر رداً.\n- توجد 7 مهام متأخرة، بينما معدل التحويل 8.2%.\n\nالمخاطر: استمرار التأخير قد يضغط الاحتفاظ بالعملاء.\n\nالتوصية: خصّص تغطية فورية للحالات المتأخرة ثم راجع ارتباطها بالمهام السبعة.\n\nالخطوة التالية: اعرض قائمة حالات SLA والمهام المرتبطة قبل أي تنفيذ.",
+            ),
         ]
     )
-    samples.extend(samples[-5:] * 7)
+    samples.extend(samples[-6:] * 7)
 
     # Qodo Mail transforms are deliberately bounded and always return JSON.
     mail_sets = [

@@ -77,7 +77,7 @@ const STRINGS = {
   'shell.openNotification': { ar: 'فتح المهمة', en: 'Open task' },
   'shell.account': { ar: 'حسابي', en: 'My account' },
   'shell.workspaceSettings': { ar: 'إعدادات المساحة', en: 'Workspace settings' },
-  'shell.assistant': { ar: 'المساعد', en: 'Assistant' },
+  'shell.assistant': { ar: 'Qodo AI', en: 'Qodo AI' },
   'shell.team': { ar: 'الفريق', en: 'Team' },
   'shell.noAppsForYou': { ar: 'لا توجد تطبيقات متاحة لحسابك.', en: 'No apps are available to your account.' },
   'shell.language': { ar: 'اللغة', en: 'Language' },
@@ -851,15 +851,15 @@ const STRINGS = {
   'activity.task.delete': { ar: 'حذف مهمة', en: 'deleted a task' },
 
   /* ── assistant ───────────────────────────────────────────── */
-  'assistant.title': { ar: 'مساعد المساحة', en: 'Workspace assistant' },
-  'assistant.subtitle': { ar: 'يقرأ المهام والفريق والتطبيقات من البيانات الحيّة', en: 'Reads tasks, people and apps from live data' },
+  'assistant.title': { ar: 'Qodo AI', en: 'Qodo AI' },
+  'assistant.subtitle': { ar: 'طبقة ذكاء للمهام والأداء والقرارات', en: 'Intelligence for work, performance and decisions' },
   'assistant.newChat': { ar: 'محادثة جديدة', en: 'New chat' },
   'assistant.emptyTitle': { ar: 'اسألني عن أي شيء في المساحة', en: 'Ask me anything about the workspace' },
   'assistant.emptyBody': {
     ar: 'أرى المهام والفريق والتطبيقات — لكنني لا أرى البيانات داخل كل تطبيق، وسأرشدك إلى أين تفتحه.',
     en: 'I can see tasks, people and apps — but not the data inside each app; I will point you to the right one.',
   },
-  'assistant.placeholder': { ar: 'اسأل عن المهام أو الفريق أو التطبيقات…', en: 'Ask about tasks, people or apps…' },
+  'assistant.placeholder': { ar: 'اسأل، حلّل، أو اطلب موجز قرار…', en: 'Ask, analyse, or request a decision brief…' },
   'assistant.send': { ar: 'إرسال', en: 'Send' },
   'assistant.stop': { ar: 'إيقاف', en: 'Stop' },
   'assistant.thinking': { ar: 'يفكّر', en: 'Thinking' },

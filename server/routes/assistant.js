@@ -14,10 +14,10 @@ import nodeCrypto from 'node:crypto';
 import { Router } from 'express';
 import { find } from '../store.js';
 import { requireAuth } from '../auth.js';
-import { permissionsFor } from '../../shared/permissions.js';
+import { can, canOpenApp, permissionsFor } from '../../shared/permissions.js';
 import { DEPARTMENTS } from '../../shared/departments.js';
 import { organizationOf } from '../../shared/organization.js';
-import { TOOL_DEFINITIONS, TOOL_LABELS, runTool } from '../assistant/tools.js';
+import { TOOL_DEFINITIONS, TOOL_LABELS, runTool, toolSources } from '../assistant/tools.js';
 import { aiConfigured, aiModel, aiProviderName, getAiClient } from '../ai/provider.js';
 
 const router = Router();
@@ -75,7 +75,7 @@ router.post('/chat', async (req, res) => {
   try {
     const api = await getAiClient();
     const conversation = [
-      { role: 'system', content: await buildSystemPrompt(req.user, lang) },
+      { role: 'system', content: await buildSystemPrompt(req.user, lang, req.body?.context) },
       ...messages,
     ];
 
@@ -127,6 +127,10 @@ router.post('/chat', async (req, res) => {
         const output = args.__parseError
           ? { error: 'Arguments were not valid JSON. Call the function again with valid JSON.' }
           : await runTool(call.function.name, args, req.user, lang);
+
+        for (const source of toolSources(call.function.name, output, lang)) {
+          send({ type: 'source', source });
+        }
 
         conversation.push({
           role: 'tool',
@@ -308,9 +312,11 @@ function prunePendingActions() {
  * Rebuilt per request from the live registry, so an app added in Settings this
  * morning is something the assistant knows about this afternoon.
  */
-async function buildSystemPrompt(user, lang) {
+async function buildSystemPrompt(user, lang, context) {
   const apps = await find('apps', (a) => a.enabled !== false);
   const catalogue = apps
+    .filter((a) => canOpenApp(user, a.id))
+    .filter((a) => !a.requires || can(user, a.requires))
     .sort((a, b) => (a.order ?? 999) - (b.order ?? 999))
     .map((a) => `- ${a.nameAr}${a.nameEn ? ` / ${a.nameEn}` : ''} — ${a.descAr || '—'}`)
     .join('\n');
@@ -320,6 +326,7 @@ async function buildSystemPrompt(user, lang) {
   ).join('\n');
 
   const today = new Date().toISOString().slice(0, 10);
+  const page = pageContext(context?.path, lang);
 
   return `You are the assistant inside "Engosoft Workspace", the internal platform that brings every Engosoft app together in one place.
 
@@ -329,6 +336,9 @@ async function buildSystemPrompt(user, lang) {
 - Department: ${user.department ?? 'general'}
 - Permissions: ${permissionsFor(user).join(', ')}
 - Today's date: ${today}
+
+## Current page
+The user opened **${page}**. Use this only to prioritise helpful suggestions; it does not grant any extra data access.
 
 ## Apps in the workspace
 ${catalogue}
@@ -343,6 +353,7 @@ You have functions that read live data and one that creates a task:
 - **Workspace data** — tasks, people, apps, activity log.
 - **Marketing and sales** — \`insights_metrics\` returns live figures from the Insights Hub: ad spend, leads, won and lost deals, conversion rate, revenue.
 - **Customer service** — \`support_metrics\` returns live figures from Support Analytics: conversation volume, response and resolution times, SLA breaches.
+- **Decision intelligence** — \`decision_brief\` joins permitted live signals across the workspace. Use it for executive summaries, risks, priorities, "what should we do", and cross-dashboard analysis.
 
 **Always call a function before answering any question about numbers, names, dates or status.** Never guess and never rely on earlier turns for data; it changes.
 
@@ -370,7 +381,23 @@ When writing Arabic, use clear Modern Standard Arabic — natural and readable, 
 - Short and direct. The answer first, supporting detail after.
 - When listing tasks, give the title, the assignee and the due date — not every field.
 - If the question is ambiguous, ask one short clarifying question instead of guessing.
-- Confirm with the person before creating a task from anything less than an explicit request.`;
+- Confirm with the person before creating a task from anything less than an explicit request.
+- For analysis or decision requests, use these short headings in the user's language: Summary, Signals, Risks, Recommendation, Next step. Separate observed facts from your inference and name the data source.
+- A recommendation is advisory. Never say it happened, create a task, send a message, or change data unless the user explicitly asks and the confirmation gate succeeds.`;
+}
+
+function pageContext(path, lang) {
+  const value = String(path || '').slice(0, 120);
+  const pages = [
+    ['/tasks', { ar: 'لوحة المهام', en: 'Task board' }],
+    ['/management', { ar: 'مكتب الإدارة', en: 'Management desk' }],
+    ['/mail', { ar: 'Qodo Mail والتواصل', en: 'Qodo Mail and communication' }],
+    ['/users', { ar: 'دليل الفريق', en: 'Team directory' }],
+    ['/events', { ar: 'الكورسات والفعاليات', en: 'Courses and events' }],
+    ['/elearning', { ar: 'التعلم الإلكتروني', en: 'eLearning' }],
+    ['/', { ar: 'الصفحة الرئيسية', en: 'Workspace home' }],
+  ];
+  return pages.find(([prefix]) => prefix === '/' || value.startsWith(prefix))?.[1]?.[lang] ?? pages.at(-1)[1][lang];
 }
 
 export default router;
