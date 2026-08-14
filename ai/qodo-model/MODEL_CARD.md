@@ -32,7 +32,7 @@ training.
 
 | Candidate | Passed | Score | p95 |
 | --- | ---: | ---: | ---: |
-| Pre-analysis LoRA | 25/31 | 80.7% | 0.633s |
+| Pre-analysis LoRA | 25/31 | 80.7% | 0.571s |
 | Analysis LoRA on MLX | 29/31 | 93.5% | 0.650s |
 | GGUF Q6_K, CPU-only | 27/31 | 87.1% | 1.161s |
 | **GGUF Q6_K, CPU-only + production JSON schema** | **28/31** | **90.3%** | **1.206s** |

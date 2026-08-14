@@ -19,7 +19,7 @@
       "runtime": "MLX/Metal",
       "score": 0.8065,
       "passed": 25,
-      "p95Seconds": 0.633
+      "p95Seconds": 0.571
     },
     {
       "name": "qodo-lora-analysis",
