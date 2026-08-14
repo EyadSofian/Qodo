@@ -16,7 +16,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import {Archive, CalendarClock, Check, MessageSquare, Send, UserRound} from 'lucide-react';
+import {Archive, CalendarClock, Check, Hourglass, MessageSquare, Send, UserRound} from 'lucide-react';
 import { api, errorMessage } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useI18n } from '../lib/i18n';
@@ -44,7 +44,8 @@ import {
   returnedLabel,
   stateOf,
 } from './TaskWorkflow';
-import { PRIORITY_META, PRIORITY_ORDER, cx, formatDate, timeAgo } from '../lib/utils';
+import { DUE_TONE_CLASS, PRIORITY_META, PRIORITY_ORDER, cx, formatDate, timeAgo } from '../lib/utils';
+import { timingRows } from '../lib/taskTiming';
 import type {Task, TaskAssignment, TaskAttachment, TaskComment, TaskPriority} from '../lib/types';
 
 interface Props {
@@ -684,7 +685,13 @@ function Timeline({ task }: { task: Task }) {
       { key: 'assignment.acceptedOn' as const, at: row.acceptedAt, who: row.userId },
       { key: 'assignment.declinedOn' as const, at: row.declinedAt, who: row.userId },
     ]),
-    { key: 'flow.startedOn' as const, at: task.startedAt, who: assigneesOf(task)[0] ?? null },
+    // A start the hand-in invented is not an event that happened, so it is not
+    // given a line in a list of things that happened.
+    {
+      key: 'flow.startedOn' as const,
+      at: task.startedAtInferred ? null : task.startedAt,
+      who: assigneesOf(task)[0] ?? null,
+    },
     { key: 'flow.submittedOn' as const, at: task.submittedAt, who: task.submittedBy },
     { key: 'flow.reviewedOn' as const, at: task.reviewedAt, who: task.reviewedBy },
   ].filter((row) => row.at);
@@ -714,6 +721,41 @@ function Timeline({ task }: { task: Task }) {
             <span className="text-ink-faint">{formatDate(task.dueDate, lang)}</span>
           </li>
         )}
+      </ul>
+      <Durations task={task} />
+    </div>
+  );
+}
+
+/**
+ * The same history read as durations rather than dates — where the days went,
+ * and against what. The board can only carry one of these numbers; this is
+ * where "why did this take three weeks" gets an itemised answer, including the
+ * part of it that was nobody on this task's fault.
+ */
+function Durations({ task }: { task: Task }) {
+  const { t, lang } = useI18n();
+  const rows = timingRows(task, t, lang);
+  if (!rows.length) return null;
+
+  return (
+    <div className="mt-4 border-t border-surface-line pt-3">
+      <h3 className="mb-2.5 flex items-center gap-1.5 text-[13px] font-bold text-ink">
+        <Hourglass size={14} className="text-brand-500" />
+        {t('timing.heading')}
+      </h3>
+      <ul className="grid gap-2">
+        {rows.map((row) => (
+          <li key={row.key} className="flex items-baseline justify-between gap-2 text-[12px]">
+            <span className="font-semibold text-ink-muted">{row.label}</span>
+            <span className={cx('text-end font-semibold', row.tone ? DUE_TONE_CLASS[row.tone] : 'text-ink')}>
+              {row.value}
+              {row.live && (
+                <span className="ms-1 font-normal text-ink-faint">{t('timing.stillRunning')}</span>
+              )}
+            </span>
+          </li>
+        ))}
       </ul>
     </div>
   );

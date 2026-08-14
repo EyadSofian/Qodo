@@ -343,6 +343,23 @@ async function migrateOrganisationAndTasks(store) {
     filesPerTask.set(file.taskId, (filesPerTask.get(file.taskId) ?? 0) + 1);
   }
 
+  /*
+   * The first hand-in of every task, read back out of the audit log.
+   *
+   * `submittedAt` is cleared by every send-back, so on a task that came back
+   * even once the stored row can no longer say when the work was first
+   * delivered — and that date is the one punctuality was ever about. The
+   * activity log kept it all along: `task.submit` is written on every hand-in
+   * and never edited, so the earliest one per task is the original delivery.
+   */
+  const firstSubmitByTask = new Map();
+  for (const row of await find('activity', (entry) => entry.action === 'task.submit')) {
+    const known = firstSubmitByTask.get(row.subjectId);
+    if (row.createdAt && (!known || row.createdAt < known)) {
+      firstSubmitByTask.set(row.subjectId, row.createdAt);
+    }
+  }
+
   const tasks = await find('tasks');
   for (const task of tasks) {
     const department = task.department ?? DEFAULT_DEPARTMENT;
@@ -424,6 +441,25 @@ async function migrateOrganisationAndTasks(store) {
     if (!Object.hasOwn(task, 'submittedAt')) patch.submittedAt = null;
     if (!Object.hasOwn(task, 'submittedBy')) patch.submittedBy = null;
     if (!Object.hasOwn(task, 'submissionNote')) patch.submissionNote = '';
+    if (!Object.hasOwn(task, 'firstSubmittedAt')) {
+      // The log first, then whatever the row itself can still say. A closed task
+      // was delivered even if nobody logged it, so completion stands in last.
+      patch.firstSubmittedAt =
+        firstSubmitByTask.get(task.id) ??
+        task.submittedAt ??
+        (closed ? (patch.completedAt ?? task.completedAt ?? null) : null);
+    }
+    if (!Object.hasOwn(task, 'startedAtInferred')) {
+      /*
+       * Old rows carry the fingerprint of an invented start: the hand-in used to
+       * write `startedAt = submittedAt` for anything submitted without ever
+       * being started, to the millisecond. Two stamps that identical are one
+       * event, not a task that took zero time to do.
+       */
+      patch.startedAtInferred = Boolean(
+        task.startedAt && task.submittedAt && task.startedAt === task.submittedAt
+      );
+    }
     if (!Object.hasOwn(task, 'reviewNote')) patch.reviewNote = '';
     // The sign-off column is newer than every stored task, so nothing that
     // exists can have been published through it.

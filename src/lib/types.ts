@@ -255,8 +255,15 @@ export interface Task {
   archivedBy: string | null;
   archiveReason: string;
   startedAt: string | null;
+  /**
+   * True when `startedAt` was written by the hand-in rather than by anybody
+   * pressing "start" — the stamp exists, but nothing behind it is a measurement.
+   */
+  startedAtInferred?: boolean;
   /** Set when the assignee hands the work in; cleared if it is sent back. */
   submittedAt: string | null;
+  /** The first hand-in ever made. Survives send-backs, so punctuality can too. */
+  firstSubmittedAt?: string | null;
   submittedBy: string | null;
   /** What the assignee said they delivered. */
   submissionNote: string;

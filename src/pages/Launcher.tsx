@@ -13,7 +13,9 @@ import {isAssignee, isReviewer, taskState} from '@shared/workflow';
 import { ModuleIcon } from '../components/ModuleIcon';
 import { EmptyState } from '../components/ui';
 import { CountBadge } from '../components/Shell';
-import { DUE_CHIP_CLASS, PRIORITY_META, cx, daysUntil, dueLabel } from '../lib/utils';
+import { TaskTiming } from '../components/TaskWorkflow';
+import { PRIORITY_META, cx, daysUntil } from '../lib/utils';
+import { deliveryLatenessDays } from '@shared/taskTiming';
 import type { Task, WorkspaceApp } from '../lib/types';
 
 const TASK_POLL_MS = 20_000;
@@ -176,7 +178,13 @@ function MyWork() {
       toReview: isReviewer(user)
         ? tasks.filter((t) => taskState(t) === 'submitted' && !isAssignee(user, t)).length
         : null,
-      overdue: open.filter((t) => (daysUntil(t.dueDate) ?? 99) < 0).length,
+      // Work already handed in is judged on the hand-in, not on today. Counting
+      // a task somebody delivered on time as overdue because it is still
+      // sitting in review puts a manager's queue on the employee's tally.
+      overdue: open.filter((t) => {
+        const late = deliveryLatenessDays(t);
+        return late === null ? (daysUntil(t.dueDate) ?? 99) < 0 : late > 0;
+      }).length,
       doneThisWeek: tasks.filter(
         (t) =>
           isAssignee(user, t) &&
@@ -216,7 +224,6 @@ function MyWork() {
           {mine && mine.next.length > 0 ? (
             <ul className="divide-y divide-surface-line">
               {mine.next.map((task) => {
-                const due = dueLabel(task.dueDate, t, lang);
                 const app = appById(task.appId);
                 const departmentId = task.department ?? DEFAULT_DEPARTMENT;
                 const department = getDepartment(departmentId);
@@ -244,7 +251,7 @@ function MyWork() {
                           <span>{stageLabel(departmentId, task.stage, lang)}</span>
                         </span>
                       </span>
-                      {due && <span className={cx('chip shrink-0', DUE_CHIP_CLASS[due.tone])}>{due.text}</span>}
+                      <TaskTiming task={task} variant="chip" />
                     </Link>
                   </li>
                 );

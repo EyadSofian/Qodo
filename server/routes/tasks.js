@@ -38,6 +38,7 @@ import {
   stageWriteVerdict,
   taskState,
 } from '../../shared/workflow.js';
+import { workStartedAt } from '../../shared/taskTiming.js';
 import { notifyUser } from '../push.js';
 import { publishNotification } from '../notificationStream.js';
 import {
@@ -767,6 +768,10 @@ router.post('/:id/start', async (req, res) => {
   const updated = await store.update('tasks', task.id, {
     stage: stageForState(department, 'working', task.stage),
     startedAt: task.startedAt ?? new Date().toISOString(),
+    // Pressing the button is the proof a hand-in can only guess at. A stamp
+    // this endpoint writes is real, so it is never marked inferred; one that is
+    // already there keeps whatever it was.
+    startedAtInferred: task.startedAt ? (task.startedAtInferred ?? false) : false,
     progress: Math.max(task.progress ?? 0, 1),
   });
 
@@ -818,9 +823,16 @@ router.post('/:id/submit', async (req, res) => {
   const updated = await store.update('tasks', task.id, {
     stage: stageForState(department, 'submitted', task.stage),
     // A task handed in without ever being started leaves no cycle time to
-    // measure, so the hand-in stands in for the moment work began.
+    // measure, so the hand-in stands in for the moment work began — and says
+    // so, because an invented start reads as a task finished in zero days and
+    // drags every average that counts it.
     startedAt: task.startedAt ?? now,
+    startedAtInferred: task.startedAt ? (task.startedAtInferred ?? false) : true,
     submittedAt: now,
+    // The first hand-in, kept out of reach of the send-back below. Punctuality
+    // is a fact about a delivery that already happened; rewriting it every time
+    // the work comes back means a task that was on time can only ever be late.
+    firstSubmittedAt: task.firstSubmittedAt ?? now,
     submittedBy: req.user.id,
     submissionNote: note,
     // A resubmission answers the last review, so the old verdict stops applying.
@@ -1081,7 +1093,12 @@ router.post('/:id/reset-to-pending', async (req, res) => {
     stage: stageForState(department, 'assigned', firstStage(department)),
     progress: 0,
     startedAt: null,
+    startedAtInferred: false,
     submittedAt: null,
+    // `firstSubmittedAt` deliberately survives, next to the rework count and for
+    // the same reason: the work was handed in once, on a date, and a restart
+    // does not unmake that. Nothing reads it as a current hand-in — the board
+    // only shows a delivery reading once the task is past the review gate.
     submittedBy: null,
     submissionNote: '',
     reviewedAt: null,
@@ -1292,7 +1309,9 @@ function blankLifecycle() {
     archivedBy: null,
     archiveReason: '',
     startedAt: null,
+    startedAtInferred: false,
     submittedAt: null,
+    firstSubmittedAt: null,
     submittedBy: null,
     submissionNote: '',
     reviewedAt: null,
@@ -1686,10 +1705,15 @@ function performanceSummary(tasks) {
    * over a holiday drags an average badly, and on a handful of tasks the
    * average is mostly that outlier. Where they disagree, the median is the
    * honest one.
+   *
+   * Tasks whose start was invented by their hand-in are left out entirely. They
+   * carry a `startedAt` equal to the submission, which is not a task that took
+   * no time — it is a task nobody timed, and counting it as zero pulls the
+   * average toward a speed the team never achieved.
    */
   const durations = completed
-    .filter((task) => task.startedAt && task.completedAt)
-    .map((task) => (Date.parse(task.completedAt) - Date.parse(task.startedAt)) / 86_400_000)
+    .filter((task) => workStartedAt(task) && task.completedAt)
+    .map((task) => (Date.parse(task.completedAt) - Date.parse(workStartedAt(task))) / 86_400_000)
     .filter((days) => Number.isFinite(days) && days >= 0)
     .sort((a, b) => a - b);
 

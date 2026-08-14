@@ -14,10 +14,13 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
+  CalendarCheck2,
+  CalendarClock,
   CalendarDays,
   CheckCircle2,
   CircleHelp,
   Clock3,
+  Hourglass,
   Download,
   ExternalLink,
   File as FileIcon,
@@ -57,7 +60,16 @@ import {
   taskState,
 } from '@shared/workflow';
 import { Avatar, Field, Spinner, useToast } from './ui';
-import { cx, formatBytes, scoreTextTone, scoreTone, timeAgo } from '../lib/utils';
+import {
+  DUE_CHIP_CLASS,
+  DUE_TONE_CLASS,
+  cx,
+  formatBytes,
+  scoreTextTone,
+  scoreTone,
+  timeAgo,
+} from '../lib/utils';
+import { type TimingIcon, timingChips } from '../lib/taskTiming';
 import type { StringKey } from '../lib/i18n';
 import type { Task, TaskAttachment, TaskState } from '../lib/types';
 
@@ -102,6 +114,55 @@ export function ScoreChip({ score, size = 'md' }: { score: number; size?: 'sm' |
       <span className="ltr">{score}</span>
       {band && <span className="font-semibold opacity-80">{lang === 'en' ? band.en : band.ar}</span>}
     </span>
+  );
+}
+
+const TIMING_ICON: Record<TimingIcon, typeof Clock3> = {
+  due: CalendarClock,
+  wait: Clock3,
+  review: Hourglass,
+  done: CalendarCheck2,
+};
+
+/**
+ * How long, and on whose clock. One line wherever a task is listed — the card,
+ * the table, the review queue — so the answer never depends on which screen you
+ * happened to be looking at.
+ */
+export function TaskTiming({
+  task,
+  variant = 'text',
+  className,
+}: {
+  task: Task;
+  /** `chip` for the filled pill lists use, `text` for the bare line on a card. */
+  variant?: 'text' | 'chip';
+  className?: string;
+}) {
+  const { t, lang } = useI18n();
+  const chips = timingChips(task, t, lang);
+  if (!chips.length) return null;
+
+  return (
+    <>
+      {chips.map((chip) => {
+        const Icon = TIMING_ICON[chip.icon];
+        return (
+          <span
+            key={chip.key}
+            className={cx(
+              variant === 'chip'
+                ? cx('chip shrink-0', DUE_CHIP_CLASS[chip.tone])
+                : cx('inline-flex items-center gap-1 text-[11.5px] font-semibold', DUE_TONE_CLASS[chip.tone]),
+              className
+            )}
+          >
+            <Icon size={variant === 'chip' ? 12 : 13} />
+            {chip.text}
+          </span>
+        );
+      })}
+    </>
   );
 }
 

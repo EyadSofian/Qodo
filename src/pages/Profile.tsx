@@ -12,7 +12,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import {AlarmClock, ArrowRight, CalendarClock, Lock, Mail} from 'lucide-react';
+import {AlarmClock, ArrowRight, Lock, Mail} from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useI18n } from '../lib/i18n';
@@ -25,11 +25,11 @@ import {
   stageLabel,
   subteamLabel,
 } from '@shared/departments';
-import { ScoreChip, StateBadge } from '../components/TaskWorkflow';
+import { ScoreChip, StateBadge, TaskTiming } from '../components/TaskWorkflow';
 import { ModuleIcon } from '../components/ModuleIcon';
 import { Avatar, EmptyState, Spinner } from '../components/ui';
 import { BarList, ChartCard, SplitBar } from '../components/Charts';
-import { DUE_CHIP_CLASS, cx, dueLabel } from '../lib/utils';
+import { cx } from '../lib/utils';
 import type { PerformanceOverview, PerformancePerson, Task } from '../lib/types';
 import { assigneesOf } from '@shared/workflow';
 
@@ -185,7 +185,7 @@ function Tile({
 }
 
 function TaskList({ title, empty, tasks }: { title: string; empty: string; tasks: Task[] }) {
-  const { t, lang } = useI18n();
+  const { lang } = useI18n();
 
   return (
     <section className="overflow-hidden rounded-2xl border border-surface-line bg-white shadow-card">
@@ -199,7 +199,6 @@ function TaskList({ title, empty, tasks }: { title: string; empty: string; tasks
       ) : (
         <ul className="divide-y divide-surface-line">
           {tasks.map((task) => {
-            const due = task.dueDate ? dueLabel(task.dueDate, t, lang) : null;
             return (
               <li key={task.id}>
                 <Link
@@ -213,12 +212,7 @@ function TaskList({ title, empty, tasks }: { title: string; empty: string; tasks
                       <span className="chip bg-surface-sunken text-ink-muted">
                         {stageLabel(task.department, task.stage, lang)}
                       </span>
-                      {due && (
-                        <span className={cx('chip', DUE_CHIP_CLASS[due.tone])}>
-                          <CalendarClock size={12} />
-                          {due.text}
-                        </span>
-                      )}
+                      <TaskTiming task={task} variant="chip" />
                       {Number.isFinite(task.score) && <ScoreChip score={task.score as number} size="sm" />}
                     </div>
                   </div>

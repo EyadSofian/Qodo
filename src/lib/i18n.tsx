@@ -240,6 +240,39 @@ const STRINGS = {
   'tasks.overdueMany': { ar: 'متأخرة {n} أيام', en: '{n} days late' },
   'tasks.dueInTwo': { ar: 'خلال يومين', en: 'In 2 days' },
   'tasks.dueInDays': { ar: 'خلال {n} أيام', en: 'In {n} days' },
+
+  /* ── durations ───────────────────────────────────────────────
+     A number about time has to name the clock it came from. These
+     read as sentences rather than bare counts for that reason: a
+     card that says "١١ يوم" gets read as somebody being late, and
+     more often than not those eleven days were a manager's. */
+  'count.underDay': { ar: 'أقل من يوم', en: 'under a day' },
+  'count.dayOne': { ar: 'يوم', en: '1 day' },
+  'count.dayTwo': { ar: 'يومين', en: '2 days' },
+  'count.dayMany': { ar: '{n} أيام', en: '{n} days' },
+  // Frozen at the hand-in: a finished task's delay stops growing, because the
+  // delivery it describes already happened and cannot get later.
+  'timing.deliveredLate': { ar: 'سُلّمت متأخرة {d}', en: 'Delivered {d} late' },
+  'timing.deliveredOnTime': { ar: 'سُلّمت في الميعاد', en: 'Delivered on time' },
+  'timing.took': { ar: 'أُنجزت في {d}', en: 'Took {d}' },
+  'timing.inReview': { ar: 'عند المراجعة {d}', en: '{d} in review' },
+  'timing.inProgressFor': { ar: 'قيد العمل منذ {d}', en: 'In progress {d}' },
+  'timing.notStartedFor': { ar: 'لم تبدأ منذ {d}', en: 'Not started for {d}' },
+  'timing.heading': { ar: 'الوقت المستغرق', en: 'Time taken' },
+  'timing.waitRow': { ar: 'قبل البدء', en: 'Before start' },
+  'timing.workRow': { ar: 'وقت التنفيذ', en: 'Hands-on' },
+  'timing.turnaroundRow': { ar: 'من الاستلام للتسليم', en: 'Receipt to delivery' },
+  'timing.reviewRow': { ar: 'عند المراجعة', en: 'In review' },
+  'timing.deadlineRow': { ar: 'مقابل الموعد', en: 'Against deadline' },
+  'timing.lateBy': { ar: 'متأخرة {d}', en: '{d} late' },
+  'timing.earlyBy': { ar: 'قبل الموعد بـ{d}', en: '{d} early' },
+  'timing.onTheDay': { ar: 'في يوم الموعد', en: 'On the day' },
+  'timing.noDueDate': { ar: 'بدون موعد تسليم', en: 'No deadline set' },
+  // Not "zero days of work" — no record that work ever started. An absent
+  // measurement and a fast one are different facts.
+  'timing.noStart': { ar: 'البدء غير مسجّل', en: 'Start not recorded' },
+  'timing.firstDeliveryRow': { ar: 'أول تسليم', en: 'First delivery' },
+  'timing.stillRunning': { ar: 'حتى الآن', en: 'so far' },
   /* ── the task lifecycle ──────────────────────────────────────
      assign → deliver → review → approve. The four states, the
      buttons that move between them, and the two panels the gates

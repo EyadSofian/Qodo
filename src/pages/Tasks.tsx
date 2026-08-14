@@ -2,7 +2,6 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   BarChart3,
-  CalendarClock,
   Download,
   GripVertical,
   Inbox,
@@ -39,19 +38,18 @@ import {
   stageWriteVerdict,
 } from '@shared/workflow';
 import { TaskDialog, TaskMeta } from '../components/TaskDialog';
-import { ScoreChip, StateBadge, returnedLabel, stateOf } from '../components/TaskWorkflow';
+import { ScoreChip, StateBadge, TaskTiming, returnedLabel, stateOf } from '../components/TaskWorkflow';
 import { ModuleIcon } from '../components/ModuleIcon';
 import { Avatar, EmptyState, Segmented, useToast } from '../components/ui';
 import {
-  DUE_CHIP_CLASS,
   DUE_TONE_CLASS,
   PRIORITY_META,
   cx,
-  dueLabel,
   hexWithAlpha,
   scoreTextTone,
   timeAgo,
 } from '../lib/utils';
+import { dueDateTone } from '../lib/taskTiming';
 import type {
   PerformanceMetrics,
   PerformanceOverview,
@@ -927,7 +925,6 @@ function TaskTable({ tasks, onOpen }: { tasks: Task[]; onOpen: (task: Task) => v
                 return person ? [person] : [];
               });
               const type = stageType(task.department ?? DEFAULT_DEPARTMENT, task.stage) as StageType;
-              const due = dueLabel(task.dueDate, t, lang);
               const stage = getStages(task.department ?? DEFAULT_DEPARTMENT).find(
                 (item) => item.id === task.stage
               );
@@ -985,13 +982,11 @@ function TaskTable({ tasks, onOpen }: { tasks: Task[]; onOpen: (task: Task) => v
                     <p className="line-clamp-3">{task.description || '—'}</p>
                   </td>
                   <td className="whitespace-nowrap px-3 py-3">
-                    <span
-                      className={cx(
-                        'text-[11.5px] font-semibold',
-                        due ? DUE_TONE_CLASS[due.tone] : 'text-ink-faint'
-                      )}
-                    >
+                    <span className={cx('text-[11.5px] font-semibold', DUE_TONE_CLASS[dueDateTone(task)])}>
                       {task.dueDate ? formatTaskDate(task.dueDate, lang) : '—'}
+                    </span>
+                    <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                      <TaskTiming task={task} />
                     </span>
                   </td>
                   <td className="max-w-[210px] px-3 py-3 text-[11.5px] leading-relaxed text-ink-muted">
@@ -1068,7 +1063,6 @@ function ReviewQueue({ tasks, onOpen }: { tasks: Task[]; onOpen: (task: Task) =>
             return person ? [person] : [];
           });
           const department = getDepartment(task.department ?? DEFAULT_DEPARTMENT);
-          const due = dueLabel(task.dueDate, t, lang);
           return (
             <li key={task.id}>
               <button
@@ -1106,7 +1100,7 @@ function ReviewQueue({ tasks, onOpen }: { tasks: Task[]; onOpen: (task: Task) =>
                       {returnedLabel(task.reworkCount, t)}
                     </span>
                   )}
-                  {due && <span className={cx('chip', DUE_CHIP_CLASS[due.tone])}>{due.text}</span>}
+                  <TaskTiming task={task} />
                 </span>
               </button>
             </li>
@@ -1490,7 +1484,6 @@ function TaskCard({
   onKeyDown?: (event: React.KeyboardEvent) => void;
 }) {
   const { t, lang } = useI18n();
-  const due = dueLabel(task.dueDate, t, lang);
   const priority = PRIORITY_META[task.priority];
   const department = getDepartment(task.department ?? DEFAULT_DEPARTMENT);
   const state = stateOf(task);
@@ -1561,17 +1554,7 @@ function TaskCard({
       <TaskMeta task={task} />
 
       <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
-        {due && (
-          <span
-            className={cx(
-              'inline-flex items-center gap-1 text-[11.5px] font-semibold',
-              DUE_TONE_CLASS[due.tone]
-            )}
-          >
-            <CalendarClock size={13} />
-            {due.text}
-          </span>
-        )}
+        <TaskTiming task={task} />
         {task.attachmentCount > 0 && (
           <span className="inline-flex items-center gap-1 text-[11.5px] text-ink-faint">
             <Paperclip size={12} />

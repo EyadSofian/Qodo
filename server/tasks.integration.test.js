@@ -668,6 +668,8 @@ test('assign → deliver → review → approve, including the rework loop', asy
   assert.equal(started.status, 200);
   assert.equal(started.data.task.stage, 'working');
   assert.ok(started.data.task.startedAt);
+  // Somebody pressed the button, so the stamp is a measurement, not a stand-in.
+  assert.equal(started.data.task.startedAtInferred, false);
 
   // A blank hand-in — no file, no note — is the case the gate still exists for.
   const empty = await request(`/tasks/${task.id}/submit`, {
@@ -706,6 +708,7 @@ test('assign → deliver → review → approve, including the rework loop', asy
   assert.equal(submitted.data.task.stage, 'review');
   assert.ok(submitted.data.task.submittedAt);
   assert.equal(submitted.data.task.submittedBy, creative.user.id);
+  assert.equal(submitted.data.task.firstSubmittedAt, submitted.data.task.submittedAt);
 
   const liveEvent = await Promise.race([
     streamReader.read(),
@@ -765,6 +768,9 @@ test('assign → deliver → review → approve, including the rework loop', asy
   assert.equal(returned.data.task.reworkCount, 1);
   assert.equal(returned.data.task.submittedAt, null);
   assert.equal(returned.data.task.score, null);
+  // The current hand-in is gone, but the fact that the work was delivered once,
+  // on a date, is not the review's to erase — punctuality is measured from it.
+  assert.equal(returned.data.task.firstSubmittedAt, submitted.data.task.submittedAt);
 
   const reworkCounts = await request('/tasks/counts', { cookie: creativeCookie });
   assert.equal(reworkCounts.data.rework, 1);
@@ -786,6 +792,12 @@ test('assign → deliver → review → approve, including the rework loop', asy
   });
   assert.equal(resubmitted.status, 200);
   assert.equal(resubmitted.data.task.reviewDecision, null);
+  assert.equal(
+    resubmitted.data.task.firstSubmittedAt,
+    submitted.data.task.submittedAt,
+    'a second hand-in must not rewrite when the work was first delivered'
+  );
+  assert.ok(resubmitted.data.task.submittedAt >= resubmitted.data.task.firstSubmittedAt);
 
   const returnedAgain = await request(`/tasks/${task.id}/review`, {
     method: 'POST',

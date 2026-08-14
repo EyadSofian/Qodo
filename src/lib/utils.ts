@@ -103,7 +103,21 @@ export function daysUntil(dueDate: string | null) {
   return Math.round((due.getTime() - today.getTime()) / 86_400_000);
 }
 
-export type DueTone = 'bad' | 'warn' | 'info' | 'muted';
+export type DueTone = 'bad' | 'warn' | 'info' | 'ok' | 'muted';
+
+/**
+ * The live countdown to a deadline — only ever right for a task still being
+ * worked on. Once the work is handed in, the deadline stops being a countdown
+ * and becomes a verdict on a delivery that already happened, which is
+ * `timingChips` in `taskTiming.ts`, not this.
+ */
+/** The colour a live deadline carries, without the words that go with it. */
+export function toneForDays(days: number): DueTone {
+  if (days < 0) return 'bad';
+  if (days <= 1) return 'warn';
+  if (days <= 7) return 'info';
+  return 'muted';
+}
 
 export function dueLabel(
   dueDate: string | null,
@@ -126,6 +140,7 @@ export const DUE_TONE_CLASS: Record<DueTone, string> = {
   bad: 'text-status-bad',
   warn: 'text-accent-600',
   info: 'text-brand-600',
+  ok: 'text-status-ok',
   muted: 'text-ink-faint',
 };
 
@@ -133,6 +148,7 @@ export const DUE_CHIP_CLASS: Record<DueTone, string> = {
   bad: 'bg-status-badBg text-status-bad',
   warn: 'bg-status-warnBg text-accent-600',
   info: 'bg-status-infoBg text-brand-600',
+  ok: 'bg-status-okBg text-status-ok',
   muted: 'bg-surface-sunken text-ink-muted',
 };
 
