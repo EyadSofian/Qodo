@@ -5,6 +5,13 @@ model_dir="${QODO_MODEL_DIR:-/models}"
 model_file="${QODO_MODEL_FILE:-qodo-ai-qwen3-1.7b-Q6_K.gguf}"
 model_path="${model_dir}/${model_file}"
 
+if [ -s "$model_path" ] && [ -n "${QODO_MODEL_SHA256:-}" ]; then
+  if ! echo "${QODO_MODEL_SHA256}  ${model_path}" | sha256sum --check --status; then
+    echo "Cached Qodo model checksum changed; downloading the requested version..."
+    rm -f "$model_path"
+  fi
+fi
+
 if [ ! -s "$model_path" ]; then
   if [ -z "${QODO_MODEL_URL:-}" ] && [ -z "${QODO_MODEL_PART_URL_PREFIX:-}" ]; then
     echo "QODO_MODEL_URL or QODO_MODEL_PART_URL_PREFIX is required the first time the model service starts." >&2
