@@ -351,14 +351,24 @@ async function migrateOrganisationAndTasks(store) {
    * delivered — and that date is the one punctuality was ever about. The
    * activity log kept it all along: `task.submit` is written on every hand-in
    * and never edited, so the earliest one per task is the original delivery.
+   *
+   * Loaded on demand, and once. `find` has no server-side filter — it reads a
+   * whole collection into memory — and activity is the largest table here and
+   * the fastest growing. Every boot after the backfill has nothing to ask it.
    */
-  const firstSubmitByTask = new Map();
-  for (const row of await find('activity', (entry) => entry.action === 'task.submit')) {
-    const known = firstSubmitByTask.get(row.subjectId);
-    if (row.createdAt && (!known || row.createdAt < known)) {
-      firstSubmitByTask.set(row.subjectId, row.createdAt);
+  let firstSubmits = null;
+  const firstSubmitFor = async (taskId) => {
+    if (!firstSubmits) {
+      firstSubmits = new Map();
+      for (const row of await find('activity', (entry) => entry.action === 'task.submit')) {
+        const known = firstSubmits.get(row.subjectId);
+        if (row.createdAt && (!known || row.createdAt < known)) {
+          firstSubmits.set(row.subjectId, row.createdAt);
+        }
+      }
     }
-  }
+    return firstSubmits.get(taskId) ?? null;
+  };
 
   const tasks = await find('tasks');
   for (const task of tasks) {
@@ -442,23 +452,26 @@ async function migrateOrganisationAndTasks(store) {
     if (!Object.hasOwn(task, 'submittedBy')) patch.submittedBy = null;
     if (!Object.hasOwn(task, 'submissionNote')) patch.submissionNote = '';
     if (!Object.hasOwn(task, 'firstSubmittedAt')) {
-      // The log first, then whatever the row itself can still say. A closed task
-      // was delivered even if nobody logged it, so completion stands in last.
-      patch.firstSubmittedAt =
-        firstSubmitByTask.get(task.id) ??
-        task.submittedAt ??
-        (closed ? (patch.completedAt ?? task.completedAt ?? null) : null);
+      /*
+       * Recorded evidence only: the log, or the hand-in the row still carries.
+       * A task with neither stays null rather than being handed its completion
+       * date — the read path falls back on its own, and a guess written into
+       * the column would be indistinguishable from a date somebody delivered on.
+       */
+      patch.firstSubmittedAt = (await firstSubmitFor(task.id)) ?? task.submittedAt ?? null;
     }
     if (!Object.hasOwn(task, 'startedAtInferred')) {
       /*
-       * Old rows carry the fingerprint of an invented start: the hand-in used to
-       * write `startedAt = submittedAt` for anything submitted without ever
-       * being started, to the millisecond. Two stamps that identical are one
-       * event, not a task that took zero time to do.
+       * The fingerprint of an invented start: the hand-in used to write
+       * `startedAt = submittedAt` — to the millisecond — for work nobody ever
+       * pressed start on. The current hand-in identifies most of them; the
+       * logged first one identifies those a send-back has since cleared.
+       *
+       * Anything else counts as a real start. A task whose log has been pruned
+       * must not be read as evidence that nothing happened.
        */
-      patch.startedAtInferred = Boolean(
-        task.startedAt && task.submittedAt && task.startedAt === task.submittedAt
-      );
+      const handIn = task.submittedAt ?? (await firstSubmitFor(task.id));
+      patch.startedAtInferred = Boolean(task.startedAt && handIn && task.startedAt === handIn);
     }
     if (!Object.hasOwn(task, 'reviewNote')) patch.reviewNote = '';
     // The sign-off column is newer than every stored task, so nothing that
