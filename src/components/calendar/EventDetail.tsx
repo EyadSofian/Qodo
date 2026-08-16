@@ -213,23 +213,28 @@ export function EventDetail({
         </p>
       )}
 
-      <section>
-        <span className="label flex items-center gap-1.5">
-          <Users size={14} /> الحاضرون
-          <span className="font-normal text-ink-faint">({event.inviteeIds.length + 1})</span>
-        </span>
-        <ul className="grid gap-1.5">
-          <Attendee
-            person={organizer}
-            fallbackId={event.organizerId}
-            response="accepted"
-            badge="منظّم"
-          />
-          {event.inviteeIds.map((id) => (
-            <Attendee key={id} person={people.get(id)} fallbackId={id} response={responseOf(id)} />
-          ))}
-        </ul>
-      </section>
+      {/* An appointment nobody was invited to has no attendee list worth
+          printing — a row saying you are the organizer of your own dentist
+          appointment is noise, not information. */}
+      {event.inviteeIds.length > 0 && (
+        <section>
+          <span className="label flex items-center gap-1.5">
+            <Users size={14} /> الحاضرون
+            <span className="font-normal text-ink-faint">({event.inviteeIds.length + 1})</span>
+          </span>
+          <ul className="grid gap-1.5">
+            <Attendee
+              person={organizer}
+              fallbackId={event.organizerId}
+              response="accepted"
+              badge="منظّم"
+            />
+            {event.inviteeIds.map((id) => (
+              <Attendee key={id} person={people.get(id)} fallbackId={id} response={responseOf(id)} />
+            ))}
+          </ul>
+        </section>
+      )}
 
       <section
         {...dropProps}
@@ -293,7 +298,10 @@ export function EventDetail({
 
       <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-surface-line pt-3">
         <span className="text-[11px] text-ink-faint">
-          {VISIBILITY_LABEL[event.visibility].ar}
+          {/* "Invitees only" with nobody invited means one thing: yours alone. */}
+          {event.visibility === 'invitees' && event.inviteeIds.length === 0
+            ? 'خاص بيك'
+            : VISIBILITY_LABEL[event.visibility].ar}
           {event.department ? ` · ${event.department}` : ''}
         </span>
         {event.canManage && !cancelled && (

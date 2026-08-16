@@ -326,7 +326,11 @@ export function EventForm({
           value={draft.details}
           onChange={(event) => set('details', event.target.value)}
           maxLength={4_000}
-          placeholder="أجندة، نقاط للنقاش، أي تحضير مطلوب…"
+          placeholder={
+            draft.kind === 'meeting'
+              ? 'أجندة، نقاط للنقاش، أي تحضير مطلوب…'
+              : 'أي تفاصيل تحب تفتكرها…'
+          }
         />
       </Field>
 

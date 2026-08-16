@@ -170,7 +170,8 @@ export function Calendar() {
       setEditingId(null);
       await load();
       openEvent(saved.id);
-      push(editingId ? 'اتعدّل.' : 'اتبعتت الدعوة.');
+      // An appointment invites nobody, so it is not "the invitation was sent".
+      push(editingId ? 'اتعدّل.' : draft.kind === 'meeting' ? 'اتبعتت الدعوة.' : 'اتحجز في تقويمك.');
     } catch (error) {
       push(errorMessage(error), 'bad');
     } finally {
@@ -363,7 +364,7 @@ export function Calendar() {
               disabled={saving || !draft?.title.trim()}
             >
               {saving ? <Spinner size={14} /> : null}
-              {editingId ? 'حفظ' : 'إرسال الدعوة'}
+              {editingId ? 'حفظ' : draft?.kind === 'meeting' ? 'إرسال الدعوة' : 'حجز الميعاد'}
             </button>
           </>
         }
