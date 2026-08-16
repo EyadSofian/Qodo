@@ -916,6 +916,24 @@ const STRINGS = {
     en: 'moved a task across stages with an override',
   },
   'activity.task.delete': { ar: 'حذف مهمة', en: 'deleted a task' },
+  'activity.mail.channel.create': { ar: 'أنشأ قناة', en: 'created a channel' },
+  'activity.mail.message.send': { ar: 'أرسل رسالة', en: 'sent a message' },
+  'activity.mail.message.delete': { ar: 'حذف رسالته', en: 'deleted their own message' },
+  // Kept apart from the line above: the whole reason to audit a deletion is the
+  // case where the message belonged to somebody else.
+  'activity.mail.message.delete.other': {
+    ar: 'حذف رسالة كتبها',
+    en: 'deleted a message written by',
+  },
+
+  /* ── audit filters ───────────────────────────────────────── */
+  'activity.filter.all': { ar: 'كل النشاط', en: 'All activity' },
+  'activity.filter.mailDelete': { ar: 'حذف الرسائل', en: 'Deleted messages' },
+  'activity.filter.mail': { ar: 'Qodo Mail', en: 'Qodo Mail' },
+  'activity.filter.users': { ar: 'المستخدمون', en: 'Users' },
+  'activity.filter.tasks': { ar: 'المهام', en: 'Tasks' },
+  'activity.inChannel': { ar: 'في', en: 'in' },
+  'activity.inPrivate': { ar: 'في محادثة خاصة', en: 'in a private conversation' },
 
   /* ── assistant ───────────────────────────────────────────── */
   'assistant.title': { ar: 'Qodo AI', en: 'Qodo AI' },

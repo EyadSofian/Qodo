@@ -365,3 +365,80 @@ test('a channel manager can retract any post, but nobody outranks a private thre
   );
   assert.equal(byAdmin.status, 404, JSON.stringify(byAdmin.data));
 });
+
+test('the audit names who removed whose message, and never names a private thread', async () => {
+  const channel = await request('/mail/conversations', {
+    method: 'POST',
+    cookie: managerCookie,
+    body: { kind: 'channel', name: 'قناة التدقيق', scope: 'department' },
+  });
+  const channelId = channel.data.conversation.id;
+  const post = await request(`/mail/conversations/${channelId}/messages`, {
+    method: 'POST',
+    cookie: memberCookie,
+    body: { body: 'رسالة هتتشال بالإشراف.' },
+  });
+  await request(`/mail/conversations/${channelId}/messages/${post.data.message.id}`, {
+    method: 'DELETE',
+    cookie: managerCookie,
+  });
+
+  // A member's own deletion, in a thread the audit must not describe.
+  const direct = await request('/mail/conversations', {
+    method: 'POST',
+    cookie: memberCookie,
+    body: { kind: 'direct', memberIds: [sales.id] },
+  });
+  const own = await request(`/mail/conversations/${direct.data.conversation.id}/messages`, {
+    method: 'POST',
+    cookie: memberCookie,
+    body: { body: 'كلام خاص.' },
+  });
+  await request(
+    `/mail/conversations/${direct.data.conversation.id}/messages/${own.data.message.id}`,
+    { method: 'DELETE', cookie: memberCookie }
+  );
+
+  // The filter is what makes deletions readable at all: sending writes an entry
+  // too, so the unfiltered feed is dominated by traffic.
+  const all = await request('/notifications/activity', { cookie: adminCookie });
+  assert.ok(all.data.activity.some((row) => row.action === 'mail.message.send'));
+
+  const audit = await request('/notifications/activity?action=mail.message.delete', {
+    cookie: adminCookie,
+  });
+  assert.equal(audit.status, 200, JSON.stringify(audit.data));
+  assert.ok(audit.data.activity.length >= 2);
+  assert.equal(
+    audit.data.activity.every((row) => row.action === 'mail.message.delete'),
+    true
+  );
+
+  const moderated = audit.data.activity.find((row) => row.meta?.own === false);
+  assert.ok(moderated, 'the moderation case must be recorded');
+  assert.equal(moderated.meta.authorId, member.id);
+  assert.equal(moderated.meta.name, 'قناة التدقيق');
+  // Both sides of the pairing must be resolvable to a person, or the log is ids.
+  assert.equal(audit.data.actors[moderated.actorId].name, manager.name);
+  assert.equal(audit.data.actors[moderated.meta.authorId].name, member.name);
+
+  const privateDelete = audit.data.activity.find((row) => row.meta?.kind === 'direct');
+  assert.ok(privateDelete, 'the private deletion is still recorded');
+  assert.equal(privateDelete.meta.own, true);
+  assert.equal(privateDelete.meta.name, undefined, 'a direct thread is never named');
+  assert.equal(privateDelete.meta.authorId, undefined);
+
+  // A prefix answers for the whole module, and never leaks another one.
+  const mailOnly = await request('/notifications/activity?action=mail', { cookie: adminCookie });
+  assert.ok(mailOnly.data.activity.length > audit.data.activity.length);
+  assert.equal(
+    mailOnly.data.activity.every((row) => String(row.action).startsWith('mail.')),
+    true
+  );
+
+  // The log stays behind users.view.
+  const bySales = await request('/notifications/activity?action=mail.message.delete', {
+    cookie: salesCookie,
+  });
+  assert.equal(bySales.status, 403);
+});

@@ -66,21 +66,41 @@ router.post('/read-all', async (req, res) => {
   res.json({ ok: true, marked: mine.length });
 });
 
-/** Workspace-wide activity — who touched what. Managers and admins only. */
+/**
+ * Workspace-wide activity — who touched what. Managers and admins only.
+ *
+ * `action` narrows to one family before the cap is applied, and that ordering
+ * is the point: sending a message writes an entry, so on any working day the
+ * newest hundred of everything are mail traffic and a deletion is buried by
+ * the very conversation it happened in. Asking for `mail.message.delete` reads
+ * the deletions themselves.
+ *
+ * The value matches a whole action or a prefix of one, so `mail` answers for
+ * the module and `mail.message.delete` for the single question.
+ */
 router.get('/activity', async (req, res) => {
   if (!can(req.user, PERMISSIONS.USERS_VIEW)) {
     return res.status(403).json({ error: 'forbidden' });
   }
+  const prefix =
+    typeof req.query.action === 'string' ? req.query.action.trim().replace(/\.+$/, '') : '';
   const entries = (await find(
     'activity',
-    (entry) => organizationOf(entry) === organizationOf(req.user)
+    (entry) =>
+      organizationOf(entry) === organizationOf(req.user) &&
+      (!prefix || entry.action === prefix || String(entry.action).startsWith(`${prefix}.`))
   ))
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
     .slice(0, 100);
 
   const actorIds = [...new Set(entries.map((e) => e.actorId).filter(Boolean))];
+  // The audited message has an author as well as a remover, and the log is
+  // unreadable if one of the two is an opaque id.
+  const subjectIds = entries
+    .map((entry) => entry.meta?.authorId)
+    .filter((id) => typeof id === 'string');
   const actors = {};
-  for (const id of actorIds) {
+  for (const id of [...new Set([...actorIds, ...subjectIds])]) {
     const user = await findOne('users', (u) => u.id === id);
     if (user) actors[id] = { id: user.id, name: user.name, avatarColor: user.avatarColor };
   }

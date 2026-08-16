@@ -501,7 +501,23 @@ router.delete('/conversations/:id/messages/:messageId', async (req, res) => {
     subject: 'mailConversation',
     subjectId: conversation.id,
     // Who removed it and whether it was theirs — never the text that was in it.
-    meta: { messageId: message.id, own },
+    //
+    // The channel is named because a channel is a shared space and the audit is
+    // the only place a retracted announcement leaves a trace. A direct message
+    // and a mail thread are not named: the reader of this log holds users.view,
+    // which is not membership, and "who was talking to whom" is the part of a
+    // private conversation that leaks first.
+    //
+    // The author is recorded only when somebody removed a message that was not
+    // theirs, which the server allows in exactly one case — a channel manager
+    // moderating. That case is the reason this entry exists.
+    meta: {
+      messageId: message.id,
+      own,
+      kind: conversation.kind,
+      ...(conversation.kind === 'channel' ? { name: conversation.nameAr } : {}),
+      ...(own ? {} : { authorId: message.senderId }),
+    },
   });
 
   res.json({

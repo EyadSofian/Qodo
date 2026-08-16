@@ -432,55 +432,135 @@ function AppDialog({
 
 /* ── Activity ────────────────────────────────────────────────────── */
 
+/**
+ * The filters, narrowest question first.
+ *
+ * "Deleted messages" is its own entry rather than a sub-case of Qodo Mail
+ * because sending a message writes an activity row too, and the hundred newest
+ * entries of a working day are almost entirely traffic. Asking the server for
+ * the deletions is the only way to actually read them.
+ */
+const ACTIVITY_FILTERS = [
+  { value: '', label: 'activity.filter.all' },
+  { value: 'mail.message.delete', label: 'activity.filter.mailDelete' },
+  { value: 'mail', label: 'activity.filter.mail' },
+  { value: 'user', label: 'activity.filter.users' },
+  { value: 'task', label: 'activity.filter.tasks' },
+] as const;
+
 function ActivityLog() {
   const { t } = useI18n();
   const [entries, setEntries] = useState<ActivityEntry[] | null>(null);
   const [actors, setActors] = useState<ActorMap>({});
+  const [filter, setFilter] = useState<string>('');
 
   const load = useCallback(async () => {
-    const data = await api.get<{ activity: ActivityEntry[]; actors: ActorMap }>('/notifications/activity');
+    const query = filter ? `?action=${encodeURIComponent(filter)}` : '';
+    const data = await api.get<{ activity: ActivityEntry[]; actors: ActorMap }>(
+      `/notifications/activity${query}`
+    );
     setEntries(data.activity);
     setActors(data.actors);
-  }, []);
+  }, [filter]);
 
   useEffect(() => {
+    setEntries(null);
     load().catch(() => setEntries([]));
   }, [load]);
 
-  if (entries === null) return <div className="skeleton h-64 rounded-2xl" />;
+  const filterBar = (
+    <div className="mb-3 flex flex-wrap gap-2">
+      {ACTIVITY_FILTERS.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          onClick={() => setFilter(option.value)}
+          className={cx(
+            'rounded-full px-3 py-1.5 text-[11.5px] font-bold transition',
+            filter === option.value
+              ? 'bg-brand-500 text-white shadow-sm'
+              : 'bg-surface-sunken text-ink-muted hover:text-brand-600'
+          )}
+        >
+          {t(option.label as StringKey)}
+        </button>
+      ))}
+    </div>
+  );
+
+  if (entries === null) {
+    return (
+      <div>
+        {filterBar}
+        <div className="skeleton h-64 rounded-2xl" />
+      </div>
+    );
+  }
 
   if (entries.length === 0) {
     return (
-      <div className="card">
-        <EmptyState icon={<Activity size={26} />} title={t('settings.noActivity')} />
+      <div>
+        {filterBar}
+        <div className="card">
+          <EmptyState icon={<Activity size={26} />} title={t('settings.noActivity')} />
+        </div>
       </div>
     );
   }
 
   return (
-    <ul className="card divide-y divide-surface-line">
-      {entries.map((entry) => {
-        const actor = actors[entry.actorId];
-        // Most entries carry the human name of what was touched, under one of
-        // two keys depending on the subject.
-        const subject = [entry.meta?.name, entry.meta?.title].find(
-          (value): value is string => typeof value === 'string'
-        );
-        return (
-          <li key={entry.id} className="flex items-center gap-3 px-4 py-3">
-            <Avatar name={actor?.name ?? '?'} color={actor?.avatarColor} size={30} />
-            <div className="min-w-0 flex-1">
-              <p className="text-[13px] text-ink">
-                <span className="font-bold">{actor?.name ?? t('common.removedUser')}</span>{' '}
-                {t(`activity.${entry.action}` as StringKey)}
-                {subject && <span className="font-semibold"> «{subject}»</span>}
-              </p>
-            </div>
-            <span className="shrink-0 text-[11.5px] text-ink-faint">{timeAgo(entry.createdAt, t)}</span>
-          </li>
-        );
-      })}
-    </ul>
+    <div>
+      {filterBar}
+      <ul className="card divide-y divide-surface-line">
+        {entries.map((entry) => {
+          const actor = actors[entry.actorId];
+          // Most entries carry the human name of what was touched, under one of
+          // two keys depending on the subject.
+          const subject = [entry.meta?.name, entry.meta?.title].find(
+            (value): value is string => typeof value === 'string'
+          );
+          // A deletion says a different sentence when the message was somebody
+          // else's, and names them — that pairing is the whole audit.
+          const author =
+            typeof entry.meta?.authorId === 'string' ? actors[entry.meta.authorId] : undefined;
+          const removedForSomeoneElse =
+            entry.action === 'mail.message.delete' && entry.meta?.own === false;
+          const verb = removedForSomeoneElse
+            ? t('activity.mail.message.delete.other')
+            : t(`activity.${entry.action}` as StringKey);
+          // A private thread is deliberately unnamed in the log; say where it
+          // was without saying which.
+          const place =
+            entry.action === 'mail.message.delete' && !subject
+              ? t('activity.inPrivate')
+              : null;
+          return (
+            <li key={entry.id} className="flex items-center gap-3 px-4 py-3">
+              <Avatar name={actor?.name ?? '?'} color={actor?.avatarColor} size={30} />
+              <div className="min-w-0 flex-1">
+                <p className="text-[13px] text-ink">
+                  <span className="font-bold">{actor?.name ?? t('common.removedUser')}</span>{' '}
+                  {verb}
+                  {removedForSomeoneElse && (
+                    <span className="font-semibold"> {author?.name ?? t('common.removedUser')}</span>
+                  )}
+                  {subject && (
+                    <span>
+                      {/* A deletion happened *in* a channel; everything else
+                          names the thing it acted on directly. */}
+                      {entry.action === 'mail.message.delete' && ` ${t('activity.inChannel')}`}
+                      <span className="font-semibold"> «{subject}»</span>
+                    </span>
+                  )}
+                  {place && <span className="text-ink-muted"> {place}</span>}
+                </p>
+              </div>
+              <span className="shrink-0 text-[11.5px] text-ink-faint">{timeAgo(entry.createdAt, t)}</span>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
 
