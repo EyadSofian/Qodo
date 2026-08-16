@@ -50,6 +50,37 @@ export async function notifyConversationMessage(target, actor, conversation, pre
 }
 
 /**
+ * The bell and the phone, for somebody just added to a private channel.
+ *
+ * Being added is not a message, so it deliberately does not post one: a channel
+ * that announces every arrival into its own history buries the conversation it
+ * exists for. The arrival is told directly, and the record of who did it lives
+ * in the activity log.
+ */
+export async function notifyChannelMembership(target, actor, conversation) {
+  if (!target || !isActiveUser(target)) return;
+  const name = conversation.nameAr || conversation.nameEn || '';
+  const title = {
+    ar: `${actor.name} أضافك إلى ${name}`,
+    en: `${actor.name} added you to ${name}`,
+  };
+  const body = conversation.descriptionAr || conversation.descriptionEn || '';
+  const link = `/mail?conversation=${encodeURIComponent(conversation.id)}`;
+  const notification = await create('notifications', {
+    organizationId: organizationOf(target),
+    userId: target.id,
+    actorId: actor.id,
+    type: 'mail.channel.member',
+    title,
+    body,
+    link,
+    read: false,
+  });
+  publishNotification(target.id, notification.id);
+  await notifyUser(target.id, { title, body, link });
+}
+
+/**
  * One message into a conversation, attributed to a real person.
  *
  * Not a system account: the meeting card in the thread was put there by whoever

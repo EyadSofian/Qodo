@@ -25,7 +25,7 @@ import { publishMail, subscribeToMail } from '../mailStream.js';
 import { organizationOf } from '../../shared/organization.js';
 import { DEPARTMENT_IDS } from '../../shared/departments.js';
 import mailFiles, { MAX_MAIL_FILES, publicMailAttachment } from './mailFiles.js';
-import { notifyConversationMessage } from '../mailNotice.js';
+import { notifyChannelMembership, notifyConversationMessage } from '../mailNotice.js';
 import { canAccessEvent, invitesForEvent } from '../calendarAccess.js';
 import { publicEvent } from '../calendar.js';
 import { aiConfigured, aiModel, getAiClient } from '../ai/provider.js';
@@ -38,6 +38,7 @@ const MAX_MESSAGE_LENGTH = 10_000;
 const MAX_SUBJECT_LENGTH = 200;
 const MAX_CHANNEL_NAME_LENGTH = 80;
 const MAX_RECIPIENTS = 40;
+const MAX_CHANNEL_MEMBERS = 200;
 const MESSAGE_PAGE = 80;
 const AI_CONTEXT_MESSAGES = 60;
 const AI_DEFAULT_MESSAGES = 20;
@@ -253,9 +254,114 @@ router.post('/conversations', async (req, res) => {
     action: 'mail.channel.create',
     subject: 'mailConversation',
     subjectId: conversation.id,
-    meta: { name, scope },
+    // The opening member list is recorded for a private channel, so "who put
+    // this person in here" has an answer for the people who were there from the
+    // start and not only for the ones added later. The other scopes have no
+    // list to record — their access comes from the department or from the
+    // workspace itself.
+    meta: { name, scope, ...(scope === 'private' ? { memberIds } : {}) },
   });
   res.status(201).json({ conversation: publicConversation(conversation, 0, req.user) });
+});
+
+/* ── channel members ─────────────────────────────────────────────── */
+
+/**
+ * The member list, and the one kind of channel that has one.
+ *
+ * A public channel is the whole workspace and a department channel is whoever
+ * the Users screen puts in that department — neither reads `memberIds` at all,
+ * so writing to it would produce a list that quietly disagrees with the thing
+ * actually deciding access. Both are refused here instead, and the answer for a
+ * department channel is to move the person's department.
+ */
+async function loadManageableChannel(req, res) {
+  const conversation = await loadConversation(req, res);
+  if (!conversation) return null;
+  if (!canManageConversation(req.user, conversation)) {
+    res.status(403).json({ error: 'forbidden' });
+    return null;
+  }
+  if (conversation.scope !== 'private') {
+    res.status(400).json({ error: 'channel_membership_derived' });
+    return null;
+  }
+  return conversation;
+}
+
+router.post('/conversations/:id/members', async (req, res) => {
+  const conversation = await loadManageableChannel(req, res);
+  if (!conversation) return;
+
+  const current = conversation.memberIds ?? [];
+  const users = await activeOrganizationUsers(organizationOf(conversation));
+  const usersById = new Map(users.map((user) => [user.id, user]));
+  const incoming = cleanIds(req.body?.memberIds).filter((id) => !current.includes(id));
+  if (incoming.length === 0) return res.status(400).json({ error: 'no_members_to_add' });
+  if (incoming.some((id) => !usersById.has(id))) {
+    return res.status(400).json({ error: 'unknown_recipient' });
+  }
+  const memberIds = [...current, ...incoming];
+  if (memberIds.length > MAX_CHANNEL_MEMBERS) {
+    return res.status(400).json({ error: 'too_many_channel_members', limit: MAX_CHANNEL_MEMBERS });
+  }
+
+  const store = await getStore();
+  const updated = await store.update('mailConversations', conversation.id, { memberIds });
+  for (const id of incoming) {
+    // The channel is older than the arrival, so it starts unread rather than
+    // silently marked as caught up on a history they have not seen.
+    await ensureMembership(updated, id, { unreadFromStart: true });
+    await notifyChannelMembership(usersById.get(id), req.user, updated);
+    publishMail(id, conversation.id, null);
+  }
+
+  await logActivity({
+    actorId: req.user.id,
+    action: 'mail.channel.member.add',
+    subject: 'mailConversation',
+    subjectId: conversation.id,
+    meta: { name: conversation.nameAr, memberIds: incoming },
+  });
+
+  res.status(201).json({ conversation: publicConversation(updated, 0, req.user) });
+});
+
+router.delete('/conversations/:id/members/:userId', async (req, res) => {
+  const conversation = await loadManageableChannel(req, res);
+  if (!conversation) return;
+
+  const target = req.params.userId;
+  const current = conversation.memberIds ?? [];
+  if (!current.includes(target)) return res.status(404).json({ error: 'not_found' });
+  // The creator holds the channel: removing them can leave a private channel
+  // that nobody is able to manage, which is not recoverable from this screen.
+  if (target === conversation.createdBy) {
+    return res.status(400).json({ error: 'channel_owner_required' });
+  }
+
+  const store = await getStore();
+  const updated = await store.update('mailConversations', conversation.id, {
+    memberIds: current.filter((id) => id !== target),
+  });
+  // The membership row is what carries their read state; it goes with the
+  // access. What they already wrote stays — leaving a channel is not a retraction.
+  const membership = await findOne(
+    'mailMemberships',
+    (row) => row.conversationId === conversation.id && row.userId === target
+  );
+  if (membership) await store.remove('mailMemberships', membership.id);
+  publishMail(target, conversation.id, null);
+
+  await logActivity({
+    actorId: req.user.id,
+    action: 'mail.channel.member.remove',
+    subject: 'mailConversation',
+    subjectId: conversation.id,
+    meta: { name: conversation.nameAr, memberIds: [target] },
+  });
+
+  res.json({ conversation: publicConversation(updated, 0, req.user) });
 });
 
 router.post('/conversations/:id/read', async (req, res) => {

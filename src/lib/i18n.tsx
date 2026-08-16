@@ -926,9 +926,17 @@ const STRINGS = {
     en: 'deleted a message written by',
   },
 
+  // Verb and preposition are separate so the people moved can sit between them:
+  // "أضاف سارة إلى قناة «كذا»" rather than a name stranded after the sentence.
+  'activity.mail.channel.member.add': { ar: 'أضاف', en: 'added' },
+  'activity.mail.channel.member.remove': { ar: 'أزال', en: 'removed' },
+  'activity.toChannel': { ar: 'إلى قناة', en: 'to channel' },
+  'activity.fromChannel': { ar: 'من قناة', en: 'from channel' },
+
   /* ── audit filters ───────────────────────────────────────── */
   'activity.filter.all': { ar: 'كل النشاط', en: 'All activity' },
   'activity.filter.mailDelete': { ar: 'حذف الرسائل', en: 'Deleted messages' },
+  'activity.filter.members': { ar: 'أعضاء القنوات', en: 'Channel members' },
   'activity.filter.mail': { ar: 'Qodo Mail', en: 'Qodo Mail' },
   'activity.filter.users': { ar: 'المستخدمون', en: 'Users' },
   'activity.filter.tasks': { ar: 'المهام', en: 'Tasks' },

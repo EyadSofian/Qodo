@@ -94,11 +94,13 @@ router.get('/activity', async (req, res) => {
     .slice(0, 100);
 
   const actorIds = [...new Set(entries.map((e) => e.actorId).filter(Boolean))];
-  // The audited message has an author as well as a remover, and the log is
-  // unreadable if one of the two is an opaque id.
-  const subjectIds = entries
-    .map((entry) => entry.meta?.authorId)
-    .filter((id) => typeof id === 'string');
+  // An entry has people on both sides — the author of a removed message, the
+  // members added to a channel — and the log is unreadable if either side is
+  // an opaque id.
+  const subjectIds = entries.flatMap((entry) =>
+    [entry.meta?.authorId, ...(Array.isArray(entry.meta?.memberIds) ? entry.meta.memberIds : [])]
+      .filter((id) => typeof id === 'string')
+  );
   const actors = {};
   for (const id of [...new Set([...actorIds, ...subjectIds])]) {
     const user = await findOne('users', (u) => u.id === id);

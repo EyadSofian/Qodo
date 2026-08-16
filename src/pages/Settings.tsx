@@ -443,6 +443,7 @@ function AppDialog({
 const ACTIVITY_FILTERS = [
   { value: '', label: 'activity.filter.all' },
   { value: 'mail.message.delete', label: 'activity.filter.mailDelete' },
+  { value: 'mail.channel.member', label: 'activity.filter.members' },
   { value: 'mail', label: 'activity.filter.mail' },
   { value: 'user', label: 'activity.filter.users' },
   { value: 'task', label: 'activity.filter.tasks' },
@@ -523,6 +524,22 @@ function ActivityLog() {
           // else's, and names them — that pairing is the whole audit.
           const author =
             typeof entry.meta?.authorId === 'string' ? actors[entry.meta.authorId] : undefined;
+          // A membership change names the people it moved, between the verb and
+          // the channel they were moved into or out of. Creating a channel
+          // records its opening roster under the same key, but that sentence
+          // already reads as one — the names would only get in the way of it.
+          const membership =
+            entry.action === 'mail.channel.member.add'
+              ? 'activity.toChannel'
+              : entry.action === 'mail.channel.member.remove'
+                ? 'activity.fromChannel'
+                : null;
+          const moved =
+            membership && Array.isArray(entry.meta?.memberIds)
+              ? entry.meta.memberIds
+                  .map((id) => (typeof id === 'string' ? actors[id]?.name : null))
+                  .filter((name): name is string => Boolean(name))
+              : [];
           const removedForSomeoneElse =
             entry.action === 'mail.message.delete' && entry.meta?.own === false;
           const verb = removedForSomeoneElse
@@ -544,9 +561,12 @@ function ActivityLog() {
                   {removedForSomeoneElse && (
                     <span className="font-semibold"> {author?.name ?? t('common.removedUser')}</span>
                   )}
+                  {moved.length > 0 && <span className="font-semibold"> {moved.join('، ')}</span>}
+                  {membership && <span> {t(membership)}</span>}
                   {subject && (
                     <span>
-                      {/* A deletion happened *in* a channel; everything else
+                      {/* A deletion happened *in* a channel; a membership change
+                          already carries its own preposition; everything else
                           names the thing it acted on directly. */}
                       {entry.action === 'mail.message.delete' && ` ${t('activity.inChannel')}`}
                       <span className="font-semibold"> «{subject}»</span>

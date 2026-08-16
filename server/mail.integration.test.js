@@ -442,3 +442,84 @@ test('the audit names who removed whose message, and never names a private threa
   });
   assert.equal(bySales.status, 403);
 });
+
+test('a private channel gains and loses members, and the log says who did it', async () => {
+  const created = await request('/mail/conversations', {
+    method: 'POST',
+    cookie: managerCookie,
+    body: { kind: 'channel', name: 'غرفة الحملة', scope: 'private', memberIds: [member.id] },
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.data));
+  const channelId = created.data.conversation.id;
+  assert.equal(created.data.conversation.memberIds.length, 2);
+
+  // Sales is not in it, so the channel does not exist as far as they are told.
+  assert.equal((await request(`/mail/conversations/${channelId}/messages`, { cookie: salesCookie })).status, 404);
+
+  const added = await request(`/mail/conversations/${channelId}/members`, {
+    method: 'POST',
+    cookie: managerCookie,
+    body: { memberIds: [sales.id] },
+  });
+  assert.equal(added.status, 201, JSON.stringify(added.data));
+  assert.equal(added.data.conversation.memberIds.includes(sales.id), true);
+  assert.equal((await request(`/mail/conversations/${channelId}/messages`, { cookie: salesCookie })).status, 200);
+
+  // The arrival is told, and starts on unread rather than silently caught up.
+  const salesInbox = await request('/mail/bootstrap', { cookie: salesCookie });
+  assert.ok(salesInbox.data.conversations.some((row) => row.id === channelId));
+  const bell = await request('/notifications', { cookie: salesCookie });
+  assert.ok(
+    bell.data.notifications.some((row) => row.type === 'mail.channel.member'),
+    'the new member is notified'
+  );
+
+  // A member cannot rewrite the roster.
+  const bySales = await request(`/mail/conversations/${channelId}/members`, {
+    method: 'POST',
+    cookie: salesCookie,
+    body: { memberIds: [] },
+  });
+  assert.equal(bySales.status, 403, JSON.stringify(bySales.data));
+
+  // Removing the owner would strand the channel.
+  const strand = await request(
+    `/mail/conversations/${channelId}/members/${created.data.conversation.createdBy}`,
+    { method: 'DELETE', cookie: managerCookie }
+  );
+  assert.equal(strand.status, 400);
+  assert.equal(strand.data.error, 'channel_owner_required');
+
+  const removed = await request(`/mail/conversations/${channelId}/members/${sales.id}`, {
+    method: 'DELETE',
+    cookie: managerCookie,
+  });
+  assert.equal(removed.status, 200, JSON.stringify(removed.data));
+  assert.equal((await request(`/mail/conversations/${channelId}/messages`, { cookie: salesCookie })).status, 404);
+
+  // A department channel takes its members from the department, so the roster
+  // is refused rather than written to a field that decides nothing.
+  const derived = await request(
+    '/mail/conversations/mail:engosoft:department:marketing/members',
+    { method: 'POST', cookie: adminCookie, body: { memberIds: [sales.id] } }
+  );
+  assert.equal(derived.status, 400);
+  assert.equal(derived.data.error, 'channel_membership_derived');
+
+  const audit = await request('/notifications/activity?action=mail.channel', { cookie: adminCookie });
+  const addEntry = audit.data.activity.find((row) => row.action === 'mail.channel.member.add');
+  const dropEntry = audit.data.activity.find((row) => row.action === 'mail.channel.member.remove');
+  assert.ok(addEntry && dropEntry, 'both sides of the change are recorded');
+  assert.deepEqual(addEntry.meta.memberIds, [sales.id]);
+  assert.equal(addEntry.meta.name, 'غرفة الحملة');
+  assert.deepEqual(dropEntry.meta.memberIds, [sales.id]);
+  // Both the actor and the person moved resolve to a name.
+  assert.equal(audit.data.actors[addEntry.actorId].name, manager.name);
+  assert.equal(audit.data.actors[sales.id].name, sales.name);
+
+  // The opening roster is recorded too, so the founding members have an answer.
+  const createEntry = audit.data.activity.find(
+    (row) => row.action === 'mail.channel.create' && row.meta?.name === 'غرفة الحملة'
+  );
+  assert.deepEqual(createEntry.meta.memberIds.sort(), [manager.id, member.id].sort());
+});

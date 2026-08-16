@@ -362,6 +362,19 @@ const ERRORS: Record<string, { ar: string; en: string }> = {
   too_many_mail_files: { ar: 'يمكن إرفاق ٦ ملفات كحد أقصى في الرسالة.', en: 'A message can contain up to 6 files.' },
   invalid_mail_attachment: { ar: 'تعذّر العثور على أحد المرفقات.', en: 'One of the attachments could not be found.' },
   invalid_reply: { ar: 'الرسالة التي ترد عليها غير موجودة.', en: 'The message you are replying to no longer exists.' },
+  channel_membership_derived: {
+    ar: 'أعضاء هذه القناة يتحددون من القسم أو من المؤسسة، وليس يدويًا.',
+    en: 'This channel takes its members from the department or the whole workspace.',
+  },
+  channel_owner_required: {
+    ar: 'لا يمكن إزالة صاحب القناة.',
+    en: 'The channel owner cannot be removed.',
+  },
+  too_many_channel_members: {
+    ar: 'وصلت القناة للحد الأقصى من الأعضاء.',
+    en: 'This channel has reached its member limit.',
+  },
+  no_members_to_add: { ar: 'اختر شخصًا واحدًا على الأقل.', en: 'Choose at least one person.' },
   mail_ai_not_configured: { ar: 'مساعد Qodo Mail غير مفعّل على الخادم.', en: 'Qodo Mail AI is not configured.' },
   mail_ai_rate_limited: { ar: 'طلبات AI كثيرة. انتظر قليلًا ثم حاول.', en: 'Too many AI requests. Wait a moment and try again.' },
   mail_ai_empty_thread: { ar: 'لا توجد رسائل كافية لتحليلها.', en: 'There are no messages to analyze.' },
