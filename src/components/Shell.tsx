@@ -5,6 +5,7 @@ import {
   BellRing,
   Bot,
   Briefcase,
+  CalendarDays,
   ChevronDown,
   Home,
   KeyRound,
@@ -244,6 +245,23 @@ export function Shell({ children }: { children: ReactNode }) {
           >
             <Mail size={18} />
             <span className="hidden lg:inline">{t('mail.title')}</span>
+          </NavLink>
+
+          {/* No permission gate: everybody has a calendar. What an entry
+              reaches is decided on the entry, not on the person opening it.
+              Phones reach it from the launcher tile — the tab bar is already
+              at its useful width. */}
+          <NavLink
+            to="/calendar"
+            className={({ isActive }) =>
+              cx(
+                'btn !min-h-10 hidden shrink-0 gap-1.5 rounded-xl px-2.5 text-[13px] font-semibold md:flex',
+                isActive ? 'bg-[#7C3AED] text-white' : 'text-ink-muted hover:bg-surface-sunken hover:text-ink'
+              )
+            }
+          >
+            <CalendarDays size={18} />
+            <span className="hidden lg:inline">{t('calendar.title')}</span>
           </NavLink>
 
           {/* Only the people actually on the management desk ever see this —

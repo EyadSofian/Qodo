@@ -22,12 +22,12 @@ import {
   ensureMembership,
 } from '../mailAccess.js';
 import { publishMail, subscribeToMail } from '../mailStream.js';
-import { publishNotification } from '../notificationStream.js';
-import { notifyUser } from '../push.js';
 import { organizationOf } from '../../shared/organization.js';
-import { isActiveUser } from '../../shared/permissions.js';
 import { DEPARTMENT_IDS } from '../../shared/departments.js';
 import mailFiles, { MAX_MAIL_FILES, publicMailAttachment } from './mailFiles.js';
+import { notifyConversationMessage } from '../mailNotice.js';
+import { canAccessEvent, invitesForEvent } from '../calendarAccess.js';
+import { publicEvent } from '../calendar.js';
 import { aiConfigured, aiModel, getAiClient } from '../ai/provider.js';
 
 const router = Router();
@@ -303,6 +303,16 @@ router.get('/conversations/:id/messages', async (req, res) => {
     if (user) authors[id] = publicMailPerson(user);
   }
 
+  // A meeting card is rendered from the entry itself, not from a copy frozen
+  // into the message, so a thread that scrolls past a moved meeting shows the
+  // hour it moved to. An entry the reader may not open simply has no card.
+  const events = {};
+  for (const id of [...new Set(selected.map((row) => row.eventId).filter(Boolean))]) {
+    const event = await findOne('calendarEvents', (row) => row.id === id);
+    if (!event || !canAccessEvent(req.user, event)) continue;
+    events[id] = publicEvent(event, { invites: await invitesForEvent(id), user: req.user });
+  }
+
   res.json({
     conversation: publicConversation(conversation, 0, req.user),
     messages: selected.map((message) => ({
@@ -310,6 +320,7 @@ router.get('/conversations/:id/messages', async (req, res) => {
       attachments: filesByMessage.get(message.id) ?? [],
     })),
     authors,
+    events,
     hasMore: all.length > selected.length,
     nextBefore: selected[0]?.createdAt ?? null,
   });
@@ -398,7 +409,7 @@ router.post('/conversations/:id/messages', async (req, res) => {
     if (user.id === req.user.id) continue;
     publishMail(user.id, conversation.id, message.id);
     if (alertIds.has(user.id)) {
-      await notifyMessage(user, req.user, updatedConversation, preview);
+      await notifyConversationMessage(user, req.user, updatedConversation, preview);
     }
   }
   publishMail(req.user.id, conversation.id, message.id);
@@ -593,6 +604,7 @@ function publicMessage(message) {
     body: message.body,
     replyToId: message.replyToId ?? null,
     mentionIds: message.mentionIds ?? [],
+    eventId: message.eventId ?? null,
     editedAt: message.editedAt ?? null,
     createdAt: message.createdAt,
     updatedAt: message.updatedAt,
@@ -620,30 +632,6 @@ function sameIds(left = [], right = []) {
   if (left.length !== right.length) return false;
   const sorted = [...left].sort();
   return sorted.every((id, index) => id === right[index]);
-}
-
-async function notifyMessage(target, actor, conversation, preview) {
-  if (!target || !isActiveUser(target)) return;
-  const channelName = conversation.nameAr || conversation.nameEn || '';
-  const subject = conversation.subject || channelName;
-  const title = {
-    ar: conversation.kind === 'mail' ? `Qodo Mail: ${subject}` : `${actor.name} · ${subject}`,
-    en: conversation.kind === 'mail' ? `Qodo Mail: ${subject}` : `${actor.name} · ${subject}`,
-  };
-  const body = preview.slice(0, 180);
-  const link = `/mail?conversation=${encodeURIComponent(conversation.id)}`;
-  const notification = await create('notifications', {
-    organizationId: organizationOf(target),
-    userId: target.id,
-    actorId: actor.id,
-    type: 'mail.message',
-    title,
-    body,
-    link,
-    read: false,
-  });
-  publishNotification(target.id, notification.id);
-  await notifyUser(target.id, { title, body, link });
 }
 
 function consumeAiQuota(userId) {

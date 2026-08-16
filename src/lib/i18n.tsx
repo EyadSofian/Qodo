@@ -39,6 +39,7 @@ const STRINGS = {
   'common.removedUser': { ar: 'مستخدم محذوف', en: 'Removed user' },
 
   'mail.title': { ar: 'Qodo Mail', en: 'Qodo Mail' },
+  'calendar.title': { ar: 'التقويم', en: 'Calendar' },
 
   /* ── auth ────────────────────────────────────────────────── */
   'auth.tagline': { ar: 'جميع تطبيقات إنجوسوفت في مكان واحد', en: 'Every Engosoft app in one place' },

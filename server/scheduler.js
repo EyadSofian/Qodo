@@ -22,6 +22,7 @@ import { DEFAULT_DEPARTMENT, DEPARTMENTS, isSettledStage } from '../shared/depar
 import { organizationOf } from '../shared/organization.js';
 
 import { remindDueSoon } from './management.js';
+import { remindUpcomingEvents } from './calendar.js';
 
 const TICK_MS = 60 * 1000;
 const DIGEST_HOUR = Number(process.env.DIGEST_HOUR ?? 9);
@@ -453,6 +454,12 @@ export function startScheduler() {
       for (const organization of await find('organizations')) {
         const sent = await remindDueSoon(organization.id, DESK_REMINDER_MINUTES);
         if (sent) console.log(`[scheduler] ${sent} management reminder(s) sent`);
+
+        // Each calendar entry carries its own lead time, so unlike the desk
+        // there is no window to pass in — the entry says whether it is due to
+        // warn its people yet, and records that it did.
+        const called = await remindUpcomingEvents(organization.id);
+        if (called) console.log(`[scheduler] ${called} calendar reminder(s) sent`);
       }
     } catch (err) {
       console.error('[scheduler]', err);

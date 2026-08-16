@@ -29,6 +29,7 @@ import managementRoutes from './routes/management.js';
 import pushRoutes from './routes/push.js';
 import eventRoutes from './routes/events.js';
 import mailRoutes from './routes/mail.js';
+import calendarRoutes from './routes/calendar.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DIST = path.join(__dirname, '..', 'dist');
@@ -66,6 +67,9 @@ app.use('/api/push', pushRoutes);
 // Courses, read out of Odoo. Read-only and optional — see server/odoo.js.
 app.use('/api/events', eventRoutes);
 app.use('/api/mail', mailRoutes);
+// Meetings and appointments. Every member has one; what an entry reaches is
+// decided per entry, not by role.
+app.use('/api/calendar', calendarRoutes);
 
 app.get('/api/health', async (_req, res) => {
   const store = await getStore();

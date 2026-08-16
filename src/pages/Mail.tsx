@@ -15,14 +15,18 @@ import {
   BellRing,
   Bot,
   Building2,
+  CalendarClock,
+  CalendarPlus,
   Check,
-  FileText,
+  Clock,
+  ExternalLink,
   Globe2,
   Hash,
   Inbox,
   ListTodo,
   Lock,
   Mail as MailIcon,
+  MapPin,
   Megaphone,
   MessageCircle,
   Paperclip,
@@ -31,9 +35,11 @@ import {
   Search,
   Send,
   Sparkles,
+  Users,
   WandSparkles,
   X,
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { api, errorMessage } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useI18n } from '../lib/i18n';
@@ -41,6 +47,21 @@ import { PERMISSIONS } from '@shared/permissions';
 import { DEPARTMENTS, getSubteams } from '@shared/departments';
 import { cx } from '../lib/utils';
 import { Avatar, EmptyState, Field, Modal, Spinner, useToast } from '../components/ui';
+import { AttachmentTiles, filesFromPaste, useFileDrop } from '../components/Attachments';
+import { EventForm } from '../components/calendar/EventForm';
+import {
+  KIND_LABEL as EVENT_KIND_LABEL,
+  RESPONSE_LABEL,
+  createEvent,
+  dayOf,
+  emptyDraft as emptyEventDraft,
+  fetchBootstrap as fetchCalendarMeta,
+  respondToEvent,
+  spanOf,
+  type CalendarBootstrap,
+  type CalendarEvent,
+  type EventDraft,
+} from '../lib/calendar';
 import type {
   MailAttachment,
   MailBootstrap,
@@ -64,6 +85,8 @@ type AiResult = AiTextResult | { items: AiActionItem[] };
 type AiActionItem = { title: string; details: string; dueDate: string | null };
 
 const POLL_MS = 15_000;
+/** Matches `MAX_MAIL_FILES` on the server — the composer refuses before the API does. */
+const MAX_DRAFT_FILES = 6;
 
 export function Mail() {
   const { user, can } = useAuth();
@@ -78,6 +101,12 @@ export function Mail() {
   const [query, setQuery] = useState('');
   const [messages, setMessages] = useState<MailMessage[]>([]);
   const [authors, setAuthors] = useState<Record<string, MailPerson>>({});
+  /** Calendar entries announced in this thread, keyed by id and always live. */
+  const [threadEvents, setThreadEvents] = useState<Record<string, CalendarEvent>>({});
+  const [calendarMeta, setCalendarMeta] = useState<CalendarBootstrap | null>(null);
+  const [meetingDraft, setMeetingDraft] = useState<EventDraft | null>(null);
+  const [bookingMeeting, setBookingMeeting] = useState(false);
+  const [filesOpen, setFilesOpen] = useState(false);
   const [threadLoading, setThreadLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
@@ -105,11 +134,13 @@ export function Mail() {
       const data = await api.get<{
         messages: MailMessage[];
         authors: Record<string, MailPerson>;
+        events: Record<string, CalendarEvent>;
         hasMore: boolean;
         nextBefore: string | null;
       }>(`/mail/conversations/${encodeURIComponent(conversationId)}/messages`);
       setMessages(data.messages);
       setAuthors(data.authors);
+      setThreadEvents(data.events ?? {});
       setHasMore(data.hasMore);
       setNextBefore(data.nextBefore);
       await api.post(`/mail/conversations/${encodeURIComponent(conversationId)}/read`);
@@ -216,11 +247,13 @@ export function Mail() {
       const data = await api.get<{
         messages: MailMessage[];
         authors: Record<string, MailPerson>;
+        events: Record<string, CalendarEvent>;
         hasMore: boolean;
         nextBefore: string | null;
       }>(`/mail/conversations/${encodeURIComponent(selectedId)}/messages?before=${encodeURIComponent(nextBefore)}`);
       setMessages((current) => [...data.messages, ...current]);
       setAuthors((current) => ({ ...data.authors, ...current }));
+      setThreadEvents((current) => ({ ...(data.events ?? {}), ...current }));
       setHasMore(data.hasMore);
       setNextBefore(data.nextBefore);
     } catch (error) {
@@ -230,28 +263,49 @@ export function Mail() {
     }
   };
 
-  const uploadFiles = async (event: ChangeEvent<HTMLInputElement>) => {
-    if (!selectedId) return;
-    const picked = [...(event.target.files ?? [])].slice(0, Math.max(0, 6 - draftFiles.length));
-    event.target.value = '';
-    if (!picked.length) return;
-    setUploading(true);
-    try {
-      const uploaded: MailAttachment[] = [];
-      for (const file of picked) {
-        const data = await api.upload<{ attachment: MailAttachment }>(
-          `/mail/conversations/${encodeURIComponent(selectedId)}/files`,
-          file
-        );
-        uploaded.push(data.attachment);
+  /**
+   * One upload path for the three ways a file arrives: the paperclip, a drop on
+   * the thread, and a screenshot pasted into the composer. They were never
+   * different operations — only the picker existed.
+   */
+  const attachFiles = useCallback(
+    async (incoming: File[]) => {
+      if (!selectedId || incoming.length === 0) return;
+      const room = MAX_DRAFT_FILES - draftFiles.length;
+      if (room <= 0) {
+        toast(copy(lang).attachmentLimit.replace('{n}', String(MAX_DRAFT_FILES)), 'bad');
+        return;
       }
-      setDraftFiles((current) => [...current, ...uploaded]);
-    } catch (error) {
-      toast(errorMessage(error, lang), 'bad');
-    } finally {
-      setUploading(false);
-    }
+      setUploading(true);
+      try {
+        const uploaded: MailAttachment[] = [];
+        for (const file of incoming.slice(0, room)) {
+          const data = await api.upload<{ attachment: MailAttachment }>(
+            `/mail/conversations/${encodeURIComponent(selectedId)}/files`,
+            file
+          );
+          uploaded.push(data.attachment);
+        }
+        setDraftFiles((current) => [...current, ...uploaded]);
+      } catch (error) {
+        toast(errorMessage(error, lang), 'bad');
+      } finally {
+        setUploading(false);
+      }
+    },
+    [selectedId, draftFiles.length, toast, lang]
+  );
+
+  const uploadFiles = (event: ChangeEvent<HTMLInputElement>) => {
+    const picked = [...(event.target.files ?? [])];
+    event.target.value = '';
+    attachFiles(picked);
   };
+
+  const { dragging, dropProps } = useFileDrop({
+    onFiles: attachFiles,
+    disabled: !selected?.canPost,
+  });
 
   const removeDraftFile = async (file: MailAttachment) => {
     try {
@@ -304,6 +358,65 @@ export function Mail() {
     }
   };
 
+  /**
+   * Turning a thread into a meeting.
+   *
+   * The people already in the conversation are the invite list — that is the
+   * whole reason to book it from here rather than from the calendar, where you
+   * would type the same names again. A channel has no member list to borrow, so
+   * it opens with an empty one and the form does the picking.
+   */
+  const startMeeting = async () => {
+    if (!selected) return;
+    try {
+      const meta = calendarMeta ?? (await fetchCalendarMeta());
+      setCalendarMeta(meta);
+      const invitees =
+        selected.kind === 'channel'
+          ? []
+          : selected.memberIds.filter((id) => id !== user?.id);
+      setMeetingDraft({
+        ...emptyEventDraft('meeting'),
+        title: selected.subject ?? '',
+        inviteeIds: invitees,
+        conversationId: selected.id,
+      });
+    } catch (error) {
+      toast(errorMessage(error, lang), 'bad');
+    }
+  };
+
+  const bookMeeting = async () => {
+    if (!meetingDraft || !selectedId) return;
+    setBookingMeeting(true);
+    try {
+      await createEvent({ ...meetingDraft, conversationId: selectedId });
+      setMeetingDraft(null);
+      await loadThread(selectedId, true);
+      await refreshBootstrap();
+      toast(c.meetingBooked);
+    } catch (error) {
+      toast(errorMessage(error, lang), 'bad');
+    } finally {
+      setBookingMeeting(false);
+    }
+  };
+
+  const answerInvite = async (eventId: string, response: 'accepted' | 'tentative' | 'declined') => {
+    try {
+      const updated = await respondToEvent(eventId, response);
+      setThreadEvents((current) => ({ ...current, [eventId]: updated }));
+    } catch (error) {
+      toast(errorMessage(error, lang), 'bad');
+    }
+  };
+
+  /** Everything attached anywhere in the loaded thread, newest last. */
+  const threadFiles = useMemo(
+    () => messages.flatMap((message) => message.attachments ?? []),
+    [messages]
+  );
+
   if (!bootstrap) {
     return <MailSkeleton />;
   }
@@ -345,16 +458,47 @@ export function Mail() {
                 dir={dir}
                 aiAvailable={bootstrap.aiAvailable}
                 aiOpen={aiOpen}
+                fileCount={threadFiles.length}
+                filesOpen={filesOpen}
                 onBack={() => setMobileThread(false)}
                 onAi={() => setAiOpen((value) => !value)}
+                onFiles={() => setFilesOpen((value) => !value)}
+                onMeeting={startMeeting}
               />
 
-              <div className="relative flex min-h-0 flex-1 flex-col">
+              {filesOpen && (
+                <div className="border-b border-surface-line bg-white px-4 py-3">
+                  <p className="mb-2 text-[11px] font-bold text-ink-muted">
+                    {c.threadFiles} ({threadFiles.length})
+                  </p>
+                  {threadFiles.length === 0 ? (
+                    <p className="text-[11px] text-ink-faint">{c.noThreadFiles}</p>
+                  ) : (
+                    <AttachmentTiles
+                      files={threadFiles}
+                      urlOf={(file) =>
+                        `/api/mail/conversations/${encodeURIComponent(selected.id)}/files/${encodeURIComponent(file.id)}`
+                      }
+                    />
+                  )}
+                </div>
+              )}
+
+              <div className="relative flex min-h-0 flex-1 flex-col" {...dropProps}>
+                {dragging && (
+                  <div className="pointer-events-none absolute inset-3 z-20 grid place-items-center rounded-2xl border-2 border-dashed border-brand-400 bg-brand-50/80 text-[13px] font-bold text-brand-700">
+                    <span className="flex items-center gap-2">
+                      <Paperclip size={16} /> {c.dropHere}
+                    </span>
+                  </div>
+                )}
                 <MessageTimeline
                   conversation={selected}
                   messages={messages}
                   authors={authors}
+                  events={threadEvents}
                   currentUserId={user?.id ?? ''}
+                  onAnswerInvite={answerInvite}
                   lang={lang}
                   loading={threadLoading}
                   hasMore={hasMore}
@@ -405,6 +549,7 @@ export function Mail() {
                   draftFiles={draftFiles}
                   onRemoveFile={removeDraftFile}
                   onAttach={() => fileInput.current?.click()}
+                  onPasteFiles={attachFiles}
                   uploading={uploading}
                   sending={sending}
                   onSend={sendMessage}
@@ -434,6 +579,41 @@ export function Mail() {
           selectConversation(conversationId);
         }}
       />
+
+      <Modal
+        open={Boolean(meetingDraft)}
+        onClose={() => setMeetingDraft(null)}
+        title={c.bookMeeting}
+        width="lg"
+        footer={
+          <>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setMeetingDraft(null)}>
+              {c.cancel}
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              onClick={bookMeeting}
+              disabled={bookingMeeting || !meetingDraft?.title.trim() || !meetingDraft?.inviteeIds.length}
+            >
+              {bookingMeeting ? <Spinner size={14} /> : <CalendarPlus size={14} />}
+              {c.sendInvite}
+            </button>
+          </>
+        }
+      >
+        {meetingDraft && calendarMeta && (
+          <EventForm
+            draft={meetingDraft}
+            onChange={setMeetingDraft}
+            people={calendarMeta.people}
+            currentUserId={user?.id ?? ''}
+            reminderChoices={calendarMeta.reminderChoices}
+            maxInvitees={calendarMeta.limits.invitees}
+            lockKind
+          />
+        )}
+      </Modal>
     </div>
   );
 }
@@ -660,8 +840,12 @@ function ThreadHeader({
   dir,
   aiAvailable,
   aiOpen,
+  fileCount,
+  filesOpen,
   onBack,
   onAi,
+  onFiles,
+  onMeeting,
 }: {
   conversation: MailConversation;
   peopleById: Map<string, MailPerson>;
@@ -670,8 +854,12 @@ function ThreadHeader({
   dir: 'rtl' | 'ltr';
   aiAvailable: boolean;
   aiOpen: boolean;
+  fileCount: number;
+  filesOpen: boolean;
   onBack: () => void;
   onAi: () => void;
+  onFiles: () => void;
+  onMeeting: () => void;
 }) {
   const c = copy(lang);
   const title = conversationTitle(conversation, peopleById, currentUserId, lang);
@@ -692,6 +880,34 @@ function ThreadHeader({
           {conversation.kind !== 'channel' && <>{conversation.memberIds.length} {c.participants}</>}
         </p>
       </div>
+      <button
+        type="button"
+        onClick={onFiles}
+        aria-label={c.threadFiles}
+        aria-expanded={filesOpen}
+        className={cx(
+          'relative hidden min-h-9 items-center gap-1.5 rounded-full border px-2.5 text-[10.5px] font-bold transition-all sm:flex',
+          filesOpen
+            ? 'border-brand-300 bg-brand-50 text-brand-700'
+            : 'border-surface-line bg-white text-ink-muted hover:border-brand-200 hover:text-brand-600'
+        )}
+      >
+        <Paperclip size={14} />
+        {fileCount > 0 && <span className="ltr">{fileCount}</span>}
+      </button>
+
+      {/* Arranging the meeting where the meeting was agreed. The invite list is
+          the thread, so nobody retypes it into a separate screen. */}
+      <button
+        type="button"
+        onClick={onMeeting}
+        aria-label={c.bookMeeting}
+        className="flex min-h-9 items-center gap-1.5 rounded-full border border-surface-line bg-white px-2.5 text-[10.5px] font-bold text-ink-muted transition-all hover:border-[#7C3AED]/40 hover:text-[#7C3AED]"
+      >
+        <CalendarPlus size={15} />
+        <span className="hidden lg:inline">{c.bookMeeting}</span>
+      </button>
+
       <button
         type="button"
         onClick={onAi}
@@ -719,7 +935,9 @@ function MessageTimeline({
   conversation,
   messages,
   authors,
+  events,
   currentUserId,
+  onAnswerInvite,
   lang,
   loading,
   hasMore,
@@ -732,7 +950,9 @@ function MessageTimeline({
   conversation: MailConversation;
   messages: MailMessage[];
   authors: Record<string, MailPerson>;
+  events: Record<string, CalendarEvent>;
   currentUserId: string;
+  onAnswerInvite: (eventId: string, response: 'accepted' | 'tentative' | 'declined') => void;
   lang: 'ar' | 'en';
   loading: boolean;
   hasMore: boolean;
@@ -765,7 +985,15 @@ function MessageTimeline({
           return (
             <div key={message.id}>
               {showDay && <div className="my-4 flex items-center gap-3 text-[10px] font-semibold text-ink-faint"><span className="h-px flex-1 bg-surface-line" /><span>{fullDay(message.createdAt, lang)}</span><span className="h-px flex-1 bg-surface-line" /></div>}
-              {conversation.kind === 'mail' ? (
+              {message.eventId && events[message.eventId] ? (
+                <MeetingCard
+                  event={events[message.eventId]}
+                  author={authors[message.senderId]}
+                  currentUserId={currentUserId}
+                  lang={lang}
+                  onAnswer={(response) => onAnswerInvite(message.eventId as string, response)}
+                />
+              ) : conversation.kind === 'mail' ? (
                 <MailCard message={message} author={authors[message.senderId]} lang={lang} onReply={() => onReply(message)} />
               ) : (
                 <ChatBubble message={message} author={authors[message.senderId]} own={message.senderId === currentUserId} lang={lang} onReply={() => onReply(message)} />
@@ -816,13 +1044,132 @@ function ChatBubble({ message, author, own, lang, onReply }: { message: MailMess
 function AttachmentList({ files, dark = false }: { files: MailAttachment[]; dark?: boolean }) {
   if (!files?.length) return null;
   return (
-    <div className="mt-3 grid gap-1.5">
-      {files.map((file) => (
-        <a key={file.id} href={`/api/mail/conversations/${encodeURIComponent(file.conversationId)}/files/${encodeURIComponent(file.id)}`} target="_blank" rel="noreferrer" className={cx('flex items-center gap-2 rounded-xl border px-3 py-2 text-[10.5px] font-semibold transition', dark ? 'border-white/15 bg-white/10 text-white hover:bg-white/15' : 'border-surface-line bg-surface-sunken text-ink-muted hover:border-brand-300 hover:text-brand-600')}>
-          <FileText size={14} /><span className="min-w-0 flex-1 truncate">{file.name}</span><span className="ltr opacity-60">{fileSize(file.size)}</span>
-        </a>
-      ))}
-    </div>
+    <AttachmentTiles
+      className="mt-3"
+      files={files}
+      dark={dark}
+      urlOf={(file) =>
+        `/api/mail/conversations/${encodeURIComponent((file as MailAttachment).conversationId)}/files/${encodeURIComponent(file.id)}`
+      }
+    />
+  );
+}
+
+/**
+ * A meeting, as it appears in the thread it was arranged from.
+ *
+ * Rendered from the live entry rather than from the text of the message, so
+ * scrolling back to an old invitation shows where the meeting actually ended up
+ * — and the answer buttons are here because the person reading the thread is
+ * exactly the person the invitation is waiting on.
+ */
+function MeetingCard({
+  event,
+  author,
+  currentUserId,
+  lang,
+  onAnswer,
+}: {
+  event: CalendarEvent;
+  author?: MailPerson;
+  currentUserId: string;
+  lang: 'ar' | 'en';
+  onAnswer: (response: 'accepted' | 'tentative' | 'declined') => void;
+}) {
+  const c = copy(lang);
+  const cancelled = event.status === 'cancelled';
+  const invited = event.inviteeIds.includes(currentUserId);
+  const answers: Array<{ value: 'accepted' | 'tentative' | 'declined'; label: string }> = [
+    { value: 'accepted', label: c.going },
+    { value: 'tentative', label: c.maybe },
+    { value: 'declined', label: c.notGoing },
+  ];
+
+  return (
+    <article
+      className={cx(
+        'rounded-[20px] border bg-white p-4 shadow-[0_12px_34px_-26px_rgba(11,37,69,.55)]',
+        cancelled ? 'border-surface-line opacity-75' : 'border-[#7C3AED]/25 ring-1 ring-[#7C3AED]/10'
+      )}
+    >
+      <header className="flex items-start gap-3">
+        <span
+          className={cx(
+            'grid h-9 w-9 shrink-0 place-items-center rounded-xl',
+            cancelled ? 'bg-surface-sunken text-ink-faint' : 'bg-[#7C3AED]/10 text-[#7C3AED]'
+          )}
+        >
+          <CalendarClock size={17} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[10px] font-bold text-ink-faint">
+            {EVENT_KIND_LABEL[event.kind].ar} · {author?.name ?? c.removedUser}
+          </p>
+          <h3 className={cx('truncate text-[13.5px] font-extrabold text-ink', cancelled && 'line-through')}>
+            {event.title}
+          </h3>
+        </div>
+        {event.myResponse && !cancelled && (
+          <span className={cx('chip shrink-0 text-[10px]', RESPONSE_LABEL[event.myResponse].tone)}>
+            {RESPONSE_LABEL[event.myResponse].ar}
+          </span>
+        )}
+      </header>
+
+      <div className="mt-3 grid gap-1.5 text-[11.5px] text-ink-muted">
+        <p className="flex items-center gap-2">
+          <Clock size={13} className="text-ink-faint" />
+          {dayOf(event.startAt)} <span className="ltr">· {spanOf(event)}</span>
+        </p>
+        {event.location && (
+          <p className="flex items-center gap-2">
+            <MapPin size={13} className="text-ink-faint" />
+            {event.location}
+          </p>
+        )}
+        <p className="flex items-center gap-2">
+          <Users size={13} className="text-ink-faint" />
+          {event.inviteeIds.length + 1} {c.participants}
+        </p>
+        {event.onlineUrl && !cancelled && (
+          <a
+            href={event.onlineUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="flex w-fit items-center gap-2 font-semibold text-brand-600 hover:underline"
+          >
+            <ExternalLink size={13} />
+            {c.joinOnline}
+          </a>
+        )}
+      </div>
+
+      {cancelled ? (
+        <p className="mt-3 rounded-xl bg-status-badBg px-3 py-2 text-[11px] font-bold text-status-bad">
+          {c.meetingCancelled}
+        </p>
+      ) : (
+        <footer className="mt-3 flex flex-wrap items-center gap-2 border-t border-surface-line pt-3">
+          {invited &&
+            answers.map(({ value, label }) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => onAnswer(value)}
+                className={cx('btn btn-sm', event.myResponse === value ? 'btn-primary' : 'btn-ghost')}
+              >
+                {label}
+              </button>
+            ))}
+          <Link
+            to={`/calendar?event=${encodeURIComponent(event.id)}`}
+            className="btn btn-quiet btn-sm ms-auto"
+          >
+            {c.openInCalendar}
+          </Link>
+        </footer>
+      )}
+    </article>
   );
 }
 
@@ -835,6 +1182,7 @@ function Composer({
   draftFiles,
   onRemoveFile,
   onAttach,
+  onPasteFiles,
   uploading,
   sending,
   onSend,
@@ -849,6 +1197,7 @@ function Composer({
   draftFiles: MailAttachment[];
   onRemoveFile: (file: MailAttachment) => void;
   onAttach: () => void;
+  onPasteFiles: (files: File[]) => void;
   uploading: boolean;
   sending: boolean;
   onSend: () => void;
@@ -865,8 +1214,8 @@ function Composer({
         {replyTo && <div className="mb-2 flex items-center gap-2 rounded-xl border-s-2 border-brand-500 bg-brand-50 px-3 py-2 text-[10.5px] text-ink-muted"><Reply size={13} /><span className="min-w-0 flex-1 truncate">{replyTo.body}</span><button type="button" onClick={onCancelReply}><X size={14} /></button></div>}
         {draftFiles.length > 0 && <div className="mb-2 flex flex-wrap gap-1.5">{draftFiles.map((file) => <span key={file.id} className="flex max-w-[220px] items-center gap-1.5 rounded-full bg-surface-sunken px-2.5 py-1 text-[9.5px] font-semibold text-ink-muted"><Paperclip size={11} /><span className="truncate">{file.name}</span><button type="button" onClick={() => onRemoveFile(file)} className="text-ink-faint hover:text-status-bad"><X size={11} /></button></span>)}</div>}
         <div className="flex items-end gap-2 rounded-[18px] border border-surface-line bg-[#F7FAFD] p-2 shadow-[inset_0_1px_0_rgba(255,255,255,.9)] transition focus-within:border-brand-300 focus-within:bg-white focus-within:ring-2 focus-within:ring-brand-100">
-          <button type="button" onClick={onAttach} disabled={uploading || draftFiles.length >= 6} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-ink-faint hover:bg-brand-50 hover:text-brand-600 disabled:opacity-40" aria-label={c.attach}>{uploading ? <Spinner size={15} /> : <Paperclip size={17} />}</button>
-          <textarea ref={inputRef} value={value} onChange={(event) => onChange(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); onSend(); } }} rows={1} className="max-h-32 min-h-9 flex-1 resize-y bg-transparent px-1 py-2 text-[12.5px] leading-5 text-ink outline-none placeholder:text-ink-faint" placeholder={conversation.kind === 'mail' ? c.writeReply : c.writeMessage} />
+          <button type="button" onClick={onAttach} disabled={uploading || draftFiles.length >= MAX_DRAFT_FILES} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-ink-faint hover:bg-brand-50 hover:text-brand-600 disabled:opacity-40" aria-label={c.attach}>{uploading ? <Spinner size={15} /> : <Paperclip size={17} />}</button>
+          <textarea ref={inputRef} value={value} onChange={(event) => onChange(event.target.value)} onPaste={(event) => { const files = filesFromPaste(event); if (files.length) { event.preventDefault(); onPasteFiles(files); } }} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); onSend(); } }} rows={1} className="max-h-32 min-h-9 flex-1 resize-y bg-transparent px-1 py-2 text-[12.5px] leading-5 text-ink outline-none placeholder:text-ink-faint" placeholder={conversation.kind === 'mail' ? c.writeReply : c.writeMessage} />
           <button type="button" onClick={onSend} disabled={sending || (!value.trim() && !draftFiles.length)} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 text-white shadow-sm transition hover:brightness-110 active:scale-95 disabled:opacity-40" aria-label={c.send}>{sending ? <Spinner size={15} /> : <Send size={16} />}</button>
         </div>
       </div>
@@ -1221,7 +1570,6 @@ const shortTime = (value: string, lang: 'ar' | 'en') => {
 };
 const longTime = (value: string, lang: 'ar' | 'en') => new Intl.DateTimeFormat(locale(lang), { hour: 'numeric', minute: '2-digit' }).format(new Date(value));
 const fullDay = (value: string, lang: 'ar' | 'en') => new Intl.DateTimeFormat(locale(lang), { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date(value));
-const fileSize = (bytes: number) => bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 
 function copy(lang: 'ar' | 'en') {
   return lang === 'en' ? EN : AR;
@@ -1231,10 +1579,12 @@ const AR = {
   officialMail: 'الرسائل الرسمية', privateChats: 'المحادثات الخاصة', emptyGroup: 'لا يوجد شيء هنا بعد.',
   from: 'من', to: 'إلى', currentAccount: 'حسابك الحالي', senderAccount: 'حساب المرسل', individuals: 'أفراد', groups: 'أقسام', teams: 'تيمات', selectedCount: '{count} محدد', searchGroups: 'ابحث في الأقسام والتيمات…', noGroups: 'لا توجد أقسام مطابقة.', noTeams: 'لا توجد تيمات مطابقة.',
   inbox: 'الوارد', mail: 'الرسائل', channels: 'القنوات', channel: 'قناة', direct: 'المحادثات', close: 'إغلاق', internalWorkspace: 'مساحة تواصل إنجوسوفت', communicationHub: 'صندوق التواصل', workspaceSignature: 'البريد والقنوات والعمل في مكان واحد', newMessage: 'رسالة جديدة', search: 'ابحث في الرسائل والقنوات…', noMessages: 'لا توجد رسائل بعد', noConversations: 'لا توجد محادثات', noConversationsBody: 'ابدأ رسالة أو محادثة جديدة مع فريقك.', back: 'رجوع', announcementsOnly: 'قناة إعلانات', teamChannel: 'قناة القسم', publicChannelShort: 'قناة عامة لكل الشركة', privateChannelShort: 'قناة خاصة', members: 'أعضاء', participants: 'مشاركون', chooseConversation: 'اختر محادثة', chooseConversationBody: 'اختر رسالة أو قناة من القائمة للبدء.', olderMessages: 'عرض رسائل أقدم', loading: 'جارٍ التحميل…', startConversation: 'ابدأ المحادثة', startConversationBody: 'أرسل أول رسالة أو ملف هنا.', removedUser: 'مستخدم غير متاح', reply: 'رد', attach: 'إرفاق ملف', send: 'إرسال', writeReply: 'اكتب ردك…', writeMessage: 'اكتب رسالة…', readOnlyChannel: 'هذه قناة إعلانات؛ الكتابة متاحة للمديرين.', newConversation: 'بدء تواصل جديد', cancel: 'إلغاء', createChannel: 'إنشاء القناة', openChat: 'فتح المحادثة', channelName: 'اسم القناة', description: 'الوصف', channelAccess: 'من يمكنه رؤية القناة؟', departmentChannel: 'القسم', privateChannel: 'خاصة', publicChannel: 'الشركة كلها', announcementChannel: 'قناة إعلانات: المديرون يكتبون والموظفون يقرؤون', subject: 'عنوان الرسالة', message: 'الرسالة', attachments: 'المرفقات', choosePerson: 'اختر موظفًا', recipients: 'المستلمون', searchPeople: 'ابحث بالاسم أو الإيميل…', aiLastMessages: 'مساعد مساحة العمل', summarize: 'تلخيص', suggestReply: 'اقتراح رد', extractActions: 'استخراج مهام', aiUnavailable: 'Qodo AI قيد التجهيز', aiUnavailableBody: 'سيظهر مساعد المحادثة هنا فور اكتمال تشغيله.', aiWorking: 'Qodo AI يحلّل الرسائل…', aiNoAction: 'لن ينفّذ أي شيء من تلقاء نفسه.', aiInsideChat: 'داخل المحادثة', aiLastCount: 'يلخّص آخر {count} رسالة', aiAnalysedCount: 'تم تحليل {count} رسالة فعلية', aiMessageRange: 'نطاق التحليل', aiDecisions: 'القرارات', aiBlockers: 'العوائق', useReply: 'استخدام الرد في المحرر', createTask: 'إنشاء مهمة', noActions: 'لا توجد إجراءات واضحة', noActionsBody: 'لم يجد AI طلبات تنفيذ صريحة في المحادثة.', aiChoose: 'ماذا تريد من Qodo AI؟', aiChooseBody: 'لخّص المحادثة، حضّر ردًا، أو حوّل نقاط العمل إلى مهام.', aiPrivacy: 'راجع النتيجة واستخدمها في المحادثة أو حوّلها إلى مهمة.', confirmTask: 'إنشاء مهمة بعنوان «{title}»؟', taskCreated: 'تم إنشاء المهمة من المحادثة.', untitled: 'بدون عنوان', publicChannelForbidden: 'القناة العامة للإدارة فقط.',
+  bookMeeting: 'حجز اجتماع', sendInvite: 'إرسال الدعوة', meetingBooked: 'اتبعتت الدعوة وظهرت في المحادثة.', going: 'حاضر', maybe: 'مبدئي', notGoing: 'معتذر', joinOnline: 'دخول أونلاين', openInCalendar: 'افتح في التقويم', meetingCancelled: 'الاجتماع اتلغى.', threadFiles: 'مرفقات المحادثة', noThreadFiles: 'مفيش مرفقات في الرسائل المحمّلة.', dropHere: 'سيب الملف هنا للإرفاق', attachmentLimit: 'الحد {n} ملفات للرسالة الواحدة.',
 };
 
 const EN: typeof AR = {
   officialMail: 'Official mail', privateChats: 'Private chats', emptyGroup: 'Nothing here yet.',
   from: 'From', to: 'To', currentAccount: 'Your current account', senderAccount: 'Sender account', individuals: 'People', groups: 'Groups', teams: 'Teams', selectedCount: '{count} selected', searchGroups: 'Search groups and teams…', noGroups: 'No matching groups.', noTeams: 'No matching teams.',
   inbox: 'Inbox', mail: 'Mail', channels: 'Channels', channel: 'Channel', direct: 'Direct', close: 'Close', internalWorkspace: 'Engosoft communication hub', communicationHub: 'Communication hub', workspaceSignature: 'Mail, channels and teamwork in one place', newMessage: 'New message', search: 'Search mail and channels…', noMessages: 'No messages yet', noConversations: 'No conversations', noConversationsBody: 'Start a mail thread or chat with your team.', back: 'Back', announcementsOnly: 'Announcements', teamChannel: 'Department channel', publicChannelShort: 'Public company channel', privateChannelShort: 'Private channel', members: 'members', participants: 'participants', chooseConversation: 'Choose a conversation', chooseConversationBody: 'Pick a mail thread or channel from the list.', olderMessages: 'Load older messages', loading: 'Loading…', startConversation: 'Start the conversation', startConversationBody: 'Send the first message or file here.', removedUser: 'Unavailable user', reply: 'Reply', attach: 'Attach file', send: 'Send', writeReply: 'Write a reply…', writeMessage: 'Write a message…', readOnlyChannel: 'This is an announcement channel; only managers can post.', newConversation: 'Start a new conversation', cancel: 'Cancel', createChannel: 'Create channel', openChat: 'Open chat', channelName: 'Channel name', description: 'Description', channelAccess: 'Who can see this channel?', departmentChannel: 'Department', privateChannel: 'Private', publicChannel: 'Whole company', announcementChannel: 'Announcement channel: managers post and employees read', subject: 'Subject', message: 'Message', attachments: 'Attachments', choosePerson: 'Choose a person', recipients: 'Recipients', searchPeople: 'Search by name or email…', aiLastMessages: 'Workspace assistant', summarize: 'Summarize', suggestReply: 'Draft reply', extractActions: 'Action items', aiUnavailable: 'Qodo AI is being prepared', aiUnavailableBody: 'The conversation assistant will appear here as soon as setup is complete.', aiWorking: 'Qodo AI is analysing messages…', aiNoAction: 'It will not execute anything on its own.', aiInsideChat: 'Inside conversation', aiLastCount: 'Summarising the last {count} messages', aiAnalysedCount: 'Analysed {count} actual messages', aiMessageRange: 'Analysis range', aiDecisions: 'Decisions', aiBlockers: 'Blockers', useReply: 'Use this reply', createTask: 'Create task', noActions: 'No clear actions found', noActionsBody: 'AI did not find explicit action requests in this conversation.', aiChoose: 'What should Qodo AI do?', aiChooseBody: 'Summarize the conversation, draft a reply, or turn action points into tasks.', aiPrivacy: 'Review the result, use it in the conversation, or turn it into a task.', confirmTask: 'Create a task called “{title}”?', taskCreated: 'Task created from the conversation.', untitled: 'Untitled', publicChannelForbidden: 'Only administrators can create public channels.',
+  bookMeeting: 'Book a meeting', sendInvite: 'Send invitation', meetingBooked: 'Invitation sent and posted in the thread.', going: 'Going', maybe: 'Maybe', notGoing: 'Not going', joinOnline: 'Join online', openInCalendar: 'Open in calendar', meetingCancelled: 'This meeting was cancelled.', threadFiles: 'Conversation files', noThreadFiles: 'No files in the loaded messages.', dropHere: 'Drop the file here to attach', attachmentLimit: 'Up to {n} files per message.',
 };

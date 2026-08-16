@@ -183,6 +183,8 @@ export interface MailMessage {
   body: string;
   replyToId: string | null;
   mentionIds: string[];
+  /** Set when the message announces a calendar entry arranged from this thread. */
+  eventId: string | null;
   editedAt: string | null;
   attachments: MailAttachment[];
   createdAt: string;

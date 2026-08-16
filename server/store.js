@@ -47,6 +47,13 @@ export const COLLECTIONS = [
   'mailMessages',
   'mailAttachments',
   'mailAiRuns',
+  // Qodo Calendar — meetings and appointments for the whole workspace. The
+  // invite is its own document because a reply belongs to the person who gave
+  // it, not to the event: an organizer editing the room must not silently
+  // rewrite who had already accepted.
+  'calendarEvents',
+  'calendarInvites',
+  'calendarAttachments',
   'pushSubscriptions',
   'settings',
   // The management desk — the executive's own tasks, meetings, appointments,
