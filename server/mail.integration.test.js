@@ -262,3 +262,106 @@ test('mail AI defaults to 20 messages and keeps structured summaries bounded', a
   assert.equal(schema.properties.decisions.type, 'array');
   assert.equal(schema.additionalProperties, false);
 });
+
+test('a message is deleted by the person who sent it, and takes its file with it', async () => {
+  // A pair with no history, so the counts below mean only what this test did.
+  const created = await request('/mail/conversations', {
+    method: 'POST',
+    cookie: memberCookie,
+    body: { kind: 'direct', memberIds: [sales.id] },
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.data));
+  const conversationId = created.data.conversation.id;
+
+  const file = await upload(conversationId, memberCookie, 'draft.pdf');
+  const first = await request(`/mail/conversations/${conversationId}/messages`, {
+    method: 'POST',
+    cookie: memberCookie,
+    body: { body: 'الرسالة الأولى.' },
+  });
+  const second = await request(`/mail/conversations/${conversationId}/messages`, {
+    method: 'POST',
+    cookie: memberCookie,
+    body: { body: 'أرسلتها بالغلط.', attachmentIds: [file.data.attachment.id] },
+  });
+  assert.equal(second.status, 201, JSON.stringify(second.data));
+
+  const fileUrl = `${ORIGIN}/api/mail/conversations/${conversationId}/files/${file.data.attachment.id}`;
+  assert.equal((await fetch(fileUrl, { headers: { Cookie: salesCookie } })).status, 200);
+
+  // The recipient cannot delete what somebody else wrote in a private thread.
+  const byRecipient = await request(
+    `/mail/conversations/${conversationId}/messages/${second.data.message.id}`,
+    { method: 'DELETE', cookie: salesCookie }
+  );
+  assert.equal(byRecipient.status, 403, JSON.stringify(byRecipient.data));
+
+  const removed = await request(
+    `/mail/conversations/${conversationId}/messages/${second.data.message.id}`,
+    { method: 'DELETE', cookie: memberCookie }
+  );
+  assert.equal(removed.status, 200, JSON.stringify(removed.data));
+
+  // Gone from the thread for everyone, not only for the sender.
+  const thread = await request(`/mail/conversations/${conversationId}/messages`, {
+    cookie: salesCookie,
+  });
+  assert.equal(thread.data.messages.length, 1);
+  assert.equal(thread.data.messages[0].id, first.data.message.id);
+
+  // The sidebar quote walks back to the message that is now last.
+  assert.equal(removed.data.conversation.lastMessagePreview, 'الرسالة الأولى.');
+  assert.equal(removed.data.conversation.lastMessageAt, first.data.message.createdAt);
+
+  // The attachment link does not outlive the message that carried it.
+  assert.equal((await fetch(fileUrl, { headers: { Cookie: salesCookie } })).status, 404);
+
+  // Deleting twice is not a second delete.
+  const again = await request(
+    `/mail/conversations/${conversationId}/messages/${second.data.message.id}`,
+    { method: 'DELETE', cookie: memberCookie }
+  );
+  assert.equal(again.status, 404);
+});
+
+test('a channel manager can retract any post, but nobody outranks a private thread', async () => {
+  const channel = await request('/mail/conversations', {
+    method: 'POST',
+    cookie: managerCookie,
+    body: { kind: 'channel', name: 'حملة الربع', scope: 'department' },
+  });
+  assert.equal(channel.status, 201, JSON.stringify(channel.data));
+  const channelId = channel.data.conversation.id;
+
+  const posted = await request(`/mail/conversations/${channelId}/messages`, {
+    method: 'POST',
+    cookie: memberCookie,
+    body: { body: 'رسالة في المكان الغلط.' },
+  });
+  assert.equal(posted.status, 201, JSON.stringify(posted.data));
+
+  const byManager = await request(
+    `/mail/conversations/${channelId}/messages/${posted.data.message.id}`,
+    { method: 'DELETE', cookie: managerCookie }
+  );
+  assert.equal(byManager.status, 200, JSON.stringify(byManager.data));
+  assert.equal(byManager.data.conversation.lastMessageAt, null);
+  assert.equal(byManager.data.conversation.lastMessagePreview, '');
+
+  // A direct thread has no manager: the admin holds every permission in the
+  // workspace and still cannot reach into a conversation of two other people.
+  const direct = await request('/mail/conversations', {
+    method: 'POST',
+    cookie: managerCookie,
+    body: { kind: 'direct', memberIds: [member.id] },
+  });
+  const privateMessage = await request(
+    `/mail/conversations/${direct.data.conversation.id}/messages`,
+    { method: 'POST', cookie: managerCookie, body: { body: 'كلام بينا.' } }
+  );
+  const byAdmin = await request(
+    `/mail/conversations/${direct.data.conversation.id}/messages/${privateMessage.data.message.id}`,
+    { method: 'DELETE', cookie: adminCookie }
+  );
+  assert.equal(byAdmin.status, 404, JSON.stringify(byAdmin.data));
+});

@@ -83,6 +83,12 @@ router.get('/:fileId', async (req, res) => {
   if (!row || (!row.messageId && row.userId !== req.user.id)) {
     return res.status(404).json({ error: 'not_found' });
   }
+  // A delivered file is reachable only through its message. Once that message
+  // is taken back the file goes with it, or the link outlives the delete.
+  if (row.messageId) {
+    const message = await findOne('mailMessages', (candidate) => candidate.id === row.messageId);
+    if (!message || message.deletedAt) return res.status(404).json({ error: 'not_found' });
+  }
   const bytes = await getBlob(row.id);
   if (!bytes) return res.status(404).json({ error: 'not_found' });
   sendBlob(res, row, bytes);

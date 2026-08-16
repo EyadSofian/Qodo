@@ -363,7 +363,10 @@ router.post('/conversations/:id/messages', async (req, res) => {
   if (req.body?.replyToId) {
     const parent = await findOne(
       'mailMessages',
-      (row) => row.id === req.body.replyToId && row.conversationId === conversation.id
+      (row) =>
+        row.id === req.body.replyToId &&
+        row.conversationId === conversation.id &&
+        !row.deletedAt
     );
     if (!parent) return res.status(400).json({ error: 'invalid_reply' });
     replyToId = parent.id;
@@ -429,6 +432,81 @@ router.post('/conversations/:id/messages', async (req, res) => {
       ...publicMessage(message),
       attachments: attachments.map((file) => publicMailAttachment({ ...file, messageId: message.id })),
     },
+    conversation: publicConversation(updatedConversation, 0, req.user),
+  });
+});
+
+/**
+ * Taking a message back.
+ *
+ * The row is stamped rather than removed. Every read path in this file already
+ * skips a stamped row, so the message leaves the thread, the sidebar preview
+ * and the unread count in one step — while the record of what was said stays
+ * recoverable, which a workspace that answers questions about its own history
+ * needs and a chat app does not.
+ *
+ * The sender is the authority. A channel manager is the single exception,
+ * because an announcement nobody can retract is worse than one that can be, and
+ * that exception stops at channels: `canManageConversation` is false for a
+ * direct message and for a mail thread, so nobody outranks the two people in a
+ * private conversation.
+ */
+router.delete('/conversations/:id/messages/:messageId', async (req, res) => {
+  const conversation = await loadConversation(req, res);
+  if (!conversation) return;
+
+  const message = await findOne(
+    'mailMessages',
+    (row) =>
+      row.id === req.params.messageId &&
+      row.conversationId === conversation.id &&
+      !row.deletedAt
+  );
+  if (!message) return res.status(404).json({ error: 'not_found' });
+
+  const own = message.senderId === req.user.id;
+  if (!own && !canManageConversation(req.user, conversation)) {
+    return res.status(403).json({ error: 'forbidden' });
+  }
+
+  const store = await getStore();
+  await store.update('mailMessages', message.id, { deletedAt: new Date().toISOString() });
+
+  // The sidebar quotes the newest message. Recomputed rather than patched,
+  // because deleting the last two messages in a row has to walk back twice.
+  const remaining = (await find(
+    'mailMessages',
+    (row) => row.conversationId === conversation.id && !row.deletedAt
+  )).sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+  const latest = remaining[0] ?? null;
+  const latestFiles = latest
+    ? await find('mailAttachments', (row) => row.messageId === latest.id)
+    : [];
+  const preview = latest
+    ? (latest.body || latestFiles.map((file) => `📎 ${file.name}`).join(' · ')).slice(0, 240)
+    : '';
+  const updatedConversation = await store.update('mailConversations', conversation.id, {
+    lastMessageAt: latest?.createdAt ?? null,
+    lastMessagePreview: preview,
+    lastSenderId: latest?.senderId ?? null,
+  });
+
+  for (const user of await audienceForConversation(conversation)) {
+    publishMail(user.id, conversation.id, message.id);
+  }
+
+  await logActivity({
+    actorId: req.user.id,
+    action: 'mail.message.delete',
+    subject: 'mailConversation',
+    subjectId: conversation.id,
+    // Who removed it and whether it was theirs — never the text that was in it.
+    meta: { messageId: message.id, own },
+  });
+
+  res.json({
+    ok: true,
+    messageId: message.id,
     conversation: publicConversation(updatedConversation, 0, req.user),
   });
 });
