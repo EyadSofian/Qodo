@@ -32,6 +32,7 @@ route re-checks the effective permission and resource scope.
 | `tasks.score` | Put a number on someone's record, and read the team's scores |
 | `tasks.archive` | Take a task off the board, and restore it |
 | `tasks.delete_any` | Permanently destroy an archived task, its comments and its files |
+| `tasks.move_any` | Move a card between any two stages, bypassing the gate that owns that transition |
 
 These used to be one key. `tasks.edit_any` alone meant "edit a colleague's card"
 *and* review, approve, score and re-plan it, so there was no way to appoint a
@@ -42,6 +43,40 @@ expressible.
 new keys; `permissionsFor` reads that combination as still meaning all four, and
 `tasks.delete_any` as also meaning `tasks.archive`. The back-fill stops applying
 to a user the moment an administrator saves them again with explicit keys.
+
+## The override: `tasks.move_any`
+
+Every other key in the table above works *inside* the lifecycle. This one steps
+outside it: whoever holds it may drag a card from any stage to any other, in
+either direction, without the action that normally owns that transition. An
+administrator has it by holding everything; anybody else is given it one box at
+a time from the Users screen, because it is the one key that can make the board
+disagree with what actually happened.
+
+It exists for the cases the workflow has no honest answer to — a task filed in
+the wrong column, a board being corrected after an import, work that was
+finished somewhere the workspace never saw. What keeps it from becoming a faster
+way to approve is the shape of the move itself:
+
+- **A close still costs a score.** Moving a card into a done column finishes the
+  task, so the move has to carry a number — `PATCH /tasks/:id` refuses it with
+  `invalid_score` otherwise, and refuses a score on any other move with
+  `score_before_review`. It is recorded the way the gates record theirs: rounded,
+  cut by the rework deduction the task already earned, stamped with who typed it,
+  and it needs `tasks.score` on top of `tasks.move_any`. Every move that is not a
+  close clears the score instead — a task that is no longer finished is no longer
+  scored.
+- **The record follows the card.** `overrideStamps` realigns the task to the
+  column it lands in — a task forced to Done gains the delivery and approval
+  stamps it implies, and one pulled back out loses the completion, publication
+  and score it no longer supports. Stamps that had to be invented are marked
+  (`startedAtInferred`) or attributed to the mover, so cycle-time readings stay
+  absent rather than reading as zero.
+- **It is loud.** The move logs `task.stage_override` rather than `task.update`,
+  and the assignees are notified that their card moved and where to.
+- **It does not swallow the Marketing reset.** Returning a card all the way to
+  Pending still goes through `POST /tasks/:id/reset-to-pending`, which clears the
+  delivery, review, completion and score stamps as one transaction.
 
 ## Why the due date sits on the commissioning side
 

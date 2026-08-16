@@ -1761,3 +1761,192 @@ test('work with no file to show is handed in on its note alone', async () => {
   assert.equal(scored.status, 200, JSON.stringify(scored.data));
   assert.equal(scored.data.task.score, 85);
 });
+
+test('tasks.move_any walks through the gates, and the record follows the card', async () => {
+  const { task } = await create(
+    '/tasks',
+    {
+      title: 'اتعملت برّه النظام',
+      department: 'marketing',
+      subteam: 'creative',
+      stage: 'pending',
+      assigneeIds: [creative.user.id],
+      dueDate: '2099-01-01',
+    },
+    managerCookie
+  );
+  await request(`/tasks/${task.id}/assignment`, {
+    method: 'POST',
+    cookie: creativeCookie,
+    body: { action: 'accept' },
+  });
+  const started = await request(`/tasks/${task.id}/start`, {
+    method: 'POST',
+    cookie: creativeCookie,
+  });
+  assert.equal(started.status, 200);
+
+  // Without the permission the gates stand exactly where they were: a manager
+  // dragging live work into Done is still told to review it.
+  const managerDrag = await request(`/tasks/${task.id}`, {
+    method: 'PATCH',
+    cookie: managerCookie,
+    body: { stage: 'done' },
+  });
+  assert.equal(managerDrag.status, 409);
+  assert.equal(managerDrag.data.error, 'review_required');
+
+  // The administrator carries `tasks.move_any` by holding everything — but a
+  // move into a done column closes the task, and nothing closes a task without
+  // a number on it.
+  const unscored = await request(`/tasks/${task.id}`, {
+    method: 'PATCH',
+    cookie: adminCookie,
+    body: { stage: 'done' },
+  });
+  assert.equal(unscored.status, 400);
+  assert.equal(unscored.data.error, 'invalid_score');
+
+  const outOfRange = await request(`/tasks/${task.id}`, {
+    method: 'PATCH',
+    cookie: adminCookie,
+    body: { stage: 'done', score: 140 },
+  });
+  assert.equal(outOfRange.status, 400);
+  assert.equal(outOfRange.data.error, 'invalid_score');
+
+  // A score still cannot ride along on any other move — the exception is the
+  // close, not the PATCH.
+  const smuggled = await request(`/tasks/${task.id}`, {
+    method: 'PATCH',
+    cookie: adminCookie,
+    body: { stage: 'review', score: 90 },
+  });
+  assert.equal(smuggled.status, 400);
+  assert.equal(smuggled.data.error, 'score_before_review');
+
+  const forced = await request(`/tasks/${task.id}`, {
+    method: 'PATCH',
+    cookie: adminCookie,
+    body: { stage: 'done', score: 88 },
+  });
+  assert.equal(forced.status, 200, JSON.stringify(forced.data));
+  assert.equal(forced.data.task.stage, 'done');
+  assert.ok(forced.data.task.completedAt);
+  // The column says the work was delivered, so the record has to say it too —
+  // and say who decided that.
+  assert.ok(forced.data.task.submittedAt);
+  assert.ok(forced.data.task.firstSubmittedAt);
+  assert.equal(forced.data.task.reviewDecision, 'approved');
+  const admin = (await request('/auth/me', { cookie: adminCookie })).data.user;
+  assert.equal(forced.data.task.reviewedBy, admin.id, 'an approval nobody made is the mover’s');
+  assert.ok(forced.data.task.publishedAt, 'a Marketing board models publication');
+  // The number the mover typed, recorded exactly as a gate would record it.
+  assert.equal(forced.data.task.score, 88);
+  assert.equal(forced.data.task.scoreBeforeReworkPenalty, 88);
+  assert.equal(forced.data.task.scoreBy, admin.id);
+  assert.ok(forced.data.task.scoredAt);
+  // The doer pressed start, so that stamp is still a real measurement.
+  assert.equal(forced.data.task.startedAtInferred, false);
+
+  const alerts = await request('/notifications', { cookie: creativeCookie });
+  assert.ok(
+    alerts.data.notifications.some(
+      (notification) =>
+        notification.type === 'task.stage_override' &&
+        notification.link === `/tasks?task=${task.id}`
+    ),
+    'the people who owe the work are told their card moved'
+  );
+  const activity = await request('/notifications/activity', { cookie: adminCookie });
+  assert.ok(
+    activity.data.activity.some(
+      (entry) => entry.action === 'task.stage_override' && entry.subjectId === task.id
+    )
+  );
+
+  // And back the other way, out of the terminal column without the reopen
+  // action: everything the later stages stamped is cleared, and the facts about
+  // what happened — the real start, the first delivery — stay.
+  const pulledBack = await request(`/tasks/${task.id}`, {
+    method: 'PATCH',
+    cookie: adminCookie,
+    body: { stage: 'working' },
+  });
+  assert.equal(pulledBack.status, 200, JSON.stringify(pulledBack.data));
+  assert.equal(pulledBack.data.task.stage, 'working');
+  assert.equal(pulledBack.data.task.submittedAt, null);
+  assert.equal(pulledBack.data.task.completedAt, null);
+  assert.equal(pulledBack.data.task.publishedAt, null);
+  assert.equal(pulledBack.data.task.reviewDecision, null);
+  assert.equal(pulledBack.data.task.score, null);
+  assert.ok(pulledBack.data.task.startedAt, 'the day work really began is not a stamp to discard');
+  assert.ok(pulledBack.data.task.firstSubmittedAt, 'the delivery that happened still happened');
+
+  // The override does not swallow the Marketing reset. Returning a card all the
+  // way to Pending clears the delivery, review, completion and score stamps as
+  // one transaction and tells the assignees why — so that action keeps owning
+  // the move, even for somebody who could otherwise drag anywhere.
+  const toPending = await request(`/tasks/${task.id}`, {
+    method: 'PATCH',
+    cookie: adminCookie,
+    body: { stage: 'pending' },
+  });
+  assert.equal(toPending.status, 409);
+  assert.equal(toPending.data.error, 'reset_pending_required');
+
+  // Nobody else gets it by accident: it is one box on one person, and revoking
+  // it puts the gate straight back.
+  const managerPermissions = (await request('/users', { cookie: adminCookie })).data.users.find(
+    (person) => person.id === manager.user.id
+  ).effectivePermissions;
+  assert.equal(managerPermissions.includes(PERMISSIONS.TASKS_MOVE_ANY), false);
+
+  // Put a real return on the record first, so the close below has a deduction
+  // to answer for: forcing the card into Done must not be worth more than
+  // earning it through the review gate.
+  await request(`/tasks/${task.id}/submit`, {
+    method: 'POST',
+    cookie: creativeCookie,
+    body: { note: 'تسليم تاني' },
+  });
+  const sentBack = await request(`/tasks/${task.id}/review`, {
+    method: 'POST',
+    cookie: managerCookie,
+    body: { decision: 'changes_requested', note: 'محتاجة تعديل' },
+  });
+  assert.equal(sentBack.status, 200, JSON.stringify(sentBack.data));
+  assert.equal(sentBack.data.task.reworkCount, 1);
+
+  const granted = await request(`/users/${manager.user.id}`, {
+    method: 'PATCH',
+    cookie: adminCookie,
+    body: { permissions: [...managerPermissions, PERMISSIONS.TASKS_MOVE_ANY] },
+  });
+  assert.equal(granted.status, 200);
+  const nowAllowed = await request(`/tasks/${task.id}`, {
+    method: 'PATCH',
+    cookie: managerCookie,
+    body: { stage: 'done', score: 70 },
+  });
+  assert.equal(nowAllowed.status, 200, JSON.stringify(nowAllowed.data));
+  assert.equal(nowAllowed.data.task.stage, 'done');
+  assert.equal(nowAllowed.data.task.scoreBeforeReworkPenalty, 70);
+  assert.equal(nowAllowed.data.task.scorePenaltyPercent, 10);
+  assert.equal(nowAllowed.data.task.score, 63, 'the rework deduction survives a forced close');
+  assert.equal(nowAllowed.data.task.scoreBy, manager.user.id);
+
+  const revoked = await request(`/users/${manager.user.id}`, {
+    method: 'PATCH',
+    cookie: adminCookie,
+    body: { permissions: managerPermissions },
+  });
+  assert.equal(revoked.status, 200);
+  const refusedAgain = await request(`/tasks/${task.id}`, {
+    method: 'PATCH',
+    cookie: managerCookie,
+    body: { stage: 'working' },
+  });
+  assert.equal(refusedAgain.status, 409);
+  assert.equal(refusedAgain.data.error, 'reopen_required');
+});

@@ -28,10 +28,12 @@ import {
   getStages,
   getSubteam,
   subteamLabel,
+  stageLabel,
   stageType,
 } from '@shared/departments';
 import {
   assigneesOf,
+  canMoveAnyStage,
   canResetToPending,
   isAssignee,
   isReviewer,
@@ -119,6 +121,7 @@ export function Tasks() {
   const [dialogTask, setDialogTask] = useState<Task | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogColumn, setDialogColumn] = useState<string | null>(null);
+  const [dialogMoveTo, setDialogMoveTo] = useState<string | null>(null);
   const [mobileColumn, setMobileColumn] = useState(0);
   const [drag, setDrag] = useState<DragState | null>(null);
 
@@ -298,8 +301,15 @@ export function Tasks() {
     setDialogOpen(true);
   };
 
-  const openTask = useCallback((task: Task) => {
+  /**
+   * `moveTo` is the column a card was dropped on when the drop needs something
+   * the board cannot collect — today that is the score a forced close owes. The
+   * dialog opens with the move already aimed there, so the drop is not thrown
+   * away and the question is asked once.
+   */
+  const openTask = useCallback((task: Task, moveTo: string | null = null) => {
     setDialogTask(task);
+    setDialogMoveTo(moveTo);
     setDialogOpen(true);
   }, []);
 
@@ -318,10 +328,15 @@ export function Tasks() {
    * tool. Letting an employee drag would only ever end in a refusal from the
    * API, and a card that springs back is a worse answer than one that never
    * lifted.
+   *
+   * `tasks.move_any` is the exception the whole board bends around: whoever
+   * carries it may drag any card into any column, which is the point of it.
    */
   const canMove = useCallback(
     (task: Task) =>
-      isReviewer(user) || (stateOf(task) !== 'assigned' && canResetToPending(user, task)),
+      isReviewer(user) ||
+      canMoveAnyStage(user) ||
+      (stateOf(task) !== 'assigned' && canResetToPending(user, task)),
     [user]
   );
 
@@ -373,6 +388,41 @@ export function Tasks() {
           );
           reloadTaskCounts().catch(() => {});
           push(t('flow.resetPending.toast'));
+        } catch (err) {
+          push(errorMessage(err, lang), 'bad');
+          load().catch(() => {});
+        }
+        return;
+      }
+      /**
+       * A gate stands here and this person may walk through it. The confirm is
+       * the whole ceremony: the move skips the action that would normally have
+       * collected a deliverable, and the server realigns the task's record to
+       * the column it lands in — so it is worth being sure, and worth taking the
+       * server's copy back rather than guessing the new stamps.
+       *
+       * Except into a done column. That move closes the task and owes a score,
+       * which is not something a drag can express — so the card stays put and
+       * the task opens on the panel that asks for the number, aimed at the
+       * column it was dropped on. Same rule as every other gate on this board.
+       */
+      if (verdict === 'override') {
+        if (stageType(taskDepartment, targetStage) === 'done') {
+          openTask(task, targetStage);
+          return;
+        }
+        const stage = stageLabel(taskDepartment, targetStage, lang);
+        if (!window.confirm(t('flow.confirmOverride', { title: task.title, stage }))) return;
+        const siblings = column.filter((item) => item.id !== taskId);
+        const order = orderBetween(siblings[index - 1]?.order, siblings[index]?.order);
+        try {
+          const { task: updated } = await api.patch<{ task: Task }>(`/tasks/${taskId}`, {
+            stage: targetStage,
+            order,
+          });
+          setTasks((list) => (list ?? []).map((item) => (item.id === taskId ? updated : item)));
+          reloadTaskCounts().catch(() => {});
+          push(t('flow.moved.toast', { stage }));
         } catch (err) {
           push(errorMessage(err, lang), 'bad');
           load().catch(() => {});
@@ -880,6 +930,7 @@ export function Tasks() {
         task={dialogTask}
         defaultDepartment={department || user?.department || DEFAULT_DEPARTMENT}
         defaultStage={department ? dialogColumn : null}
+        moveTo={dialogMoveTo}
         onSaved={onSaved}
         onDeleted={onDeleted}
       />

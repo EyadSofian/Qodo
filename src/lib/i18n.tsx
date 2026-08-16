@@ -358,6 +358,31 @@ const STRINGS = {
     ar: 'إرجاع «{title}» إلى Pending؟ سيتم إلغاء حالة التسليم والمراجعة والموافقة والتقييم الحالية.',
     en: 'Return “{title}” to Pending? Its current submission, review, approval and score state will be cleared.',
   },
+  'flow.confirmOverride': {
+    ar: 'نقل «{title}» إلى «{stage}» بتجاوز مسار الاعتماد؟ ستُضبط حالة المهمة على المرحلة الجديدة ويُلغى تقييمها الحالي، ويُسجَّل النقل باسمك.',
+    en: 'Move “{title}” to “{stage}”, bypassing the workflow? The task’s record is realigned to the new stage, any current score is cleared, and the move is logged under your name.',
+  },
+  'flow.moved.toast': {
+    ar: 'تم نقل المهمة إلى «{stage}».',
+    en: 'Task moved to “{stage}”.',
+  },
+  'flow.moveStage': { ar: 'نقل إلى مرحلة', en: 'Move to stage' },
+  'flow.moveStagePick': { ar: 'اختر المرحلة', en: 'Pick a stage' },
+  'flow.moveStageGo': { ar: 'انقل', en: 'Move' },
+  'flow.moveStageHint': {
+    ar: 'نقل بصلاحية خاصة يتجاوز مسار الاعتماد: ستُضبط حالة المهمة على المرحلة الجديدة ويُلغى تقييمها الحالي، ويُسجَّل النقل باسمك.',
+    en: 'An override move bypasses the workflow: the task’s record is realigned to the new stage, any current score is cleared, and the move is logged under your name.',
+  },
+  'flow.moveCloseTitle': { ar: 'إغلاق المهمة والتقييم', en: 'Close the task & score it' },
+  'flow.moveCloseHint': {
+    ar: 'النقل إلى عمود منجزة يُغلق المهمة، والمهمة لا تُغلق بلا تقييم — الدرجة ستُسجَّل باسمك مع خصم إعادة العمل إن وُجد.',
+    en: 'Moving into a done column closes the task, and nothing closes a task without a score — it is recorded under your name, with any rework deduction applied.',
+  },
+  'flow.moveClose': { ar: 'نقل إلى «{stage}» واعتماد', en: 'Move to “{stage}” & approve' },
+  'flow.movedClosed.toast': {
+    ar: 'تم نقل المهمة إلى «{stage}» وتسجيل التقييم.',
+    en: 'Task moved to “{stage}” and the score is recorded.',
+  },
 
   'flow.deliverables': { ar: 'ملفات التسليم', en: 'Deliverables' },
   'flow.deliverablesHint': {
@@ -648,6 +673,10 @@ const STRINGS = {
     ar: 'إرجاع مهام التسويق من أي مرحلة إلى Pending',
     en: 'Return Marketing tasks from any stage to Pending',
   },
+  'perm.tasks.move_any': {
+    ar: 'نقل المهمة بين أي مرحلتين بتجاوز مسار الاعتماد (النقل لمنجزة يطلب تقييماً)',
+    en: 'Move a task between any two stages, bypassing the workflow (a move to Done asks for a score)',
+  },
   'management.title': { ar: 'الإدارة', en: 'Management' },
   'perm.management.view': { ar: 'فتح لوحة الإدارة', en: 'Open the management desk' },
   'perm.management.manage': {
@@ -882,6 +911,10 @@ const STRINGS = {
   'activity.task.create': { ar: 'أضاف مهمة', en: 'created a task' },
   'activity.task.update': { ar: 'عدّل مهمة', en: 'updated a task' },
   'activity.task.reset_pending': { ar: 'أعاد مهمة إلى Pending', en: 'returned a task to Pending' },
+  'activity.task.stage_override': {
+    ar: 'نقل مهمة بين المراحل بصلاحية خاصة',
+    en: 'moved a task across stages with an override',
+  },
   'activity.task.delete': { ar: 'حذف مهمة', en: 'deleted a task' },
 
   /* ── assistant ───────────────────────────────────────────── */

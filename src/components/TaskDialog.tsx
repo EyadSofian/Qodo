@@ -35,6 +35,7 @@ import { Avatar, Field, Modal, Spinner, useToast } from './ui';
 import { ModuleIcon } from './ModuleIcon';
 import {
   Deliverables,
+  MoveStageAction,
   ResetToPendingAction,
   ScoreChip,
   StateBadge,
@@ -56,6 +57,12 @@ interface Props {
   defaultDepartment: string;
   /** Column the "+" was pressed in, so a new card lands where it was asked for. */
   defaultStage: string | null;
+  /**
+   * Column an existing card was dragged onto when the move needs something the
+   * board cannot collect — the score a forced close owes. Aims the override
+   * panel below; ignored by everyone who cannot use it.
+   */
+  moveTo?: string | null;
   onSaved: (task: Task) => void;
   onDeleted: (id: string) => void;
 }
@@ -66,6 +73,7 @@ export function TaskDialog({
   task,
   defaultDepartment,
   defaultStage,
+  moveTo = null,
   onSaved,
   onDeleted,
 }: Props) {
@@ -473,6 +481,7 @@ export function TaskDialog({
                 onChanged={applyTask}
               />
               <ResetToPendingAction task={current} onChanged={applyTask} />
+              <MoveStageAction task={current} onChanged={applyTask} initialStage={moveTo} />
             </div>
           </div>
 

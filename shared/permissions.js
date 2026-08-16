@@ -20,6 +20,7 @@ export const PERMISSIONS = {
   TASKS_SCORE: 'tasks.score',
   TASKS_PUBLISH: 'tasks.publish',
   TASKS_RESET_PENDING: 'tasks.reset_pending',
+  TASKS_MOVE_ANY: 'tasks.move_any',
   TASKS_ARCHIVE: 'tasks.archive',
   TASKS_DELETE_ANY: 'tasks.delete_any',
   TASKS_EXPORT: 'tasks.export',

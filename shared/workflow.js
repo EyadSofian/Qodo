@@ -189,6 +189,25 @@ export function canPublishWork(user) {
   return can(user, PERMISSIONS.TASKS_PUBLISH);
 }
 
+/**
+ * The override: move a card between any two stages, in either direction,
+ * without passing the gate that normally owns that transition.
+ *
+ * Everything else in this file exists to stop exactly this, so it is a
+ * permission of its own rather than something the admin role quietly implies —
+ * an administrator holds it because they hold everything, and anybody else has
+ * to be given it one box at a time from the Users screen.
+ *
+ * It is for the case the workflow has no answer to: a task filed in the wrong
+ * column, a board being corrected after an import, work that finished somewhere
+ * the workspace never saw. It is *not* a faster way to approve — a forced move
+ * writes no score, and the stamps it does write are marked for what they are, so
+ * the record still says "somebody put this here" rather than "this was earned".
+ */
+export function canMoveAnyStage(user) {
+  return can(user, PERMISSIONS.TASKS_MOVE_ANY);
+}
+
 /** A reviewer is whoever may pass judgement on submitted work. */
 export function isReviewer(user) {
   return canReviewWork(user);
@@ -350,6 +369,7 @@ export function canScore(user) {
  *   'review'     this is a review/final-approval gate, so use its explicit action
  *   'reopen'     approved work must be reopened explicitly before it can move
  *   'reset'      a permitted Marketing desk is returning it all the way to Pending
+ *   'override'   a gate stands here, and `tasks.move_any` is walking through it
  *   'forbidden'  the caller cannot make this transition
  *
  * The client turns every non-'ok' verdict into the matching task action rather
@@ -368,6 +388,17 @@ export function canScore(user) {
  * ordinary move and allowed it.
  */
 export function stageWriteVerdict(user, task, nextDepartment, nextStage) {
+  const verdict = gatedStageVerdict(user, task, nextDepartment, nextStage);
+  // The override is read last, and never in place of `reset`: a Marketing desk
+  // that holds both keys keeps its dedicated action, which clears the delivery,
+  // review and score stamps as one transaction and tells the assignees why the
+  // card moved. Everything else a gate would have refused becomes an override.
+  if (verdict === 'ok' || verdict === 'reset') return verdict;
+  return canMoveAnyStage(user) ? 'override' : verdict;
+}
+
+/** The verdict the workflow itself gives, before any override is considered. */
+function gatedStageVerdict(user, task, nextDepartment, nextStage) {
   const from = taskState(task);
   const to = STATE_BY_STAGE_TYPE[stageType(nextDepartment, nextStage)] ?? 'assigned';
   // Not a stage change at all — a reorder inside a column, or a patch that never

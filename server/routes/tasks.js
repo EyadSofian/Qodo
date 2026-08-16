@@ -16,6 +16,8 @@ import {
 } from '../../shared/departments.js';
 import {
   ASSIGNMENT_ACTIONS,
+  TASK_STATES,
+  hasSignoffStage,
   canApproveWork,
   canPublish,
   canResetToPending,
@@ -426,13 +428,12 @@ router.patch('/:id', async (req, res) => {
   if (!taskPredicate(req.user)(task)) return res.status(404).json({ error: 'not_found' });
   if (isArchived(task)) return res.status(409).json({ error: 'task_archived' });
   if (!canEditTask(req.user, task)) return res.status(403).json({ error: 'forbidden' });
-  // Scores are the outcome of the review action, never a generic editable task
-  // property. Keeping this out of PATCH preserves the reviewer/timestamp trail.
-  if (req.body?.score !== undefined) {
-    return taskState(task) === 'assigned' || taskState(task) === 'working'
-      ? res.status(400).json({ error: 'score_before_review' })
-      : res.status(409).json({ error: 'review_required' });
-  }
+  // Scores are the outcome of a gate, never a generic editable task property —
+  // keeping them out of a plain PATCH is what preserves the reviewer/timestamp
+  // trail. The refusal now waits until the verdict is known, because the one
+  // move that may carry a number is the override closing a task below: it is a
+  // gate too, just one that had to be opened by hand.
+  const requestedScore = req.body?.score;
 
   const parsed = await parseTaskInput(req.body, { partial: true, current: task });
   if (parsed.error) return res.status(400).json({ error: parsed.error });
@@ -480,6 +481,44 @@ router.patch('/:id', async (req, res) => {
   if (verdict === 'publish') return res.status(409).json({ error: 'publish_required' });
   if (verdict === 'reset') return res.status(409).json({ error: 'reset_pending_required' });
   if (verdict === 'forbidden') return res.status(403).json({ error: 'forbidden' });
+
+  // `tasks.move_any` walking through a gate. The stage write itself is allowed
+  // from here on; what it still owes is a record that matches the column it just
+  // landed in, which is what `overrideStamps` supplies.
+  const overridden = verdict === 'override';
+  const previousState = taskState(task);
+  const nextState = taskState({ ...task, department: nextDepartment, stage: nextStage });
+  // Forcing a task into a done column closes it, and nothing closes a task
+  // without a number on it — the override is a shortcut around the review, not
+  // around the record. Every other move carries no score at all.
+  const closing = overridden && nextState === 'approved';
+  if (requestedScore !== undefined && !closing) {
+    return previousState === 'assigned' || previousState === 'working'
+      ? res.status(400).json({ error: 'score_before_review' })
+      : res.status(409).json({ error: 'review_required' });
+  }
+
+  if (overridden) {
+    const score = closing ? Number(requestedScore) : null;
+    if (closing && (!Number.isFinite(score) || score < 0 || score > 100)) {
+      return res.status(400).json({ error: 'invalid_score' });
+    }
+    // Scoring is its own authority, and forcing the card into Done is not a way
+    // to acquire it.
+    if (closing && !canScoreWork(req.user)) {
+      return res.status(403).json({ error: 'score_forbidden' });
+    }
+    Object.assign(
+      patch,
+      overrideStamps(task, {
+        department: nextDepartment,
+        state: nextState,
+        actorId: req.user.id,
+        stamp: new Date().toISOString(),
+        score,
+      })
+    );
+  }
 
   const assignmentChanged =
     Object.hasOwn(patch, 'assigneeIds') &&
@@ -555,12 +594,41 @@ router.patch('/:id', async (req, res) => {
     }
   }
 
+  // A card that moved because somebody had the authority to move it is not an
+  // edit, and the people who owe the work find out the same way they find out
+  // about every other transition — from the task, not from the board changing
+  // under them.
+  if (overridden) {
+    // A close is news of a different order from a move, so it says the number:
+    // being scored 88 is the part of "your task was moved to منجزة" that the
+    // person who did the work actually needs.
+    const scoreSuffix = closing ? ` — ${updated.score}/100` : '';
+    await notifyPartners(task, req.user.id, {
+      type: 'task.stage_override',
+      title: { ar: 'نُقلت مهمتك إلى مرحلة أخرى', en: 'Your task was moved to another stage' },
+      body: {
+        ar: `نقل ${req.user.name} «${updated.title}» إلى «${stageLabel(nextDepartment, nextStage, 'ar')}»${scoreSuffix}.`,
+        en: `${req.user.name} moved “${updated.title}” to “${stageLabel(nextDepartment, nextStage, 'en')}”${scoreSuffix}.`,
+      },
+      link: `/tasks?task=${updated.id}`,
+    });
+  }
+
   await logActivity({
     actorId: req.user.id,
-    action: 'task.update',
+    action: overridden ? 'task.stage_override' : 'task.update',
     subject: 'task',
     subjectId: task.id,
-    meta: { fields: Object.keys(patch) },
+    meta: overridden
+      ? {
+          title: task.title,
+          fromStage: task.stage,
+          toStage: nextStage,
+          fromState: previousState,
+          toState: nextState,
+          score: closing ? updated.score : null,
+        }
+      : { fields: Object.keys(patch) },
   });
   res.json({ task: taskForUser(req.user, updated) });
 });
@@ -1329,6 +1397,150 @@ function blankLifecycle() {
     scoreBy: null,
     scoredAt: null,
   };
+}
+
+/**
+ * The bookkeeping a forced move has to do.
+ *
+ * `tasks.move_any` drops a card in a column its history does not support, and
+ * the record has to agree with the column it is now in: a task sitting in
+ * Pending cannot still carry a score, and one pushed straight to Done cannot go
+ * on claiming it was never handed in. Every ordinary transition writes these
+ * stamps through the action that owns it — start, submit, review, publish — so
+ * this is that same bookkeeping with nobody to produce the evidence.
+ *
+ * Which is exactly why it is careful about what it invents. A start it had to
+ * make up is marked `startedAtInferred`, so the cycle-time reading stays absent
+ * instead of averaging in as zero; an approval it had to make up is attributed
+ * to the person who forced the move.
+ *
+ * The score is the one thing it will not invent. A move into a done column has
+ * to be handed one — that move closes the task, and nothing closes a task
+ * without a number on it — and it is recorded the way the review and publish
+ * gates record theirs: rounded, penalised for rework, stamped with who typed
+ * it. Every move that is *not* a close clears the score instead, because a task
+ * that is no longer finished is no longer scored.
+ *
+ * `firstSubmittedAt`, `reworkCount` and the deliverables all survive, for the
+ * reason `reset-to-pending` keeps them: they are facts about what happened, and
+ * moving the card does not unmake them.
+ */
+function overrideStamps(
+  task,
+  { department: toDepartment, state: toState, actorId, stamp, score = null }
+) {
+  const backwards = TASK_STATES.indexOf(toState) < TASK_STATES.indexOf(taskState(task));
+
+  // Work that must have begun, without pretending to know when: an invented
+  // start says so, and one the doer actually pressed keeps whatever it was.
+  const started = {
+    startedAt: task.startedAt ?? stamp,
+    startedAtInferred: task.startedAt ? (task.startedAtInferred ?? false) : true,
+  };
+  // Same for a hand-in the board now implies happened.
+  const delivered = {
+    submittedAt: task.submittedAt ?? stamp,
+    firstSubmittedAt: task.firstSubmittedAt ?? task.submittedAt ?? stamp,
+  };
+  const noScore = {
+    score: null,
+    scoreBeforeReworkPenalty: null,
+    scorePenaltyPercent: reworkPenaltyPercent(task.reworkCount ?? 0),
+    scoreBy: null,
+    scoredAt: null,
+  };
+  const unpublished = { publishedAt: null, publishedBy: null };
+  // The number the mover typed, put through the same arithmetic every other
+  // gate uses: rounded to one decimal, then cut by the rework the task already
+  // cost. Closing by force must not be worth more than closing by review.
+  const rounded = Math.round((score ?? 0) * 10) / 10;
+  const scored = {
+    score: applyReworkPenalty(rounded, task.reworkCount ?? 0),
+    scoreBeforeReworkPenalty: rounded,
+    scorePenaltyPercent: reworkPenaltyPercent(task.reworkCount ?? 0),
+    scoreBy: actorId,
+    scoredAt: stamp,
+  };
+
+  switch (toState) {
+    case 'assigned':
+      return {
+        progress: 0,
+        startedAt: null,
+        startedAtInferred: false,
+        submittedAt: null,
+        submittedBy: null,
+        submissionNote: '',
+        reviewedAt: null,
+        reviewedBy: null,
+        reviewNote: '',
+        reviewDecision: null,
+        completedAt: null,
+        // The deadline may pass again on the second run at it.
+        overdueNotifiedFor: null,
+        ...unpublished,
+        ...noScore,
+      };
+    case 'working':
+      return {
+        ...started,
+        // The hand-in on the table is withdrawn; the manager's note stays,
+        // because it is the feedback the work is going back with.
+        submittedAt: null,
+        reviewDecision: null,
+        completedAt: null,
+        ...unpublished,
+        ...noScore,
+        progress: backwards ? Math.min(task.progress ?? 90, 90) : Math.max(task.progress ?? 0, 1),
+      };
+    case 'submitted':
+      return {
+        ...started,
+        ...delivered,
+        // Back on a reviewer's desk, so the last verdict stops applying.
+        reviewDecision: null,
+        completedAt: null,
+        ...unpublished,
+        ...noScore,
+        progress: 100,
+      };
+    case 'signed_off':
+      return {
+        ...started,
+        ...delivered,
+        reviewedAt: task.reviewedAt ?? stamp,
+        reviewedBy: task.reviewedBy ?? actorId,
+        reviewDecision: 'approved',
+        completedAt: null,
+        // Sign-off is "approved, not yet out" — the publication and the score
+        // both belong to the publish gate on the far side of it.
+        ...unpublished,
+        ...noScore,
+        progress: 100,
+      };
+    case 'approved':
+      return {
+        ...started,
+        ...delivered,
+        reviewedAt: task.reviewedAt ?? stamp,
+        reviewedBy: task.reviewedBy ?? actorId,
+        reviewDecision: 'approved',
+        // Only a board with a sign-off column models publication at all, and it
+        // is the board the card is landing on that decides.
+        ...(hasSignoffStage(toDepartment)
+          ? {
+              publishedAt: task.publishedAt ?? stamp,
+              publishedBy: task.publishedBy ?? actorId,
+            }
+          : {}),
+        // `completedAt` is left to the caller's settled-stage check, which is
+        // the one place that decides when a task stopped being open.
+        ...scored,
+        progress: 100,
+      };
+    default:
+      return {};
+  }
 }
 
 /**

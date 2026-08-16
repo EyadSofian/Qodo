@@ -33,10 +33,12 @@ import {
   RotateCcw,
   Send,
   ShieldCheck,
+  Shuffle,
   Trash2,
   Upload,
   UserRoundX,
 } from 'lucide-react';
+import { getStages, stageLabel, stageType } from '@shared/departments';
 import { api, errorMessage } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useI18n } from '../lib/i18n';
@@ -45,6 +47,7 @@ import {
   MAX_ATTACHMENT_BYTES,
   SCORE_BANDS,
   assignmentFor,
+  canMoveAnyStage,
   canPublish,
   canResetToPending,
   canReopen,
@@ -642,6 +645,136 @@ export function ResetToPendingAction({
 }
 
 /**
+ * The override, for whoever carries `tasks.move_any`: put this task in any
+ * stage of its board.
+ *
+ * The board's drag is the other way in, and on a phone it is not a way in at
+ * all — the columns are shown one at a time, so a card can never be dragged
+ * into a column that is not on screen. This is the same authority as a select,
+ * which is also the honest shape for it: an override is a deliberate choice
+ * from a list, not a gesture.
+ *
+ * Deliberately *not* a general stage picker. It renders for nobody else, so the
+ * rule the rest of this file is built on — for the person doing the work a
+ * stage is the result of an action — is exactly as true as it was.
+ */
+export function MoveStageAction({
+  task,
+  onChanged,
+  initialStage = null,
+}: {
+  task: Task;
+  onChanged: (task: Task) => void;
+  /** The column a card was dropped on, so the drag lands here already aimed. */
+  initialStage?: string | null;
+}) {
+  const { user } = useAuth();
+  const { t, lang } = useI18n();
+  const { push } = useToast();
+  const [target, setTarget] = useState('');
+  const [score, setScore] = useState(85);
+  const [busy, setBusy] = useState(false);
+
+  const department = task.department ?? 'general';
+
+  // A drop onto a column is already a choice of stage; re-picking it from the
+  // list would be asking the same question twice.
+  useEffect(() => {
+    setTarget(initialStage && initialStage !== task.stage ? initialStage : '');
+  }, [initialStage, task.id, task.stage]);
+
+  if (!canMoveAnyStage(user)) return null;
+
+  const stages = getStages(department);
+  // Landing in a done column closes the task, and nothing closes a task without
+  // a number on it — so this move borrows the approval gate's rubric rather
+  // than inventing a quieter way to finish something.
+  const closing = Boolean(target) && stageType(department, target) === 'done';
+
+  const move = async () => {
+    if (!target || target === task.stage) return;
+    const stage = stageLabel(department, target, lang);
+    setBusy(true);
+    try {
+      const { task: updated } = await api.patch<{ task: Task }>(`/tasks/${task.id}`, {
+        stage: target,
+        ...(closing ? { score } : {}),
+      });
+      onChanged(updated);
+      setTarget('');
+      push(t(closing ? 'flow.movedClosed.toast' : 'flow.moved.toast', { stage }));
+    } catch (err) {
+      push(errorMessage(err, lang), 'bad');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mt-3 grid gap-3 border-t border-surface-line pt-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="flex items-center gap-1.5 text-[12px] font-semibold text-ink-muted">
+          <Shuffle size={14} />
+          {t('flow.moveStage')}
+        </span>
+        <select
+          className="field !min-h-8 w-auto py-1 text-[12px]"
+          value={target}
+          disabled={busy}
+          onChange={(event) => setTarget(event.target.value)}
+          aria-label={t('flow.moveStage')}
+        >
+          <option value="">— {t('flow.moveStagePick')} —</option>
+          {stages
+            .filter((stage: { id: string }) => stage.id !== task.stage)
+            .map((stage: { id: string; ar: string; en: string }) => (
+              <option key={stage.id} value={stage.id}>
+                {lang === 'en' ? stage.en : stage.ar}
+              </option>
+            ))}
+        </select>
+        {target && !closing && (
+          <button type="button" onClick={move} disabled={busy} className="btn-ghost btn-sm gap-1.5">
+            {busy ? <Spinner size={15} /> : <Shuffle size={15} />}
+            {t('flow.moveStageGo')}
+          </button>
+        )}
+      </div>
+
+      {target && !closing && (
+        <p className="text-[12px] leading-relaxed text-ink-muted">{t('flow.moveStageHint')}</p>
+      )}
+
+      {closing && (
+        <div className="grid gap-3.5 rounded-xl border border-brand-200 bg-brand-50/40 p-3.5">
+          <div>
+            <h4 className="text-[13px] font-bold text-ink">{t('flow.moveCloseTitle')}</h4>
+            <p className="mt-1 text-[12px] leading-relaxed text-ink-muted">
+              {t('flow.moveCloseHint')}
+            </p>
+          </div>
+          <ScoreDial
+            score={score}
+            onScore={setScore}
+            reworkCount={task.reworkCount ?? 0}
+            track="bg-white"
+          />
+          <button
+            type="button"
+            onClick={move}
+            disabled={busy}
+            className="btn-primary btn-sm ms-auto gap-1.5"
+          >
+            {busy ? <Spinner size={15} /> : <ShieldCheck size={16} />}
+            {t('flow.moveClose', { stage: stageLabel(department, target, lang) })}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
  * The action rail. One card, and it only ever shows the moves the person
  * looking at it can actually make — which is why the score input simply does
  * not exist for anyone but a manager holding a submitted task.
@@ -1035,6 +1168,91 @@ function SubmitGate({
   );
 }
 
+/**
+ * The score control, in one place.
+ *
+ * Three gates collect a number now — the review, the final approval, and the
+ * override's move into a done column — and a rubric that looks different in
+ * each of them is a rubric people stop reading the same way. The bands, the
+ * rework deduction and the colour all live here, so 70 means the same thing
+ * wherever it is typed.
+ */
+function ScoreDial({
+  score,
+  onScore,
+  reworkCount,
+  track = 'bg-surface-sunken',
+}: {
+  score: number;
+  onScore: (score: number) => void;
+  reworkCount: number;
+  /** The slider's groove, which has to contrast with whichever panel holds it. */
+  track?: string;
+}) {
+  const { t, lang } = useI18n();
+  const penaltyPercent = Math.min(100, (reworkCount ?? 0) * 10);
+  const effectiveScore = Math.round(score * Math.max(0, 1 - penaltyPercent / 100) * 10) / 10;
+  const band = scoreBand(effectiveScore);
+
+  return (
+    <div>
+      <span className="label">{t('flow.scoreLabel')}</span>
+      <div className="flex items-center gap-3">
+        <span
+          className={cx(
+            'ltr w-14 text-[30px] font-black leading-none tabular-nums',
+            scoreTextTone(effectiveScore)
+          )}
+        >
+          {score}
+        </span>
+        <input
+          type="range"
+          min={0}
+          max={100}
+          step={1}
+          value={score}
+          onChange={(event) => onScore(Number(event.target.value))}
+          className={cx(
+            'ltr h-2 flex-1 cursor-pointer appearance-none rounded-full accent-brand-500',
+            track
+          )}
+          aria-label={t('flow.scoreLabel')}
+        />
+      </div>
+      <div className="mt-2.5 flex flex-wrap gap-1.5">
+        {SCORE_BANDS.map((item: { id: string; min: number; ar: string; en: string }) => {
+          const value = item.min === 0 ? 40 : Math.min(100, item.min + 5);
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => onScore(value)}
+              className={cx(
+                'rounded-lg border px-2.5 py-1 text-[12px] font-semibold transition-colors',
+                band?.id === item.id
+                  ? 'border-transparent bg-navy text-white'
+                  : 'border-surface-line bg-white text-ink-muted hover:bg-surface-sunken'
+              )}
+            >
+              {lang === 'en' ? item.en : item.ar}
+            </button>
+          );
+        })}
+      </div>
+      {penaltyPercent > 0 && (
+        <p className="mt-2.5 rounded-xl bg-status-badBg px-3 py-2 text-[12px] font-bold text-status-bad">
+          {t('flow.reworkPenaltyPreview', {
+            percent: penaltyPercent,
+            raw: score,
+            final: effectiveScore,
+          })}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function FinalApprovalGate({
   task,
   busy,
@@ -1044,11 +1262,8 @@ function FinalApprovalGate({
   busy: boolean;
   onApprove: (score: number) => Promise<void>;
 }) {
-  const { t, lang } = useI18n();
+  const { t } = useI18n();
   const [score, setScore] = useState(85);
-  const penaltyPercent = Math.min(100, (task.reworkCount ?? 0) * 10);
-  const effectiveScore = Math.round(score * Math.max(0, 1 - penaltyPercent / 100) * 10) / 10;
-  const band = scoreBand(effectiveScore);
 
   return (
     <div className="grid gap-3.5 rounded-xl border border-brand-200 bg-brand-50/40 p-3.5">
@@ -1059,58 +1274,12 @@ function FinalApprovalGate({
         </p>
       </div>
 
-      <div>
-        <span className="label">{t('flow.scoreLabel')}</span>
-        <div className="flex items-center gap-3">
-          <span
-            className={cx(
-              'ltr w-14 text-[30px] font-black leading-none tabular-nums',
-              scoreTextTone(effectiveScore)
-            )}
-          >
-            {score}
-          </span>
-          <input
-            type="range"
-            min={0}
-            max={100}
-            step={1}
-            value={score}
-            onChange={(event) => setScore(Number(event.target.value))}
-            className="ltr h-2 flex-1 cursor-pointer appearance-none rounded-full bg-white accent-brand-500"
-            aria-label={t('flow.scoreLabel')}
-          />
-        </div>
-        <div className="mt-2.5 flex flex-wrap gap-1.5">
-          {SCORE_BANDS.map((item: { id: string; min: number; ar: string; en: string }) => {
-            const value = item.min === 0 ? 40 : Math.min(100, item.min + 5);
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => setScore(value)}
-                className={cx(
-                  'rounded-lg border px-2.5 py-1 text-[12px] font-semibold transition-colors',
-                  band?.id === item.id
-                    ? 'border-transparent bg-navy text-white'
-                    : 'border-surface-line bg-white text-ink-muted hover:bg-surface-sunken'
-                )}
-              >
-                {lang === 'en' ? item.en : item.ar}
-              </button>
-            );
-          })}
-        </div>
-        {penaltyPercent > 0 && (
-          <p className="mt-2.5 rounded-xl bg-status-badBg px-3 py-2 text-[12px] font-bold text-status-bad">
-            {t('flow.reworkPenaltyPreview', {
-              percent: penaltyPercent,
-              raw: score,
-              final: effectiveScore,
-            })}
-          </p>
-        )}
-      </div>
+      <ScoreDial
+        score={score}
+        onScore={setScore}
+        reworkCount={task.reworkCount ?? 0}
+        track="bg-white"
+      />
 
       <button
         type="button"
@@ -1136,14 +1305,15 @@ function ReviewGate({
   onCancel: () => void;
   onDecide: (path: string, body?: unknown) => Promise<boolean>;
 }) {
-  const { t, lang } = useI18n();
+  const { t } = useI18n();
   const { push } = useToast();
   const marketingReview = (task.department ?? 'general') === 'marketing';
   const [score, setScore] = useState(task.score ?? 85);
   const [note, setNote] = useState('');
+  // The band is read off the score the assignee will actually carry, which is
+  // what the rework deduction leaves behind — the same number `ScoreDial` shows.
   const penaltyPercent = Math.min(100, (task.reworkCount ?? 0) * 10);
-  const effectiveScore = Math.round(score * Math.max(0, 1 - penaltyPercent / 100) * 10) / 10;
-  const band = scoreBand(effectiveScore);
+  const band = scoreBand(Math.round(score * Math.max(0, 1 - penaltyPercent / 100) * 10) / 10);
 
   /**
    * The score and the decision are one judgement, so the form says so.
@@ -1187,53 +1357,9 @@ function ReviewGate({
         </p>
       </div>
 
-      {!marketingReview && <div>
-        <span className="label">{t('flow.scoreLabel')}</span>
-        <div className="flex items-center gap-3">
-          <span className={cx('ltr w-14 text-[30px] font-black leading-none tabular-nums', scoreTextTone(score))}>
-            {score}
-          </span>
-          <input
-            type="range"
-            min={0}
-            max={100}
-            step={1}
-            value={score}
-            onChange={(event) => setScore(Number(event.target.value))}
-            className="ltr h-2 flex-1 cursor-pointer appearance-none rounded-full bg-surface-sunken accent-brand-500"
-            aria-label={t('flow.scoreLabel')}
-          />
-        </div>
-        <div className="mt-2.5 flex flex-wrap gap-1.5">
-          {SCORE_BANDS.map((item: { id: string; min: number; ar: string; en: string }) => {
-            const value = item.min === 0 ? 40 : Math.min(100, item.min + 5);
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => setScore(value)}
-                className={cx(
-                  'rounded-lg border px-2.5 py-1 text-[12px] font-semibold transition-colors',
-                  band?.id === item.id
-                    ? 'border-transparent bg-navy text-white'
-                    : 'border-surface-line bg-white text-ink-muted hover:bg-surface-sunken'
-                )}
-              >
-                {lang === 'en' ? item.en : item.ar}
-              </button>
-            );
-          })}
-        </div>
-        {penaltyPercent > 0 && (
-          <p className="mt-2.5 rounded-xl bg-status-badBg px-3 py-2 text-[12px] font-bold text-status-bad">
-            {t('flow.reworkPenaltyPreview', {
-              percent: penaltyPercent,
-              raw: score,
-              final: effectiveScore,
-            })}
-          </p>
-        )}
-      </div>}
+      {!marketingReview && (
+        <ScoreDial score={score} onScore={setScore} reworkCount={task.reworkCount ?? 0} />
+      )}
 
       {weak && (
         <p
