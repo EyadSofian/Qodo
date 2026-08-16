@@ -277,9 +277,7 @@ export function EventDetail({
             <Spinner size={14} /> جارٍ التحميل…
           </p>
         ) : files.length === 0 ? (
-          <p className="text-[11.5px] text-ink-faint">
-            اسحب الأجندة أو العرض هنا، أو اضغط «إضافة».
-          </p>
+          <p className="text-[11.5px] text-ink-faint">اسحب ملفات هنا، أو اضغط «إضافة».</p>
         ) : (
           <AttachmentTiles
             files={files}

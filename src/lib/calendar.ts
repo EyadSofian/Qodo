@@ -185,15 +185,15 @@ function toPayload(draft: Partial<EventDraft>) {
 
 /* ── vocabulary ──────────────────────────────────────────────────── */
 
-export const KIND_LABEL: Record<EventKind, { ar: string; en: string; hint: string }> = {
-  meeting: { ar: 'اجتماع', en: 'Meeting', hint: 'قعدة مع ناس، كل واحد يرد بالحضور' },
-  appointment: { ar: 'موعد', en: 'Appointment', hint: 'وقت محجوز في يومك' },
+export const KIND_LABEL: Record<EventKind, { ar: string; en: string }> = {
+  meeting: { ar: 'اجتماع', en: 'Meeting' },
+  appointment: { ar: 'موعد', en: 'Appointment' },
 };
 
-export const VISIBILITY_LABEL: Record<EventVisibility, { ar: string; en: string; hint: string }> = {
-  invitees: { ar: 'المدعوين فقط', en: 'Invitees only', hint: 'محدش غيرهم يشوفه، ولا حتى مدير النظام' },
-  department: { ar: 'القسم', en: 'Department', hint: 'كل موظفي القسم يشوفوه في تقويمهم' },
-  organization: { ar: 'كل الشركة', en: 'Everyone', hint: 'ظاهر لكل موظفي المؤسسة' },
+export const VISIBILITY_LABEL: Record<EventVisibility, { ar: string; en: string }> = {
+  invitees: { ar: 'المدعوين فقط', en: 'Invitees only' },
+  department: { ar: 'القسم', en: 'Department' },
+  organization: { ar: 'كل الشركة', en: 'Everyone' },
 };
 
 export const RESPONSE_LABEL: Record<InviteResponse, { ar: string; en: string; tone: string }> = {

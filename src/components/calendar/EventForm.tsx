@@ -132,7 +132,7 @@ export function EventForm({
                 type="button"
                 onClick={() => onChange({ ...draft, kind, inviteeIds: kind === 'appointment' ? [] : draft.inviteeIds })}
                 className={cx(
-                  'flex items-start gap-3 rounded-2xl border p-3 text-start transition',
+                  'flex items-center gap-3 rounded-2xl border p-3 text-start transition',
                   active
                     ? 'border-brand-400 bg-brand-50 ring-2 ring-brand-100'
                     : 'border-surface-line bg-white hover:border-brand-200'
@@ -148,9 +148,6 @@ export function EventForm({
                 </span>
                 <span className="min-w-0">
                   <span className="block text-[13px] font-bold text-ink">{KIND_LABEL[kind].ar}</span>
-                  <span className="block text-[11.5px] leading-snug text-ink-faint">
-                    {KIND_LABEL[kind].hint}
-                  </span>
                 </span>
               </button>
             );
@@ -201,7 +198,7 @@ export function EventForm({
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="المكان" hint="قاعة، مكتب، أو عنوان">
+        <Field label="المكان">
           <input
             className="field"
             value={draft.location}
@@ -209,7 +206,7 @@ export function EventForm({
             maxLength={200}
           />
         </Field>
-        <Field label="رابط أونلاين" hint="Zoom / Meet — http أو https فقط">
+        <Field label="رابط أونلاين">
           <input
             className="field ltr"
             value={draft.onlineUrl}
@@ -326,16 +323,11 @@ export function EventForm({
           value={draft.details}
           onChange={(event) => set('details', event.target.value)}
           maxLength={4_000}
-          placeholder={
-            draft.kind === 'meeting'
-              ? 'أجندة، نقاط للنقاش، أي تحضير مطلوب…'
-              : 'أي تفاصيل تحب تفتكرها…'
-          }
         />
       </Field>
 
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="مين يشوفه" hint={VISIBILITY_LABEL[draft.visibility].hint}>
+        <Field label="مين يشوفه">
           <select
             className="field"
             value={draft.visibility}
