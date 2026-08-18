@@ -515,6 +515,83 @@ test('a private channel gains and loses members, and the log says who did it', a
   assert.deepEqual(createEntry.meta.memberIds.sort(), [manager.id, member.id].sort());
 });
 
+test('a read receipt reaches the sender, and stops there', async () => {
+  const created = await request('/mail/conversations', {
+    method: 'POST',
+    cookie: managerCookie,
+    body: { kind: 'direct', memberIds: [sales.id] },
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.data));
+  const conversationId = created.data.conversation.id;
+
+  await request(`/mail/conversations/${conversationId}/messages`, {
+    method: 'POST',
+    cookie: managerCookie,
+    body: { body: 'شوف الملف ده لما تفضى' },
+  });
+
+  // Sent, and nobody has opened it yet.
+  const beforeRead = await request(`/mail/conversations/${conversationId}/messages`, {
+    cookie: managerCookie,
+  });
+  assert.deepEqual(beforeRead.data.messages[0].readBy, []);
+
+  // The recipient is told nothing about who read what: the field is the
+  // sender's, and it is absent rather than empty on somebody else's message.
+  const asRecipient = await request(`/mail/conversations/${conversationId}/messages`, {
+    cookie: salesCookie,
+  });
+  assert.equal('readBy' in asRecipient.data.messages[0], false);
+
+  await request(`/mail/conversations/${conversationId}/read`, {
+    method: 'POST',
+    cookie: salesCookie,
+  });
+
+  const afterRead = await request(`/mail/conversations/${conversationId}/messages`, {
+    cookie: managerCookie,
+  });
+  assert.deepEqual(afterRead.data.messages[0].readBy, [sales.id]);
+
+  // A message sent after that reading is not covered by it.
+  await request(`/mail/conversations/${conversationId}/messages`, {
+    method: 'POST',
+    cookie: managerCookie,
+    body: { body: 'وكمان الميعاد اتأخر' },
+  });
+  const latest = await request(`/mail/conversations/${conversationId}/messages`, {
+    cookie: managerCookie,
+  });
+  assert.deepEqual(latest.data.messages.at(-1).readBy, []);
+});
+
+test('presence is whoever holds the stream open, and ends when they let go', async () => {
+  const controller = new AbortController();
+  const stream = await fetch(`${ORIGIN}/api/mail/stream`, {
+    headers: { Cookie: salesCookie },
+    signal: controller.signal,
+  });
+  assert.equal(stream.status, 200);
+  const reader = stream.body.getReader();
+  // The ready frame proves the subscription is installed, not merely routed.
+  await reader.read();
+
+  const during = await request('/mail/bootstrap', { cookie: adminCookie });
+  assert.ok(during.data.online.includes(sales.id), 'the open tab is present');
+  assert.equal(during.data.online.includes(member.id), false, 'a closed one is not');
+
+  controller.abort();
+  await reader.cancel().catch(() => undefined);
+
+  let stillOnline = true;
+  for (let attempt = 0; attempt < 40 && stillOnline; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const after = await request('/mail/bootstrap', { cookie: adminCookie });
+    stillOnline = after.data.online.includes(sales.id);
+  }
+  assert.equal(stillOnline, false, 'presence ends with the connection');
+});
+
 test('a department channel keeps its department and takes guests on top of it', async () => {
   const marketing = 'mail:engosoft:department:marketing';
   const announcements = 'mail:engosoft:announcements';

@@ -18,6 +18,7 @@ import {
   CalendarClock,
   CalendarPlus,
   Check,
+  CheckCheck,
   Clock,
   ExternalLink,
   Globe2,
@@ -109,6 +110,9 @@ export function Mail() {
   const [bookingMeeting, setBookingMeeting] = useState(false);
   const [filesOpen, setFilesOpen] = useState(false);
   const [membersOpen, setMembersOpen] = useState(false);
+  /** Who is online. Seeded by the bootstrap, then kept live by the stream. */
+  const [online, setOnline] = useState<Set<string>>(new Set());
+  const [readersOfId, setReadersOfId] = useState<string | null>(null);
   const [memberBusy, setMemberBusy] = useState(false);
   const [threadLoading, setThreadLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -128,6 +132,9 @@ export function Mail() {
   const refreshBootstrap = useCallback(async () => {
     const data = await api.get<MailBootstrap>('/mail/bootstrap');
     setBootstrap(data);
+    // The stream carries every arrival and departure after this; the reload is
+    // what repairs the set if a tab slept through some of them.
+    setOnline(new Set(data.online ?? []));
     return data;
   }, []);
 
@@ -169,7 +176,7 @@ export function Mail() {
         if (!active || selectedId || !data.conversations.length) return;
         setParams({ conversation: data.conversations[0].id }, { replace: true });
       })
-      .catch(() => active && setBootstrap({ conversations: [], people: [], unread: 0, aiAvailable: false, aiModel: null }));
+      .catch(() => active && setBootstrap({ conversations: [], people: [], online: [], unread: 0, aiAvailable: false, aiModel: null }));
     return () => {
       active = false;
     };
@@ -217,7 +224,25 @@ export function Mail() {
         loadThread(selectedId, true).catch(() => undefined);
       }
     };
+    // A colleague arriving or leaving moves one dot, so it is patched in place
+    // rather than spent on a reload of the whole inbox.
+    const onPresence = (event: MessageEvent) => {
+      let payload: { userId?: string; online?: boolean } = {};
+      try {
+        payload = JSON.parse(event.data);
+      } catch {
+        return;
+      }
+      if (!payload.userId) return;
+      setOnline((current) => {
+        const next = new Set(current);
+        if (payload.online) next.add(payload.userId as string);
+        else next.delete(payload.userId as string);
+        return next;
+      });
+    };
     stream.addEventListener('message', onMessage as EventListener);
+    stream.addEventListener('presence', onPresence as EventListener);
     return () => stream.close();
   }, [selectedId, refreshBootstrap, loadThread]);
 
@@ -503,6 +528,7 @@ export function Mail() {
           conversations={visible}
           selectedId={selectedId}
           peopleById={peopleById}
+          online={online}
           currentUserId={user?.id ?? ''}
           lang={lang}
           query={query}
@@ -520,6 +546,7 @@ export function Mail() {
               <ThreadHeader
                 conversation={selected}
                 peopleById={peopleById}
+                online={online}
                 currentUserId={user?.id ?? ''}
                 lang={lang}
                 dir={dir}
@@ -577,6 +604,7 @@ export function Mail() {
                     composer.current?.focus();
                   }}
                   onDelete={deleteMessage}
+                  onReaders={(message) => setReadersOfId(message.id)}
                   aiOpen={aiOpen}
                   afterMessages={aiOpen ? (
                     <AiStoryCard
@@ -693,6 +721,7 @@ export function Mail() {
           <ChannelMembers
             conversation={selected}
             people={bootstrap.people}
+            online={online}
             currentUserId={user?.id ?? ''}
             lang={lang}
             busy={memberBusy}
@@ -701,7 +730,43 @@ export function Mail() {
           />
         )}
       </Modal>
+
+      {/* Looked up by id on every render, so a receipt that lands while the
+          list is open joins it instead of waiting for the next opening. */}
+      <Modal open={Boolean(readersOfId)} onClose={() => setReadersOfId(null)} title={c.readBy}>
+        <MessageReaders
+          message={messages.find((row) => row.id === readersOfId) ?? null}
+          people={bootstrap.people}
+          online={online}
+          lang={lang}
+        />
+      </Modal>
     </div>
+  );
+}
+
+function MessageReaders({
+  message,
+  people,
+  online,
+  lang,
+}: {
+  message: MailMessage | null;
+  people: MailPerson[];
+  online: Set<string>;
+  lang: 'ar' | 'en';
+}) {
+  const c = copy(lang);
+  const readers = (message?.readBy ?? [])
+    .map((id) => people.find((person) => person.id === id))
+    .filter((person): person is MailPerson => Boolean(person));
+  if (readers.length === 0) return <p className="text-[11.5px] text-ink-faint">{c.notReadYet}</p>;
+  return (
+    <ul className="grid max-h-64 gap-1 overflow-y-auto">
+      {readers.map((person) => (
+        <MemberRow key={person.id} person={person} online={online.has(person.id)} />
+      ))}
+    </ul>
   );
 }
 
@@ -780,6 +845,7 @@ function ConversationList({
   conversations,
   selectedId,
   peopleById,
+  online,
   currentUserId,
   lang,
   query,
@@ -793,6 +859,7 @@ function ConversationList({
   conversations: MailConversation[];
   selectedId: string | null;
   peopleById: Map<string, MailPerson>;
+  online: Set<string>;
   currentUserId: string;
   lang: 'ar' | 'en';
   query: string;
@@ -857,6 +924,7 @@ function ConversationList({
                   conversation={conversation}
                   selected={selectedId === conversation.id}
                   peopleById={peopleById}
+                  online={online}
                   currentUserId={currentUserId}
                   lang={lang}
                   onSelect={onSelect}
@@ -878,6 +946,7 @@ function ConversationRow({
   conversation,
   selected,
   peopleById,
+  online,
   currentUserId,
   lang,
   onSelect,
@@ -885,6 +954,7 @@ function ConversationRow({
   conversation: MailConversation;
   selected: boolean;
   peopleById: Map<string, MailPerson>;
+  online: Set<string>;
   currentUserId: string;
   lang: 'ar' | 'en';
   onSelect: (id: string) => void;
@@ -904,7 +974,9 @@ function ConversationRow({
       )}
     >
       {selected && <span className="absolute inset-y-2 start-0 w-[3px] rounded-e-full bg-brand-500" />}
-      <ConversationAvatar conversation={conversation} person={person} />
+      <PresencePin online={Boolean(person && online.has(person.id))}>
+        <ConversationAvatar conversation={conversation} person={person} />
+      </PresencePin>
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-2">
           <span className={cx('min-w-0 flex-1 truncate text-[13px] text-ink', conversation.unreadCount ? 'font-extrabold' : 'font-semibold')}>{title}</span>
@@ -922,6 +994,7 @@ function ConversationRow({
 function ThreadHeader({
   conversation,
   peopleById,
+  online,
   currentUserId,
   lang,
   dir,
@@ -937,6 +1010,7 @@ function ThreadHeader({
 }: {
   conversation: MailConversation;
   peopleById: Map<string, MailPerson>;
+  online: Set<string>;
   currentUserId: string;
   lang: 'ar' | 'en';
   dir: 'rtl' | 'ltr';
@@ -958,20 +1032,34 @@ function ThreadHeader({
     [conversation, peopleById]
   );
   const memberCount = roster.derived.length + roster.guests.length;
+  const partner =
+    conversation.kind === 'direct'
+      ? peopleById.get(conversation.memberIds.find((id) => id !== currentUserId) ?? '')
+      : null;
+  const onlineHere =
+    conversation.kind === 'channel'
+      ? [...roster.derived, ...roster.guests].filter((person) => online.has(person.id)).length
+      : conversation.memberIds.filter((id) => id !== currentUserId && online.has(id)).length;
   return (
     <header className="relative z-10 flex min-h-[72px] items-center gap-3 border-b border-surface-line bg-white/90 px-3 backdrop-blur-xl sm:px-5">
       <button type="button" onClick={onBack} className="btn-quiet !min-h-9 rounded-lg px-2 md:hidden" aria-label={c.back}><Back size={19} /></button>
-      <ConversationAvatar
-        conversation={conversation}
-        person={conversation.kind === 'direct' ? peopleById.get(conversation.memberIds.find((id) => id !== currentUserId) ?? '') : null}
-        compact
-      />
+      <PresencePin online={Boolean(partner && online.has(partner.id))}>
+        <ConversationAvatar conversation={conversation} person={partner} compact />
+      </PresencePin>
       <div className="min-w-0 flex-1">
         <h1 className="truncate text-[14px] font-extrabold text-ink">{title}</h1>
         <p className="mt-0.5 flex items-center gap-1 truncate text-[10.5px] text-ink-faint">
           {conversation.announcementOnly && <><BellRing size={11} />{c.announcementsOnly}</>}
           {!conversation.announcementOnly && conversation.kind === 'channel' && <>{conversation.scope === 'public' ? c.publicChannelShort : conversation.scope === 'private' ? c.privateChannelShort : c.teamChannel}</>}
           {conversation.kind !== 'channel' && <>{conversation.memberIds.length} {c.participants}</>}
+          {conversation.kind === 'direct' && partner && (
+            <span className={cx('font-bold', online.has(partner.id) ? 'text-emerald-600' : 'text-ink-faint')}>
+              · {online.has(partner.id) ? c.online : c.offline}
+            </span>
+          )}
+          {conversation.kind !== 'direct' && onlineHere > 0 && (
+            <span className="font-bold text-emerald-600">· {onlineHere} {c.onlineNow}</span>
+          )}
         </p>
       </div>
       {/* Every channel has a roster worth opening; the scope only decides how
@@ -1053,6 +1141,7 @@ function MessageTimeline({
   onLoadMore,
   onReply,
   onDelete,
+  onReaders,
   aiOpen,
   afterMessages,
 }: {
@@ -1069,6 +1158,7 @@ function MessageTimeline({
   onLoadMore: () => void;
   onReply: (message: MailMessage) => void;
   onDelete: (message: MailMessage) => void;
+  onReaders: (message: MailMessage) => void;
   aiOpen: boolean;
   afterMessages?: ReactNode;
 }) {
@@ -1109,9 +1199,9 @@ function MessageTimeline({
                   onAnswer={(response) => onAnswerInvite(message.eventId as string, response)}
                 />
               ) : conversation.kind === 'mail' ? (
-                <MailCard message={message} author={authors[message.senderId]} lang={lang} onReply={() => onReply(message)} onDelete={canRemove(message) ? () => onDelete(message) : undefined} />
+                <MailCard message={message} author={authors[message.senderId]} own={message.senderId === currentUserId} lang={lang} onReply={() => onReply(message)} onDelete={canRemove(message) ? () => onDelete(message) : undefined} onReaders={() => onReaders(message)} />
               ) : (
-                <ChatBubble message={message} author={authors[message.senderId]} own={message.senderId === currentUserId} lang={lang} onReply={() => onReply(message)} onDelete={canRemove(message) ? () => onDelete(message) : undefined} />
+                <ChatBubble message={message} author={authors[message.senderId]} own={message.senderId === currentUserId} lang={lang} onReply={() => onReply(message)} onDelete={canRemove(message) ? () => onDelete(message) : undefined} onReaders={() => onReaders(message)} />
               )}
             </div>
           );
@@ -1122,7 +1212,7 @@ function MessageTimeline({
   );
 }
 
-function MailCard({ message, author, lang, onReply, onDelete }: { message: MailMessage; author?: MailPerson; lang: 'ar' | 'en'; onReply: () => void; onDelete?: () => void }) {
+function MailCard({ message, author, own, lang, onReply, onDelete, onReaders }: { message: MailMessage; author?: MailPerson; own: boolean; lang: 'ar' | 'en'; onReply: () => void; onDelete?: () => void; onReaders: () => void }) {
   const c = copy(lang);
   return (
     <article className="group rounded-[20px] border border-white bg-white p-4 shadow-[0_12px_34px_-26px_rgba(11,37,69,.55)] ring-1 ring-surface-line/70 sm:p-5">
@@ -1130,6 +1220,7 @@ function MailCard({ message, author, lang, onReply, onDelete }: { message: MailM
         <Avatar name={author?.name ?? '?'} color={author?.avatarColor} size={34} />
         <div className="min-w-0 flex-1"><p className="truncate text-[12.5px] font-extrabold text-ink"><span className="me-1 text-[9.5px] font-bold text-ink-faint">{c.from}</span>{author?.name ?? c.removedUser}</p><p className="ltr truncate text-start text-[10px] text-ink-faint">{author?.email}</p></div>
         <span className="ltr text-[9.5px] text-ink-faint">{longTime(message.createdAt, lang)}</span>
+        {own && <ReadReceipt message={message} lang={lang} onOpen={onReaders} />}
         <button type="button" onClick={onReply} className="rounded-lg p-1.5 text-ink-faint opacity-0 transition hover:bg-brand-50 hover:text-brand-600 group-hover:opacity-100" aria-label={c.reply}><Reply size={14} /></button>
         {onDelete && (
           <button type="button" onClick={onDelete} className="rounded-lg p-1.5 text-ink-faint opacity-0 transition hover:bg-rose-50 hover:text-rose-600 group-hover:opacity-100" aria-label={c.deleteMessage}><Trash2 size={14} /></button>
@@ -1141,7 +1232,7 @@ function MailCard({ message, author, lang, onReply, onDelete }: { message: MailM
   );
 }
 
-function ChatBubble({ message, author, own, lang, onReply, onDelete }: { message: MailMessage; author?: MailPerson; own: boolean; lang: 'ar' | 'en'; onReply: () => void; onDelete?: () => void }) {
+function ChatBubble({ message, author, own, lang, onReply, onDelete, onReaders }: { message: MailMessage; author?: MailPerson; own: boolean; lang: 'ar' | 'en'; onReply: () => void; onDelete?: () => void; onReaders: () => void }) {
   const c = copy(lang);
   return (
     <article className={cx('group flex items-end gap-2', own ? 'justify-end' : 'justify-start')}>
@@ -1151,7 +1242,7 @@ function ChatBubble({ message, author, own, lang, onReply, onDelete }: { message
         <div className={cx('relative rounded-2xl px-3.5 py-2.5 text-start shadow-sm', own ? 'rounded-ee-md bg-gradient-to-br from-brand-500 to-[#135B9B] text-white' : 'rounded-es-md border border-surface-line bg-white text-ink')}>
           {message.body && <p className="whitespace-pre-wrap text-[12.5px] leading-6">{message.body}</p>}
           <AttachmentList files={message.attachments} dark={own} />
-          <div className={cx('mt-1 flex items-center justify-end gap-1 text-[8.5px]', own ? 'text-white/55' : 'text-ink-faint')}><span className="ltr">{longTime(message.createdAt, lang)}</span>{own && <Check size={10} />}</div>
+          <div className={cx('mt-1 flex items-center justify-end gap-1 text-[8.5px]', own ? 'text-white/55' : 'text-ink-faint')}><span className="ltr">{longTime(message.createdAt, lang)}</span>{own && <ReadReceipt message={message} lang={lang} onOpen={onReaders} dark />}</div>
         </div>
       </div>
       <span className="mb-1 flex shrink-0 items-center">
@@ -1203,6 +1294,7 @@ function channelRoster(
 function ChannelMembers({
   conversation,
   people,
+  online,
   currentUserId,
   lang,
   busy,
@@ -1211,6 +1303,7 @@ function ChannelMembers({
 }: {
   conversation: MailConversation;
   people: MailPerson[];
+  online: Set<string>;
   currentUserId: string;
   lang: 'ar' | 'en';
   busy: boolean;
@@ -1255,6 +1348,7 @@ function ChannelMembers({
                 <MemberRow
                   key={person.id}
                   person={person}
+                  online={online.has(person.id)}
                   chip={openToEveryone ? c.fromWorkspace : c.fromDepartment}
                 />
               ))}
@@ -1276,6 +1370,7 @@ function ChannelMembers({
                   <MemberRow
                     key={person.id}
                     person={person}
+                    online={online.has(person.id)}
                     chip={isOwner ? c.owner : undefined}
                     busy={busy}
                     removeLabel={c.removeMember}
@@ -1362,12 +1457,14 @@ function ChannelMembers({
 
 function MemberRow({
   person,
+  online = false,
   chip,
   onRemove,
   removeLabel,
   busy = false,
 }: {
   person: MailPerson;
+  online?: boolean;
   chip?: string;
   onRemove?: () => void;
   removeLabel?: string;
@@ -1375,7 +1472,9 @@ function MemberRow({
 }) {
   return (
     <li className="flex items-center gap-2.5 rounded-xl px-1 py-1.5">
-      <Avatar name={person.name} color={person.avatarColor} size={30} />
+      <PresencePin online={online}>
+        <Avatar name={person.name} color={person.avatarColor} size={30} />
+      </PresencePin>
       <div className="min-w-0 flex-1">
         <p className="truncate text-[12.5px] font-bold text-ink">{person.name}</p>
         <p className="ltr truncate text-start text-[10.5px] text-ink-faint">{person.email}</p>
@@ -1894,6 +1993,65 @@ function AiFactList({ title, items, tone }: { title: string; items: string[]; to
   );
 }
 
+/**
+ * Sent, and then opened by somebody.
+ *
+ * `readBy` arrives on the reader's own messages alone, so this renders for the
+ * sender and nobody else — the one tick is delivery, which is all the server
+ * will say about a message you did not write. The count is worth a click
+ * wherever more than one person could have opened it.
+ */
+function ReadReceipt({
+  message,
+  lang,
+  dark = false,
+  onOpen,
+}: {
+  message: MailMessage;
+  lang: 'ar' | 'en';
+  dark?: boolean;
+  onOpen: () => void;
+}) {
+  const c = copy(lang);
+  const count = message.readBy?.length ?? 0;
+  if (count === 0) return <Check size={10} />;
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-label={c.readBy}
+      className={cx(
+        'inline-flex items-center gap-0.5 rounded-md px-1 py-0.5 transition',
+        dark ? 'hover:bg-white/15' : 'text-emerald-600 hover:bg-emerald-50'
+      )}
+    >
+      <CheckCheck size={11} />
+      {count > 1 && <span className="ltr font-bold">{count}</span>}
+    </button>
+  );
+}
+
+/**
+ * A green dot on somebody's avatar, and nothing at all when they are away.
+ *
+ * Absence is the resting state of a workspace, so it is left unmarked: a grey
+ * dot on most of the roster most of the day reads as a fault rather than as
+ * the normal state of a company.
+ */
+function PresencePin({ online, children }: { online: boolean; children: ReactNode }) {
+  return (
+    <span className="relative inline-flex shrink-0">
+      {children}
+      {online && (
+        <span
+          className="absolute -bottom-0.5 -end-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-emerald-500"
+          aria-hidden
+        />
+      )}
+    </span>
+  );
+}
+
 function ConversationAvatar({ conversation, person, compact = false }: { conversation: MailConversation; person?: MailPerson | null; compact?: boolean }) {
   const size = compact ? 36 : 40;
   if (conversation.kind === 'direct' && person) return <Avatar name={person.name} color={person.avatarColor} size={size} />;
@@ -1933,13 +2091,13 @@ function copy(lang: 'ar' | 'en') {
 const AR = {
   officialMail: 'الرسائل الرسمية', privateChats: 'المحادثات الخاصة', emptyGroup: 'لا يوجد شيء هنا بعد.',
   from: 'من', to: 'إلى', currentAccount: 'حسابك الحالي', senderAccount: 'حساب المرسل', individuals: 'أفراد', groups: 'أقسام', teams: 'تيمات', selectedCount: '{count} محدد', searchGroups: 'ابحث في الأقسام والتيمات…', noGroups: 'لا توجد أقسام مطابقة.', noTeams: 'لا توجد تيمات مطابقة.',
-  inbox: 'الوارد', mail: 'الرسائل', channels: 'القنوات', channel: 'قناة', direct: 'المحادثات', close: 'إغلاق', internalWorkspace: 'مساحة تواصل إنجوسوفت', communicationHub: 'صندوق التواصل', workspaceSignature: 'البريد والقنوات والعمل في مكان واحد', newMessage: 'رسالة جديدة', search: 'ابحث في الرسائل والقنوات…', noMessages: 'لا توجد رسائل بعد', noConversations: 'لا توجد محادثات', noConversationsBody: 'ابدأ رسالة أو محادثة جديدة مع فريقك.', back: 'رجوع', announcementsOnly: 'قناة إعلانات', teamChannel: 'قناة القسم', publicChannelShort: 'قناة عامة لكل الشركة', privateChannelShort: 'قناة خاصة', members: 'أعضاء', participants: 'مشاركون', chooseConversation: 'اختر محادثة', chooseConversationBody: 'اختر رسالة أو قناة من القائمة للبدء.', olderMessages: 'عرض رسائل أقدم', loading: 'جارٍ التحميل…', startConversation: 'ابدأ المحادثة', startConversationBody: 'أرسل أول رسالة أو ملف هنا.', removedUser: 'مستخدم غير متاح', reply: 'رد', deleteMessage: 'حذف الرسالة', confirmDeleteMessage: 'حذف الرسالة؟', channelMembers: 'أعضاء القناة', addMembers: 'إضافة أعضاء', owner: 'صاحب القناة', departmentMembers: 'أعضاء القسم', workspaceMembers: 'كل الشركة', fromDepartment: 'من القسم', fromWorkspace: 'من الشركة', addedMembers: 'مُضافون للقناة', derivedHint: 'دول داخلين مع القسم؛ لإضافة أو إزالة واحد منهم غيّر قسمه من صفحة الفريق.', everyoneAlreadyIn: 'دي قناة لكل الشركة، فكل الزملاء جواها بالفعل.', removeMember: 'إزالة من القناة', confirmRemoveMember: 'إزالة {name} من القناة؟ الرسائل اللي كتبها هتفضل مكانها.', memberAdded: 'تمت الإضافة ووصلهم إشعار.', memberRemoved: 'تمت الإزالة.', noOneToAdd: 'كل الزملاء موجودين بالفعل.', add: 'إضافة', attach: 'إرفاق ملف', send: 'إرسال', writeReply: 'اكتب ردك…', writeMessage: 'اكتب رسالة…', readOnlyChannel: 'هذه قناة إعلانات؛ الكتابة متاحة للمديرين.', newConversation: 'بدء تواصل جديد', cancel: 'إلغاء', createChannel: 'إنشاء القناة', openChat: 'فتح المحادثة', channelName: 'اسم القناة', description: 'الوصف', channelAccess: 'من يمكنه رؤية القناة؟', departmentChannel: 'القسم', privateChannel: 'خاصة', publicChannel: 'الشركة كلها', announcementChannel: 'قناة إعلانات: المديرون يكتبون والموظفون يقرؤون', subject: 'عنوان الرسالة', message: 'الرسالة', attachments: 'المرفقات', choosePerson: 'اختر موظفًا', recipients: 'المستلمون', searchPeople: 'ابحث بالاسم أو الإيميل…', aiLastMessages: 'مساعد مساحة العمل', summarize: 'تلخيص', suggestReply: 'اقتراح رد', extractActions: 'استخراج مهام', aiUnavailable: 'Qodo AI قيد التجهيز', aiUnavailableBody: 'سيظهر مساعد المحادثة هنا فور اكتمال تشغيله.', aiWorking: 'Qodo AI يحلّل الرسائل…', aiNoAction: 'لن ينفّذ أي شيء من تلقاء نفسه.', aiInsideChat: 'داخل المحادثة', aiLastCount: 'يلخّص آخر {count} رسالة', aiAnalysedCount: 'تم تحليل {count} رسالة فعلية', aiMessageRange: 'نطاق التحليل', aiDecisions: 'القرارات', aiBlockers: 'العوائق', useReply: 'استخدام الرد في المحرر', createTask: 'إنشاء مهمة', noActions: 'لا توجد إجراءات واضحة', noActionsBody: 'لم يجد AI طلبات تنفيذ صريحة في المحادثة.', aiChoose: 'ماذا تريد من Qodo AI؟', aiChooseBody: 'لخّص المحادثة، حضّر ردًا، أو حوّل نقاط العمل إلى مهام.', aiPrivacy: 'راجع النتيجة واستخدمها في المحادثة أو حوّلها إلى مهمة.', confirmTask: 'إنشاء مهمة بعنوان «{title}»؟', taskCreated: 'تم إنشاء المهمة من المحادثة.', untitled: 'بدون عنوان', publicChannelForbidden: 'القناة العامة للإدارة فقط.',
+  inbox: 'الوارد', mail: 'الرسائل', channels: 'القنوات', channel: 'قناة', direct: 'المحادثات', close: 'إغلاق', internalWorkspace: 'مساحة تواصل إنجوسوفت', communicationHub: 'صندوق التواصل', workspaceSignature: 'البريد والقنوات والعمل في مكان واحد', newMessage: 'رسالة جديدة', search: 'ابحث في الرسائل والقنوات…', noMessages: 'لا توجد رسائل بعد', noConversations: 'لا توجد محادثات', noConversationsBody: 'ابدأ رسالة أو محادثة جديدة مع فريقك.', back: 'رجوع', announcementsOnly: 'قناة إعلانات', teamChannel: 'قناة القسم', publicChannelShort: 'قناة عامة لكل الشركة', privateChannelShort: 'قناة خاصة', members: 'أعضاء', participants: 'مشاركون', chooseConversation: 'اختر محادثة', chooseConversationBody: 'اختر رسالة أو قناة من القائمة للبدء.', olderMessages: 'عرض رسائل أقدم', loading: 'جارٍ التحميل…', startConversation: 'ابدأ المحادثة', startConversationBody: 'أرسل أول رسالة أو ملف هنا.', removedUser: 'مستخدم غير متاح', reply: 'رد', deleteMessage: 'حذف الرسالة', confirmDeleteMessage: 'حذف الرسالة؟', channelMembers: 'أعضاء القناة', addMembers: 'إضافة أعضاء', owner: 'صاحب القناة', online: 'متصل الآن', offline: 'غير متصل', onlineNow: 'متصلين', readBy: 'مين فتح الرسالة', notReadYet: 'لسه محدش فتحها.', departmentMembers: 'أعضاء القسم', workspaceMembers: 'كل الشركة', fromDepartment: 'من القسم', fromWorkspace: 'من الشركة', addedMembers: 'مُضافون للقناة', derivedHint: 'دول داخلين مع القسم؛ لإضافة أو إزالة واحد منهم غيّر قسمه من صفحة الفريق.', everyoneAlreadyIn: 'دي قناة لكل الشركة، فكل الزملاء جواها بالفعل.', removeMember: 'إزالة من القناة', confirmRemoveMember: 'إزالة {name} من القناة؟ الرسائل اللي كتبها هتفضل مكانها.', memberAdded: 'تمت الإضافة ووصلهم إشعار.', memberRemoved: 'تمت الإزالة.', noOneToAdd: 'كل الزملاء موجودين بالفعل.', add: 'إضافة', attach: 'إرفاق ملف', send: 'إرسال', writeReply: 'اكتب ردك…', writeMessage: 'اكتب رسالة…', readOnlyChannel: 'هذه قناة إعلانات؛ الكتابة متاحة للمديرين.', newConversation: 'بدء تواصل جديد', cancel: 'إلغاء', createChannel: 'إنشاء القناة', openChat: 'فتح المحادثة', channelName: 'اسم القناة', description: 'الوصف', channelAccess: 'من يمكنه رؤية القناة؟', departmentChannel: 'القسم', privateChannel: 'خاصة', publicChannel: 'الشركة كلها', announcementChannel: 'قناة إعلانات: المديرون يكتبون والموظفون يقرؤون', subject: 'عنوان الرسالة', message: 'الرسالة', attachments: 'المرفقات', choosePerson: 'اختر موظفًا', recipients: 'المستلمون', searchPeople: 'ابحث بالاسم أو الإيميل…', aiLastMessages: 'مساعد مساحة العمل', summarize: 'تلخيص', suggestReply: 'اقتراح رد', extractActions: 'استخراج مهام', aiUnavailable: 'Qodo AI قيد التجهيز', aiUnavailableBody: 'سيظهر مساعد المحادثة هنا فور اكتمال تشغيله.', aiWorking: 'Qodo AI يحلّل الرسائل…', aiNoAction: 'لن ينفّذ أي شيء من تلقاء نفسه.', aiInsideChat: 'داخل المحادثة', aiLastCount: 'يلخّص آخر {count} رسالة', aiAnalysedCount: 'تم تحليل {count} رسالة فعلية', aiMessageRange: 'نطاق التحليل', aiDecisions: 'القرارات', aiBlockers: 'العوائق', useReply: 'استخدام الرد في المحرر', createTask: 'إنشاء مهمة', noActions: 'لا توجد إجراءات واضحة', noActionsBody: 'لم يجد AI طلبات تنفيذ صريحة في المحادثة.', aiChoose: 'ماذا تريد من Qodo AI؟', aiChooseBody: 'لخّص المحادثة، حضّر ردًا، أو حوّل نقاط العمل إلى مهام.', aiPrivacy: 'راجع النتيجة واستخدمها في المحادثة أو حوّلها إلى مهمة.', confirmTask: 'إنشاء مهمة بعنوان «{title}»؟', taskCreated: 'تم إنشاء المهمة من المحادثة.', untitled: 'بدون عنوان', publicChannelForbidden: 'القناة العامة للإدارة فقط.',
   bookMeeting: 'حجز اجتماع', sendInvite: 'إرسال الدعوة', meetingBooked: 'اتبعتت الدعوة وظهرت في المحادثة.', going: 'حاضر', maybe: 'مبدئي', notGoing: 'معتذر', joinOnline: 'دخول أونلاين', openInCalendar: 'افتح في التقويم', meetingCancelled: 'الاجتماع اتلغى.', threadFiles: 'مرفقات المحادثة', noThreadFiles: 'مفيش مرفقات في الرسائل المحمّلة.', dropHere: 'سيب الملف هنا للإرفاق', attachmentLimit: 'الحد {n} ملفات للرسالة الواحدة.',
 };
 
 const EN: typeof AR = {
   officialMail: 'Official mail', privateChats: 'Private chats', emptyGroup: 'Nothing here yet.',
   from: 'From', to: 'To', currentAccount: 'Your current account', senderAccount: 'Sender account', individuals: 'People', groups: 'Groups', teams: 'Teams', selectedCount: '{count} selected', searchGroups: 'Search groups and teams…', noGroups: 'No matching groups.', noTeams: 'No matching teams.',
-  inbox: 'Inbox', mail: 'Mail', channels: 'Channels', channel: 'Channel', direct: 'Direct', close: 'Close', internalWorkspace: 'Engosoft communication hub', communicationHub: 'Communication hub', workspaceSignature: 'Mail, channels and teamwork in one place', newMessage: 'New message', search: 'Search mail and channels…', noMessages: 'No messages yet', noConversations: 'No conversations', noConversationsBody: 'Start a mail thread or chat with your team.', back: 'Back', announcementsOnly: 'Announcements', teamChannel: 'Department channel', publicChannelShort: 'Public company channel', privateChannelShort: 'Private channel', members: 'members', participants: 'participants', chooseConversation: 'Choose a conversation', chooseConversationBody: 'Pick a mail thread or channel from the list.', olderMessages: 'Load older messages', loading: 'Loading…', startConversation: 'Start the conversation', startConversationBody: 'Send the first message or file here.', removedUser: 'Unavailable user', reply: 'Reply', deleteMessage: 'Delete message', confirmDeleteMessage: 'Delete this message?', channelMembers: 'Channel members', addMembers: 'Add members', owner: 'Owner', departmentMembers: 'Department members', workspaceMembers: 'Everyone in the company', fromDepartment: 'Department', fromWorkspace: 'Company', addedMembers: 'Added to the channel', derivedHint: 'They come in with the department; to add or remove one of them, change their department on the Team screen.', everyoneAlreadyIn: 'This channel is open to the whole company, so everybody is already in.', removeMember: 'Remove from channel', confirmRemoveMember: 'Remove {name} from this channel? What they already wrote stays.', memberAdded: 'Added, and they were notified.', memberRemoved: 'Removed.', noOneToAdd: 'Everybody is already in.', add: 'Add', attach: 'Attach file', send: 'Send', writeReply: 'Write a reply…', writeMessage: 'Write a message…', readOnlyChannel: 'This is an announcement channel; only managers can post.', newConversation: 'Start a new conversation', cancel: 'Cancel', createChannel: 'Create channel', openChat: 'Open chat', channelName: 'Channel name', description: 'Description', channelAccess: 'Who can see this channel?', departmentChannel: 'Department', privateChannel: 'Private', publicChannel: 'Whole company', announcementChannel: 'Announcement channel: managers post and employees read', subject: 'Subject', message: 'Message', attachments: 'Attachments', choosePerson: 'Choose a person', recipients: 'Recipients', searchPeople: 'Search by name or email…', aiLastMessages: 'Workspace assistant', summarize: 'Summarize', suggestReply: 'Draft reply', extractActions: 'Action items', aiUnavailable: 'Qodo AI is being prepared', aiUnavailableBody: 'The conversation assistant will appear here as soon as setup is complete.', aiWorking: 'Qodo AI is analysing messages…', aiNoAction: 'It will not execute anything on its own.', aiInsideChat: 'Inside conversation', aiLastCount: 'Summarising the last {count} messages', aiAnalysedCount: 'Analysed {count} actual messages', aiMessageRange: 'Analysis range', aiDecisions: 'Decisions', aiBlockers: 'Blockers', useReply: 'Use this reply', createTask: 'Create task', noActions: 'No clear actions found', noActionsBody: 'AI did not find explicit action requests in this conversation.', aiChoose: 'What should Qodo AI do?', aiChooseBody: 'Summarize the conversation, draft a reply, or turn action points into tasks.', aiPrivacy: 'Review the result, use it in the conversation, or turn it into a task.', confirmTask: 'Create a task called “{title}”?', taskCreated: 'Task created from the conversation.', untitled: 'Untitled', publicChannelForbidden: 'Only administrators can create public channels.',
+  inbox: 'Inbox', mail: 'Mail', channels: 'Channels', channel: 'Channel', direct: 'Direct', close: 'Close', internalWorkspace: 'Engosoft communication hub', communicationHub: 'Communication hub', workspaceSignature: 'Mail, channels and teamwork in one place', newMessage: 'New message', search: 'Search mail and channels…', noMessages: 'No messages yet', noConversations: 'No conversations', noConversationsBody: 'Start a mail thread or chat with your team.', back: 'Back', announcementsOnly: 'Announcements', teamChannel: 'Department channel', publicChannelShort: 'Public company channel', privateChannelShort: 'Private channel', members: 'members', participants: 'participants', chooseConversation: 'Choose a conversation', chooseConversationBody: 'Pick a mail thread or channel from the list.', olderMessages: 'Load older messages', loading: 'Loading…', startConversation: 'Start the conversation', startConversationBody: 'Send the first message or file here.', removedUser: 'Unavailable user', reply: 'Reply', deleteMessage: 'Delete message', confirmDeleteMessage: 'Delete this message?', channelMembers: 'Channel members', addMembers: 'Add members', owner: 'Owner', online: 'Online', offline: 'Offline', onlineNow: 'online', readBy: 'Read by', notReadYet: 'Nobody has opened it yet.', departmentMembers: 'Department members', workspaceMembers: 'Everyone in the company', fromDepartment: 'Department', fromWorkspace: 'Company', addedMembers: 'Added to the channel', derivedHint: 'They come in with the department; to add or remove one of them, change their department on the Team screen.', everyoneAlreadyIn: 'This channel is open to the whole company, so everybody is already in.', removeMember: 'Remove from channel', confirmRemoveMember: 'Remove {name} from this channel? What they already wrote stays.', memberAdded: 'Added, and they were notified.', memberRemoved: 'Removed.', noOneToAdd: 'Everybody is already in.', add: 'Add', attach: 'Attach file', send: 'Send', writeReply: 'Write a reply…', writeMessage: 'Write a message…', readOnlyChannel: 'This is an announcement channel; only managers can post.', newConversation: 'Start a new conversation', cancel: 'Cancel', createChannel: 'Create channel', openChat: 'Open chat', channelName: 'Channel name', description: 'Description', channelAccess: 'Who can see this channel?', departmentChannel: 'Department', privateChannel: 'Private', publicChannel: 'Whole company', announcementChannel: 'Announcement channel: managers post and employees read', subject: 'Subject', message: 'Message', attachments: 'Attachments', choosePerson: 'Choose a person', recipients: 'Recipients', searchPeople: 'Search by name or email…', aiLastMessages: 'Workspace assistant', summarize: 'Summarize', suggestReply: 'Draft reply', extractActions: 'Action items', aiUnavailable: 'Qodo AI is being prepared', aiUnavailableBody: 'The conversation assistant will appear here as soon as setup is complete.', aiWorking: 'Qodo AI is analysing messages…', aiNoAction: 'It will not execute anything on its own.', aiInsideChat: 'Inside conversation', aiLastCount: 'Summarising the last {count} messages', aiAnalysedCount: 'Analysed {count} actual messages', aiMessageRange: 'Analysis range', aiDecisions: 'Decisions', aiBlockers: 'Blockers', useReply: 'Use this reply', createTask: 'Create task', noActions: 'No clear actions found', noActionsBody: 'AI did not find explicit action requests in this conversation.', aiChoose: 'What should Qodo AI do?', aiChooseBody: 'Summarize the conversation, draft a reply, or turn action points into tasks.', aiPrivacy: 'Review the result, use it in the conversation, or turn it into a task.', confirmTask: 'Create a task called “{title}”?', taskCreated: 'Task created from the conversation.', untitled: 'Untitled', publicChannelForbidden: 'Only administrators can create public channels.',
   bookMeeting: 'Book a meeting', sendInvite: 'Send invitation', meetingBooked: 'Invitation sent and posted in the thread.', going: 'Going', maybe: 'Maybe', notGoing: 'Not going', joinOnline: 'Join online', openInCalendar: 'Open in calendar', meetingCancelled: 'This meeting was cancelled.', threadFiles: 'Conversation files', noThreadFiles: 'No files in the loaded messages.', dropHere: 'Drop the file here to attach', attachmentLimit: 'Up to {n} files per message.',
 };

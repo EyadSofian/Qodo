@@ -22,7 +22,7 @@ import {
   ensureMembership,
   isDerivedMember,
 } from '../mailAccess.js';
-import { publishMail, subscribeToMail } from '../mailStream.js';
+import { onlineUserIds, publishMail, subscribeToMail } from '../mailStream.js';
 import { organizationOf } from '../../shared/organization.js';
 import { DEPARTMENT_IDS } from '../../shared/departments.js';
 import mailFiles, { MAX_MAIL_FILES, publicMailAttachment } from './mailFiles.js';
@@ -56,7 +56,7 @@ router.get('/stream', (req, res) => {
   res.flushHeaders?.();
   res.write('event: ready\ndata: {}\n\n');
 
-  const unsubscribe = subscribeToMail(req.user.id, res);
+  const unsubscribe = subscribeToMail(req.user, res);
   const heartbeat = setInterval(() => {
     if (!res.writableEnded && !res.destroyed) res.write(': keep-alive\n\n');
   }, 25_000);
@@ -132,6 +132,10 @@ router.get('/bootstrap', async (req, res) => {
     conversations: presented,
     people,
     unread: presented.reduce((sum, row) => sum + row.unreadCount, 0),
+    // Who is present right now. The stream keeps this live afterwards; the
+    // opening list is here so a tab that just loaded is not blank until the
+    // first person happens to connect or leave.
+    online: onlineUserIds(organizationId),
     aiAvailable: aiConfigured(),
     aiModel: aiConfigured() ? AI_MODEL : null,
   });
@@ -385,9 +389,29 @@ router.post('/conversations/:id/read', async (req, res) => {
   const conversation = await loadConversation(req, res);
   if (!conversation) return;
   const membership = await ensureMembership(conversation, req.user.id);
+  const previous = membership.lastReadAt;
+  const lastReadAt = new Date().toISOString();
   const updated = await (await getStore()).update('mailMemberships', membership.id, {
-    lastReadAt: new Date().toISOString(),
+    lastReadAt,
   });
+
+  // A receipt is only news to the person who wrote the message, so the wake-up
+  // goes to them and stops there — not to everybody the conversation can reach.
+  const senders = new Set(
+    (
+      await find(
+        'mailMessages',
+        (row) =>
+          row.conversationId === conversation.id &&
+          !row.deletedAt &&
+          row.senderId !== req.user.id &&
+          row.createdAt <= lastReadAt &&
+          (!previous || row.createdAt > previous)
+      )
+    ).map((row) => row.senderId)
+  );
+  for (const id of senders) publishMail(id, conversation.id, null);
+
   res.json({ ok: true, lastReadAt: updated.lastReadAt });
 });
 
@@ -419,6 +443,20 @@ router.get('/conversations/:id/messages', async (req, res) => {
     filesByMessage.set(file.messageId, list);
   }
 
+  // Who has opened the conversation since each of the reader's own messages
+  // landed. `lastReadAt` is the same field the unread badge counts against, so
+  // a receipt can never claim something the badge contradicts — including the
+  // opening membership, which starts caught up rather than staring at a history
+  // the person never had a chance to miss.
+  const readers = (
+    await find(
+      'mailMemberships',
+      (row) => row.conversationId === conversation.id && row.userId !== req.user.id && row.lastReadAt
+    )
+  ).map((row) => ({ userId: row.userId, lastReadAt: row.lastReadAt }));
+  const readersOf = (message) =>
+    readers.filter((row) => row.lastReadAt >= message.createdAt).map((row) => row.userId);
+
   const authorIds = [...new Set(selected.map((row) => row.senderId))];
   const authors = {};
   for (const id of authorIds) {
@@ -441,6 +479,9 @@ router.get('/conversations/:id/messages', async (req, res) => {
     messages: selected.map((message) => ({
       ...publicMessage(message),
       attachments: filesByMessage.get(message.id) ?? [],
+      // Only on the reader's own messages: you learn who opened what you wrote,
+      // and not who opened what somebody else wrote.
+      ...(message.senderId === req.user.id ? { readBy: readersOf(message) } : {}),
     })),
     authors,
     events,

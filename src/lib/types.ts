@@ -187,6 +187,11 @@ export interface MailMessage {
   eventId: string | null;
   editedAt: string | null;
   attachments: MailAttachment[];
+  /**
+   * Who has opened the conversation since this message landed. Present on the
+   * reader's own messages only — a receipt is the sender's to see.
+   */
+  readBy?: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -194,6 +199,8 @@ export interface MailMessage {
 export interface MailBootstrap {
   conversations: MailConversation[];
   people: MailPerson[];
+  /** Who holds a live stream open right now; the stream keeps it current. */
+  online: string[];
   unread: number;
   aiAvailable: boolean;
   aiModel: string | null;
