@@ -362,9 +362,17 @@ const ERRORS: Record<string, { ar: string; en: string }> = {
   too_many_mail_files: { ar: 'يمكن إرفاق ٦ ملفات كحد أقصى في الرسالة.', en: 'A message can contain up to 6 files.' },
   invalid_mail_attachment: { ar: 'تعذّر العثور على أحد المرفقات.', en: 'One of the attachments could not be found.' },
   invalid_reply: { ar: 'الرسالة التي ترد عليها غير موجودة.', en: 'The message you are replying to no longer exists.' },
-  channel_membership_derived: {
-    ar: 'أعضاء هذه القناة يتحددون من القسم أو من المؤسسة، وليس يدويًا.',
-    en: 'This channel takes its members from the department or the whole workspace.',
+  channel_open_to_everyone: {
+    ar: 'هذه قناة لكل الشركة، والجميع بداخلها بالفعل.',
+    en: 'This channel is open to the whole company; everybody is already in.',
+  },
+  channel_member_derived: {
+    ar: 'هذا الزميل عضو بحكم قسمه. غيّر قسمه من صفحة الفريق.',
+    en: 'They are in through their department. Change it on the Team screen.',
+  },
+  member_already_in_channel: {
+    ar: 'هذا الزميل موجود في القناة بالفعل.',
+    en: 'They are already in this channel.',
   },
   channel_owner_required: {
     ar: 'لا يمكن إزالة صاحب القناة.',

@@ -386,7 +386,7 @@ export function Mail() {
   };
 
   /**
-   * Changing who is in a private channel.
+   * Changing the written half of a channel's roster.
    *
    * Both halves refresh the bootstrap rather than patching the conversation in
    * place: membership decides what the sidebar shows, so the list that has to
@@ -953,6 +953,11 @@ function ThreadHeader({
   const c = copy(lang);
   const title = conversationTitle(conversation, peopleById, currentUserId, lang);
   const Back = dir === 'rtl' ? ArrowRight : ArrowLeft;
+  const roster = useMemo(
+    () => channelRoster(conversation, [...peopleById.values()]),
+    [conversation, peopleById]
+  );
+  const memberCount = roster.derived.length + roster.guests.length;
   return (
     <header className="relative z-10 flex min-h-[72px] items-center gap-3 border-b border-surface-line bg-white/90 px-3 backdrop-blur-xl sm:px-5">
       <button type="button" onClick={onBack} className="btn-quiet !min-h-9 rounded-lg px-2 md:hidden" aria-label={c.back}><Back size={19} /></button>
@@ -969,10 +974,9 @@ function ThreadHeader({
           {conversation.kind !== 'channel' && <>{conversation.memberIds.length} {c.participants}</>}
         </p>
       </div>
-      {/* Only a private channel keeps a member list. The other scopes take
-          their access from the department or from the workspace, so there is
-          nothing here to open. */}
-      {conversation.kind === 'channel' && conversation.scope === 'private' && (
+      {/* Every channel has a roster worth opening; the scope only decides how
+          much of it was written by hand. */}
+      {conversation.kind === 'channel' && (
         <button
           type="button"
           onClick={onMembers}
@@ -980,7 +984,7 @@ function ThreadHeader({
           className="flex min-h-9 items-center gap-1.5 rounded-full border border-surface-line bg-white px-2.5 text-[10.5px] font-bold text-ink-muted transition-all hover:border-brand-200 hover:text-brand-600"
         >
           <Users size={14} />
-          <span className="ltr">{conversation.memberIds.length}</span>
+          <span className="ltr">{memberCount}</span>
         </button>
       )}
 
@@ -1161,12 +1165,40 @@ function ChatBubble({ message, author, own, lang, onReply, onDelete }: { message
 }
 
 /**
- * Who is in a private channel, and the two ways that changes.
+ * Who is in a channel, and the two different reasons they are in it.
  *
- * The list is the conversation's own `memberIds`, so it stays right without a
- * second fetch. Only somebody who manages the channel gets the controls; for
- * everybody else this is a roster, which is still worth opening — a private
- * channel where you cannot see who is reading is a worse place to write.
+ * `derived` is what the scope already decided — the department for a department
+ * channel, the whole workspace for a public one — and it moves on the Team
+ * screen, not here. `guests` is the written list: the entire roster of a
+ * private channel, and the people invited in from outside for the other two.
+ */
+function channelRoster(
+  conversation: MailConversation,
+  people: MailPerson[]
+): { derived: MailPerson[]; guests: MailPerson[] } {
+  if (conversation.kind !== 'channel') return { derived: [], guests: [] };
+  const guestIds = new Set(conversation.memberIds ?? []);
+  const guests = people.filter((person) => guestIds.has(person.id));
+  const derived =
+    conversation.scope === 'private'
+      ? []
+      : people.filter(
+          (person) =>
+            !guestIds.has(person.id) &&
+            (conversation.scope === 'public' || person.department === conversation.department)
+        );
+  return { derived, guests };
+}
+
+/**
+ * Who is in a channel, and the two ways that changes.
+ *
+ * Everybody sees the roster — a channel where you cannot tell who is reading is
+ * a worse place to write — and it is read out of the bootstrap the sidebar
+ * already holds, so opening it costs no fetch. The controls belong to whoever
+ * manages the channel, and they reach the guests only: somebody the department
+ * put here is shown with where they came from instead of a remove button,
+ * because taking them out is a department change and not a channel one.
  */
 function ChannelMembers({
   conversation,
@@ -1189,57 +1221,86 @@ function ChannelMembers({
   const [query, setQuery] = useState('');
   const [picked, setPicked] = useState<string[]>([]);
 
-  const peopleById = useMemo(() => new Map(people.map((person) => [person.id, person])), [people]);
-  const members = conversation.memberIds
-    .map((id) => peopleById.get(id))
-    .filter((person): person is MailPerson => Boolean(person));
+  const { derived, guests } = useMemo(
+    () => channelRoster(conversation, people),
+    [conversation, people]
+  );
+  // A public channel is everybody already; there is nobody outside it to invite.
+  const openToEveryone = conversation.kind === 'channel' && conversation.scope === 'public';
+  const canAdd = conversation.canManage && !openToEveryone;
 
   const candidates = useMemo(() => {
     const term = query.trim().toLowerCase();
+    const inside = new Set([...derived, ...guests].map((person) => person.id));
     return people
-      .filter((person) => !conversation.memberIds.includes(person.id))
+      .filter((person) => !inside.has(person.id))
       .filter(
         (person) =>
           !term ||
           person.name.toLowerCase().includes(term) ||
           person.email.toLowerCase().includes(term)
       );
-  }, [people, conversation.memberIds, query]);
+  }, [people, derived, guests, query]);
 
   return (
     <div className="grid gap-4">
-      <ul className="grid max-h-56 gap-1 overflow-y-auto">
-        {members.map((person) => {
-          const isOwner = person.id === conversation.createdBy;
-          return (
-            <li key={person.id} className="flex items-center gap-2.5 rounded-xl px-1 py-1.5">
-              <Avatar name={person.name} color={person.avatarColor} size={30} />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-[12.5px] font-bold text-ink">{person.name}</p>
-                <p className="ltr truncate text-start text-[10.5px] text-ink-faint">{person.email}</p>
-              </div>
-              {isOwner ? (
-                <span className="chip shrink-0 bg-surface-sunken text-ink-muted">{c.owner}</span>
-              ) : (
-                conversation.canManage &&
-                person.id !== currentUserId && (
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => onRemove(person)}
-                    aria-label={c.removeMember}
-                    className="shrink-0 rounded-lg p-1.5 text-ink-faint transition hover:bg-rose-50 hover:text-rose-600"
-                  >
-                    <X size={14} />
-                  </button>
-                )
-              )}
-            </li>
-          );
-        })}
-      </ul>
+      <div className="grid max-h-64 gap-3 overflow-y-auto">
+        {derived.length > 0 && (
+          <section className="grid gap-1">
+            <span className="label">
+              {openToEveryone ? c.workspaceMembers : c.departmentMembers} ({derived.length})
+            </span>
+            <ul className="grid gap-1">
+              {derived.map((person) => (
+                <MemberRow
+                  key={person.id}
+                  person={person}
+                  chip={openToEveryone ? c.fromWorkspace : c.fromDepartment}
+                />
+              ))}
+            </ul>
+          </section>
+        )}
 
-      {conversation.canManage && (
+        {guests.length > 0 && (
+          <section className="grid gap-1">
+            {derived.length > 0 && (
+              <span className="label">
+                {c.addedMembers} ({guests.length})
+              </span>
+            )}
+            <ul className="grid gap-1">
+              {guests.map((person) => {
+                const isOwner = person.id === conversation.createdBy;
+                return (
+                  <MemberRow
+                    key={person.id}
+                    person={person}
+                    chip={isOwner ? c.owner : undefined}
+                    busy={busy}
+                    removeLabel={c.removeMember}
+                    onRemove={
+                      !isOwner && conversation.canManage && person.id !== currentUserId
+                        ? () => onRemove(person)
+                        : undefined
+                    }
+                  />
+                );
+              })}
+            </ul>
+          </section>
+        )}
+      </div>
+
+      {/* Said once, under the list, because "why is there no X next to this
+          person" is the question the derived half of the roster raises. */}
+      {derived.length > 0 && (
+        <p className="text-[11px] leading-relaxed text-ink-faint">
+          {openToEveryone ? c.everyoneAlreadyIn : c.derivedHint}
+        </p>
+      )}
+
+      {canAdd && (
         <div className="grid gap-2 border-t border-surface-line pt-3">
           <span className="label">{c.addMembers}</span>
           {candidates.length === 0 && !query ? (
@@ -1296,6 +1357,42 @@ function ChannelMembers({
         </div>
       )}
     </div>
+  );
+}
+
+function MemberRow({
+  person,
+  chip,
+  onRemove,
+  removeLabel,
+  busy = false,
+}: {
+  person: MailPerson;
+  chip?: string;
+  onRemove?: () => void;
+  removeLabel?: string;
+  busy?: boolean;
+}) {
+  return (
+    <li className="flex items-center gap-2.5 rounded-xl px-1 py-1.5">
+      <Avatar name={person.name} color={person.avatarColor} size={30} />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-[12.5px] font-bold text-ink">{person.name}</p>
+        <p className="ltr truncate text-start text-[10.5px] text-ink-faint">{person.email}</p>
+      </div>
+      {chip && <span className="chip shrink-0 bg-surface-sunken text-ink-muted">{chip}</span>}
+      {onRemove && (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onRemove}
+          aria-label={removeLabel}
+          className="shrink-0 rounded-lg p-1.5 text-ink-faint transition hover:bg-rose-50 hover:text-rose-600"
+        >
+          <X size={14} />
+        </button>
+      )}
+    </li>
   );
 }
 
@@ -1836,13 +1933,13 @@ function copy(lang: 'ar' | 'en') {
 const AR = {
   officialMail: 'الرسائل الرسمية', privateChats: 'المحادثات الخاصة', emptyGroup: 'لا يوجد شيء هنا بعد.',
   from: 'من', to: 'إلى', currentAccount: 'حسابك الحالي', senderAccount: 'حساب المرسل', individuals: 'أفراد', groups: 'أقسام', teams: 'تيمات', selectedCount: '{count} محدد', searchGroups: 'ابحث في الأقسام والتيمات…', noGroups: 'لا توجد أقسام مطابقة.', noTeams: 'لا توجد تيمات مطابقة.',
-  inbox: 'الوارد', mail: 'الرسائل', channels: 'القنوات', channel: 'قناة', direct: 'المحادثات', close: 'إغلاق', internalWorkspace: 'مساحة تواصل إنجوسوفت', communicationHub: 'صندوق التواصل', workspaceSignature: 'البريد والقنوات والعمل في مكان واحد', newMessage: 'رسالة جديدة', search: 'ابحث في الرسائل والقنوات…', noMessages: 'لا توجد رسائل بعد', noConversations: 'لا توجد محادثات', noConversationsBody: 'ابدأ رسالة أو محادثة جديدة مع فريقك.', back: 'رجوع', announcementsOnly: 'قناة إعلانات', teamChannel: 'قناة القسم', publicChannelShort: 'قناة عامة لكل الشركة', privateChannelShort: 'قناة خاصة', members: 'أعضاء', participants: 'مشاركون', chooseConversation: 'اختر محادثة', chooseConversationBody: 'اختر رسالة أو قناة من القائمة للبدء.', olderMessages: 'عرض رسائل أقدم', loading: 'جارٍ التحميل…', startConversation: 'ابدأ المحادثة', startConversationBody: 'أرسل أول رسالة أو ملف هنا.', removedUser: 'مستخدم غير متاح', reply: 'رد', deleteMessage: 'حذف الرسالة', confirmDeleteMessage: 'حذف الرسالة؟', channelMembers: 'أعضاء القناة', addMembers: 'إضافة أعضاء', owner: 'صاحب القناة', removeMember: 'إزالة من القناة', confirmRemoveMember: 'إزالة {name} من القناة؟ الرسائل اللي كتبها هتفضل مكانها.', memberAdded: 'تمت الإضافة ووصلهم إشعار.', memberRemoved: 'تمت الإزالة.', noOneToAdd: 'كل الزملاء موجودين بالفعل.', add: 'إضافة', attach: 'إرفاق ملف', send: 'إرسال', writeReply: 'اكتب ردك…', writeMessage: 'اكتب رسالة…', readOnlyChannel: 'هذه قناة إعلانات؛ الكتابة متاحة للمديرين.', newConversation: 'بدء تواصل جديد', cancel: 'إلغاء', createChannel: 'إنشاء القناة', openChat: 'فتح المحادثة', channelName: 'اسم القناة', description: 'الوصف', channelAccess: 'من يمكنه رؤية القناة؟', departmentChannel: 'القسم', privateChannel: 'خاصة', publicChannel: 'الشركة كلها', announcementChannel: 'قناة إعلانات: المديرون يكتبون والموظفون يقرؤون', subject: 'عنوان الرسالة', message: 'الرسالة', attachments: 'المرفقات', choosePerson: 'اختر موظفًا', recipients: 'المستلمون', searchPeople: 'ابحث بالاسم أو الإيميل…', aiLastMessages: 'مساعد مساحة العمل', summarize: 'تلخيص', suggestReply: 'اقتراح رد', extractActions: 'استخراج مهام', aiUnavailable: 'Qodo AI قيد التجهيز', aiUnavailableBody: 'سيظهر مساعد المحادثة هنا فور اكتمال تشغيله.', aiWorking: 'Qodo AI يحلّل الرسائل…', aiNoAction: 'لن ينفّذ أي شيء من تلقاء نفسه.', aiInsideChat: 'داخل المحادثة', aiLastCount: 'يلخّص آخر {count} رسالة', aiAnalysedCount: 'تم تحليل {count} رسالة فعلية', aiMessageRange: 'نطاق التحليل', aiDecisions: 'القرارات', aiBlockers: 'العوائق', useReply: 'استخدام الرد في المحرر', createTask: 'إنشاء مهمة', noActions: 'لا توجد إجراءات واضحة', noActionsBody: 'لم يجد AI طلبات تنفيذ صريحة في المحادثة.', aiChoose: 'ماذا تريد من Qodo AI؟', aiChooseBody: 'لخّص المحادثة، حضّر ردًا، أو حوّل نقاط العمل إلى مهام.', aiPrivacy: 'راجع النتيجة واستخدمها في المحادثة أو حوّلها إلى مهمة.', confirmTask: 'إنشاء مهمة بعنوان «{title}»؟', taskCreated: 'تم إنشاء المهمة من المحادثة.', untitled: 'بدون عنوان', publicChannelForbidden: 'القناة العامة للإدارة فقط.',
+  inbox: 'الوارد', mail: 'الرسائل', channels: 'القنوات', channel: 'قناة', direct: 'المحادثات', close: 'إغلاق', internalWorkspace: 'مساحة تواصل إنجوسوفت', communicationHub: 'صندوق التواصل', workspaceSignature: 'البريد والقنوات والعمل في مكان واحد', newMessage: 'رسالة جديدة', search: 'ابحث في الرسائل والقنوات…', noMessages: 'لا توجد رسائل بعد', noConversations: 'لا توجد محادثات', noConversationsBody: 'ابدأ رسالة أو محادثة جديدة مع فريقك.', back: 'رجوع', announcementsOnly: 'قناة إعلانات', teamChannel: 'قناة القسم', publicChannelShort: 'قناة عامة لكل الشركة', privateChannelShort: 'قناة خاصة', members: 'أعضاء', participants: 'مشاركون', chooseConversation: 'اختر محادثة', chooseConversationBody: 'اختر رسالة أو قناة من القائمة للبدء.', olderMessages: 'عرض رسائل أقدم', loading: 'جارٍ التحميل…', startConversation: 'ابدأ المحادثة', startConversationBody: 'أرسل أول رسالة أو ملف هنا.', removedUser: 'مستخدم غير متاح', reply: 'رد', deleteMessage: 'حذف الرسالة', confirmDeleteMessage: 'حذف الرسالة؟', channelMembers: 'أعضاء القناة', addMembers: 'إضافة أعضاء', owner: 'صاحب القناة', departmentMembers: 'أعضاء القسم', workspaceMembers: 'كل الشركة', fromDepartment: 'من القسم', fromWorkspace: 'من الشركة', addedMembers: 'مُضافون للقناة', derivedHint: 'دول داخلين مع القسم؛ لإضافة أو إزالة واحد منهم غيّر قسمه من صفحة الفريق.', everyoneAlreadyIn: 'دي قناة لكل الشركة، فكل الزملاء جواها بالفعل.', removeMember: 'إزالة من القناة', confirmRemoveMember: 'إزالة {name} من القناة؟ الرسائل اللي كتبها هتفضل مكانها.', memberAdded: 'تمت الإضافة ووصلهم إشعار.', memberRemoved: 'تمت الإزالة.', noOneToAdd: 'كل الزملاء موجودين بالفعل.', add: 'إضافة', attach: 'إرفاق ملف', send: 'إرسال', writeReply: 'اكتب ردك…', writeMessage: 'اكتب رسالة…', readOnlyChannel: 'هذه قناة إعلانات؛ الكتابة متاحة للمديرين.', newConversation: 'بدء تواصل جديد', cancel: 'إلغاء', createChannel: 'إنشاء القناة', openChat: 'فتح المحادثة', channelName: 'اسم القناة', description: 'الوصف', channelAccess: 'من يمكنه رؤية القناة؟', departmentChannel: 'القسم', privateChannel: 'خاصة', publicChannel: 'الشركة كلها', announcementChannel: 'قناة إعلانات: المديرون يكتبون والموظفون يقرؤون', subject: 'عنوان الرسالة', message: 'الرسالة', attachments: 'المرفقات', choosePerson: 'اختر موظفًا', recipients: 'المستلمون', searchPeople: 'ابحث بالاسم أو الإيميل…', aiLastMessages: 'مساعد مساحة العمل', summarize: 'تلخيص', suggestReply: 'اقتراح رد', extractActions: 'استخراج مهام', aiUnavailable: 'Qodo AI قيد التجهيز', aiUnavailableBody: 'سيظهر مساعد المحادثة هنا فور اكتمال تشغيله.', aiWorking: 'Qodo AI يحلّل الرسائل…', aiNoAction: 'لن ينفّذ أي شيء من تلقاء نفسه.', aiInsideChat: 'داخل المحادثة', aiLastCount: 'يلخّص آخر {count} رسالة', aiAnalysedCount: 'تم تحليل {count} رسالة فعلية', aiMessageRange: 'نطاق التحليل', aiDecisions: 'القرارات', aiBlockers: 'العوائق', useReply: 'استخدام الرد في المحرر', createTask: 'إنشاء مهمة', noActions: 'لا توجد إجراءات واضحة', noActionsBody: 'لم يجد AI طلبات تنفيذ صريحة في المحادثة.', aiChoose: 'ماذا تريد من Qodo AI؟', aiChooseBody: 'لخّص المحادثة، حضّر ردًا، أو حوّل نقاط العمل إلى مهام.', aiPrivacy: 'راجع النتيجة واستخدمها في المحادثة أو حوّلها إلى مهمة.', confirmTask: 'إنشاء مهمة بعنوان «{title}»؟', taskCreated: 'تم إنشاء المهمة من المحادثة.', untitled: 'بدون عنوان', publicChannelForbidden: 'القناة العامة للإدارة فقط.',
   bookMeeting: 'حجز اجتماع', sendInvite: 'إرسال الدعوة', meetingBooked: 'اتبعتت الدعوة وظهرت في المحادثة.', going: 'حاضر', maybe: 'مبدئي', notGoing: 'معتذر', joinOnline: 'دخول أونلاين', openInCalendar: 'افتح في التقويم', meetingCancelled: 'الاجتماع اتلغى.', threadFiles: 'مرفقات المحادثة', noThreadFiles: 'مفيش مرفقات في الرسائل المحمّلة.', dropHere: 'سيب الملف هنا للإرفاق', attachmentLimit: 'الحد {n} ملفات للرسالة الواحدة.',
 };
 
 const EN: typeof AR = {
   officialMail: 'Official mail', privateChats: 'Private chats', emptyGroup: 'Nothing here yet.',
   from: 'From', to: 'To', currentAccount: 'Your current account', senderAccount: 'Sender account', individuals: 'People', groups: 'Groups', teams: 'Teams', selectedCount: '{count} selected', searchGroups: 'Search groups and teams…', noGroups: 'No matching groups.', noTeams: 'No matching teams.',
-  inbox: 'Inbox', mail: 'Mail', channels: 'Channels', channel: 'Channel', direct: 'Direct', close: 'Close', internalWorkspace: 'Engosoft communication hub', communicationHub: 'Communication hub', workspaceSignature: 'Mail, channels and teamwork in one place', newMessage: 'New message', search: 'Search mail and channels…', noMessages: 'No messages yet', noConversations: 'No conversations', noConversationsBody: 'Start a mail thread or chat with your team.', back: 'Back', announcementsOnly: 'Announcements', teamChannel: 'Department channel', publicChannelShort: 'Public company channel', privateChannelShort: 'Private channel', members: 'members', participants: 'participants', chooseConversation: 'Choose a conversation', chooseConversationBody: 'Pick a mail thread or channel from the list.', olderMessages: 'Load older messages', loading: 'Loading…', startConversation: 'Start the conversation', startConversationBody: 'Send the first message or file here.', removedUser: 'Unavailable user', reply: 'Reply', deleteMessage: 'Delete message', confirmDeleteMessage: 'Delete this message?', channelMembers: 'Channel members', addMembers: 'Add members', owner: 'Owner', removeMember: 'Remove from channel', confirmRemoveMember: 'Remove {name} from this channel? What they already wrote stays.', memberAdded: 'Added, and they were notified.', memberRemoved: 'Removed.', noOneToAdd: 'Everybody is already in.', add: 'Add', attach: 'Attach file', send: 'Send', writeReply: 'Write a reply…', writeMessage: 'Write a message…', readOnlyChannel: 'This is an announcement channel; only managers can post.', newConversation: 'Start a new conversation', cancel: 'Cancel', createChannel: 'Create channel', openChat: 'Open chat', channelName: 'Channel name', description: 'Description', channelAccess: 'Who can see this channel?', departmentChannel: 'Department', privateChannel: 'Private', publicChannel: 'Whole company', announcementChannel: 'Announcement channel: managers post and employees read', subject: 'Subject', message: 'Message', attachments: 'Attachments', choosePerson: 'Choose a person', recipients: 'Recipients', searchPeople: 'Search by name or email…', aiLastMessages: 'Workspace assistant', summarize: 'Summarize', suggestReply: 'Draft reply', extractActions: 'Action items', aiUnavailable: 'Qodo AI is being prepared', aiUnavailableBody: 'The conversation assistant will appear here as soon as setup is complete.', aiWorking: 'Qodo AI is analysing messages…', aiNoAction: 'It will not execute anything on its own.', aiInsideChat: 'Inside conversation', aiLastCount: 'Summarising the last {count} messages', aiAnalysedCount: 'Analysed {count} actual messages', aiMessageRange: 'Analysis range', aiDecisions: 'Decisions', aiBlockers: 'Blockers', useReply: 'Use this reply', createTask: 'Create task', noActions: 'No clear actions found', noActionsBody: 'AI did not find explicit action requests in this conversation.', aiChoose: 'What should Qodo AI do?', aiChooseBody: 'Summarize the conversation, draft a reply, or turn action points into tasks.', aiPrivacy: 'Review the result, use it in the conversation, or turn it into a task.', confirmTask: 'Create a task called “{title}”?', taskCreated: 'Task created from the conversation.', untitled: 'Untitled', publicChannelForbidden: 'Only administrators can create public channels.',
+  inbox: 'Inbox', mail: 'Mail', channels: 'Channels', channel: 'Channel', direct: 'Direct', close: 'Close', internalWorkspace: 'Engosoft communication hub', communicationHub: 'Communication hub', workspaceSignature: 'Mail, channels and teamwork in one place', newMessage: 'New message', search: 'Search mail and channels…', noMessages: 'No messages yet', noConversations: 'No conversations', noConversationsBody: 'Start a mail thread or chat with your team.', back: 'Back', announcementsOnly: 'Announcements', teamChannel: 'Department channel', publicChannelShort: 'Public company channel', privateChannelShort: 'Private channel', members: 'members', participants: 'participants', chooseConversation: 'Choose a conversation', chooseConversationBody: 'Pick a mail thread or channel from the list.', olderMessages: 'Load older messages', loading: 'Loading…', startConversation: 'Start the conversation', startConversationBody: 'Send the first message or file here.', removedUser: 'Unavailable user', reply: 'Reply', deleteMessage: 'Delete message', confirmDeleteMessage: 'Delete this message?', channelMembers: 'Channel members', addMembers: 'Add members', owner: 'Owner', departmentMembers: 'Department members', workspaceMembers: 'Everyone in the company', fromDepartment: 'Department', fromWorkspace: 'Company', addedMembers: 'Added to the channel', derivedHint: 'They come in with the department; to add or remove one of them, change their department on the Team screen.', everyoneAlreadyIn: 'This channel is open to the whole company, so everybody is already in.', removeMember: 'Remove from channel', confirmRemoveMember: 'Remove {name} from this channel? What they already wrote stays.', memberAdded: 'Added, and they were notified.', memberRemoved: 'Removed.', noOneToAdd: 'Everybody is already in.', add: 'Add', attach: 'Attach file', send: 'Send', writeReply: 'Write a reply…', writeMessage: 'Write a message…', readOnlyChannel: 'This is an announcement channel; only managers can post.', newConversation: 'Start a new conversation', cancel: 'Cancel', createChannel: 'Create channel', openChat: 'Open chat', channelName: 'Channel name', description: 'Description', channelAccess: 'Who can see this channel?', departmentChannel: 'Department', privateChannel: 'Private', publicChannel: 'Whole company', announcementChannel: 'Announcement channel: managers post and employees read', subject: 'Subject', message: 'Message', attachments: 'Attachments', choosePerson: 'Choose a person', recipients: 'Recipients', searchPeople: 'Search by name or email…', aiLastMessages: 'Workspace assistant', summarize: 'Summarize', suggestReply: 'Draft reply', extractActions: 'Action items', aiUnavailable: 'Qodo AI is being prepared', aiUnavailableBody: 'The conversation assistant will appear here as soon as setup is complete.', aiWorking: 'Qodo AI is analysing messages…', aiNoAction: 'It will not execute anything on its own.', aiInsideChat: 'Inside conversation', aiLastCount: 'Summarising the last {count} messages', aiAnalysedCount: 'Analysed {count} actual messages', aiMessageRange: 'Analysis range', aiDecisions: 'Decisions', aiBlockers: 'Blockers', useReply: 'Use this reply', createTask: 'Create task', noActions: 'No clear actions found', noActionsBody: 'AI did not find explicit action requests in this conversation.', aiChoose: 'What should Qodo AI do?', aiChooseBody: 'Summarize the conversation, draft a reply, or turn action points into tasks.', aiPrivacy: 'Review the result, use it in the conversation, or turn it into a task.', confirmTask: 'Create a task called “{title}”?', taskCreated: 'Task created from the conversation.', untitled: 'Untitled', publicChannelForbidden: 'Only administrators can create public channels.',
   bookMeeting: 'Book a meeting', sendInvite: 'Send invitation', meetingBooked: 'Invitation sent and posted in the thread.', going: 'Going', maybe: 'Maybe', notGoing: 'Not going', joinOnline: 'Join online', openInCalendar: 'Open in calendar', meetingCancelled: 'This meeting was cancelled.', threadFiles: 'Conversation files', noThreadFiles: 'No files in the loaded messages.', dropHere: 'Drop the file here to attach', attachmentLimit: 'Up to {n} files per message.',
 };

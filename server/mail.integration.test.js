@@ -497,15 +497,6 @@ test('a private channel gains and loses members, and the log says who did it', a
   assert.equal(removed.status, 200, JSON.stringify(removed.data));
   assert.equal((await request(`/mail/conversations/${channelId}/messages`, { cookie: salesCookie })).status, 404);
 
-  // A department channel takes its members from the department, so the roster
-  // is refused rather than written to a field that decides nothing.
-  const derived = await request(
-    '/mail/conversations/mail:engosoft:department:marketing/members',
-    { method: 'POST', cookie: adminCookie, body: { memberIds: [sales.id] } }
-  );
-  assert.equal(derived.status, 400);
-  assert.equal(derived.data.error, 'channel_membership_derived');
-
   const audit = await request('/notifications/activity?action=mail.channel', { cookie: adminCookie });
   const addEntry = audit.data.activity.find((row) => row.action === 'mail.channel.member.add');
   const dropEntry = audit.data.activity.find((row) => row.action === 'mail.channel.member.remove');
@@ -522,4 +513,57 @@ test('a private channel gains and loses members, and the log says who did it', a
     (row) => row.action === 'mail.channel.create' && row.meta?.name === 'غرفة الحملة'
   );
   assert.deepEqual(createEntry.meta.memberIds.sort(), [manager.id, member.id].sort());
+});
+
+test('a department channel keeps its department and takes guests on top of it', async () => {
+  const marketing = 'mail:engosoft:department:marketing';
+  const announcements = 'mail:engosoft:announcements';
+  const messages = (cookie) => request(`/mail/conversations/${marketing}/messages`, { cookie });
+
+  // Sales is outside the department, so the channel does not exist for them.
+  assert.equal((await messages(salesCookie)).status, 404);
+
+  // Somebody the department already holds gains nothing from a guest row.
+  const already = await request(`/mail/conversations/${marketing}/members`, {
+    method: 'POST',
+    cookie: managerCookie,
+    body: { memberIds: [member.id] },
+  });
+  assert.equal(already.status, 400, JSON.stringify(already.data));
+  assert.equal(already.data.error, 'member_already_in_channel');
+
+  const invited = await request(`/mail/conversations/${marketing}/members`, {
+    method: 'POST',
+    cookie: managerCookie,
+    body: { memberIds: [sales.id] },
+  });
+  assert.equal(invited.status, 201, JSON.stringify(invited.data));
+  assert.deepEqual(invited.data.conversation.memberIds, [sales.id]);
+  assert.equal((await messages(salesCookie)).status, 200);
+
+  // The department half is not a row to delete, so it is refused here rather
+  // than recorded as a removal that the next bootstrap would undo.
+  const derived = await request(`/mail/conversations/${marketing}/members/${member.id}`, {
+    method: 'DELETE',
+    cookie: managerCookie,
+  });
+  assert.equal(derived.status, 400, JSON.stringify(derived.data));
+  assert.equal(derived.data.error, 'channel_member_derived');
+  assert.equal((await messages(memberCookie)).status, 200);
+
+  const removed = await request(`/mail/conversations/${marketing}/members/${sales.id}`, {
+    method: 'DELETE',
+    cookie: managerCookie,
+  });
+  assert.equal(removed.status, 200, JSON.stringify(removed.data));
+  assert.equal((await messages(salesCookie)).status, 404);
+
+  // A public channel already holds everybody; there is nobody left to invite.
+  const everyone = await request(`/mail/conversations/${announcements}/members`, {
+    method: 'POST',
+    cookie: adminCookie,
+    body: { memberIds: [sales.id] },
+  });
+  assert.equal(everyone.status, 400, JSON.stringify(everyone.data));
+  assert.equal(everyone.data.error, 'channel_open_to_everyone');
 });

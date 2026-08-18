@@ -14,13 +14,29 @@ export function canAccessConversation(user, conversation) {
     return (conversation.memberIds ?? []).includes(user.id);
   }
 
-  if (conversation.scope === 'private') {
-    return (conversation.memberIds ?? []).includes(user.id);
-  }
+  // `memberIds` is the whole roster of a private channel and the guest list of
+  // the other two — the person from another department who was invited in by
+  // hand. Either one is access, so the written list is read before the scope.
+  if ((conversation.memberIds ?? []).includes(user.id)) return true;
+  if (conversation.scope === 'private') return false;
   if (conversation.scope === 'public') return true;
   if (conversation.scope === 'department') {
     return user.role === 'admin' || user.department === conversation.department;
   }
+  return false;
+}
+
+/**
+ * Whether the channel already holds this person without anybody adding them.
+ *
+ * A derived member has no roster row to delete — their department is what
+ * grants the access — so this is the line between "remove from the channel" and
+ * "move their department on the Team screen".
+ */
+export function isDerivedMember(user, conversation) {
+  if (!user || conversation?.kind !== 'channel') return false;
+  if (conversation.scope === 'public') return true;
+  if (conversation.scope === 'department') return user.department === conversation.department;
   return false;
 }
 

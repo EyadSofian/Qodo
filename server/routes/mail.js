@@ -20,6 +20,7 @@ import {
   canPostToConversation,
   ensureDefaultConversations,
   ensureMembership,
+  isDerivedMember,
 } from '../mailAccess.js';
 import { publishMail, subscribeToMail } from '../mailStream.js';
 import { organizationOf } from '../../shared/organization.js';
@@ -267,13 +268,14 @@ router.post('/conversations', async (req, res) => {
 /* ── channel members ─────────────────────────────────────────────── */
 
 /**
- * The member list, and the one kind of channel that has one.
+ * The roster, and the half of it that can be written.
  *
- * A public channel is the whole workspace and a department channel is whoever
- * the Users screen puts in that department — neither reads `memberIds` at all,
- * so writing to it would produce a list that quietly disagrees with the thing
- * actually deciding access. Both are refused here instead, and the answer for a
- * department channel is to move the person's department.
+ * A department channel already holds its department and a public one already
+ * holds the workspace; that base is derived, and moving somebody in or out of
+ * it is a department change on the Users screen, not an edit here. What this
+ * writes is the guest list on top — the people from outside the department who
+ * were invited in by hand. A public channel has no room for one, because there
+ * is nobody left outside it to invite.
  */
 async function loadManageableChannel(req, res) {
   const conversation = await loadConversation(req, res);
@@ -282,8 +284,8 @@ async function loadManageableChannel(req, res) {
     res.status(403).json({ error: 'forbidden' });
     return null;
   }
-  if (conversation.scope !== 'private') {
-    res.status(400).json({ error: 'channel_membership_derived' });
+  if (conversation.scope === 'public') {
+    res.status(400).json({ error: 'channel_open_to_everyone' });
     return null;
   }
   return conversation;
@@ -300,6 +302,12 @@ router.post('/conversations/:id/members', async (req, res) => {
   if (incoming.length === 0) return res.status(400).json({ error: 'no_members_to_add' });
   if (incoming.some((id) => !usersById.has(id))) {
     return res.status(400).json({ error: 'unknown_recipient' });
+  }
+  // Somebody the department already puts in here would get a guest row that
+  // grants nothing and cannot be taken back — their department stays the thing
+  // deciding. Refuse, rather than keep a second and weaker kind of membership.
+  if (incoming.some((id) => isDerivedMember(usersById.get(id), conversation))) {
+    return res.status(400).json({ error: 'member_already_in_channel' });
   }
   const memberIds = [...current, ...incoming];
   if (memberIds.length > MAX_CHANNEL_MEMBERS) {
@@ -333,7 +341,16 @@ router.delete('/conversations/:id/members/:userId', async (req, res) => {
 
   const target = req.params.userId;
   const current = conversation.memberIds ?? [];
-  if (!current.includes(target)) return res.status(404).json({ error: 'not_found' });
+  if (!current.includes(target)) {
+    // Being in the department is not a row that can be deleted, so the answer
+    // is the Team screen rather than a removal that would not hold.
+    const users = await activeOrganizationUsers(organizationOf(conversation));
+    const person = users.find((row) => row.id === target);
+    if (person && isDerivedMember(person, conversation)) {
+      return res.status(400).json({ error: 'channel_member_derived' });
+    }
+    return res.status(404).json({ error: 'not_found' });
+  }
   // The creator holds the channel: removing them can leave a private channel
   // that nobody is able to manage, which is not recoverable from this screen.
   if (target === conversation.createdBy) {
