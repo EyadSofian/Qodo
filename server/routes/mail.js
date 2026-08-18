@@ -25,8 +25,13 @@ import {
 import { onlineUserIds, publishMail, subscribeToMail } from '../mailStream.js';
 import { organizationOf } from '../../shared/organization.js';
 import { DEPARTMENT_IDS } from '../../shared/departments.js';
+import { mentionedIds } from '../../shared/mentions.js';
 import mailFiles, { MAX_MAIL_FILES, publicMailAttachment } from './mailFiles.js';
-import { notifyChannelMembership, notifyConversationMessage } from '../mailNotice.js';
+import {
+  notifyChannelMembership,
+  notifyConversationMention,
+  notifyConversationMessage,
+} from '../mailNotice.js';
 import { canAccessEvent, invitesForEvent } from '../calendarAccess.js';
 import { publicEvent } from '../calendar.js';
 import { aiConfigured, aiModel, getAiClient } from '../ai/provider.js';
@@ -40,6 +45,8 @@ const MAX_SUBJECT_LENGTH = 200;
 const MAX_CHANNEL_NAME_LENGTH = 80;
 const MAX_RECIPIENTS = 40;
 const MAX_CHANNEL_MEMBERS = 200;
+/** A message names a few colleagues; a hundred names is a mailing list. */
+const MAX_MENTIONS = 20;
 const MESSAGE_PAGE = 80;
 const AI_CONTEXT_MESSAGES = 60;
 const AI_DEFAULT_MESSAGES = 20;
@@ -536,9 +543,18 @@ router.post('/conversations/:id/messages', async (req, res) => {
     replyToId = parent.id;
   }
 
+  // Read out of the body rather than taken from the request: `@Name` in the
+  // text is the mention, so a message posted through the API cannot ping
+  // somebody it never names, and the chip the reader sees and the bell that
+  // rang always come from the same sentence.
+  //
+  // Matched against the whole workspace, not just this room. Naming somebody
+  // who cannot see the conversation is an ordinary thing to do — "ask @Sara
+  // about the invoice" — and the reference is kept so both readers see who was
+  // meant. Who gets *told* is settled below, and that list is narrower.
+  const organizationPeople = await activeOrganizationUsers(organizationOf(conversation));
+  const mentionIds = mentionedIds(body, organizationPeople).slice(0, MAX_MENTIONS);
   const accessible = await audienceForConversation(conversation);
-  const accessibleIds = new Set(accessible.map((user) => user.id));
-  const mentionIds = cleanIds(req.body?.mentionIds).filter((id) => accessibleIds.has(id));
   const message = await create('mailMessages', {
     organizationId: organizationOf(conversation),
     conversationId: conversation.id,
@@ -563,19 +579,32 @@ router.post('/conversations/:id/messages', async (req, res) => {
   const ownMembership = await ensureMembership(conversation, req.user.id);
   await store.update('mailMemberships', ownMembership.id, { lastReadAt: message.createdAt });
 
-  const alertIds = new Set();
+  // A mention reaches its target in every kind of conversation — that is the
+  // whole point of writing one — but only where the target can open what they
+  // are being called into. A name from outside the room stays a reference and
+  // rings nothing, which is why this is filtered against `accessible` and not
+  // against the workspace the mention was matched over.
+  const accessibleIds = new Set(accessible.map((user) => user.id));
+  const mentioned = new Set(
+    mentionIds.filter((id) => id !== req.user.id && accessibleIds.has(id))
+  );
+
+  // Everything else is unchanged: a private thread and a formal mail tell their
+  // members, an announcement tells its audience, and an ordinary channel post
+  // stays quiet so that a mention in one still means something.
+  const alertIds = new Set(mentioned);
   if (conversation.kind === 'direct' || conversation.kind === 'mail') {
     for (const id of conversation.memberIds ?? []) if (id !== req.user.id) alertIds.add(id);
   } else if (conversation.announcementOnly) {
     for (const user of accessible) if (user.id !== req.user.id) alertIds.add(user.id);
-  } else {
-    for (const id of mentionIds) if (id !== req.user.id) alertIds.add(id);
   }
 
   for (const user of accessible) {
     if (user.id === req.user.id) continue;
     publishMail(user.id, conversation.id, message.id);
-    if (alertIds.has(user.id)) {
+    if (mentioned.has(user.id)) {
+      await notifyConversationMention(user, req.user, updatedConversation, preview);
+    } else if (alertIds.has(user.id)) {
       await notifyConversationMessage(user, req.user, updatedConversation, preview);
     }
   }
@@ -588,7 +617,9 @@ router.post('/conversations/:id/messages', async (req, res) => {
     subjectId: conversation.id,
     // Deliberately no body in the audit log: message text already has one
     // durable home and should not be copied into a wider activity surface.
-    meta: { kind: conversation.kind, attachments: attachments.length },
+    // The count and not the names: who was mentioned is who was written to,
+    // and the log already refuses to name the people in a private thread.
+    meta: { kind: conversation.kind, attachments: attachments.length, mentions: mentionIds.length },
   });
 
   res.status(201).json({

@@ -24,22 +24,15 @@ import { notifyUser } from './push.js';
 import { organizationOf } from '../shared/organization.js';
 import { isActiveUser } from '../shared/permissions.js';
 
-/** The bell, the badge and the phone, for one recipient of one message. */
-export async function notifyConversationMessage(target, actor, conversation, preview) {
-  if (!target || !isActiveUser(target)) return;
-  const channelName = conversation.nameAr || conversation.nameEn || '';
-  const subject = conversation.subject || channelName;
-  const title = {
-    ar: conversation.kind === 'mail' ? `Qodo Mail: ${subject}` : `${actor.name} · ${subject}`,
-    en: conversation.kind === 'mail' ? `Qodo Mail: ${subject}` : `${actor.name} · ${subject}`,
-  };
+/** The bell, the badge and the phone — the one delivery every alert here uses. */
+async function deliver(target, actor, conversation, { type, title, preview }) {
   const body = preview.slice(0, 180);
   const link = `/mail?conversation=${encodeURIComponent(conversation.id)}`;
   const notification = await create('notifications', {
     organizationId: organizationOf(target),
     userId: target.id,
     actorId: actor.id,
-    type: 'mail.message',
+    type,
     title,
     body,
     link,
@@ -47,6 +40,48 @@ export async function notifyConversationMessage(target, actor, conversation, pre
   });
   publishNotification(target.id, notification.id);
   await notifyUser(target.id, { title, body, link });
+}
+
+/** What to call the place a message landed, when telling somebody about it. */
+function conversationLabel(conversation, lang) {
+  const name = conversation.nameAr || conversation.nameEn || '';
+  const named = conversation.subject || name;
+  if (named) return named;
+  return lang === 'en' ? 'a private chat' : 'محادثة خاصة';
+}
+
+export async function notifyConversationMessage(target, actor, conversation, preview) {
+  if (!target || !isActiveUser(target)) return;
+  const subject = conversation.subject || conversation.nameAr || conversation.nameEn || '';
+  const title = {
+    ar: conversation.kind === 'mail' ? `Qodo Mail: ${subject}` : `${actor.name} · ${subject}`,
+    en: conversation.kind === 'mail' ? `Qodo Mail: ${subject}` : `${actor.name} · ${subject}`,
+  };
+  await deliver(target, actor, conversation, { type: 'mail.message', title, preview });
+}
+
+/**
+ * Being named in a message, which is not the same event as the message.
+ *
+ * In a busy department channel an ordinary post is deliberately silent, so a
+ * mention is the only way to reach one person in it; in a channel that is
+ * already loud, it is the line that separates the message addressed to you from
+ * the fifty that are not. It therefore carries its own type and its own wording
+ * rather than borrowing `mail.message`, so the bell can say why it rang.
+ *
+ * Only somebody who can open the conversation is ever told. Naming a colleague
+ * in a private thread they are not in is a reference for the people reading it,
+ * not a summons: alerting them would announce both the existence of the thread
+ * and a slice of what was said in it to somebody deliberately outside it, and
+ * hand them a link that would refuse them anyway.
+ */
+export async function notifyConversationMention(target, actor, conversation, preview) {
+  if (!target || !isActiveUser(target)) return;
+  const title = {
+    ar: `${actor.name} ذكرك في ${conversationLabel(conversation, 'ar')}`,
+    en: `${actor.name} mentioned you in ${conversationLabel(conversation, 'en')}`,
+  };
+  await deliver(target, actor, conversation, { type: 'mail.mention', title, preview });
 }
 
 /**

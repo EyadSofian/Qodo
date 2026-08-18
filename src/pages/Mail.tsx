@@ -12,6 +12,7 @@ import { useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft,
   ArrowRight,
+  AtSign,
   BellRing,
   Bot,
   Building2,
@@ -47,6 +48,7 @@ import { useAuth } from '../lib/auth';
 import { useI18n } from '../lib/i18n';
 import { PERMISSIONS } from '@shared/permissions';
 import { DEPARTMENTS, getSubteams } from '@shared/departments';
+import { applyMention, mentionQueryAt, mentionSegments } from '@shared/mentions';
 import { cx } from '../lib/utils';
 import { Avatar, EmptyState, Field, Modal, Spinner, useToast } from '../components/ui';
 import { AttachmentTiles, filesFromPaste, useFileDrop } from '../components/Attachments';
@@ -591,6 +593,7 @@ export function Mail() {
                   conversation={selected}
                   messages={messages}
                   authors={authors}
+                  people={bootstrap.people}
                   events={threadEvents}
                   currentUserId={user?.id ?? ''}
                   onAnswerInvite={answerInvite}
@@ -639,6 +642,8 @@ export function Mail() {
 
                 <Composer
                   conversation={selected}
+                  people={bootstrap.people}
+                  currentUserId={user?.id ?? ''}
                   value={draft}
                   onChange={setDraft}
                   replyTo={replyTo}
@@ -1131,6 +1136,7 @@ function MessageTimeline({
   conversation,
   messages,
   authors,
+  people,
   events,
   currentUserId,
   onAnswerInvite,
@@ -1148,6 +1154,7 @@ function MessageTimeline({
   conversation: MailConversation;
   messages: MailMessage[];
   authors: Record<string, MailPerson>;
+  people: MailPerson[];
   events: Record<string, CalendarEvent>;
   currentUserId: string;
   onAnswerInvite: (eventId: string, response: 'accepted' | 'tentative' | 'declined') => void;
@@ -1199,9 +1206,9 @@ function MessageTimeline({
                   onAnswer={(response) => onAnswerInvite(message.eventId as string, response)}
                 />
               ) : conversation.kind === 'mail' ? (
-                <MailCard message={message} author={authors[message.senderId]} own={message.senderId === currentUserId} lang={lang} onReply={() => onReply(message)} onDelete={canRemove(message) ? () => onDelete(message) : undefined} onReaders={() => onReaders(message)} />
+                <MailCard message={message} author={authors[message.senderId]} people={people} currentUserId={currentUserId} own={message.senderId === currentUserId} lang={lang} onReply={() => onReply(message)} onDelete={canRemove(message) ? () => onDelete(message) : undefined} onReaders={() => onReaders(message)} />
               ) : (
-                <ChatBubble message={message} author={authors[message.senderId]} own={message.senderId === currentUserId} lang={lang} onReply={() => onReply(message)} onDelete={canRemove(message) ? () => onDelete(message) : undefined} onReaders={() => onReaders(message)} />
+                <ChatBubble message={message} author={authors[message.senderId]} people={people} currentUserId={currentUserId} own={message.senderId === currentUserId} lang={lang} onReply={() => onReply(message)} onDelete={canRemove(message) ? () => onDelete(message) : undefined} onReaders={() => onReaders(message)} />
               )}
             </div>
           );
@@ -1212,7 +1219,92 @@ function MessageTimeline({
   );
 }
 
-function MailCard({ message, author, own, lang, onReply, onDelete, onReaders }: { message: MailMessage; author?: MailPerson; own: boolean; lang: 'ar' | 'en'; onReply: () => void; onDelete?: () => void; onReaders: () => void }) {
+/**
+ * Who, in the whole workspace, can open this conversation.
+ *
+ * The server decides this for real — it re-checks every read and every alert —
+ * and this is the composer's copy of the same rule, needed a moment earlier so
+ * the picker can say "this one will not be notified" while the sentence is
+ * still being typed. A picker that only offered the people already in the room
+ * would be a picker that cannot do the thing it was asked for: naming a
+ * colleague who is not here is most of the reason to mention anybody.
+ */
+function audienceIds(conversation: MailConversation, people: MailPerson[]): Set<string> {
+  const written = new Set(conversation.memberIds ?? []);
+  if (conversation.kind !== 'channel') return written;
+  if (conversation.scope === 'private') return written;
+  for (const person of people) {
+    if (conversation.scope === 'public') written.add(person.id);
+    else if (person.department === conversation.department || person.role === 'admin') {
+      written.add(person.id);
+    }
+  }
+  return written;
+}
+
+/**
+ * The message text, with the people it names lifted out of it.
+ *
+ * Drawn from `mentionIds` — what the server recorded when the message was sent
+ * — and not from a fresh scan of the words, so the highlight always matches the
+ * bell that rang at the time. A name that has since changed simply stops
+ * matching and the sentence reads as it was written, which is the honest
+ * outcome: the message said what it said.
+ *
+ * Your own name is marked apart from everybody else's, because the reason to
+ * scan a busy channel is to find the line that wants something from you.
+ */
+function MentionText({
+  message,
+  people,
+  currentUserId,
+  own = false,
+}: {
+  message: MailMessage;
+  people: MailPerson[];
+  currentUserId: string;
+  own?: boolean;
+}) {
+  const segments = useMemo(() => {
+    const named = people.filter((person) => message.mentionIds?.includes(person.id));
+    if (!named.length) return null;
+    return mentionSegments(message.body, named) as {
+      text: string;
+      person: MailPerson | null;
+    }[];
+  }, [message.body, message.mentionIds, people]);
+
+  if (!segments) return <>{message.body}</>;
+
+  return (
+    <>
+      {segments.map((segment, index) => {
+        if (!segment.person) return <span key={index}>{segment.text}</span>;
+        const isMe = segment.person.id === currentUserId;
+        return (
+          <span
+            key={index}
+            title={segment.person.email}
+            className={cx(
+              'rounded-md px-1 font-extrabold',
+              isMe
+                ? own
+                  ? 'bg-white/25 text-white'
+                  : 'bg-amber-100 text-amber-800'
+                : own
+                  ? 'bg-white/15 text-white/95'
+                  : 'bg-brand-50 text-brand-700'
+            )}
+          >
+            {segment.text}
+          </span>
+        );
+      })}
+    </>
+  );
+}
+
+function MailCard({ message, author, people, currentUserId, own, lang, onReply, onDelete, onReaders }: { message: MailMessage; author?: MailPerson; people: MailPerson[]; currentUserId: string; own: boolean; lang: 'ar' | 'en'; onReply: () => void; onDelete?: () => void; onReaders: () => void }) {
   const c = copy(lang);
   return (
     <article className="group rounded-[20px] border border-white bg-white p-4 shadow-[0_12px_34px_-26px_rgba(11,37,69,.55)] ring-1 ring-surface-line/70 sm:p-5">
@@ -1226,13 +1318,13 @@ function MailCard({ message, author, own, lang, onReply, onDelete, onReaders }: 
           <button type="button" onClick={onDelete} className="rounded-lg p-1.5 text-ink-faint opacity-0 transition hover:bg-rose-50 hover:text-rose-600 group-hover:opacity-100" aria-label={c.deleteMessage}><Trash2 size={14} /></button>
         )}
       </header>
-      {message.body && <p className="mt-4 whitespace-pre-wrap text-[13px] leading-7 text-ink">{message.body}</p>}
+      {message.body && <p className="mt-4 whitespace-pre-wrap text-[13px] leading-7 text-ink"><MentionText message={message} people={people} currentUserId={currentUserId} /></p>}
       <AttachmentList files={message.attachments} />
     </article>
   );
 }
 
-function ChatBubble({ message, author, own, lang, onReply, onDelete, onReaders }: { message: MailMessage; author?: MailPerson; own: boolean; lang: 'ar' | 'en'; onReply: () => void; onDelete?: () => void; onReaders: () => void }) {
+function ChatBubble({ message, author, people, currentUserId, own, lang, onReply, onDelete, onReaders }: { message: MailMessage; author?: MailPerson; people: MailPerson[]; currentUserId: string; own: boolean; lang: 'ar' | 'en'; onReply: () => void; onDelete?: () => void; onReaders: () => void }) {
   const c = copy(lang);
   return (
     <article className={cx('group flex items-end gap-2', own ? 'justify-end' : 'justify-start')}>
@@ -1240,7 +1332,7 @@ function ChatBubble({ message, author, own, lang, onReply, onDelete, onReaders }
       <div className={cx('max-w-[84%] sm:max-w-[72%]', own && 'text-end')}>
         {!own && <p className="mb-1 px-1 text-[10.5px] font-bold text-ink-muted">{author?.name ?? c.removedUser}</p>}
         <div className={cx('relative rounded-2xl px-3.5 py-2.5 text-start shadow-sm', own ? 'rounded-ee-md bg-gradient-to-br from-brand-500 to-[#135B9B] text-white' : 'rounded-es-md border border-surface-line bg-white text-ink')}>
-          {message.body && <p className="whitespace-pre-wrap text-[12.5px] leading-6">{message.body}</p>}
+          {message.body && <p className="whitespace-pre-wrap text-[12.5px] leading-6"><MentionText message={message} people={people} currentUserId={currentUserId} own={own} /></p>}
           <AttachmentList files={message.attachments} dark={own} />
           <div className={cx('mt-1 flex items-center justify-end gap-1 text-[8.5px]', own ? 'text-white/55' : 'text-ink-faint')}><span className="ltr">{longTime(message.createdAt, lang)}</span>{own && <ReadReceipt message={message} lang={lang} onOpen={onReaders} dark />}</div>
         </div>
@@ -1627,8 +1719,19 @@ function MeetingCard({
   );
 }
 
+/**
+ * The message box, and the picker that turns `@` into a name.
+ *
+ * The picker writes plain text and nothing else — `@Full Name` into the draft,
+ * no hidden token beside it — because the server reads the mention back out of
+ * the body. That keeps one truth about who was mentioned instead of two that
+ * drift, and it means the same mention can be typed by hand, pasted, or come
+ * out of an AI-drafted reply and still count.
+ */
 function Composer({
   conversation,
+  people,
+  currentUserId,
   value,
   onChange,
   replyTo,
@@ -1644,6 +1747,8 @@ function Composer({
   lang,
 }: {
   conversation: MailConversation;
+  people: MailPerson[];
+  currentUserId: string;
   value: string;
   onChange: (value: string) => void;
   replyTo: MailMessage | null;
@@ -1659,17 +1764,110 @@ function Composer({
   lang: 'ar' | 'en';
 }) {
   const c = copy(lang);
+  const [mention, setMention] = useState<{ start: number; end: number; query: string } | null>(null);
+  const [highlight, setHighlight] = useState(0);
+
+  const insiders = useMemo(() => audienceIds(conversation, people), [conversation, people]);
+  const options = useMemo(() => {
+    if (!mention) return [];
+    const term = mention.query.trim().toLowerCase();
+    return people
+      .filter((person) => person.id !== currentUserId)
+      .filter(
+        (person) =>
+          !term ||
+          person.name.toLowerCase().includes(term) ||
+          person.email.toLowerCase().includes(term)
+      )
+      // The people who are actually here come first: they are the likely
+      // target, and they are the only ones a mention will reach.
+      .sort((left, right) => Number(insiders.has(right.id)) - Number(insiders.has(left.id)))
+      .slice(0, 6);
+  }, [mention, people, currentUserId, insiders]);
+
+  const query = mention?.query ?? null;
+  useEffect(() => setHighlight(0), [query]);
+
+  /**
+   * The `@…` under the cursor decides whether the picker is open at all.
+   *
+   * Asked on typing and on a click into the text, and deliberately not on
+   * every key release: the release of the very key that picked a name would
+   * read the draft back before React had written the chosen name into it,
+   * decide a mention was still being typed, and re-open the list — so the next
+   * Enter, the one meant to send the message, would paste the same name again.
+   */
+  const syncMention = (element: HTMLTextAreaElement) => {
+    setMention(
+      mentionQueryAt(element.value, element.selectionStart ?? 0) as
+        | { start: number; end: number; query: string }
+        | null
+    );
+  };
+
+  const pick = (person: MailPerson) => {
+    if (!mention) return;
+    const next = applyMention(value, mention, person) as { value: string; caret: number };
+    onChange(next.value);
+    setMention(null);
+    requestAnimationFrame(() => {
+      const element = inputRef.current;
+      if (!element) return;
+      element.focus();
+      element.setSelectionRange(next.caret, next.caret);
+    });
+  };
+
   if (!conversation.canPost) {
     return <div className="border-t border-surface-line bg-white px-4 py-3 text-center text-[11.5px] font-semibold text-ink-muted"><Megaphone size={14} className="me-1 inline text-brand-500" />{c.readOnlyChannel}</div>;
   }
   return (
     <footer className="border-t border-surface-line bg-white/95 p-3 backdrop-blur sm:p-4">
-      <div className="mx-auto max-w-4xl">
+      <div className="relative mx-auto max-w-4xl">
+        {mention && options.length > 0 && (
+          <div className="absolute inset-x-0 bottom-full z-30 mb-2 overflow-hidden rounded-2xl border border-surface-line bg-white shadow-[0_18px_44px_-24px_rgba(11,37,69,.55)]">
+            <p className="flex items-center gap-1.5 border-b border-surface-line bg-surface-sunken px-3 py-1.5 text-[9.5px] font-bold text-ink-faint"><AtSign size={11} />{c.mentionPick}</p>
+            <ul className="max-h-56 overflow-y-auto py-1">
+              {options.map((person, index) => (
+                <li key={person.id}>
+                  <button
+                    type="button"
+                    /* Keeps the caret in the draft: a blur here would close the picker before the click lands. */
+                    onMouseDown={(event) => event.preventDefault()}
+                    onMouseEnter={() => setHighlight(index)}
+                    onClick={() => pick(person)}
+                    className={cx('flex w-full items-center gap-2 px-3 py-2 text-start transition', index === highlight ? 'bg-brand-50' : 'hover:bg-surface-sunken')}
+                  >
+                    <Avatar name={person.name} color={person.avatarColor} size={26} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[11.5px] font-bold text-ink">{person.name}</span>
+                      <span className="ltr block truncate text-start text-[9.5px] text-ink-faint">{person.email}</span>
+                    </span>
+                    {!insiders.has(person.id) && (
+                      <span className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-[8.5px] font-bold text-amber-700">{c.mentionOutside}</span>
+                    )}
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <p className="border-t border-surface-line px-3 py-1.5 text-[9px] leading-4 text-ink-faint">{c.mentionHint}</p>
+          </div>
+        )}
         {replyTo && <div className="mb-2 flex items-center gap-2 rounded-xl border-s-2 border-brand-500 bg-brand-50 px-3 py-2 text-[10.5px] text-ink-muted"><Reply size={13} /><span className="min-w-0 flex-1 truncate">{replyTo.body}</span><button type="button" onClick={onCancelReply}><X size={14} /></button></div>}
         {draftFiles.length > 0 && <div className="mb-2 flex flex-wrap gap-1.5">{draftFiles.map((file) => <span key={file.id} className="flex max-w-[220px] items-center gap-1.5 rounded-full bg-surface-sunken px-2.5 py-1 text-[9.5px] font-semibold text-ink-muted"><Paperclip size={11} /><span className="truncate">{file.name}</span><button type="button" onClick={() => onRemoveFile(file)} className="text-ink-faint hover:text-status-bad"><X size={11} /></button></span>)}</div>}
         <div className="flex items-end gap-2 rounded-[18px] border border-surface-line bg-[#F7FAFD] p-2 shadow-[inset_0_1px_0_rgba(255,255,255,.9)] transition focus-within:border-brand-300 focus-within:bg-white focus-within:ring-2 focus-within:ring-brand-100">
           <button type="button" onClick={onAttach} disabled={uploading || draftFiles.length >= MAX_DRAFT_FILES} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-ink-faint hover:bg-brand-50 hover:text-brand-600 disabled:opacity-40" aria-label={c.attach}>{uploading ? <Spinner size={15} /> : <Paperclip size={17} />}</button>
-          <textarea ref={inputRef} value={value} onChange={(event) => onChange(event.target.value)} onPaste={(event) => { const files = filesFromPaste(event); if (files.length) { event.preventDefault(); onPasteFiles(files); } }} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); onSend(); } }} rows={1} className="max-h-32 min-h-9 flex-1 resize-y bg-transparent px-1 py-2 text-[12.5px] leading-5 text-ink outline-none placeholder:text-ink-faint" placeholder={conversation.kind === 'mail' ? c.writeReply : c.writeMessage} />
+          <textarea ref={inputRef} value={value} onChange={(event) => { onChange(event.target.value); syncMention(event.target); }} onClick={(event) => syncMention(event.currentTarget)} onBlur={() => setMention(null)} onPaste={(event) => { const files = filesFromPaste(event); if (files.length) { event.preventDefault(); onPasteFiles(files); } }} onKeyDown={(event) => {
+            // While the picker is up it owns the arrows and Enter; a message
+            // sent halfway through choosing a name is the classic annoyance.
+            if (mention && options.length > 0) {
+              if (event.key === 'ArrowDown') { event.preventDefault(); setHighlight((current) => (current + 1) % options.length); return; }
+              if (event.key === 'ArrowUp') { event.preventDefault(); setHighlight((current) => (current - 1 + options.length) % options.length); return; }
+              if (event.key === 'Enter' || event.key === 'Tab') { event.preventDefault(); pick(options[highlight] ?? options[0]); return; }
+              if (event.key === 'Escape') { event.preventDefault(); setMention(null); return; }
+            }
+            if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); onSend(); }
+          }} rows={1} className="max-h-32 min-h-9 flex-1 resize-y bg-transparent px-1 py-2 text-[12.5px] leading-5 text-ink outline-none placeholder:text-ink-faint" placeholder={conversation.kind === 'mail' ? c.writeReply : c.writeMessage} />
           <button type="button" onClick={onSend} disabled={sending || (!value.trim() && !draftFiles.length)} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 text-white shadow-sm transition hover:brightness-110 active:scale-95 disabled:opacity-40" aria-label={c.send}>{sending ? <Spinner size={15} /> : <Send size={16} />}</button>
         </div>
       </div>
@@ -2092,6 +2290,7 @@ const AR = {
   officialMail: 'الرسائل الرسمية', privateChats: 'المحادثات الخاصة', emptyGroup: 'لا يوجد شيء هنا بعد.',
   from: 'من', to: 'إلى', currentAccount: 'حسابك الحالي', senderAccount: 'حساب المرسل', individuals: 'أفراد', groups: 'أقسام', teams: 'تيمات', selectedCount: '{count} محدد', searchGroups: 'ابحث في الأقسام والتيمات…', noGroups: 'لا توجد أقسام مطابقة.', noTeams: 'لا توجد تيمات مطابقة.',
   inbox: 'الوارد', mail: 'الرسائل', channels: 'القنوات', channel: 'قناة', direct: 'المحادثات', close: 'إغلاق', internalWorkspace: 'مساحة تواصل إنجوسوفت', communicationHub: 'صندوق التواصل', workspaceSignature: 'البريد والقنوات والعمل في مكان واحد', newMessage: 'رسالة جديدة', search: 'ابحث في الرسائل والقنوات…', noMessages: 'لا توجد رسائل بعد', noConversations: 'لا توجد محادثات', noConversationsBody: 'ابدأ رسالة أو محادثة جديدة مع فريقك.', back: 'رجوع', announcementsOnly: 'قناة إعلانات', teamChannel: 'قناة القسم', publicChannelShort: 'قناة عامة لكل الشركة', privateChannelShort: 'قناة خاصة', members: 'أعضاء', participants: 'مشاركون', chooseConversation: 'اختر محادثة', chooseConversationBody: 'اختر رسالة أو قناة من القائمة للبدء.', olderMessages: 'عرض رسائل أقدم', loading: 'جارٍ التحميل…', startConversation: 'ابدأ المحادثة', startConversationBody: 'أرسل أول رسالة أو ملف هنا.', removedUser: 'مستخدم غير متاح', reply: 'رد', deleteMessage: 'حذف الرسالة', confirmDeleteMessage: 'حذف الرسالة؟', channelMembers: 'أعضاء القناة', addMembers: 'إضافة أعضاء', owner: 'صاحب القناة', online: 'متصل الآن', offline: 'غير متصل', onlineNow: 'متصلين', readBy: 'مين فتح الرسالة', notReadYet: 'لسه محدش فتحها.', departmentMembers: 'أعضاء القسم', workspaceMembers: 'كل الشركة', fromDepartment: 'من القسم', fromWorkspace: 'من الشركة', addedMembers: 'مُضافون للقناة', derivedHint: 'دول داخلين مع القسم؛ لإضافة أو إزالة واحد منهم غيّر قسمه من صفحة الفريق.', everyoneAlreadyIn: 'دي قناة لكل الشركة، فكل الزملاء جواها بالفعل.', removeMember: 'إزالة من القناة', confirmRemoveMember: 'إزالة {name} من القناة؟ الرسائل اللي كتبها هتفضل مكانها.', memberAdded: 'تمت الإضافة ووصلهم إشعار.', memberRemoved: 'تمت الإزالة.', noOneToAdd: 'كل الزملاء موجودين بالفعل.', add: 'إضافة', attach: 'إرفاق ملف', send: 'إرسال', writeReply: 'اكتب ردك…', writeMessage: 'اكتب رسالة…', readOnlyChannel: 'هذه قناة إعلانات؛ الكتابة متاحة للمديرين.', newConversation: 'بدء تواصل جديد', cancel: 'إلغاء', createChannel: 'إنشاء القناة', openChat: 'فتح المحادثة', channelName: 'اسم القناة', description: 'الوصف', channelAccess: 'من يمكنه رؤية القناة؟', departmentChannel: 'القسم', privateChannel: 'خاصة', publicChannel: 'الشركة كلها', announcementChannel: 'قناة إعلانات: المديرون يكتبون والموظفون يقرؤون', subject: 'عنوان الرسالة', message: 'الرسالة', attachments: 'المرفقات', choosePerson: 'اختر موظفًا', recipients: 'المستلمون', searchPeople: 'ابحث بالاسم أو الإيميل…', aiLastMessages: 'مساعد مساحة العمل', summarize: 'تلخيص', suggestReply: 'اقتراح رد', extractActions: 'استخراج مهام', aiUnavailable: 'Qodo AI قيد التجهيز', aiUnavailableBody: 'سيظهر مساعد المحادثة هنا فور اكتمال تشغيله.', aiWorking: 'Qodo AI يحلّل الرسائل…', aiNoAction: 'لن ينفّذ أي شيء من تلقاء نفسه.', aiInsideChat: 'داخل المحادثة', aiLastCount: 'يلخّص آخر {count} رسالة', aiAnalysedCount: 'تم تحليل {count} رسالة فعلية', aiMessageRange: 'نطاق التحليل', aiDecisions: 'القرارات', aiBlockers: 'العوائق', useReply: 'استخدام الرد في المحرر', createTask: 'إنشاء مهمة', noActions: 'لا توجد إجراءات واضحة', noActionsBody: 'لم يجد AI طلبات تنفيذ صريحة في المحادثة.', aiChoose: 'ماذا تريد من Qodo AI؟', aiChooseBody: 'لخّص المحادثة، حضّر ردًا، أو حوّل نقاط العمل إلى مهام.', aiPrivacy: 'راجع النتيجة واستخدمها في المحادثة أو حوّلها إلى مهمة.', confirmTask: 'إنشاء مهمة بعنوان «{title}»؟', taskCreated: 'تم إنشاء المهمة من المحادثة.', untitled: 'بدون عنوان', publicChannelForbidden: 'القناة العامة للإدارة فقط.',
+  mentionPick: 'اذكر زميلاً', mentionOutside: 'مش في المحادثة', mentionHint: 'اكتب @ ثم الاسم. اللي جوه المحادثة يوصله إشعار؛ واللي بره اسمه بيظهر للطرفين بس من غير إشعار ومن غير ما يقدر يفتحها.',
   bookMeeting: 'حجز اجتماع', sendInvite: 'إرسال الدعوة', meetingBooked: 'اتبعتت الدعوة وظهرت في المحادثة.', going: 'حاضر', maybe: 'مبدئي', notGoing: 'معتذر', joinOnline: 'دخول أونلاين', openInCalendar: 'افتح في التقويم', meetingCancelled: 'الاجتماع اتلغى.', threadFiles: 'مرفقات المحادثة', noThreadFiles: 'مفيش مرفقات في الرسائل المحمّلة.', dropHere: 'سيب الملف هنا للإرفاق', attachmentLimit: 'الحد {n} ملفات للرسالة الواحدة.',
 };
 
@@ -2099,5 +2298,6 @@ const EN: typeof AR = {
   officialMail: 'Official mail', privateChats: 'Private chats', emptyGroup: 'Nothing here yet.',
   from: 'From', to: 'To', currentAccount: 'Your current account', senderAccount: 'Sender account', individuals: 'People', groups: 'Groups', teams: 'Teams', selectedCount: '{count} selected', searchGroups: 'Search groups and teams…', noGroups: 'No matching groups.', noTeams: 'No matching teams.',
   inbox: 'Inbox', mail: 'Mail', channels: 'Channels', channel: 'Channel', direct: 'Direct', close: 'Close', internalWorkspace: 'Engosoft communication hub', communicationHub: 'Communication hub', workspaceSignature: 'Mail, channels and teamwork in one place', newMessage: 'New message', search: 'Search mail and channels…', noMessages: 'No messages yet', noConversations: 'No conversations', noConversationsBody: 'Start a mail thread or chat with your team.', back: 'Back', announcementsOnly: 'Announcements', teamChannel: 'Department channel', publicChannelShort: 'Public company channel', privateChannelShort: 'Private channel', members: 'members', participants: 'participants', chooseConversation: 'Choose a conversation', chooseConversationBody: 'Pick a mail thread or channel from the list.', olderMessages: 'Load older messages', loading: 'Loading…', startConversation: 'Start the conversation', startConversationBody: 'Send the first message or file here.', removedUser: 'Unavailable user', reply: 'Reply', deleteMessage: 'Delete message', confirmDeleteMessage: 'Delete this message?', channelMembers: 'Channel members', addMembers: 'Add members', owner: 'Owner', online: 'Online', offline: 'Offline', onlineNow: 'online', readBy: 'Read by', notReadYet: 'Nobody has opened it yet.', departmentMembers: 'Department members', workspaceMembers: 'Everyone in the company', fromDepartment: 'Department', fromWorkspace: 'Company', addedMembers: 'Added to the channel', derivedHint: 'They come in with the department; to add or remove one of them, change their department on the Team screen.', everyoneAlreadyIn: 'This channel is open to the whole company, so everybody is already in.', removeMember: 'Remove from channel', confirmRemoveMember: 'Remove {name} from this channel? What they already wrote stays.', memberAdded: 'Added, and they were notified.', memberRemoved: 'Removed.', noOneToAdd: 'Everybody is already in.', add: 'Add', attach: 'Attach file', send: 'Send', writeReply: 'Write a reply…', writeMessage: 'Write a message…', readOnlyChannel: 'This is an announcement channel; only managers can post.', newConversation: 'Start a new conversation', cancel: 'Cancel', createChannel: 'Create channel', openChat: 'Open chat', channelName: 'Channel name', description: 'Description', channelAccess: 'Who can see this channel?', departmentChannel: 'Department', privateChannel: 'Private', publicChannel: 'Whole company', announcementChannel: 'Announcement channel: managers post and employees read', subject: 'Subject', message: 'Message', attachments: 'Attachments', choosePerson: 'Choose a person', recipients: 'Recipients', searchPeople: 'Search by name or email…', aiLastMessages: 'Workspace assistant', summarize: 'Summarize', suggestReply: 'Draft reply', extractActions: 'Action items', aiUnavailable: 'Qodo AI is being prepared', aiUnavailableBody: 'The conversation assistant will appear here as soon as setup is complete.', aiWorking: 'Qodo AI is analysing messages…', aiNoAction: 'It will not execute anything on its own.', aiInsideChat: 'Inside conversation', aiLastCount: 'Summarising the last {count} messages', aiAnalysedCount: 'Analysed {count} actual messages', aiMessageRange: 'Analysis range', aiDecisions: 'Decisions', aiBlockers: 'Blockers', useReply: 'Use this reply', createTask: 'Create task', noActions: 'No clear actions found', noActionsBody: 'AI did not find explicit action requests in this conversation.', aiChoose: 'What should Qodo AI do?', aiChooseBody: 'Summarize the conversation, draft a reply, or turn action points into tasks.', aiPrivacy: 'Review the result, use it in the conversation, or turn it into a task.', confirmTask: 'Create a task called “{title}”?', taskCreated: 'Task created from the conversation.', untitled: 'Untitled', publicChannelForbidden: 'Only administrators can create public channels.',
+  mentionPick: 'Mention a colleague', mentionOutside: 'Not in this conversation', mentionHint: 'Type @ then a name. People in this conversation are notified; anyone outside it is shown to both of you as a reference only — no alert, and no way in.',
   bookMeeting: 'Book a meeting', sendInvite: 'Send invitation', meetingBooked: 'Invitation sent and posted in the thread.', going: 'Going', maybe: 'Maybe', notGoing: 'Not going', joinOnline: 'Join online', openInCalendar: 'Open in calendar', meetingCancelled: 'This meeting was cancelled.', threadFiles: 'Conversation files', noThreadFiles: 'No files in the loaded messages.', dropHere: 'Drop the file here to attach', attachmentLimit: 'Up to {n} files per message.',
 };

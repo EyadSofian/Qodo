@@ -592,6 +592,111 @@ test('presence is whoever holds the stream open, and ends when they let go', asy
   assert.equal(stillOnline, false, 'presence ends with the connection');
 });
 
+/**
+ * A mention is written into the sentence, and it is what reaches one person in
+ * a room that is otherwise quiet — without becoming a way to shout into a room
+ * somebody was deliberately left out of.
+ */
+test('a mention rings for the people in the room, and stays a reference for the ones outside', async () => {
+  const channel = (await request('/mail/bootstrap', { cookie: managerCookie })).data.conversations.find(
+    (row) => row.kind === 'channel' && row.department === 'marketing'
+  );
+
+  // An ordinary post in a department channel is deliberately silent, so the
+  // mention below has something to be measured against.
+  const beforeQuiet = (await request('/notifications', { cookie: memberCookie })).data.notifications.length;
+  await request(`/mail/conversations/${channel.id}/messages`, {
+    method: 'POST',
+    cookie: managerCookie,
+    body: { body: 'تحديث عام للقسم' },
+  });
+  assert.equal(
+    (await request('/notifications', { cookie: memberCookie })).data.notifications.length,
+    beforeQuiet
+  );
+
+  const salesBefore = (await request('/notifications', { cookie: salesCookie })).data.notifications.length;
+  const sent = await request(`/mail/conversations/${channel.id}/messages`, {
+    method: 'POST',
+    cookie: managerCookie,
+    body: { body: `@${member.name} راجع الفاتورة مع @${sales.name} لو سمحت` },
+  });
+  assert.equal(sent.status, 201, JSON.stringify(sent.data));
+
+  // Both names are kept on the message: the one who can read the channel and
+  // the one who cannot, because the sentence names them both.
+  assert.deepEqual([...sent.data.message.mentionIds].sort(), [member.id, sales.id].sort());
+
+  const mentioned = (await request('/notifications', { cookie: memberCookie })).data.notifications;
+  assert.equal(mentioned[0].type, 'mail.mention');
+  assert.match(mentioned[0].title.ar, /ذكرك/);
+  assert.match(mentioned[0].title.en, /mentioned you/);
+
+  // Sales is named but is not in a marketing channel: no bell, and no link to
+  // a conversation that would refuse them anyway.
+  assert.equal(
+    (await request('/notifications', { cookie: salesCookie })).data.notifications.length,
+    salesBefore
+  );
+});
+
+test('a mention in a private chat cannot be used to reach a third person', async () => {
+  const created = await request('/mail/conversations', {
+    method: 'POST',
+    cookie: managerCookie,
+    body: { kind: 'direct', memberIds: [member.id] },
+  });
+  const conversationId = created.data.conversation.id;
+  const salesBefore = (await request('/notifications', { cookie: salesCookie })).data.notifications.length;
+
+  const sent = await request(`/mail/conversations/${conversationId}/messages`, {
+    method: 'POST',
+    cookie: managerCookie,
+    body: { body: `هنسأل @${sales.name} على السعر` },
+  });
+  assert.equal(sent.status, 201, JSON.stringify(sent.data));
+  assert.deepEqual(sent.data.message.mentionIds, [sales.id]);
+
+  assert.equal(
+    (await request('/notifications', { cookie: salesCookie })).data.notifications.length,
+    salesBefore
+  );
+  assert.equal(
+    (await request(`/mail/conversations/${conversationId}/messages`, { cookie: salesCookie })).status,
+    404
+  );
+});
+
+/**
+ * The body is the record. A caller that hands over a list of ids without
+ * writing the names gets no mention, and an address in a sentence is not one.
+ */
+test('a mention is what the message says, not what the request claims', async () => {
+  const channel = (await request('/mail/bootstrap', { cookie: managerCookie })).data.conversations.find(
+    (row) => row.kind === 'channel' && row.department === 'marketing'
+  );
+  const before = (await request('/notifications', { cookie: memberCookie })).data.notifications.length;
+
+  const forged = await request(`/mail/conversations/${channel.id}/messages`, {
+    method: 'POST',
+    cookie: managerCookie,
+    body: { body: 'من غير أي منشن', mentionIds: [member.id, sales.id] },
+  });
+  assert.equal(forged.status, 201, JSON.stringify(forged.data));
+  assert.deepEqual(forged.data.message.mentionIds, []);
+  assert.equal(
+    (await request('/notifications', { cookie: memberCookie })).data.notifications.length,
+    before
+  );
+
+  const address = await request(`/mail/conversations/${channel.id}/messages`, {
+    method: 'POST',
+    cookie: managerCookie,
+    body: { body: `ابعت على billing@${member.name}.com` },
+  });
+  assert.deepEqual(address.data.message.mentionIds, []);
+});
+
 test('a department channel keeps its department and takes guests on top of it', async () => {
   const marketing = 'mail:engosoft:department:marketing';
   const announcements = 'mail:engosoft:announcements';
