@@ -1950,3 +1950,62 @@ test('tasks.move_any walks through the gates, and the record follows the card', 
   assert.equal(refusedAgain.status, 409);
   assert.equal(refusedAgain.data.error, 'reopen_required');
 });
+
+test('HR recurrence settings require HR scope, a real owner and a calendar rule', async () => {
+  const recruiter = await create(
+    '/users',
+    {
+      name: 'HR Recurrence Owner',
+      email: 'hr-recurrence@test.local',
+      password: 'HRRecurrence123!',
+      role: 'member',
+      department: 'hr',
+      subteam: 'recruitment',
+      jobRole: 'recruiter',
+    },
+    adminCookie
+  );
+
+  const outside = await request('/hr-operations/plans', { cookie: creativeCookie });
+  assert.equal(outside.status, 403);
+
+  const initial = await request('/hr-operations/plans', { cookie: adminCookie });
+  assert.equal(initial.status, 200);
+  assert.equal(initial.data.plans.length, 51);
+  assert.deepEqual(initial.data.summary, {
+    scheduled: 44,
+    event: 7,
+    enabled: 0,
+    configured: 0,
+  });
+
+  const noOwner = await request('/hr-operations/plans', {
+    method: 'PUT',
+    cookie: adminCookie,
+    body: { plans: [{ templateId: 'hr-001', enabled: true, assigneeIds: [] }] },
+  });
+  assert.equal(noOwner.status, 400);
+  assert.equal(noOwner.data.error, 'hr_owner_required');
+
+  const eventDriven = await request('/hr-operations/plans', {
+    method: 'PUT',
+    cookie: adminCookie,
+    body: {
+      plans: [{ templateId: 'hr-013', enabled: true, assigneeIds: [recruiter.user.id] }],
+    },
+  });
+  assert.equal(eventDriven.status, 409);
+  assert.equal(eventDriven.data.error, 'hr_event_triggered');
+
+  const saved = await request('/hr-operations/plans', {
+    method: 'PUT',
+    cookie: adminCookie,
+    body: {
+      plans: [{ templateId: 'hr-001', enabled: true, assigneeIds: [recruiter.user.id] }],
+    },
+  });
+  assert.equal(saved.status, 200, JSON.stringify(saved.data));
+  const plan = saved.data.plans.find((item) => item.templateId === 'hr-001');
+  assert.equal(plan.enabled, true);
+  assert.deepEqual(plan.assigneeIds, [recruiter.user.id]);
+});

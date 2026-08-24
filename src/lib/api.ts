@@ -91,6 +91,9 @@ export const api = {
   get: <T,>(path: string) => request<T>('GET', path),
   post: <T,>(path: string, body?: unknown) => request<T>('POST', path, body ?? {}),
   patch: <T,>(path: string, body: unknown) => request<T>('PATCH', path, body),
+  // For the create-or-update endpoints, where the caller should not have to
+  // know whether the thing it is saving exists yet.
+  put: <T,>(path: string, body: unknown) => request<T>('PUT', path, body),
   delete: <T,>(path: string) => request<T>('DELETE', path),
   upload,
 };
@@ -100,6 +103,10 @@ export const api = {
  * table so an added endpoint error and its wording land in one diff.
  */
 const ERRORS: Record<string, { ar: string; en: string }> = {
+  invalid_hr_plans: { ar: 'إعدادات تشغيل HR غير صحيحة.', en: 'The HR automation settings are invalid.' },
+  unknown_hr_template: { ar: 'قالب مهمة HR غير معروف أو تم تغييره.', en: 'That HR task template is unknown or has changed.' },
+  hr_event_triggered: { ar: 'هذه المهمة تبدأ بحدث فعلي ولا يمكن تشغيلها بالتاريخ وحده.', en: 'This task starts from a real event and cannot be scheduled by date alone.' },
+  hr_owner_required: { ar: 'اختر مسؤولاً قبل تفعيل المهمة الدورية.', en: 'Choose an owner before enabling the recurring task.' },
   invalid_credentials: {
     ar: 'الإيميل أو كلمة المرور غير صحيحة.',
     en: 'That email or password is not correct.',

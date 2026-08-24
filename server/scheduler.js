@@ -23,6 +23,7 @@ import { organizationOf } from '../shared/organization.js';
 
 import { remindDueSoon } from './management.js';
 import { remindUpcomingEvents } from './calendar.js';
+import { generateHROperations } from './hrOperations.js';
 
 const TICK_MS = 60 * 1000;
 const DIGEST_HOUR = Number(process.env.DIGEST_HOUR ?? 9);
@@ -43,6 +44,18 @@ async function setSetting(key, value) {
   const existing = await findOne('settings', (s) => s.id === key);
   if (existing) await store.update('settings', key, { value });
   else await create('settings', { id: key, value });
+}
+
+function schedulerDays(lastDay, today, limit = 14) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(lastDay || '')) || lastDay >= today) return [today];
+  const days = [];
+  const cursor = new Date(`${lastDay}T00:00:00Z`);
+  const end = new Date(`${today}T00:00:00Z`);
+  while (cursor < end) {
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+    days.push(cursor.toISOString().slice(0, 10));
+  }
+  return days.slice(-limit);
 }
 
 /**
@@ -452,6 +465,22 @@ export function startScheduler() {
       // hour before it. The item itself records that it has been warned about,
       // so running this a minute later never sends the same reminder twice.
       for (const organization of await find('organizations')) {
+        // Recurring task creation is retried deliberately. Each occurrence has
+        // a deterministic id, so running once a minute or catching up after a
+        // short outage can never duplicate the obligation.
+        const hrSetting = `hr.recurring.lastRunDay.${organization.id}`;
+        const lastHRDay = await getSetting(hrSetting);
+        let generated = 0;
+        for (const runDay of schedulerDays(lastHRDay, day)) {
+          const result = await generateHROperations({
+            organizationId: organization.id,
+            onDate: runDay,
+          });
+          generated += result.created.length;
+        }
+        await setSetting(hrSetting, day);
+        if (generated) console.log(`[scheduler] ${generated} recurring HR task(s) generated`);
+
         const sent = await remindDueSoon(organization.id, DESK_REMINDER_MINUTES);
         if (sent) console.log(`[scheduler] ${sent} management reminder(s) sent`);
 

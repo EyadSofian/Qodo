@@ -298,6 +298,12 @@ export interface Task {
   appId: string | null;
   labels: string[];
   order: number;
+  /** Provenance for HR catalogue and automatically generated obligations. */
+  source?: 'manual' | 'hr_catalogue' | 'hr_recurring' | string;
+  sourceTemplateId?: string | null;
+  recurrenceKey?: string | null;
+  recurrenceFrequency?: string | null;
+  generatedAt?: string | null;
   completedAt: string | null;
   createdAt: string;
   updatedAt: string;

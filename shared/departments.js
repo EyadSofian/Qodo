@@ -215,12 +215,12 @@ export const DEPARTMENTS = [
     id: 'hr',
     ar: 'الموارد البشرية',
     en: 'Human resources',
-    color: '#7C3AED',
+    color: '#0F766E',
     icon: 'people',
     /**
-     * Three branches doing genuinely different work: hiring people, paying
-     * them, and the personnel side that outlives both. Same separation as
-     * marketing's — this says where someone sits in HR, not what they may do.
+     * The operating branches mirror the recurring HR plan. Payroll remains a
+     * separate branch because existing employee profiles already use it and
+     * the detailed policy workbook treats it as specialised work.
      *
      * `hr_management` is deliberately not `management`: the management desk is
      * a permission (`management.view`) belonging to the executive's own diary,
@@ -229,42 +229,72 @@ export const DEPARTMENTS = [
     subteams: [
       {
         id: 'recruitment',
-        ar: 'الركرومنت',
+        ar: 'التوظيف',
         en: 'Recruitment',
         roles: [{ id: 'recruiter', ar: 'أخصائي توظيف', en: 'Recruiter' }],
       },
       {
-        // No titles yet — payroll is one job here, so the sub-team is already
-        // the whole answer and an empty list means the form stops asking.
         id: 'payroll',
-        ar: 'البايرول',
+        ar: 'المرتبات',
         en: 'Payroll',
-        roles: [],
+        roles: [{ id: 'payroll_specialist', ar: 'أخصائي رواتب', en: 'Payroll specialist' }],
+      },
+      {
+        id: 'personnel',
+        ar: 'شئون العاملين',
+        en: 'People operations',
+        roles: [
+          { id: 'personnel_specialist', ar: 'أخصائي شئون عاملين', en: 'People operations specialist' },
+          { id: 'personnel_manager', ar: 'مدير شئون العاملين', en: 'People operations manager' },
+        ],
       },
       {
         id: 'hr_management',
-        ar: 'المناجمينت',
+        ar: 'إدارة القسم',
         en: 'HR management',
         roles: [
           { id: 'hr_specialist', ar: 'أخصائي موارد', en: 'HR specialist' },
           { id: 'admin_manager', ar: 'مدير إدارة', en: 'Administration manager' },
         ],
       },
+      {
+        id: 'learning',
+        ar: 'التدريب والتقييم',
+        en: 'Learning & evaluation',
+        roles: [
+          { id: 'training_specialist', ar: 'أخصائي تدريب', en: 'Training specialist' },
+          { id: 'training_manager', ar: 'مسؤول التدريب', en: 'Training manager' },
+        ],
+      },
+      {
+        id: 'performance',
+        ar: 'إدارة الأداء',
+        en: 'Performance management',
+        roles: [
+          { id: 'performance_specialist', ar: 'أخصائي تقييم أداء', en: 'Performance specialist' },
+          { id: 'performance_manager', ar: 'مسؤول تقييم الأداء', en: 'Performance manager' },
+        ],
+      },
+      {
+        id: 'executive_reporting',
+        ar: 'تقارير الإدارة العليا',
+        en: 'Executive reporting',
+        roles: [],
+      },
     ],
     /**
-     * Left as the recruitment funnel the HR dashboard already uses. Payroll and
-     * HR management therefore file work onto hiring columns, and returned work
-     * lands in "فرز المتقدمين" because there is no `rework` column to catch it
-     * (see `stageForReturn`). A deliberate choice to keep the recruitment board
-     * intact, not an oversight — generic stages are the fix when it starts to
-     * bite.
+     * HR is an operating board, not an applicant-tracking funnel. Hiring stages
+     * live in the HR Suite; this board carries every recurring HR obligation
+     * through one measurable execution/review path.
      */
     stages: [
-      { id: 'request', type: 'open', ar: 'طلب توظيف', en: 'Request' },
-      { id: 'screening', type: 'active', ar: 'فرز المتقدمين', en: 'Screening' },
-      { id: 'interview', type: 'active', ar: 'مقابلات', en: 'Interviews' },
-      { id: 'offer', type: 'review', ar: 'عرض وظيفي', en: 'Offer' },
-      { id: 'hired', type: 'done', ar: 'تم التعيين', en: 'Hired' },
+      { id: 'planned', type: 'open', ar: 'مخططة', en: 'Planned' },
+      { id: 'ready', type: 'open', ar: 'مستحقة', en: 'Due' },
+      { id: 'in_progress', type: 'active', ar: 'قيد التنفيذ', en: 'In progress' },
+      { id: 'review', type: 'review', ar: 'بانتظار المراجعة', en: 'Awaiting review' },
+      { id: 'rework', type: 'active', ar: 'مطلوب تعديل', en: 'Changes requested' },
+      { id: 'done', type: 'done', ar: 'منجزة', en: 'Done' },
+      { id: 'blocked', type: 'active', ar: 'متوقفة', en: 'Blocked' },
     ],
   },
   {
@@ -331,6 +361,13 @@ export const STAGE_ALIASES = {
     production: 'working',
     approval: 'review',
     live: 'done',
+  },
+  hr: {
+    request: 'planned',
+    screening: 'in_progress',
+    interview: 'in_progress',
+    offer: 'review',
+    hired: 'done',
   },
 };
 

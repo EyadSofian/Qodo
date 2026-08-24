@@ -2,6 +2,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   BarChart3,
+  ClipboardCheck,
   Download,
   GripVertical,
   Inbox,
@@ -31,6 +32,7 @@ import {
   stageLabel,
   stageType,
 } from '@shared/departments';
+import { hrTaskCategory, hrTaskFrequency } from '@shared/hrPeriodicTasks';
 import {
   assigneesOf,
   canMoveAnyStage,
@@ -39,7 +41,11 @@ import {
   isReviewer,
   stageWriteVerdict,
 } from '@shared/workflow';
-import { TaskDialog, TaskMeta } from '../components/TaskDialog';
+import { TaskDialog, TaskMeta, type TaskDraft } from '../components/TaskDialog';
+import {
+  HRTaskCommandCenter,
+  type HRPeriodicTemplate,
+} from '../components/hr/HRTaskCommandCenter';
 import { ScoreChip, StateBadge, TaskTiming, returnedLabel, stateOf } from '../components/TaskWorkflow';
 import { ModuleIcon } from '../components/ModuleIcon';
 import { Avatar, EmptyState, Segmented, useToast } from '../components/ui';
@@ -110,7 +116,7 @@ export function Tasks() {
 
   const [tasks, setTasks] = useState<Task[] | null>(null);
   const [scope, setScope] = useState<'mine' | 'all'>('mine');
-  const [view, setView] = useState<'table' | 'board' | 'review' | 'overview'>('table');
+  const [view, setView] = useState<'hr' | 'table' | 'board' | 'review' | 'overview'>('table');
   const [overview, setOverview] = useState<PerformanceOverview | null>(null);
   const [overviewFrom, setOverviewFrom] = useState(() => `${localDateValue().slice(0, 7)}-01`);
   const [overviewTo, setOverviewTo] = useState(() => localDateValue());
@@ -122,6 +128,7 @@ export function Tasks() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogColumn, setDialogColumn] = useState<string | null>(null);
   const [dialogMoveTo, setDialogMoveTo] = useState<string | null>(null);
+  const [dialogPrefill, setDialogPrefill] = useState<TaskDraft | null>(null);
   const [mobileColumn, setMobileColumn] = useState(0);
   const [drag, setDrag] = useState<DragState | null>(null);
 
@@ -257,6 +264,10 @@ export function Tasks() {
     setMobileColumn(0);
   }, [department]);
 
+  useEffect(() => {
+    if (view === 'hr' && department !== 'hr') setView('table');
+  }, [department, view]);
+
   const filtered = useMemo(() => {
     if (!tasks) return [];
     const term = query.trim().toLowerCase();
@@ -298,6 +309,32 @@ export function Tasks() {
   const openNew = (columnId: string | null) => {
     setDialogTask(null);
     setDialogColumn(columnId);
+    setDialogPrefill(null);
+    setDialogOpen(true);
+  };
+
+  const openHrTemplate = (template: HRPeriodicTemplate) => {
+    const track = hrTaskCategory(template.category);
+    const cadence = hrTaskFrequency(template.frequency);
+    const highPriority = [11, 12, 21, 24, 49, 51].includes(template.sourceNumber);
+    setDialogTask(null);
+    setDialogColumn('planned');
+    setDialogPrefill({
+      title: template.title,
+      description: [
+        `الدورية: ${cadence.ar}`,
+        `المهلة: ${template.dueRule}`,
+        `المسؤول الوظيفي: ${template.owner}`,
+      ].join('\n'),
+      objective: 'تنفيذ الالتزام الدوري في موعده وإبقاء سجل الموارد البشرية محدثاً وقابلاً للمراجعة.',
+      definitionOfDone: template.doneDefinition,
+      notes: template.notes,
+      department: 'hr',
+      subteam: track.subteam,
+      stage: 'planned',
+      priority: highPriority ? 'high' : 'normal',
+      sourceTemplateId: template.id,
+    });
     setDialogOpen(true);
   };
 
@@ -308,6 +345,7 @@ export function Tasks() {
    * away and the question is asked once.
    */
   const openTask = useCallback((task: Task, moveTo: string | null = null) => {
+    setDialogPrefill(null);
     setDialogTask(task);
     setDialogMoveTo(moveTo);
     setDialogOpen(true);
@@ -687,6 +725,9 @@ export function Tasks() {
         value={view}
         onChange={setView}
         options={[
+          ...(department === 'hr'
+            ? [{ value: 'hr' as const, label: t('tasks.hrOperations'), icon: <ClipboardCheck size={14} /> }]
+            : []),
           { value: 'table', label: t('tasks.table'), icon: <Table2 size={14} /> },
           { value: 'board', label: t('tasks.board'), icon: <LayoutGrid size={14} /> },
           // Only a reviewer has a queue; for everyone else the tab would be empty
@@ -795,7 +836,24 @@ export function Tasks() {
         />
       </div>}
 
-      {view === 'overview' ? (
+      {view === 'hr' ? (
+        tasks === null ? (
+          <div className="grid gap-3 md:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <div key={index} className="skeleton h-32 rounded-2xl" />
+            ))}
+          </div>
+        ) : (
+          <HRTaskCommandCenter
+            tasks={tasks.filter((task) => (task.department ?? DEFAULT_DEPARTMENT) === 'hr')}
+            canCreate={can(PERMISSIONS.TASKS_CREATE)}
+            canManageAutomation={can(PERMISSIONS.TASKS_CREATE) && can(PERMISSIONS.TASKS_ASSIGN)}
+            onCreate={openHrTemplate}
+            onOpen={openTask}
+            onGenerated={load}
+          />
+        )
+      ) : view === 'overview' ? (
         <PerformancePanel
           data={overview}
           from={overviewFrom}
@@ -930,6 +988,7 @@ export function Tasks() {
         task={dialogTask}
         defaultDepartment={department || user?.department || DEFAULT_DEPARTMENT}
         defaultStage={department ? dialogColumn : null}
+        prefill={dialogPrefill}
         moveTo={dialogMoveTo}
         onSaved={onSaved}
         onDeleted={onDeleted}

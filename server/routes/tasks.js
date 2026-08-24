@@ -60,6 +60,7 @@ import {
 } from '../taskAccess.js';
 import attachmentRoutes, { syncAttachmentCount } from './taskFiles.js';
 import { organizationOf } from '../../shared/organization.js';
+import { hrTaskById } from '../../shared/hrPeriodicTasks.js';
 
 const router = Router();
 
@@ -377,6 +378,7 @@ router.post('/', requirePermission(PERMISSIONS.TASKS_CREATE), async (req, res) =
     dueDate: null,
     appId: null,
     labels: [],
+    source: parsed.value.sourceTemplateId ? 'hr_catalogue' : 'manual',
     description: '',
     objective: '',
     definitionOfDone: '',
@@ -1829,6 +1831,18 @@ async function parseTaskInput(body, { partial = false, current = null } = {}) {
     value.labels = Array.isArray(body.labels)
       ? [...new Set(body.labels.map((l) => String(l).trim()).filter(Boolean))].slice(0, 8)
       : [];
+  }
+
+  // A catalogue link is provenance, not a label the user can rename later.
+  // It is accepted only while creating an HR task and always validated against
+  // the versioned 51-row plan.
+  if (!partial && body?.sourceTemplateId !== undefined) {
+    const sourceTemplateId = String(body.sourceTemplateId || '');
+    const department = value.department ?? DEFAULT_DEPARTMENT;
+    if (department !== 'hr' || !hrTaskById(sourceTemplateId)) {
+      return { error: 'unknown_hr_template' };
+    }
+    value.sourceTemplateId = sourceTemplateId;
   }
 
   return { value };

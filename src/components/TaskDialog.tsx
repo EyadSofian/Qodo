@@ -49,6 +49,22 @@ import { DUE_TONE_CLASS, PRIORITY_META, PRIORITY_ORDER, cx, formatDate, timeAgo 
 import { timingRows } from '../lib/taskTiming';
 import type {Task, TaskAssignment, TaskAttachment, TaskComment, TaskPriority} from '../lib/types';
 
+export interface TaskDraft {
+  title?: string;
+  description?: string;
+  objective?: string;
+  definitionOfDone?: string;
+  notes?: string;
+  department?: string;
+  subteam?: string | null;
+  stage?: string;
+  priority?: TaskPriority;
+  taskDate?: string;
+  dueDate?: string | null;
+  effortPoints?: Task['effortPoints'];
+  sourceTemplateId?: string;
+}
+
 interface Props {
   open: boolean;
   onClose: () => void;
@@ -57,6 +73,8 @@ interface Props {
   defaultDepartment: string;
   /** Column the "+" was pressed in, so a new card lands where it was asked for. */
   defaultStage: string | null;
+  /** Optional brief supplied by a catalogue/template when creating. */
+  prefill?: TaskDraft | null;
   /**
    * Column an existing card was dragged onto when the move needs something the
    * board cannot collect — the score a forced close owes. Aims the override
@@ -73,6 +91,7 @@ export function TaskDialog({
   task,
   defaultDepartment,
   defaultStage,
+  prefill = null,
   moveTo = null,
   onSaved,
   onDeleted,
@@ -107,22 +126,24 @@ export function TaskDialog({
     if (!open) return;
     setError('');
     setLive(task);
-    const nextDepartment = task?.department ?? defaultDepartment ?? DEFAULT_DEPARTMENT;
-    setTitle(task?.title ?? '');
-    setDescription(task?.description ?? '');
-    setObjective(task?.objective ?? '');
-    setDefinitionOfDone(task?.definitionOfDone ?? '');
-    setNotes(task?.notes ?? '');
+    const draft = task ? null : prefill;
+    const nextDepartment = task?.department ?? draft?.department ?? defaultDepartment ?? DEFAULT_DEPARTMENT;
+    setTitle(task?.title ?? draft?.title ?? '');
+    setDescription(task?.description ?? draft?.description ?? '');
+    setObjective(task?.objective ?? draft?.objective ?? '');
+    setDefinitionOfDone(task?.definitionOfDone ?? draft?.definitionOfDone ?? '');
+    setNotes(task?.notes ?? draft?.notes ?? '');
     setDepartment(nextDepartment);
-    setSubteam(task?.subteam ?? '');
-    setStage(task?.stage ?? defaultStage ?? firstStage(nextDepartment));
-    setPriority(task?.priority ?? 'normal');
+    setSubteam(task?.subteam ?? draft?.subteam ?? '');
+    setStage(task?.stage ?? draft?.stage ?? defaultStage ?? firstStage(nextDepartment));
+    setPriority(task?.priority ?? draft?.priority ?? 'normal');
     setAssigneeIds(assigneesOf(task ?? undefined));
-    setTaskDate(task?.taskDate ?? new Date().toISOString().slice(0, 10));
-    setDueDate(task?.dueDate ?? '');
-    setEffortPoints(task?.effortPoints ? String(task.effortPoints) : '');
+    setTaskDate(task?.taskDate ?? draft?.taskDate ?? new Date().toISOString().slice(0, 10));
+    setDueDate(task?.dueDate ?? draft?.dueDate ?? '');
+    const nextEffort = task?.effortPoints ?? draft?.effortPoints;
+    setEffortPoints(nextEffort ? String(nextEffort) : '');
     setProgress(task?.progress ?? 0);
-  }, [open, task, defaultDepartment, defaultStage]);
+  }, [open, task, prefill, defaultDepartment, defaultStage]);
 
   // Deliverables are the evidence the review is based on, so they load with the
   // task rather than behind a tab — a reviewer should never have to go looking.
@@ -216,6 +237,9 @@ export function TaskDialog({
           taskDate,
           dueDate: dueDate || null,
           effortPoints: effortPoints ? Number(effortPoints) : null,
+          ...(!current && prefill?.sourceTemplateId
+            ? { sourceTemplateId: prefill.sourceTemplateId }
+            : {}),
         }
       : work;
 

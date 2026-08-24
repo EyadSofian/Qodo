@@ -34,6 +34,10 @@ export const COLLECTIONS = [
   'invites',
   'apps',
   'tasks',
+  // One row per HR catalogue template and organization. It says whether the
+  // clock may generate it and who owns the generated work; the catalogue itself
+  // remains versioned in code so every tenant runs the same audited plan.
+  'hrTaskPlans',
   'taskAssignments',
   'comments',
   'attachments',
@@ -117,6 +121,15 @@ class FileStore {
     this.cache[collection].push(doc);
     await this.flush();
     return structuredClone(doc);
+  }
+
+  /** Deterministic ids make scheduled writes safe to retry after a restart. */
+  async insertIfAbsent(collection, doc) {
+    const existing = (this.cache[collection] ?? []).find((item) => item.id === doc.id);
+    if (existing) return { doc: structuredClone(existing), created: false };
+    this.cache[collection].push(doc);
+    await this.flush();
+    return { doc: structuredClone(doc), created: true };
   }
 
   async update(collection, id, patch) {
@@ -221,6 +234,17 @@ class PgStore {
     return doc;
   }
 
+  async insertIfAbsent(collection, doc) {
+    const { rows } = await this.pool.query(
+      `INSERT INTO documents (collection, id, data) VALUES ($1, $2, $3)
+       ON CONFLICT (collection, id) DO NOTHING
+       RETURNING data`,
+      [collection, doc.id, doc]
+    );
+    if (rows[0]) return { doc: rows[0].data, created: true };
+    return { doc: await this.get(collection, doc.id), created: false };
+  }
+
   async update(collection, id, patch) {
     const current = await this.get(collection, id);
     if (!current) return null;
@@ -276,6 +300,17 @@ export async function create(collection, doc) {
   const s = await getStore();
   const stamped = { id: doc.id || newId(), createdAt: now(), updatedAt: now(), ...doc };
   return s.insert(collection, stamped);
+}
+
+/**
+ * Insert once and return the winner. Used by schedulers and webhook ingestion,
+ * where a network retry is normal and must not become duplicate business data.
+ */
+export async function createIfAbsent(collection, doc) {
+  if (!doc?.id) throw new Error('createIfAbsent requires a deterministic id');
+  const s = await getStore();
+  const stamped = { createdAt: now(), updatedAt: now(), ...doc };
+  return s.insertIfAbsent(collection, stamped);
 }
 
 export async function find(collection, predicate) {
