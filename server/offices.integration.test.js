@@ -10,7 +10,8 @@
  *   3. a desk held for a new joiner stays reserved across the round trip;
  *   4. seating a person empties whichever desk they were on before;
  *   5. the scaled plan refuses coordinates until the room has been measured;
- *   6. a room nobody has left cannot be deleted out from under them.
+ *   6. a reshaped room decides for itself what counts as inside it;
+ *   7. a room nobody has left cannot be deleted out from under them.
  */
 
 import assert from 'node:assert/strict';
@@ -351,6 +352,93 @@ test('a desk cannot be placed on a plan of a room nobody has measured', async ()
   });
   assert.equal(full.status, 200);
   assert.equal(roomNamed(full.data, 'مبيعات كبير').plan.ready, true);
+});
+
+test('a room can be reshaped, and its shape decides what counts as inside it', async () => {
+  const plan = (await request('/offices', { cookie: facilitiesCookie })).data;
+  const room = roomNamed(plan, 'مبيعات كبير');
+  assert.deepEqual(room.dimensions, { width: 6, height: 4 });
+  assert.equal(room.shape, null, 'an unshaped room is a plain rectangle');
+
+  // An L: the far bottom corner of the rectangle is not part of the room.
+  const shaped = await request(`/offices/${room.id}`, {
+    method: 'PATCH',
+    cookie: facilitiesCookie,
+    body: {
+      shape: [
+        { x: 0, y: 0 },
+        { x: 6, y: 0 },
+        { x: 6, y: 2 },
+        { x: 3, y: 2 },
+        { x: 3, y: 4 },
+        { x: 0, y: 4 },
+      ],
+    },
+  });
+  assert.equal(shaped.status, 200, JSON.stringify(shaped.data));
+  assert.equal(roomNamed(shaped.data, 'مبيعات كبير').shape.length, 6);
+
+  // (5, 3.5) is inside the bounding box and outside the room. A bounding-box
+  // check would have accepted it; the outline is what refuses.
+  const seat = roomNamed(shaped.data, 'مبيعات كبير').seats[0];
+  const cutCorner = await request(`/offices/${room.id}/seats/${seat.id}`, {
+    method: 'PATCH',
+    cookie: facilitiesCookie,
+    body: { point: { x: 5, y: 3.5 } },
+  });
+  assert.equal(cutCorner.status, 400);
+  assert.equal(cutCorner.data.error, 'point_outside_room');
+
+  const inside = await request(`/offices/${room.id}/seats/${seat.id}`, {
+    method: 'PATCH',
+    cookie: facilitiesCookie,
+    body: { point: { x: 1, y: 3.5 } },
+  });
+  assert.equal(inside.status, 200, JSON.stringify(inside.data));
+
+  // A corner dragged past the wall is somebody drawing, not an error worth
+  // discarding the whole outline for — it is clamped into the room.
+  const past = await request(`/offices/${room.id}`, {
+    method: 'PATCH',
+    cookie: facilitiesCookie,
+    body: {
+      shape: [
+        { x: -3, y: 0 },
+        { x: 99, y: 0 },
+        { x: 6, y: 4 },
+      ],
+    },
+  });
+  assert.equal(past.status, 200);
+  assert.deepEqual(roomNamed(past.data, 'مبيعات كبير').shape, [
+    { x: 0, y: 0 },
+    { x: 6, y: 0 },
+    { x: 6, y: 4 },
+  ]);
+
+  const tooFew = await request(`/offices/${room.id}`, {
+    method: 'PATCH',
+    cookie: facilitiesCookie,
+    body: { shape: [{ x: 0, y: 0 }, { x: 1, y: 1 }] },
+  });
+  assert.equal(tooFew.status, 400);
+  assert.equal(tooFew.data.error, 'invalid_shape');
+
+  // An outline means nothing in an unmeasured room, so unmeasuring clears it.
+  const unmeasured = await request(`/offices/${room.id}`, {
+    method: 'PATCH',
+    cookie: facilitiesCookie,
+    body: { dimensions: null },
+  });
+  assert.equal(unmeasured.status, 200);
+  assert.equal(roomNamed(unmeasured.data, 'مبيعات كبير').shape, null);
+
+  // Put the room back so the deletion test still finds it measured.
+  await request(`/offices/${room.id}`, {
+    method: 'PATCH',
+    cookie: facilitiesCookie,
+    body: { dimensions: { width: 6, height: 4 } },
+  });
 });
 
 test('a room holding somebody cannot be deleted out from under them', async () => {

@@ -15,10 +15,13 @@ import { PERMISSIONS, can } from '../../shared/permissions.js';
 import { organizationOf } from '../../shared/organization.js';
 import { DEPARTMENTS } from '../../shared/departments.js';
 import {
+  MAX_SHAPE_POINTS,
   OFFICE_KINDS,
   OFFICE_KIND_LABELS,
   SEAT_STATE_LABELS,
   SETTABLE_SEAT_STATES,
+  SHAPE_PRESETS,
+  SHAPE_PRESET_LABELS,
 } from '../../shared/offices.js';
 import {
   MAX_SEATS_PER_OFFICE,
@@ -63,7 +66,12 @@ router.get('/bootstrap', (req, res) => {
       en: department.en,
       color: department.color,
     })),
-    limits: { seatsPerOffice: MAX_SEATS_PER_OFFICE, seatsPerRequest: MAX_SEATS_PER_REQUEST },
+    shapes: SHAPE_PRESETS.map((id) => ({ id, ...SHAPE_PRESET_LABELS[id] })),
+    limits: {
+      seatsPerOffice: MAX_SEATS_PER_OFFICE,
+      seatsPerRequest: MAX_SEATS_PER_REQUEST,
+      shapePoints: MAX_SHAPE_POINTS,
+    },
     canManage: can(req.user, PERMISSIONS.OFFICES_MANAGE),
   });
 });
@@ -110,7 +118,7 @@ router.post('/', manage, async (req, res) => {
 router.patch('/:officeId', manage, async (req, res) => {
   try {
     const office = await officeFor(req.user, req.params.officeId);
-    const patch = normaliseOfficeInput(req.body, { partial: true });
+    const patch = normaliseOfficeInput(req.body, { partial: true, current: office });
     const store = await getStore();
     const updated = await store.update('offices', office.id, patch);
 

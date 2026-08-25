@@ -177,6 +177,124 @@ export function planReadiness(office) {
   };
 }
 
+/* ── room shape ──────────────────────────────────────────────────────── */
+
+/**
+ * A room is a rectangle unless it says otherwise.
+ *
+ * `shape` is a closed polygon in the room's own metres, and it exists because
+ * real floors are not all rectangles — an L is the common one, where a corner
+ * of the room is taken by a stairwell or another office. It is optional and
+ * always bounded by `dimensions`, so the rectangle stays the answer for every
+ * room nobody has drawn, and the bounding box keeps meaning what it says.
+ */
+export const MIN_SHAPE_POINTS = 3;
+export const MAX_SHAPE_POINTS = 16;
+
+export function hasShape(office) {
+  return Array.isArray(office?.shape) && office.shape.length >= MIN_SHAPE_POINTS;
+}
+
+/** The polygon to draw, derived from the rectangle when none was drawn. */
+export function roomOutline(office) {
+  if (hasShape(office)) return office.shape;
+  const size = office?.dimensions;
+  if (!size) return null;
+  return [
+    { x: 0, y: 0 },
+    { x: size.width, y: 0 },
+    { x: size.width, y: size.height },
+    { x: 0, y: size.height },
+  ];
+}
+
+export const SHAPE_PRESETS = ['rectangle', 'l_shape', 'l_mirror', 't_shape'];
+
+export const SHAPE_PRESET_LABELS = {
+  rectangle: { ar: 'مستطيل', en: 'Rectangle' },
+  l_shape: { ar: 'حرف L', en: 'L-shape' },
+  l_mirror: { ar: 'حرف L معكوس', en: 'Mirrored L' },
+  t_shape: { ar: 'حرف T', en: 'T-shape' },
+};
+
+/**
+ * A starting outline for a room of this size. Corners are then dragged to the
+ * real walls — the preset is a head start, not a claim about the building.
+ */
+export function presetOutline(preset, { width, height }) {
+  const halfW = Math.round((width / 2) * 100) / 100;
+  const halfH = Math.round((height / 2) * 100) / 100;
+  const third = Math.round((width / 3) * 100) / 100;
+
+  switch (preset) {
+    case 'l_shape':
+      return [
+        { x: 0, y: 0 },
+        { x: width, y: 0 },
+        { x: width, y: halfH },
+        { x: halfW, y: halfH },
+        { x: halfW, y: height },
+        { x: 0, y: height },
+      ];
+    case 'l_mirror':
+      return [
+        { x: 0, y: 0 },
+        { x: width, y: 0 },
+        { x: width, y: height },
+        { x: halfW, y: height },
+        { x: halfW, y: halfH },
+        { x: 0, y: halfH },
+      ];
+    case 't_shape':
+      return [
+        { x: 0, y: 0 },
+        { x: width, y: 0 },
+        { x: width, y: halfH },
+        { x: width - third, y: halfH },
+        { x: width - third, y: height },
+        { x: third, y: height },
+        { x: third, y: halfH },
+        { x: 0, y: halfH },
+      ];
+    default:
+      return [
+        { x: 0, y: 0 },
+        { x: width, y: 0 },
+        { x: width, y: height },
+        { x: 0, y: height },
+      ];
+  }
+}
+
+/** `12.5,0 30,0 …` — an SVG polygon in percentages of the bounding box. */
+export function outlinePoints(office) {
+  const outline = roomOutline(office);
+  const size = office?.dimensions;
+  if (!outline || !size) return '';
+  return outline
+    .map((point) => `${(point.x / size.width) * 100},${(point.y / size.height) * 100}`)
+    .join(' ');
+}
+
+/**
+ * Whether a point falls inside the room's outline — ray casting, which handles
+ * the concave corner an L-shape has and a bounding-box check does not.
+ */
+export function isInsideRoom(office, point) {
+  const outline = roomOutline(office);
+  if (!outline) return false;
+  let inside = false;
+  for (let i = 0, j = outline.length - 1; i < outline.length; j = i, i += 1) {
+    const a = outline[i];
+    const b = outline[j];
+    const straddles = a.y > point.y !== b.y > point.y;
+    if (straddles && point.x < ((b.x - a.x) * (point.y - a.y)) / (b.y - a.y) + a.x) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
 /** Columns for the schematic, kept sane whatever is stored on the room. */
 export function gridColumns(office) {
   const stored = Number(office?.columns);

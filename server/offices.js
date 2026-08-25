@@ -26,9 +26,12 @@ import { DEPARTMENT_IDS } from '../shared/departments.js';
 import { isActiveUser } from '../shared/permissions.js';
 import {
   MAX_ROOM_METRES,
+  MAX_SHAPE_POINTS,
   MIN_ROOM_METRES,
+  MIN_SHAPE_POINTS,
   OFFICE_KINDS,
   SETTABLE_SEAT_STATES,
+  isInsideRoom,
   isTaken,
   officeCounts,
   orderedSeats,
@@ -112,6 +115,7 @@ export function publicOffice(office, seats, people) {
     kind: office.kind ?? 'workroom',
     columns: office.columns ?? null,
     dimensions: office.dimensions ?? null,
+    shape: office.shape ?? null,
     note: office.note ?? null,
     order: office.order ?? 999,
     seats: dressed,
@@ -203,7 +207,7 @@ export async function seatOfUser(organizationId, userId) {
 
 /* ── writes ──────────────────────────────────────────────────────────── */
 
-export function normaliseOfficeInput(body, { partial = false } = {}) {
+export function normaliseOfficeInput(body, { partial = false, current = null } = {}) {
   const patch = {};
 
   if (body?.nameAr !== undefined || !partial) {
@@ -244,6 +248,16 @@ export function normaliseOfficeInput(body, { partial = false } = {}) {
   }
 
   if (body?.dimensions !== undefined) patch.dimensions = normaliseDimensions(body.dimensions);
+  if (body?.shape !== undefined) {
+    // Bounded by whichever size this request ends up with — the one it is
+    // setting, or the one the room already has. Reshaping and measuring in a
+    // single call must not be able to produce a polygon outside its own room.
+    const size = patch.dimensions !== undefined ? patch.dimensions : current?.dimensions;
+    patch.shape = normaliseShape(body.shape, size);
+  }
+  // An outline only means something inside a measured room; clearing the
+  // measurement clears the drawing with it rather than leaving it orphaned.
+  if (patch.dimensions === null && patch.shape === undefined) patch.shape = null;
   if (body?.note !== undefined) patch.note = text(body.note, MAX_NOTE_LENGTH);
   if (body?.order !== undefined) {
     const order = Number(body.order);
@@ -274,6 +288,33 @@ export function normaliseDimensions(value) {
   return { width: Math.round(width * 100) / 100, height: Math.round(height * 100) / 100 };
 }
 
+/**
+ * The room's outline in metres, or `null` for an ordinary rectangle.
+ *
+ * Every corner is clamped into the bounding box rather than rejected: a corner
+ * dragged a few centimetres past the wall is somebody drawing, not an error
+ * worth throwing away their whole outline for.
+ */
+export function normaliseShape(value, sizeOverride) {
+  if (value === null || value === undefined) return null;
+  if (!Array.isArray(value)) throw new OfficeError('invalid_shape');
+  if (value.length < MIN_SHAPE_POINTS || value.length > MAX_SHAPE_POINTS) {
+    throw new OfficeError('invalid_shape', 400, {
+      min: MIN_SHAPE_POINTS,
+      max: MAX_SHAPE_POINTS,
+    });
+  }
+  const size = sizeOverride;
+  return value.map((point) => {
+    const x = Number(point?.x);
+    const y = Number(point?.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) throw new OfficeError('invalid_shape');
+    const clamp = (n, max) =>
+      Math.round(Math.max(0, Number.isFinite(max) ? Math.min(n, max) : n) * 100) / 100;
+    return { x: clamp(x, size?.width), y: clamp(y, size?.height) };
+  });
+}
+
 /** A seat's spot on the scaled plan, checked against the room it belongs to. */
 export function normalisePoint(value, office) {
   if (value === null || value === undefined) return null;
@@ -282,10 +323,13 @@ export function normalisePoint(value, office) {
   if (!Number.isFinite(x) || !Number.isFinite(y)) throw new OfficeError('invalid_point');
   const size = office?.dimensions;
   if (!size) throw new OfficeError('room_not_measured', 409);
-  if (x < 0 || y < 0 || x > size.width || y > size.height) {
+  const rounded = { x: Math.round(x * 100) / 100, y: Math.round(y * 100) / 100 };
+  // The outline, not the bounding box: an L-shaped room has a corner inside its
+  // rectangle that is not inside the room.
+  if (!isInsideRoom(office, rounded)) {
     throw new OfficeError('point_outside_room', 400, { width: size.width, height: size.height });
   }
-  return { x: Math.round(x * 100) / 100, y: Math.round(y * 100) / 100 };
+  return rounded;
 }
 
 export async function createOffice(user, body) {
@@ -298,6 +342,7 @@ export async function createOffice(user, body) {
     department: null,
     columns: null,
     dimensions: null,
+    shape: null,
     note: null,
     order: Math.max(0, ...existing.map((office) => office.order ?? 0)) + 10,
     ...patch,
