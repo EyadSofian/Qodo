@@ -1,7 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowUpRight, CheckCircle2, CircleAlert, ListChecks, MoveLeft, MoveRight } from 'lucide-react';
+import {
+  ArrowUpRight,
+  Building2,
+  CheckCircle2,
+  CircleAlert,
+  ListChecks,
+  MapPin,
+  MoveLeft,
+  MoveRight,
+} from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useI18n } from '../lib/i18n';
@@ -16,6 +25,7 @@ import { CountBadge } from '../components/Shell';
 import { TaskTiming } from '../components/TaskWorkflow';
 import { PRIORITY_META, cx, daysUntil } from '../lib/utils';
 import { deliveryLatenessDays } from '@shared/taskTiming';
+import { officesApi, type MySeat } from '../lib/offices';
 import type { Task, WorkspaceApp } from '../lib/types';
 
 const TASK_POLL_MS = 20_000;
@@ -43,6 +53,8 @@ export function Launcher() {
       ) : (
         <AppGrid apps={apps} onOpen={openApp} />
       )}
+
+      <WhereYouSit />
 
       {can(PERMISSIONS.TASKS_VIEW) && <MyWork />}
     </div>
@@ -134,6 +146,98 @@ function TileSkeletons() {
         </div>
       ))}
     </div>
+  );
+}
+
+/* ── Where you sit ───────────────────────────────────────────────── */
+
+/**
+ * Your own desk, and how full the floor is.
+ *
+ * The occupancy figure is paired with the emptiest room on purpose: a single
+ * "29 available" reads as room everywhere, when in the real inventory two
+ * thirds of it sat in two rooms and three others had not a single free desk.
+ */
+function WhereYouSit() {
+  const { t, lang } = useI18n();
+  const [mine, setMine] = useState<MySeat | null>(null);
+  const [summary, setSummary] = useState<{ units: number; occupied: number; free: number } | null>(
+    null
+  );
+  const [emptiest, setEmptiest] = useState<{ name: string; free: number } | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    Promise.all([officesApi.mySeat(), officesApi.plan()])
+      .then(([seat, plan]) => {
+        if (!active) return;
+        setMine(seat);
+        setSummary(plan.summary);
+        const room = [...plan.offices]
+          .filter((office) => office.kind === 'workroom')
+          .sort((a, b) => b.counts.free - a.counts.free)[0];
+        setEmptiest(room && room.counts.free > 0 ? { name: room.nameAr, free: room.counts.free } : null);
+      })
+      // No rooms recorded yet is the normal state before the inventory is
+      // imported, and is not worth a broken card on the home screen.
+      .catch(() => active && setSummary(null));
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  if (!summary || summary.units === 0) return null;
+
+  return (
+    <section className="mt-8 sm:mt-10" aria-label={t('offices.title')}>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h2 className="flex items-center gap-2 text-base font-bold text-ink">
+          <Building2 size={18} className="text-brand-500" />
+          {t('offices.title')}
+        </h2>
+        <Link
+          to="/offices"
+          className="text-[12.5px] font-semibold text-brand-500 hover:underline"
+        >
+          {t('offices.openPlan')}
+        </Link>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Link to="/offices" className="card flex items-center gap-3 px-4 py-3.5 hover:bg-surface-sunken">
+          <span className="grid h-9 w-9 place-items-center rounded-full bg-brand-50 text-brand-500">
+            <MapPin size={17} />
+          </span>
+          <span className="min-w-0">
+            <span className="block text-[12px] font-semibold text-ink-muted">
+              {t('offices.mySeat')}
+            </span>
+            <span className="block truncate text-[14px] font-bold text-ink">
+              {mine?.office && mine.seat
+                ? `${lang === 'en' && mine.office.nameEn ? mine.office.nameEn : mine.office.nameAr} · ${mine.seat.label}`
+                : t('offices.mySeatNone')}
+            </span>
+          </span>
+        </Link>
+
+        <div className="card flex items-center justify-between gap-3 px-4 py-3.5">
+          <span className="min-w-0">
+            <span className="block text-[12px] font-semibold text-ink-muted">
+              {t('offices.statFree')}
+            </span>
+            {emptiest && (
+              <span className="block truncate text-[11.5px] text-ink-faint">
+                {t('offices.emptiest', { room: emptiest.name, n: emptiest.free })}
+              </span>
+            )}
+          </span>
+          <span className="shrink-0 text-2xl font-extrabold tabular-nums text-status-ok">
+            {summary.free}
+            <span className="text-[13px] font-semibold text-ink-faint">/{summary.units}</span>
+          </span>
+        </div>
+      </div>
+    </section>
   );
 }
 

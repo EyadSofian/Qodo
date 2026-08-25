@@ -58,6 +58,13 @@ export const COLLECTIONS = [
   'calendarEvents',
   'calendarInvites',
   'calendarAttachments',
+  // The seating plan. A seat is its own document rather than an array on the
+  // room for the reason a calendar invite is not an array on the event: who
+  // sits on it changes independently of the room, moving two people at once
+  // must not have one write overwrite the other, and the activity log needs a
+  // subject id per seat to say who moved whom.
+  'offices',
+  'officeSeats',
   'pushSubscriptions',
   'settings',
   // The management desk — the executive's own tasks, meetings, appointments,

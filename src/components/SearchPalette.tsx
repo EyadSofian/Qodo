@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { CornerDownLeft, Search, X } from 'lucide-react';
+import { Building2, CornerDownLeft, Search, X } from 'lucide-react';
 import { api } from '../lib/api';
 import { useI18n } from '../lib/i18n';
 import { cx } from '../lib/utils';
@@ -104,6 +104,8 @@ export function SearchPalette({ open, onClose }: { open: boolean; onClose: () =>
     app: t('search.typeApp'),
     task: t('search.typeTask'),
     user: t('search.typeUser'),
+    office: t('search.typeOffice'),
+    seat: t('search.typeSeat'),
   };
 
   return createPortal(
@@ -185,6 +187,18 @@ function ResultIcon({ result }: { result: SearchResult }) {
   }
   if (result.type === 'user') {
     return <Avatar name={result.title} color={result.color} size={34} />;
+  }
+  // A desk answers "where is she", so it wears the person's initials; a room
+  // wears the building glyph.
+  if (result.type === 'seat') {
+    return <Avatar name={result.title} color={result.color} size={34} />;
+  }
+  if (result.type === 'office') {
+    return (
+      <span className="grid h-[34px] w-[34px] shrink-0 place-items-center rounded-xl bg-surface-sunken text-brand-500">
+        <Building2 size={17} />
+      </span>
+    );
   }
   // A task's dot carries its department colour, so the same title in two
   // departments is still distinguishable at a glance.
