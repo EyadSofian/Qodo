@@ -35,8 +35,8 @@ let facilitiesCookie;
 let member;
 let facilities;
 
-before(async () => {
-  dataDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'qodo-offices-test-'));
+/** Boot the API against `dataDirectory` and wait for it to answer. */
+async function startServer() {
   server = spawn(process.execPath, ['server/index.js'], {
     cwd: ROOT,
     env: {
@@ -67,6 +67,21 @@ before(async () => {
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   throw new Error(`Offices test server did not start.\n${errors}`);
+}
+
+/**
+ * Stop and boot again over the same data directory — the only way to ask what a
+ * redeploy would do to rooms somebody has since edited.
+ */
+async function restartServer() {
+  server.kill();
+  await new Promise((resolve) => server.once('exit', resolve));
+  await startServer();
+}
+
+before(async () => {
+  dataDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'qodo-offices-test-'));
+  await startServer();
 });
 
 after(async () => {
@@ -113,6 +128,44 @@ async function createUser(body) {
 
 const roomNamed = (plan, name) => plan.offices.find((office) => office.nameAr === name);
 
+test('the inventory is delivered on first boot, and delivered only once', async () => {
+  adminCookie = await login('admin@test.local', 'AdminPass123!');
+  const plan = (await request('/offices', { cookie: adminCookie })).data;
+
+  // The rooms arrive on their own — nobody has to run a script for the plan to
+  // have something in it.
+  assert.equal(plan.summary.units, 98);
+  assert.equal(plan.summary.occupied, 64);
+  assert.equal(plan.summary.reserved, 1, '«موظف جديد» in IT is held, not occupied');
+  assert.deepEqual(plan.zones, ['مكتب 1', 'مكتب 2', 'مكتب 3']);
+
+  // And unarranged: measuring and laying out is the job of whoever knows the
+  // building, so nothing here pretends to have done it for them.
+  assert.ok(plan.offices.every((office) => office.dimensions === null));
+  assert.ok(plan.offices.every((office) => office.plan.placed === 0));
+
+  // ODOO's four are free and carry the question rather than naming anybody.
+  const odoo = roomNamed(plan, 'ODOO');
+  assert.equal(odoo.counts.occupied, 0);
+  assert.equal(odoo.seats.filter((seat) => seat.note).length, 4);
+
+  // A room removed on purpose must not come back on the next deploy, which is
+  // the whole reason the delivery is recorded rather than topped up.
+  const spare = roomNamed(plan, 'التدريب');
+  const removed = await request(`/offices/${spare.id}`, {
+    method: 'DELETE',
+    cookie: adminCookie,
+  });
+  assert.equal(removed.status, 200, JSON.stringify(removed.data));
+
+  await restartServer();
+  adminCookie = await login('admin@test.local', 'AdminPass123!');
+  const after = (await request('/offices', { cookie: adminCookie })).data;
+  assert.equal(roomNamed(after, 'التدريب'), undefined, 'a deleted room stays deleted');
+  assert.equal(after.summary.units, 98 - 8);
+});
+
+
 test('anybody may read the plan; only offices.manage may change it', async () => {
   adminCookie = await login('admin@test.local', 'AdminPass123!');
 
@@ -128,7 +181,7 @@ test('anybody may read the plan; only offices.manage may change it', async () =>
   const created = await request('/offices', {
     method: 'POST',
     cookie: adminCookie,
-    body: { nameAr: 'المبيعات', zone: 'مكتب 1', department: 'sales', seats: 4 },
+    body: { nameAr: 'مبيعات تجريبي', zone: 'اختبار', department: 'sales', seats: 4 },
   });
   assert.equal(created.status, 201, JSON.stringify(created.data));
 
@@ -136,9 +189,9 @@ test('anybody may read the plan; only offices.manage may change it', async () =>
   // giving the plan a view permission.
   const read = await request('/offices', { cookie: memberCookie });
   assert.equal(read.status, 200);
-  assert.equal(roomNamed(read.data, 'المبيعات').counts.units, 4);
+  assert.equal(roomNamed(read.data, 'مبيعات تجريبي').counts.units, 4);
 
-  const seat = roomNamed(read.data, 'المبيعات').seats[0];
+  const seat = roomNamed(read.data, 'مبيعات تجريبي').seats[0];
   const refused = await request(`/offices/${seat.officeId}/seats/${seat.id}`, {
     method: 'PATCH',
     cookie: memberCookie,
@@ -184,7 +237,7 @@ test('anybody may read the plan; only offices.manage may change it', async () =>
 
 test('counts are derived, and always add back up to the desks that exist', async () => {
   const plan = (await request('/offices', { cookie: memberCookie })).data;
-  const room = roomNamed(plan, 'المبيعات');
+  const room = roomNamed(plan, 'مبيعات تجريبي');
 
   assert.equal(room.counts.units, 4);
   assert.equal(room.counts.occupied, 1);
@@ -214,13 +267,13 @@ test('counts are derived, and always add back up to the desks that exist', async
     body: { userId: null, occupantName: null },
   });
   assert.equal(cleared.status, 200);
-  assert.equal(roomNamed(cleared.data, 'المبيعات').counts.occupied, 0);
-  assert.equal(roomNamed(cleared.data, 'المبيعات').counts.free, 4);
+  assert.equal(roomNamed(cleared.data, 'مبيعات تجريبي').counts.occupied, 0);
+  assert.equal(roomNamed(cleared.data, 'مبيعات تجريبي').counts.free, 4);
 });
 
 test('a desk held for a new joiner survives the round trip as reserved', async () => {
   const plan = (await request('/offices', { cookie: memberCookie })).data;
-  const room = roomNamed(plan, 'المبيعات');
+  const room = roomNamed(plan, 'مبيعات تجريبي');
   const seat = room.seats[0];
 
   const held = await request(`/offices/${room.id}/seats/${seat.id}`, {
@@ -234,7 +287,7 @@ test('a desk held for a new joiner survives the round trip as reserved', async (
   // Presentation renames `status` to `state`, and counting off the presented
   // shape instead of the stored one used to report it as free — with the
   // arithmetic still adding up, so nothing looked wrong.
-  const after = roomNamed(held.data, 'المبيعات');
+  const after = roomNamed(held.data, 'مبيعات تجريبي');
   assert.equal(after.seats.find((row) => row.id === seat.id).state, 'reserved');
   assert.equal(after.counts.reserved, 1);
   assert.equal(after.counts.free, 3);
@@ -251,7 +304,7 @@ test('a desk held for a new joiner survives the round trip as reserved', async (
     body: { occupantName: 'موظف وصل' },
   });
   assert.equal(filled.status, 200);
-  const settled = roomNamed(filled.data, 'المبيعات');
+  const settled = roomNamed(filled.data, 'مبيعات تجريبي');
   assert.equal(settled.counts.reserved, 0);
   assert.equal(settled.counts.occupied, 1);
 
@@ -262,18 +315,18 @@ test('a desk held for a new joiner survives the round trip as reserved', async (
     body: { userId: null, occupantName: null },
   });
   assert.equal(reset.status, 200);
-  assert.equal(roomNamed(reset.data, 'المبيعات').counts.free, 4);
+  assert.equal(roomNamed(reset.data, 'مبيعات تجريبي').counts.free, 4);
 });
 
 test('one person, one desk — seating somebody empties where they were', async () => {
   const second = await request('/offices', {
     method: 'POST',
     cookie: facilitiesCookie,
-    body: { nameAr: 'مبيعات كبير', zone: 'مكتب 3', department: 'sales', seats: 2 },
+    body: { nameAr: 'مبيعات تجريبي كبير', zone: 'اختبار', department: 'sales', seats: 2 },
   });
   assert.equal(second.status, 201, JSON.stringify(second.data));
 
-  const first = roomNamed(second.data, 'المبيعات');
+  const first = roomNamed(second.data, 'مبيعات تجريبي');
   const seated = await request(`/offices/${first.id}/seats/${first.seats[0].id}`, {
     method: 'PATCH',
     cookie: facilitiesCookie,
@@ -281,7 +334,7 @@ test('one person, one desk — seating somebody empties where they were', async 
   });
   assert.equal(seated.status, 200);
 
-  const bigRoom = roomNamed(seated.data, 'مبيعات كبير');
+  const bigRoom = roomNamed(seated.data, 'مبيعات تجريبي كبير');
   const moved = await request(`/offices/${bigRoom.id}/seats/${bigRoom.seats[0].id}`, {
     method: 'PATCH',
     cookie: facilitiesCookie,
@@ -295,17 +348,17 @@ test('one person, one desk — seating somebody empties where they were', async 
     office.seats.filter((seat) => seat.userId === member.id)
   );
   assert.equal(everywhere.length, 1);
-  assert.equal(roomNamed(moved.data, 'المبيعات').counts.occupied, 0);
-  assert.equal(roomNamed(moved.data, 'مبيعات كبير').counts.occupied, 1);
+  assert.equal(roomNamed(moved.data, 'مبيعات تجريبي').counts.occupied, 0);
+  assert.equal(roomNamed(moved.data, 'مبيعات تجريبي كبير').counts.occupied, 1);
 
   const mine = await request('/offices/me', { cookie: memberCookie });
   assert.equal(mine.status, 200);
-  assert.equal(mine.data.office.nameAr, 'مبيعات كبير');
+  assert.equal(mine.data.office.nameAr, 'مبيعات تجريبي كبير');
 });
 
 test('a desk cannot be placed on a plan of a room nobody has measured', async () => {
   const plan = (await request('/offices', { cookie: facilitiesCookie })).data;
-  const room = roomNamed(plan, 'مبيعات كبير');
+  const room = roomNamed(plan, 'مبيعات تجريبي كبير');
   assert.equal(room.dimensions, null);
   assert.equal(room.plan.measured, false);
   assert.equal(room.plan.ready, false, 'an unmeasured room is never drawn to scale');
@@ -341,22 +394,22 @@ test('a desk cannot be placed on a plan of a room nobody has measured', async ()
     body: { point: { x: 1.5, y: 1 } },
   });
   assert.equal(half.status, 200);
-  assert.equal(roomNamed(half.data, 'مبيعات كبير').plan.ready, false);
-  assert.equal(roomNamed(half.data, 'مبيعات كبير').plan.placed, 1);
+  assert.equal(roomNamed(half.data, 'مبيعات تجريبي كبير').plan.ready, false);
+  assert.equal(roomNamed(half.data, 'مبيعات تجريبي كبير').plan.placed, 1);
 
-  const rest = roomNamed(half.data, 'مبيعات كبير').seats.find((seat) => !seat.point);
+  const rest = roomNamed(half.data, 'مبيعات تجريبي كبير').seats.find((seat) => !seat.point);
   const full = await request(`/offices/${room.id}/seats/${rest.id}`, {
     method: 'PATCH',
     cookie: facilitiesCookie,
     body: { point: { x: 4, y: 2.5 } },
   });
   assert.equal(full.status, 200);
-  assert.equal(roomNamed(full.data, 'مبيعات كبير').plan.ready, true);
+  assert.equal(roomNamed(full.data, 'مبيعات تجريبي كبير').plan.ready, true);
 });
 
 test('a room can be reshaped, and its shape decides what counts as inside it', async () => {
   const plan = (await request('/offices', { cookie: facilitiesCookie })).data;
-  const room = roomNamed(plan, 'مبيعات كبير');
+  const room = roomNamed(plan, 'مبيعات تجريبي كبير');
   assert.deepEqual(room.dimensions, { width: 6, height: 4 });
   assert.equal(room.shape, null, 'an unshaped room is a plain rectangle');
 
@@ -376,11 +429,11 @@ test('a room can be reshaped, and its shape decides what counts as inside it', a
     },
   });
   assert.equal(shaped.status, 200, JSON.stringify(shaped.data));
-  assert.equal(roomNamed(shaped.data, 'مبيعات كبير').shape.length, 6);
+  assert.equal(roomNamed(shaped.data, 'مبيعات تجريبي كبير').shape.length, 6);
 
   // (5, 3.5) is inside the bounding box and outside the room. A bounding-box
   // check would have accepted it; the outline is what refuses.
-  const seat = roomNamed(shaped.data, 'مبيعات كبير').seats[0];
+  const seat = roomNamed(shaped.data, 'مبيعات تجريبي كبير').seats[0];
   const cutCorner = await request(`/offices/${room.id}/seats/${seat.id}`, {
     method: 'PATCH',
     cookie: facilitiesCookie,
@@ -410,7 +463,7 @@ test('a room can be reshaped, and its shape decides what counts as inside it', a
     },
   });
   assert.equal(past.status, 200);
-  assert.deepEqual(roomNamed(past.data, 'مبيعات كبير').shape, [
+  assert.deepEqual(roomNamed(past.data, 'مبيعات تجريبي كبير').shape, [
     { x: 0, y: 0 },
     { x: 6, y: 0 },
     { x: 6, y: 4 },
@@ -431,7 +484,7 @@ test('a room can be reshaped, and its shape decides what counts as inside it', a
     body: { dimensions: null },
   });
   assert.equal(unmeasured.status, 200);
-  assert.equal(roomNamed(unmeasured.data, 'مبيعات كبير').shape, null);
+  assert.equal(roomNamed(unmeasured.data, 'مبيعات تجريبي كبير').shape, null);
 
   // Put the room back so the deletion test still finds it measured.
   await request(`/offices/${room.id}`, {
@@ -443,7 +496,7 @@ test('a room can be reshaped, and its shape decides what counts as inside it', a
 
 test('a room holding somebody cannot be deleted out from under them', async () => {
   const plan = (await request('/offices', { cookie: facilitiesCookie })).data;
-  const room = roomNamed(plan, 'مبيعات كبير');
+  const room = roomNamed(plan, 'مبيعات تجريبي كبير');
 
   const refused = await request(`/offices/${room.id}`, {
     method: 'DELETE',
@@ -452,11 +505,11 @@ test('a room holding somebody cannot be deleted out from under them', async () =
   assert.equal(refused.status, 409);
   assert.equal(refused.data.error, 'office_occupied');
 
-  const empty = roomNamed(plan, 'المبيعات');
+  const empty = roomNamed(plan, 'مبيعات تجريبي');
   const removed = await request(`/offices/${empty.id}`, {
     method: 'DELETE',
     cookie: facilitiesCookie,
   });
   assert.equal(removed.status, 200);
-  assert.equal(roomNamed(removed.data, 'المبيعات'), undefined);
+  assert.equal(roomNamed(removed.data, 'مبيعات تجريبي'), undefined);
 });
