@@ -887,6 +887,10 @@ const STRINGS = {
     ar: 'تسجيل وتعديل بنود الإدارة',
     en: 'File and edit management items',
   },
+  'perm.offices.manage': {
+    ar: 'تعديل المكاتب ونقل الموظفين بينها',
+    en: 'Edit rooms and move people between desks',
+  },
   'perm.tasks.archive': { ar: 'أرشفة المهام وإعادتها', en: 'Archive tasks and restore them' },
   'perm.tasks.delete_any': { ar: 'حذف المؤرشف نهائياً', en: 'Permanently delete archived tasks' },
   'perm.tasks.export': { ar: 'تصدير مهام الفريق', en: 'Export team tasks' },

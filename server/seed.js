@@ -6,7 +6,7 @@
  */
 
 import crypto from 'node:crypto';
-import { create, find, getStore } from './store.js';
+import { create, createIfAbsent, find, findOne, getStore } from './store.js';
 import { hashPassword } from './auth.js';
 import {
   DEFAULT_DEPARTMENT,
@@ -15,6 +15,7 @@ import {
 } from '../shared/departments.js';
 import { DEFAULT_ORGANIZATION_ID, organizationOf } from '../shared/organization.js';
 import { PERMISSIONS, permissionsFor } from '../shared/permissions.js';
+import { inventoryDocuments, inventoryTally } from '../shared/officeInventory.js';
 import {
   TASK_WORKFLOW_PERMISSION_VERSION,
   TASK_WORKFLOW_ROLES,
@@ -267,8 +268,49 @@ export async function seed() {
     console.log(`${line}\n`);
   }
 
+  await seedOfficeInventory();
   await migrateOrganisationAndTasks(store);
   return store;
+}
+
+/** Marks the inventory as delivered, so a redeploy is not a second delivery. */
+const OFFICE_SEED_KEY = 'offices.inventorySeeded';
+
+/**
+ * Hand over the office inventory, once.
+ *
+ * Unlike `DEFAULT_APPS` above, this is not configuration that should be topped
+ * up on every boot. It is a snapshot of a building, and the whole point of the
+ * module is that somebody corrects it: a room deleted on Monday must not
+ * reappear on Wednesday's deploy, and a desk removed must stay removed. So the
+ * delivery is recorded in `settings` and never repeated.
+ *
+ * The rooms arrive unmeasured, unshaped and unplaced on purpose. Those are the
+ * three things only somebody standing in the building can answer, and guessing
+ * them would mean whoever knows the floor starts by undoing a guess.
+ */
+async function seedOfficeInventory() {
+  if (await findOne('settings', (row) => row.id === OFFICE_SEED_KEY)) return;
+
+  // An installation that already has rooms — one where the import script was
+  // run by hand — is not a fresh one. Record the delivery and leave it alone.
+  const existing = await find('offices');
+  if (existing.length > 0) {
+    await create('settings', { id: OFFICE_SEED_KEY, value: 'pre-existing' });
+    return;
+  }
+
+  const { offices, seats } = inventoryDocuments(DEFAULT_ORGANIZATION_ID);
+  for (const office of offices) await createIfAbsent('offices', office);
+  for (const seat of seats) await createIfAbsent('officeSeats', seat);
+  await create('settings', { id: OFFICE_SEED_KEY, value: new Date().toISOString() });
+
+  const tally = inventoryTally();
+  const line = '─'.repeat(58);
+  console.log(`\n${line}\n  Office inventory delivered — ${tally.rooms} rooms, ${tally.units} desks`);
+  console.log(`  ${tally.named} named · ${tally.held} held for a joiner · ${tally.unnamed} counted but unnamed`);
+  console.log('  Rooms arrive unmeasured; measure and arrange them from Offices → Edit.');
+  console.log(`${line}\n`);
 }
 
 /**
