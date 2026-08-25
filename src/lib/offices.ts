@@ -11,8 +11,14 @@ import { api } from './api';
 
 export type SeatState = 'occupied' | 'free' | 'reserved' | 'blocked';
 export type OfficeKind = 'workroom' | 'meeting' | 'prayer' | 'other';
-/** How a room is drawn: the schematic grid, or the room to scale. */
-export type OfficeLayout = 'grid' | 'plan';
+/** How a room is drawn: the schematic grid, the room to scale, or in 3D. */
+export type OfficeLayout = 'grid' | 'plan' | 'space';
+export type ShapePreset = 'rectangle' | 'l_shape' | 'l_mirror' | 't_shape';
+
+export interface Point {
+  x: number;
+  y: number;
+}
 
 export interface SeatOccupant {
   id: string;
@@ -28,7 +34,7 @@ export interface OfficeSeat {
   label: string;
   gridIndex: number | null;
   /** Metres from the room's start corner. Null until somebody places it. */
-  point: { x: number; y: number } | null;
+  point: Point | null;
   state: SeatState;
   note: string | null;
   userId: string | null;
@@ -62,6 +68,8 @@ export interface Office {
   kind: OfficeKind;
   columns: number | null;
   dimensions: { width: number; height: number } | null;
+  /** The room's outline in metres. `null` means an ordinary rectangle. */
+  shape: Point[] | null;
   note: string | null;
   order: number;
   seats: OfficeSeat[];
@@ -94,7 +102,8 @@ export interface OfficeBootstrap {
   seatStates: Array<{ id: SeatState; ar: string; en: string }>;
   settableStates: SeatState[];
   departments: Array<{ id: string; ar: string; en: string; color: string }>;
-  limits: { seatsPerOffice: number; seatsPerRequest: number };
+  shapes: Array<{ id: ShapePreset; ar: string; en: string }>;
+  limits: { seatsPerOffice: number; seatsPerRequest: number; shapePoints: number };
   canManage: boolean;
 }
 
@@ -108,7 +117,7 @@ export interface SeatPatch {
   label?: string;
   note?: string | null;
   gridIndex?: number;
-  point?: { x: number; y: number } | null;
+  point?: Point | null;
   status?: Exclude<SeatState, 'occupied'>;
   userId?: string | null;
   occupantName?: string | null;
@@ -122,6 +131,7 @@ export interface OfficePatch {
   kind?: OfficeKind;
   columns?: number | null;
   dimensions?: { width: number; height: number } | null;
+  shape?: Point[] | null;
   note?: string | null;
   order?: number;
 }

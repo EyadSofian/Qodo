@@ -177,6 +177,39 @@ const STRINGS = {
     en: 'Names from the inventory. Open a desk and link it to an account so the name stays current.',
   },
 
+  'offices.edit': { ar: 'تعديل', en: 'Edit' },
+  'offices.editingOn': { ar: 'إنهاء التعديل', en: 'Done editing' },
+  'offices.editingHint': {
+    ar: 'التعديل مباشر على البطاقات: الاسم والقسم والمقاسات وعدد الوحدات. كل تغيير يُحفظ لوحده.',
+    en: 'Edit on the cards themselves: name, department, size and desk count. Each change saves on its own.',
+  },
+  'offices.departmentUnset': { ar: 'لم يُحدَّد بعد', en: 'Not decided yet' },
+  'offices.missing': { ar: 'ناقصة', en: 'missing' },
+  'offices.measureRoom': { ar: 'قِس الغرفة', en: 'Measure the room' },
+  'offices.deleteRoom': { ar: 'حذف المكتب', en: 'Delete room' },
+  'offices.cannotDeleteRoom': {
+    ar: 'في ناس قاعدة هنا. انقلهم الأول.',
+    en: 'People are still seated here. Move them first.',
+  },
+  'offices.shape': { ar: 'شكل الغرفة', en: 'Room shape' },
+  'offices.shapeHint': {
+    ar: 'اختر شكلاً قريباً، وبعدين اسحب الأركان على المخطط لحد ما تطابق الجدران.',
+    en: 'Pick the nearest shape, then drag the corners on the plan onto the real walls.',
+  },
+  'offices.corner': { ar: 'الركن {n}', en: 'Corner {n}' },
+  'offices.viewSpace': { ar: 'ثلاثي الأبعاد', en: '3D' },
+  'offices.rotate': { ar: 'إدارة المشهد', en: 'Rotate the view' },
+  'offices.spaceHint': {
+    ar: 'المشهد للعرض فقط — للسحب والتوزيع ارجع لعرض المقاسات.',
+    en: 'The 3D view is for looking; go back to the scaled view to drag desks.',
+  },
+  'offices.dragHint': {
+    ar: 'اسحب أي وحدة لمكانها في الغرفة. وفي وضع التعديل تقدر تسحب أركان الغرفة نفسها.',
+    en: 'Drag a desk to where it sits. In edit mode the room\u2019s own corners drag too.',
+  },
+  'offices.openQuestion': { ar: 'سؤال لم يُجَب بعد', en: 'Unanswered question' },
+  'offices.markAnswered': { ar: 'تم الرد', en: 'Answered' },
+
   'offices.mySeat': { ar: 'مكانك', en: 'Where you sit' },
   'offices.mySeatNone': { ar: 'لسه مفيش وحدة مسجّلة باسمك.', en: 'No desk is recorded for you yet.' },
   'offices.openPlan': { ar: 'فتح المخطط', en: 'Open the plan' },
