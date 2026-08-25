@@ -24,6 +24,7 @@ _One hub that launches, embeds and links every Engosoft app._
 - **مساعد ذكي** — محادثة تقرأ بيانات المساحة الحيّة وتجيب بأرقام حقيقية. [كيف يعمل](docs/ASSISTANT.md)
 - **Qodo Mail** — رسائل رسمية، وقنوات الأقسام، ومحادثات خاصة داخلية مع دخول اختياري بحساب Google وAI مساعد. [التفاصيل](docs/QODO_MAIL.md)
 - **Qodo Calendar** — اجتماعات ومواعيد بدعوات ورد من كل مدعو، وحجز اجتماع من داخل محادثة البريد. [التفاصيل](docs/QODO_CALENDAR.md)
+- **المكاتب** — مخطط الجلوس: مين قاعد فين وإيه الفاضي، تخطيطياً أو بمقاسات الغرف الحقيقية. [التفاصيل](docs/offices-and-seating.md)
 - **روابط دعوة ذاتية** — الموظف يفتح الرابط وينضم بحساب Google أو بكلمة مرور، ويظل الطلب بانتظار موافقة المدير.
 - **بحث موحّد** — `Ctrl K` يبحث في التطبيقات والمهام والموظفين دفعة واحدة.
 - **إشعارات على الهاتف** — عند إسناد مهمة، يصل إشعار حتى والمساحة مغلقة.
@@ -43,7 +44,7 @@ _One hub that launches, embeds and links every Engosoft app._
 | تحليلات خدمة العملاء | [chatwootdashpoard-production.up.railway.app](https://chatwootdashpoard-production.up.railway.app/) | [chatwoot_dashpoard](https://github.com/EyadSofian/chatwoot_dashpoard) |
 | شات وت | [chat.engosoft.com](https://chat.engosoft.com) | — |
 
-**Qodo Mail** و**Qodo Calendar** و**المهام** و**المستخدمون** و**الإعدادات** وحدات داخل المساحة نفسها.
+**Qodo Mail** و**Qodo Calendar** و**المكاتب** و**المهام** و**المستخدمون** و**الإعدادات** وحدات داخل المساحة نفسها.
 
 أي تطبيق جديد يُضاف من **الإعدادات ← التطبيقات**: اسم ورابط وأيقونة ولون — ويظهر
 في الشبكة فوراً.

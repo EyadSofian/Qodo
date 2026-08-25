@@ -26,6 +26,8 @@ export const PERMISSIONS = {
   TASKS_EXPORT: 'tasks.export',
   MANAGEMENT_VIEW: 'management.view',
   MANAGEMENT_MANAGE: 'management.manage',
+  // Reading the seating plan needs no key at all — see the note below.
+  OFFICES_MANAGE: 'offices.manage',
   USERS_VIEW: 'users.view',
   USERS_MANAGE: 'users.manage',
   SETTINGS_MANAGE: 'settings.manage',
@@ -60,6 +62,22 @@ const AUTHORITY_PERMISSIONS = [
  * management desk", and no role can express that. So both keys are granted one
  * person at a time through the permission override, and only `admin` carries
  * them by virtue of holding everything.
+ */
+
+/**
+ * The seating plan has a manage key and no view key, on purpose.
+ *
+ * Reading it is gated by nothing but a session, exactly as Qodo Calendar is: a
+ * plan the staff cannot open does not answer "where does she sit". A view
+ * permission would also have been born locked — `permissionsFor` freezes an
+ * explicit `user.permissions` array on the day an administrator ticks the
+ * boxes, so a key added to a role afterwards never reaches anybody carrying
+ * one.
+ *
+ * `offices.manage` — moving a person from one desk to another — belongs to no
+ * role for the same reason `management.view` does not: being a department
+ * manager is not what makes somebody the person who runs the floor. It is
+ * granted one person at a time, and `admin` holds it by holding everything.
  */
 
 /**

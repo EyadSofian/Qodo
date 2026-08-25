@@ -398,6 +398,52 @@ const ERRORS: Record<string, { ar: string; en: string }> = {
   mail_ai_failed: { ar: 'تعذّر تشغيل AI على المحادثة. حاول مرة أخرى.', en: 'AI could not process this conversation. Try again.' },
   invalid_task_date: { ar: 'تاريخ المهمة غير صالح.', en: 'The task date is not valid.' },
   forbidden: { ar: 'ليست لديك صلاحية على هذا الإجراء.', en: 'You do not have permission for that.' },
+
+  /* Seating plan. */
+  office_name_required: { ar: 'اكتب اسم المكتب.', en: 'Give the room a name.' },
+  office_zone_required: { ar: 'اختر المنطقة اللي فيها المكتب.', en: 'Choose the zone the room is in.' },
+  unknown_department: { ar: 'القسم غير معروف.', en: 'That department is unknown.' },
+  unknown_kind: { ar: 'نوع الغرفة غير معروف.', en: 'That room kind is unknown.' },
+  invalid_columns: { ar: 'عدد الأعمدة لازم يكون بين 1 و24.', en: 'Columns must be between 1 and 24.' },
+  invalid_count: { ar: 'اكتب عدد وحدات صحيح.', en: 'Enter a valid number of desks.' },
+  invalid_dimensions: {
+    ar: 'مقاسات الغرفة لازم تكون بالمتر بين 1 و60.',
+    en: 'Room dimensions must be between 1 and 60 metres.',
+  },
+  room_not_measured: {
+    ar: 'قِس الغرفة الأول — الوحدة مش ممكن تتحط على مخطط بلا مقاسات.',
+    en: 'Measure the room first — a desk cannot be placed on an unscaled plan.',
+  },
+  point_outside_room: {
+    ar: 'المكان ده بره حدود الغرفة.',
+    en: 'That spot is outside the room.',
+  },
+  invalid_point: { ar: 'إحداثيات الوحدة غير صالحة.', en: 'That desk position is not valid.' },
+  invalid_grid_index: { ar: 'ترتيب الوحدة غير صالح.', en: 'That desk order is not valid.' },
+  label_required: { ar: 'اكتب رقم الوحدة.', en: 'Give the desk a label.' },
+  unknown_status: { ar: 'حالة الوحدة غير معروفة.', en: 'That desk state is unknown.' },
+  one_occupant_only: {
+    ar: 'الوحدة تقعد شخصاً واحداً: اختر حساباً أو اكتب اسماً، مش الاتنين.',
+    en: 'A desk seats one person: pick an account or type a name, not both.',
+  },
+  seat_blocked: {
+    ar: 'الوحدة دي متعلَّمة إنها غير صالحة للجلوس. شيل العلامة الأول.',
+    en: 'This desk is marked out of use. Clear that first.',
+  },
+  seat_occupied: {
+    ar: 'في حد قاعد على الوحدة دي. فضّيها الأول.',
+    en: 'Somebody is sitting here. Empty the desk first.',
+  },
+  office_occupied: {
+    ar: 'المكتب فيه ناس قاعدة. انقلهم الأول قبل ما تحذفه.',
+    en: 'People are still seated in this room. Move them before deleting it.',
+  },
+  office_full: { ar: 'وصلت الحد الأقصى لعدد الوحدات في المكتب.', en: 'This room is at its desk limit.' },
+  too_many_seats: {
+    ar: 'عدد كبير في طلب واحد. قسّمه على أكتر من مرة.',
+    en: 'Too many desks in one request. Add them in smaller batches.',
+  },
+  unknown_user: { ar: 'الموظف ده مش موجود أو حسابه موقوف.', en: 'That person has no active account.' },
   unauthenticated: { ar: 'يجب تسجيل الدخول أولاً.', en: 'You need to sign in first.' },
   not_found: { ar: 'لم يتم العثور على هذا العنصر.', en: 'That item was not found.' },
   push_not_configured: {

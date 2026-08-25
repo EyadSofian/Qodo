@@ -67,6 +67,120 @@ const STRINGS = {
     en: 'New password must be at least 8 characters.',
   },
 
+  /* ── offices · the seating plan ──────────────────────────── */
+  'offices.title': { ar: 'المكاتب', en: 'Offices' },
+  'offices.subtitle': {
+    ar: 'مين قاعد فين، وإيه الوحدات الفاضية في كل مكتب.',
+    en: 'Who sits where, and which desks are free in each room.',
+  },
+  'offices.viewGrid': { ar: 'تخطيطي', en: 'Schematic' },
+  'offices.viewPlan': { ar: 'مخطط بالمقاسات', en: 'To scale' },
+  'offices.statUnits': { ar: 'إجمالي الوحدات', en: 'Total desks' },
+  'offices.statOccupied': { ar: 'مشغولة', en: 'Occupied' },
+  'offices.statFree': { ar: 'متاحة', en: 'Available' },
+  'offices.statOccupancy': { ar: 'نسبة الإشغال', en: 'Occupancy' },
+  'offices.emptiest': {
+    ar: 'أكبر فراغ: {room} ({n})',
+    en: 'Most empty: {room} ({n})',
+  },
+  'offices.zoneCounts': {
+    ar: '{rooms} غرف · {units} وحدة · {occupied} مشغولة · {free} متاحة',
+    en: '{rooms} rooms · {units} desks · {occupied} occupied · {free} available',
+  },
+  'offices.freeHere': { ar: '{n} متاحة', en: '{n} available' },
+  'offices.noDesks': {
+    ar: 'غرفة بلا وحدات — لا تدخل حساب الإشغال.',
+    en: 'A room with no desks — it stays out of the occupancy figures.',
+  },
+  'offices.planned': { ar: 'مُخطَّط', en: 'Planned' },
+  'offices.metres': { ar: 'متر', en: 'm' },
+  'offices.notMeasured': {
+    ar: 'الغرفة لسه مش متقاسة — التخطيطي هو المعروض.',
+    en: 'This room is not measured yet — showing the schematic.',
+  },
+  'offices.notPlaced': {
+    ar: 'اتحطّت {placed} وحدة من {total} على المخطط.',
+    en: '{placed} of {total} desks placed on the plan.',
+  },
+
+  'offices.state.occupied': { ar: 'مشغولة', en: 'Occupied' },
+  'offices.state.free': { ar: 'متاحة', en: 'Available' },
+  'offices.state.reserved': { ar: 'محجوزة لموظف جديد', en: 'Reserved for a new joiner' },
+  'offices.state.blocked': { ar: 'غير صالحة للجلوس', en: 'Out of use' },
+
+  'offices.emptyTitle': { ar: 'لسه مفيش مكاتب مسجّلة.', en: 'No rooms recorded yet.' },
+  'offices.emptyBody': {
+    ar: 'أول ما تتسجّل المكاتب هتلاقيها هنا.',
+    en: 'Rooms will appear here once somebody records them.',
+  },
+  'offices.emptyBodyManage': {
+    ar: 'ابدأ بإضافة مكتب وحدّد عدد وحداته.',
+    en: 'Start by adding a room and how many desks it holds.',
+  },
+
+  'offices.addRoom': { ar: 'إضافة مكتب', en: 'Add a room' },
+  'offices.editRoom': { ar: 'تعديل المكتب', en: 'Edit room' },
+  'offices.roomName': { ar: 'اسم المكتب', en: 'Room name' },
+  'offices.zone': { ar: 'المنطقة', en: 'Zone' },
+  'offices.zoneHint': { ar: 'الدور أو المبنى، زي «مكتب 1».', en: 'The floor or building, e.g. "Office 1".' },
+  'offices.department': { ar: 'القسم', en: 'Department' },
+  'offices.kind': { ar: 'نوع الغرفة', en: 'Room kind' },
+  'offices.deskCount': { ar: 'عدد الوحدات', en: 'Desks' },
+  'offices.deskCountHint': {
+    ar: 'تقدر تزوّد وتقلّل بعدين من داخل المكتب.',
+    en: 'You can add or remove desks later from the room itself.',
+  },
+  'offices.dimensions': { ar: 'مقاسات الغرفة (متر)', en: 'Room size (metres)' },
+  'offices.dimensionsHint': {
+    ar: 'سيبها فاضية لحد ما الغرفة تتقاس — التخطيطي شغّال من غيرها.',
+    en: 'Leave empty until the room is measured — the schematic works without it.',
+  },
+  'offices.note': { ar: 'ملاحظة', en: 'Note' },
+  'offices.noteHint': {
+    ar: 'قرار متفق عليه لسه ماتنفذش — مش الحالة الحالية.',
+    en: 'A decision agreed but not carried out yet — not the current state.',
+  },
+  'offices.addDesk': { ar: 'إضافة وحدة', en: 'Add a desk' },
+  'offices.removeDesk': { ar: 'حذف الوحدة', en: 'Remove desk' },
+  'offices.cannotRemoveSeat': {
+    ar: 'في حد قاعد عليها. فضّيها الأول.',
+    en: 'Somebody is sitting here. Empty it first.',
+  },
+
+  'offices.seatPerson': { ar: 'اقعِد موظفاً', en: 'Seat a colleague' },
+  'offices.seatPersonHint': {
+    ar: 'الربط بحساب هو اللي يخلّي الاسم يتحدّث لوحده ويمنع تكراره في مكتبين.',
+    en: 'Linking an account keeps the name current and stops one person appearing in two rooms.',
+  },
+  'offices.seatName': { ar: 'أو اكتب اسماً', en: 'Or type a name' },
+  'offices.seatNameHint': {
+    ar: 'لمن ليس له حساب في المساحة بعد.',
+    en: 'For somebody with no workspace account yet.',
+  },
+  'offices.seatState': { ar: 'حالة الوحدة', en: 'Desk state' },
+  'offices.clearSeat': { ar: 'تفضية الوحدة', en: 'Empty this desk' },
+  'offices.openProfile': { ar: 'فتح الملف الشخصي', en: 'Open profile' },
+  'offices.readOnly': {
+    ar: 'العرض متاح للجميع، والتعديل لمن يملك صلاحية المكاتب.',
+    en: 'Anyone may read the plan; changing it needs the offices permission.',
+  },
+  'offices.placeOnPlan': { ar: 'حدّد مكانها على المخطط', en: 'Place on the plan' },
+  'offices.movePlacement': { ar: 'غيّر مكانها على المخطط', en: 'Move on the plan' },
+
+  'offices.unlinkedTitle': { ar: '{n} اسم غير مربوط بحساب', en: '{n} names with no account' },
+  'offices.unlinkedBody': {
+    ar: 'أسماء جات مع الجرد ولسه ماتربطتش بحساب في المساحة.',
+    en: 'Names that came with the inventory and were never linked to an account.',
+  },
+  'offices.unlinkedBodyManage': {
+    ar: 'أسماء جات مع الجرد. اضغط على وحدة الشخص واربطها بحسابه علشان الاسم يفضل متحدّث.',
+    en: 'Names from the inventory. Open a desk and link it to an account so the name stays current.',
+  },
+
+  'offices.mySeat': { ar: 'مكانك', en: 'Where you sit' },
+  'offices.mySeatNone': { ar: 'لسه مفيش وحدة مسجّلة باسمك.', en: 'No desk is recorded for you yet.' },
+  'offices.openPlan': { ar: 'فتح المخطط', en: 'Open the plan' },
+
   /* ── shell ───────────────────────────────────────────────── */
   'shell.apps': { ar: 'التطبيقات', en: 'Apps' },
   'shell.allApps': { ar: 'جميع التطبيقات', en: 'All apps' },
@@ -117,6 +231,8 @@ const STRINGS = {
   'search.typeApp': { ar: 'تطبيق', en: 'App' },
   'search.typeTask': { ar: 'مهمة', en: 'Task' },
   'search.typeUser': { ar: 'موظف', en: 'Person' },
+  'search.typeOffice': { ar: 'مكتب', en: 'Room' },
+  'search.typeSeat': { ar: 'وحدة', en: 'Desk' },
 
   /* ── launcher ────────────────────────────────────────────── */
   'launcher.goodMorning': { ar: 'صباح الخير', en: 'Good morning' },

@@ -31,6 +31,7 @@ import pushRoutes from './routes/push.js';
 import eventRoutes from './routes/events.js';
 import mailRoutes from './routes/mail.js';
 import calendarRoutes from './routes/calendar.js';
+import officeRoutes from './routes/offices.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DIST = path.join(__dirname, '..', 'dist');
@@ -72,6 +73,9 @@ app.use('/api/mail', mailRoutes);
 // Meetings and appointments. Every member has one; what an entry reaches is
 // decided per entry, not by role.
 app.use('/api/calendar', calendarRoutes);
+// The seating plan. Reading it needs a session and nothing more; moving anyone
+// needs `offices.manage`, which belongs to no role.
+app.use('/api/offices', officeRoutes);
 
 app.get('/api/health', async (_req, res) => {
   const store = await getStore();

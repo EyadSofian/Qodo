@@ -4,6 +4,9 @@ import { requireAuth } from '../auth.js';
 import { PERMISSIONS, can, canOpenApp } from '../../shared/permissions.js';
 import { DEFAULT_DEPARTMENT, stageLabel } from '../../shared/departments.js';
 import { livePredicate, visiblePeople } from '../taskAccess.js';
+import { officesOf, seatsOf } from '../offices.js';
+import { organizationOf } from '../../shared/organization.js';
+import { seatState } from '../../shared/offices.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -83,8 +86,57 @@ router.get('/', async (req, res) => {
     }
   }
 
+  // Rooms and desks. No permission gate — the seating plan is readable by
+  // anybody with a session, and "where does she sit" is the question this box
+  // is most often opened for. A desk matches on the name written on it, so
+  // searching a colleague finds their desk even when they have no account.
+  {
+    const organizationId = organizationOf(req.user);
+    const [offices, seats] = await Promise.all([officesOf(organizationId), seatsOf(organizationId)]);
+    const roomById = new Map(offices.map((office) => [office.id, office]));
+
+    for (const office of offices) {
+      if (!matches(office.nameAr, office.nameEn, office.zone)) continue;
+      const mine = seats.filter((seat) => seat.officeId === office.id);
+      const free = mine.filter((seat) => seatState(seat) === 'free').length;
+      results.push({
+        type: 'office',
+        id: office.id,
+        title: lang === 'en' && office.nameEn ? office.nameEn : office.nameAr,
+        subtitle:
+          lang === 'en'
+            ? `${office.zone} · ${free} of ${mine.length} available`
+            : `${office.zone} · ${free} متاحة من ${mine.length}`,
+        route: '/offices',
+      });
+    }
+
+    // Indexed once rather than a store read per desk — a hundred desks would
+    // otherwise be a hundred scans of the users collection on every keystroke.
+    const everyone = new Map(
+      (await find('users', (u) => organizationOf(u) === organizationId)).map((u) => [u.id, u])
+    );
+    for (const seat of seats) {
+      const person = seat.userId ? everyone.get(seat.userId) : null;
+      const name = person?.name ?? seat.occupantName;
+      if (!name || !matches(name)) continue;
+      const office = roomById.get(seat.officeId);
+      if (!office) continue;
+      results.push({
+        type: 'seat',
+        id: seat.id,
+        title: name,
+        subtitle:
+          lang === 'en'
+            ? `Desk ${seat.label} · ${office.nameEn || office.nameAr} · ${office.zone}`
+            : `وحدة ${seat.label} · ${office.nameAr} · ${office.zone}`,
+        route: '/offices',
+      });
+    }
+  }
+
   // Apps first — a launcher's job is launching.
-  const weight = { app: 0, task: 1, user: 2 };
+  const weight = { app: 0, seat: 1, office: 2, task: 3, user: 4 };
   results.sort((a, b) => {
     const exact = Number(b.title.toLowerCase().startsWith(query)) -
       Number(a.title.toLowerCase().startsWith(query));

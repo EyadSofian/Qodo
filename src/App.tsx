@@ -18,6 +18,7 @@ import { Profile } from './pages/Profile';
 import { Settings } from './pages/Settings';
 import { Mail } from './pages/Mail';
 import { Calendar } from './pages/Calendar';
+import { Offices } from './pages/Offices';
 
 export default function App() {
   return (
@@ -65,6 +66,7 @@ function Gate() {
         <Route path="/tasks" element={<Tasks />} />
         <Route path="/mail" element={<Mail />} />
         <Route path="/calendar" element={<Calendar />} />
+        <Route path="/offices" element={<Offices />} />
         {/* The route exists for everybody; the API is what refuses. Hiding it
             from the router instead would mean a bookmarked link lands on the
             launcher with no explanation. */}
