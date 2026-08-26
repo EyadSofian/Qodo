@@ -103,6 +103,16 @@ export const api = {
  * table so an added endpoint error and its wording land in one diff.
  */
 const ERRORS: Record<string, { ar: string; en: string }> = {
+  hr_file_empty: { ar: 'ملف Excel فارغ.', en: 'The Excel file is empty.' },
+  hr_file_too_large: { ar: 'ملف Excel أكبر من الحد المسموح (20MB).', en: 'The Excel file is larger than 20MB.' },
+  hr_file_unreadable: { ar: 'تعذّر قراءة ملف Excel. تأكد أنه ملف xlsx سليم.', en: 'The workbook could not be read. Check that it is a valid xlsx file.' },
+  hr_file_type_invalid: { ar: 'البوت يقبل ملفات xlsx فقط.', en: 'The bot accepts xlsx files only.' },
+  hr_source_unknown: { ar: 'لم أتعرف على نوع شيت HR من العناوين.', en: 'The HR workbook type could not be detected from its headers.' },
+  hr_source_mismatch: { ar: 'الشيت المرفوع لا يطابق نوع المصدر المختار.', en: 'The workbook does not match the selected source.' },
+  hr_dataset_missing: { ar: 'ارفع شيت المصدر أولاً قبل التعديل.', en: 'Upload this source workbook before editing it.' },
+  hr_employee_not_found: { ar: 'لم يتم العثور على كود الموظف.', en: 'The employee code was not found.' },
+  hr_recruitment_not_found: { ar: 'طلب التوظيف غير موجود.', en: 'The recruitment request was not found.' },
+  hr_patch_empty: { ar: 'لا توجد حقول صالحة للحفظ.', en: 'There are no valid fields to save.' },
   invalid_hr_plans: { ar: 'إعدادات تشغيل HR غير صحيحة.', en: 'The HR automation settings are invalid.' },
   unknown_hr_template: { ar: 'قالب مهمة HR غير معروف أو تم تغييره.', en: 'That HR task template is unknown or has changed.' },
   hr_event_triggered: { ar: 'هذه المهمة تبدأ بحدث فعلي ولا يمكن تشغيلها بالتاريخ وحده.', en: 'This task starts from a real event and cannot be scheduled by date alone.' },

@@ -40,7 +40,7 @@ _One hub that launches, embeds and links every Engosoft app._
 | --- | --- | --- |
 | أداء الأقسام · SLA | [sla-engosoft-production.up.railway.app](https://sla-engosoft-production.up.railway.app/) | [SLA-Engosoft](https://github.com/EyadSofian/SLA-Engosoft) |
 | التسويق والمبيعات · Insights Hub | [engosoft-insights-hub-production.up.railway.app](https://engosoft-insights-hub-production.up.railway.app/) | [Engosoft-Insights-Hub](https://github.com/EyadSofian/Engosoft-Insights-Hub) |
-| الموارد البشرية · HR Suite | [engosoft-hr-production.up.railway.app](https://engosoft-hr-production.up.railway.app/) | [engosoft-hr](https://github.com/EyadSofian/engosoft-hr) |
+| الموارد البشرية · HR Suite | وحدة داخلية على `/hr` | هذا المستودع · [التفاصيل](docs/HR_MODULE.md) |
 | تحليلات خدمة العملاء | [chatwootdashpoard-production.up.railway.app](https://chatwootdashpoard-production.up.railway.app/) | [chatwoot_dashpoard](https://github.com/EyadSofian/chatwoot_dashpoard) |
 | شات وت | [chat.engosoft.com](https://chat.engosoft.com) | — |
 
@@ -128,6 +128,14 @@ _One hub that launches, embeds and links every Engosoft app._
 قواعد الخطة في [`shared/hrPeriodicTasks.js`](shared/hrPeriodicTasks.js)، وحساب
 الاستحقاق في [`shared/hrRecurrence.js`](shared/hrRecurrence.js).
 
+### ملف الموظف والمرتبات والتأمينات
+
+موديول HR الداخلي يجمع قاعدة الموظفين والمرتبات والتأمينات والضرائب والتوظيف
+والهيكل التنظيمي في شاشة واحدة، ويكوّن ملفاً موحّداً لكل موظف باستخدام كود
+الموظف. يمكن لفريق HR رفع الشيت المحدّث من الداشبورد أو من بوت تيليجرام، بينما
+يرى الموظف ملفه هو فقط، وتظل بيانات المرتب خلف صلاحية مستقلة. تفاصيل الربط
+والصلاحيات وإعداد البوت في [docs/HR_MODULE.md](docs/HR_MODULE.md).
+
 ### دورة حياة المهمة: إسناد ← قبول ← تنفيذ ← تسليم ← مراجعة ← تقييم
 
 المهمة عقد بين شخصين، وتمرّ باتجاه واحد عبر **بوابتين**:
@@ -201,6 +209,9 @@ npm start          # http://localhost:3000
 | `SESSION_SECRET` | في الإنتاج | يوقّع كوكي الجلسة. ٣٢ حرفاً عشوائياً. |
 | `SSO_SECRET` | للدخول الموحّد | القيمة نفسها في التطبيقات التابعة. [docs/SSO.md](docs/SSO.md) |
 | `DATABASE_URL` | مستحسن | Postgres. بدونه البيانات في ملف محلي. |
+| `HR_TELEGRAM_BOT_TOKEN` | للبوت فقط | توكن البوت الذي يستقبل ملفات HR المحدثة. |
+| `HR_TELEGRAM_WEBHOOK_SECRET` | للبوت فقط | سر التحقق من Webhook تيليجرام. |
+| `HR_TELEGRAM_CHAT_IDS` | في إنتاج البوت | أرقام المحادثات المسموح لها بتحديث بيانات HR. |
 | `GOOGLE_CLIENT_ID` | اختياري | دخول الموظف بحساب Google المضاف مسبقاً؛ لا يمنح Qodo صلاحية Gmail. [docs/QODO_MAIL.md](docs/QODO_MAIL.md) |
 | `OPENAI_API_KEY` | بديل اختياري | يستخدم OpenAI عندما لا تضبط خادم Qodo AI. [docs/ASSISTANT.md](docs/ASSISTANT.md) |
 | `OPENAI_MODEL` | لا | افتراضياً `gpt-4o-mini`. |

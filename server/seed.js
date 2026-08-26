@@ -109,16 +109,16 @@ export const DEFAULT_APPS = [
   },
   {
     id: 'hr',
-    kind: 'external',
+    kind: 'internal',
     nameAr: 'الموارد البشرية',
     nameEn: 'HR Suite',
-    descAr: 'التوظيف والموظفين والهيكل الوظيفي وتقييمات الأداء.',
-    url: 'https://engosoft-hr-production.up.railway.app/',
-    repo: 'https://github.com/EyadSofian/engosoft-hr',
+    descAr: 'ملف موحّد لكل موظف، الرواتب والتأمينات، التوظيف، والهيكل التنظيمي.',
+    url: '/hr',
+    repo: null,
     icon: 'people',
     color: '#0EA5A5',
     group: 'people',
-    embed: 'auto',
+    embed: 'internal',
     order: 30,
   },
   {
@@ -230,7 +230,7 @@ export async function seed() {
   for (const app of DEFAULT_APPS) {
     if (!known.has(app.id)) await create('apps', { ...app, enabled: true, builtin: true });
   }
-  await migrateTrainingAppLabels(store);
+  await migrateBuiltinApps(store);
 
   const users = await find('users');
   if (users.length === 0) {
@@ -319,7 +319,7 @@ async function seedOfficeInventory() {
  * existing installations too; editing DEFAULT_APPS alone would affect first
  * boot only and production would keep the old names forever.
  */
-async function migrateTrainingAppLabels(store) {
+async function migrateBuiltinApps(store) {
   const labels = {
     events: {
       nameAr: 'الإيفينتات',
@@ -330,6 +330,15 @@ async function migrateTrainingAppLabels(store) {
       nameAr: 'الكورسات',
       nameEn: 'Courses',
       descAr: 'التعلّم الإلكتروني: الإقبال، الاشتراكات، التقدم، ونسب الإكمال.',
+    },
+    hr: {
+      kind: 'internal',
+      nameAr: 'الموارد البشرية',
+      nameEn: 'HR Suite',
+      descAr: 'ملف موحّد لكل موظف، الرواتب والتأمينات، التوظيف، والهيكل التنظيمي.',
+      url: '/hr',
+      repo: null,
+      embed: 'internal',
     },
   };
   const apps = await find('apps');

@@ -38,6 +38,12 @@ export const COLLECTIONS = [
   // clock may generate it and who owns the generated work; the catalogue itself
   // remains versioned in code so every tenant runs the same audited plan.
   'hrTaskPlans',
+  // Imported workbooks are normalized snapshots, never committed source files.
+  // Links are kept separately so replacing a monthly sheet cannot disconnect a
+  // Qodo account from its employee profile, and every import leaves an audit row.
+  'hrDatasets',
+  'hrImportRuns',
+  'hrEmployeeLinks',
   'taskAssignments',
   'comments',
   'attachments',

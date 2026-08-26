@@ -24,6 +24,9 @@ export const PERMISSIONS = {
   TASKS_ARCHIVE: 'tasks.archive',
   TASKS_DELETE_ANY: 'tasks.delete_any',
   TASKS_EXPORT: 'tasks.export',
+  HR_VIEW: 'hr.view',
+  HR_MANAGE: 'hr.manage',
+  HR_PAYROLL: 'hr.payroll',
   MANAGEMENT_VIEW: 'management.view',
   MANAGEMENT_MANAGE: 'management.manage',
   // Reading the seating plan needs no key at all — see the note below.
