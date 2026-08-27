@@ -103,6 +103,9 @@ router.post('/telegram', async (req, res) => {
   const message = req.body?.message ?? req.body?.edited_message;
   const chatId = String(message?.chat?.id || '');
   const allowed = allowedTelegramChats();
+  if (!allowed.size && process.env.NODE_ENV === 'production') {
+    return res.status(503).json({ error: 'hr_telegram_not_configured' });
+  }
   if (allowed.size && !allowed.has(chatId)) {
     return res.status(403).json({ error: 'hr_telegram_chat_forbidden' });
   }

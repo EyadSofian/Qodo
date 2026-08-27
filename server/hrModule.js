@@ -321,7 +321,11 @@ export async function hrDashboardFor(user) {
     reconciliation: canManage ? reconciliation(state.profiles, state.positions) : null,
     telegram: canManage
       ? {
-          enabled: Boolean(process.env.HR_TELEGRAM_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN),
+          enabled: Boolean(
+            (process.env.HR_TELEGRAM_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN)
+            && process.env.HR_TELEGRAM_WEBHOOK_SECRET
+            && String(process.env.HR_TELEGRAM_CHAT_IDS || '').trim()
+          ),
           restricted: Boolean(String(process.env.HR_TELEGRAM_CHAT_IDS || '').trim()),
         }
       : null,
