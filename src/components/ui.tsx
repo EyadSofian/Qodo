@@ -10,6 +10,7 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertCircle, CheckCircle2, Loader2, X } from 'lucide-react';
+import { useI18n } from '../lib/i18n';
 import { cx, initials, readableOn } from '../lib/utils';
 
 /* ── Avatar ──────────────────────────────────────────────────────── */
@@ -59,6 +60,7 @@ export function Modal({
   footer?: ReactNode;
   width?: 'sm' | 'md' | 'lg' | 'xl';
 }) {
+  const { lang } = useI18n();
   const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -107,7 +109,7 @@ export function Modal({
       >
         <header className="flex items-center justify-between gap-3 border-b border-surface-line px-5 py-4">
           <h2 className="text-base font-bold text-ink">{title}</h2>
-          <button type="button" onClick={onClose} className="btn-quiet !min-h-9 rounded-lg p-1.5" aria-label="إغلاق">
+          <button type="button" onClick={onClose} className="btn-quiet !min-h-9 rounded-lg p-1.5" aria-label={lang === 'en' ? 'Close' : 'إغلاق'}>
             <X size={18} />
           </button>
         </header>

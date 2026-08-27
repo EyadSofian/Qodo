@@ -44,6 +44,10 @@ export const COLLECTIONS = [
   'hrDatasets',
   'hrImportRuns',
   'hrEmployeeLinks',
+  // One KPI scorecard per person, per template, per month. The measured numbers
+  // are stored; the grade is derived on read, so a corrected band never leaves
+  // stale scores behind.
+  'kpiScorecards',
   'taskAssignments',
   'comments',
   'attachments',

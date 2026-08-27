@@ -16,6 +16,7 @@ import {
   FileCheck2,
   Fingerprint,
   GitBranch,
+  Gauge,
   IdCard,
   Landmark,
   Link2,
@@ -34,6 +35,7 @@ import { api, errorMessage } from '../lib/api';
 import { useI18n } from '../lib/i18n';
 import { cx } from '../lib/utils';
 import { Avatar, EmptyState, Modal, Spinner, useToast } from '../components/ui';
+import { KPIScorecards, type KPISubject } from '../components/hr/KPIScorecards';
 import {
   HR_SOURCE_LABELS,
   type HRDashboardData,
@@ -45,13 +47,14 @@ import {
   type HRSource,
 } from '../lib/hr';
 
-type HRTab = 'overview' | 'people' | 'payroll' | 'recruitment' | 'organization' | 'imports';
+type HRTab = 'overview' | 'people' | 'payroll' | 'recruitment' | 'kpi' | 'organization' | 'imports';
 
 const TABS: Array<{ id: HRTab; ar: string; en: string; icon: typeof UsersRound }> = [
-  { id: 'overview', ar: 'غرفة التشغيل', en: 'Control room', icon: Sparkles },
+  { id: 'overview', ar: 'نظرة عامة', en: 'Overview', icon: Sparkles },
   { id: 'people', ar: 'الموظفون', en: 'People', icon: UsersRound },
   { id: 'payroll', ar: 'الرواتب', en: 'Payroll', icon: Banknote },
   { id: 'recruitment', ar: 'التوظيف', en: 'Recruitment', icon: BriefcaseBusiness },
+  { id: 'kpi', ar: 'مؤشرات الأداء', en: 'KPIs', icon: Gauge },
   { id: 'organization', ar: 'الهيكل', en: 'Organization', icon: GitBranch },
   { id: 'imports', ar: 'تحديث البيانات', en: 'Data sync', icon: Database },
 ];
@@ -138,9 +141,21 @@ export function HR() {
     );
   }
 
+  const kpiSubjects: KPISubject[] = [
+    ...data.employees.map((employee) => ({
+      id: employee.employeeCode,
+      name: employee.nameArabic || employee.nameEnglish || `#${employee.employeeCode}`,
+      type: 'employee' as const,
+    })),
+    ...data.accounts.map((account) => ({ id: account.id, name: account.name, type: 'user' as const })),
+  ];
+
   const readySources = data.datasets.filter((dataset) => dataset.importedAt).length;
   const shownTabs = TABS.filter((item) => {
-    if (!data.permissions.canViewPeople && item.id !== 'overview') return false;
+    // Someone who may only see themselves still gets the KPI desk: the endpoint
+    // returns their own scorecards and nobody else's, and their own grade is
+    // the half of this module they have the most reason to read.
+    if (!data.permissions.canViewPeople && item.id !== 'overview' && item.id !== 'kpi') return false;
     if (!data.permissions.canViewPayroll && item.id === 'payroll') return false;
     if (!data.permissions.canManage && item.id === 'imports') return false;
     return true;
@@ -148,25 +163,25 @@ export function HR() {
 
   return (
     <div className="mx-auto w-full max-w-[1500px] pb-12">
-      <section className="relative isolate overflow-hidden rounded-[28px] bg-[#082F36] px-5 py-6 text-white shadow-panel sm:px-8 sm:py-8">
+      <section className="relative isolate overflow-hidden rounded-[28px] bg-[#0B2545] px-5 py-6 text-white shadow-panel sm:px-8 sm:py-8">
         <div className="pointer-events-none absolute inset-0 opacity-80" aria-hidden="true">
-          <div className="absolute -end-24 -top-32 h-80 w-80 rounded-full border-[42px] border-[#14B8A6]/20" />
+          <div className="absolute -end-24 -top-32 h-80 w-80 rounded-full border-[42px] border-[#4A8FCB]/20" />
           <div className="absolute -bottom-36 start-1/3 h-64 w-64 rounded-full bg-[#F5821F]/15 blur-3xl" />
           <div className="absolute inset-y-0 start-0 w-1/2 bg-[linear-gradient(115deg,rgba(255,255,255,.06),transparent_70%)]" />
         </div>
         <div className="relative grid gap-7 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-end">
           <div>
-            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[11px] font-bold tracking-[0.12em] text-teal-100 backdrop-blur">
+            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[11px] font-bold tracking-[0.12em] text-brand-100 backdrop-blur">
               <Fingerprint size={14} />
-              {l('سجل موظف واحد · خمسة مصادر', 'ONE EMPLOYEE RECORD · FIVE SOURCES')}
+              {l('ملف واحد لكل موظف', 'ONE FILE PER EMPLOYEE')}
             </div>
             <h1 className="max-w-3xl text-2xl font-extrabold leading-tight sm:text-4xl">
-              {l('الموارد البشرية كغرفة تشغيل، مش أرشيف شيتات.', 'HR as an operating room, not a spreadsheet archive.')}
+              {l('كل بيانات الموظفين في مكان واحد', 'All your people data in one place')}
             </h1>
             <p className="mt-3 max-w-2xl text-sm leading-7 text-white/70 sm:text-[15px]">
               {l(
-                'الهوية الوظيفية والراتب والتأمين والتوظيف والهيكل متجمّعة حول كود الموظف، مع مصدر وتاريخ لكل تحديث.',
-                'Employment, payroll, insurance, recruitment, and structure converge on the employee code, with provenance for every update.'
+                'البيانات الوظيفية والرواتب والتأمينات والتوظيف والهيكل، كلها مربوطة بكود الموظف. وكل تحديث تعرف مصدره وتاريخه.',
+                'Records, payroll, insurance, recruitment and the org chart are all linked to the employee code — and every update shows where it came from and when.'
               )}
             </p>
           </div>
@@ -190,8 +205,8 @@ export function HR() {
               className={cx(
                 'inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl border px-3.5 text-[13px] font-bold transition-all',
                 tab === item.id
-                  ? 'border-[#0F766E] bg-[#0F766E] text-white shadow-md'
-                  : 'border-surface-line bg-white/80 text-ink-muted hover:-translate-y-0.5 hover:border-teal-300 hover:text-[#0F766E]'
+                  ? 'border-[#1D6FB8] bg-[#1D6FB8] text-white shadow-md'
+                  : 'border-surface-line bg-white/80 text-ink-muted hover:-translate-y-0.5 hover:border-brand-300 hover:text-[#1D6FB8]'
               )}
             >
               <Icon size={16} />
@@ -209,6 +224,7 @@ export function HR() {
         {tab === 'people' && <PeopleDirectory data={data} lang={lang} />}
         {tab === 'payroll' && <PayrollDesk data={data} lang={lang} />}
         {tab === 'recruitment' && <RecruitmentDesk data={data} lang={lang} onChanged={load} />}
+        {tab === 'kpi' && <KPIScorecards lang={lang} canManage={data.permissions.canManage} subjects={kpiSubjects} />}
         {tab === 'organization' && <OrganizationDesk data={data} lang={lang} />}
         {tab === 'imports' && (
           <ImportDesk data={data} lang={lang} uploading={uploading} onUpload={upload} />
@@ -251,7 +267,7 @@ function Overview({ data, lang, onOpen }: { data: HRDashboardData; lang: 'ar' | 
       <div className="card overflow-hidden p-6 sm:p-8">
         <div className="grid items-center gap-6 md:grid-cols-[1fr_auto]">
           <div>
-            <p className="text-xs font-bold text-[#0F766E]">{l('ملفك الشخصي في HR', 'Your HR profile')}</p>
+            <p className="text-xs font-bold text-[#1D6FB8]">{l('ملفك الشخصي في HR', 'Your HR profile')}</p>
             <h2 className="mt-2 text-2xl font-extrabold">{l('كل بياناتك الوظيفية في مكان واحد', 'All your employment data in one place')}</h2>
             <p className="mt-2 max-w-xl text-sm leading-7 text-ink-muted">
               {l('البيانات الشخصية والوظيفة والراتب والتأمين والمستندات لا يراها هنا إلا أنت وفريق HR المخوّل.', 'Personal, employment, payroll, insurance, and documents are visible only to you and authorised HR staff.')}
@@ -275,7 +291,7 @@ function Overview({ data, lang, onOpen }: { data: HRDashboardData; lang: 'ar' | 
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(18rem,.55fr)]">
       <div className="space-y-4">
         <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <MetricCard icon={UsersRound} label={l('إجمالي السجل', 'Employee records')} value={data.summary.employees} hint={l(`${data.summary.active} نشط`, `${data.summary.active} active`)} tone="teal" />
+          <MetricCard icon={UsersRound} label={l('إجمالي السجل', 'Employee records')} value={data.summary.employees} hint={l(`${data.summary.active} نشط`, `${data.summary.active} active`)} tone="brand" />
           <MetricCard icon={CircleDollarSign} label={l('تغطية الرواتب', 'Payroll coverage')} value={coverage(data.summary.payroll, data.summary.active)} suffix="%" hint={l(`${data.summary.payroll} موظف`, `${data.summary.payroll} people`)} tone="navy" />
           <MetricCard icon={ShieldCheck} label={l('مؤمّن عليهم', 'Insured people')} value={data.summary.insured} hint={l(`من ${data.summary.insuranceRecords} سجل تأمين`, `from ${data.summary.insuranceRecords} insurance rows`)} tone="orange" />
           <MetricCard icon={BriefcaseBusiness} label={l('احتياج التوظيف', 'Hiring demand')} value={data.summary.openPositions} hint={l(`${data.summary.openRecruitmentRequests} طلب نشط`, `${data.summary.openRecruitmentRequests} active requests`)} tone="slate" />
@@ -297,7 +313,7 @@ function Overview({ data, lang, onOpen }: { data: HRDashboardData; lang: 'ar' | 
                     <div><h3 className="font-bold">{request.role}</h3><p className="mt-1 text-xs text-ink-muted">{request.department || request.location}</p></div>
                     <span className="chip bg-status-warnBg text-accent-600">{Math.max(0, request.numberNeeded - request.accepted)} {l('مطلوب', 'open')}</span>
                   </div>
-                  <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-surface-sunken"><div className="h-full rounded-full bg-[#0F766E]" style={{ width: `${coverage(request.accepted, request.numberNeeded)}%` }} /></div>
+                  <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-surface-sunken"><div className="h-full rounded-full bg-[#1D6FB8]" style={{ width: `${coverage(request.accepted, request.numberNeeded)}%` }} /></div>
                 </div>
               ))}
             </div>
@@ -321,11 +337,11 @@ function Overview({ data, lang, onOpen }: { data: HRDashboardData; lang: 'ar' | 
         </section>
 
         <section className="card p-5">
-          <div className="flex items-center gap-2"><Database size={18} className="text-[#0F766E]" /><h2 className="font-extrabold">{l('حالة المصادر', 'Source health')}</h2></div>
+          <div className="flex items-center gap-2"><Database size={18} className="text-[#1D6FB8]" /><h2 className="font-extrabold">{l('حالة المصادر', 'Source health')}</h2></div>
           <div className="mt-4 space-y-3">
             {data.datasets.map((dataset) => (
               <div key={dataset.source} className="flex items-center gap-3">
-                <span className={cx('grid h-8 w-8 place-items-center rounded-lg', dataset.importedAt ? 'bg-teal-50 text-[#0F766E]' : 'bg-surface-sunken text-ink-faint')}>
+                <span className={cx('grid h-8 w-8 place-items-center rounded-lg', dataset.importedAt ? 'bg-brand-50 text-[#1D6FB8]' : 'bg-surface-sunken text-ink-faint')}>
                   {dataset.importedAt ? <Check size={15} /> : <X size={15} />}
                 </span>
                 <div className="min-w-0 flex-1"><div className="truncate text-xs font-bold">{dataset.label[lang]}</div><div className="truncate text-[11px] text-ink-faint">{dataset.importedAt ? formatDateTime(dataset.importedAt, lang) : l('لم يُرفع بعد', 'Not uploaded')}</div></div>
@@ -339,8 +355,8 @@ function Overview({ data, lang, onOpen }: { data: HRDashboardData; lang: 'ar' | 
   );
 }
 
-function MetricCard({ icon: Icon, label, value, suffix, hint, tone }: { icon: typeof UsersRound; label: string; value: number; suffix?: string; hint: string; tone: 'teal' | 'navy' | 'orange' | 'slate' }) {
-  const tones = { teal: 'bg-teal-50 text-[#0F766E]', navy: 'bg-brand-50 text-brand-600', orange: 'bg-accent-50 text-accent-600', slate: 'bg-surface-sunken text-ink-muted' };
+function MetricCard({ icon: Icon, label, value, suffix, hint, tone }: { icon: typeof UsersRound; label: string; value: number; suffix?: string; hint: string; tone: 'brand' | 'navy' | 'orange' | 'slate' }) {
+  const tones = { brand: 'bg-brand-50 text-brand-500', navy: 'bg-navy/10 text-navy', orange: 'bg-accent-50 text-accent-600', slate: 'bg-surface-sunken text-ink-muted' };
   return (
     <article className="card p-4 transition-transform hover:-translate-y-0.5">
       <div className={cx('grid h-9 w-9 place-items-center rounded-xl', tones[tone])}><Icon size={18} /></div>
@@ -378,7 +394,7 @@ function PeopleDirectory({ data, lang }: { data: HRDashboardData; lang: 'ar' | '
     <section className="card overflow-hidden">
       <div className="flex flex-col gap-3 border-b border-surface-line p-4 sm:flex-row sm:items-center">
         <div className="relative min-w-0 flex-1"><Search className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-ink-faint" size={16} /><input className="field ps-10" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={l('ابحث بالاسم، الكود، القسم أو الوظيفة…', 'Search name, code, department, or role…')} /></div>
-        <div className="flex gap-1 rounded-xl bg-surface-sunken p-1">{(['active', 'inactive', 'all'] as const).map((item) => <button key={item} className={cx('rounded-lg px-3 py-2 text-xs font-bold', status === item ? 'bg-white text-[#0F766E] shadow-sm' : 'text-ink-muted')} onClick={() => setStatus(item)}>{item === 'active' ? l('نشط', 'Active') : item === 'inactive' ? l('سابق', 'Former') : l('الكل', 'All')}</button>)}</div>
+        <div className="flex gap-1 rounded-xl bg-surface-sunken p-1">{(['active', 'inactive', 'all'] as const).map((item) => <button key={item} className={cx('rounded-lg px-3 py-2 text-xs font-bold', status === item ? 'bg-white text-[#1D6FB8] shadow-sm' : 'text-ink-muted')} onClick={() => setStatus(item)}>{item === 'active' ? l('نشط', 'Active') : item === 'inactive' ? l('سابق', 'Former') : l('الكل', 'All')}</button>)}</div>
       </div>
       <div className="hidden overflow-x-auto md:block">
         <table className="w-full text-start text-sm">
@@ -395,20 +411,20 @@ function PeopleDirectory({ data, lang }: { data: HRDashboardData; lang: 'ar' | '
 function EmployeeRow({ employee, lang }: { employee: HREmployeeSummary; lang: 'ar' | 'en' }) {
   const name = employee.nameArabic || employee.nameEnglish || `#${employee.employeeCode}`;
   return (
-    <tr className="group hover:bg-teal-50/30">
-      <td className="px-5 py-3.5"><Link to={`/hr/employees/${employee.employeeCode}`} className="flex items-center gap-3"><Avatar name={name} size={36} color={employee.status === 'active' ? '#0F766E' : '#94A3B8'} /><span><span className="block font-bold group-hover:text-[#0F766E]">{name}</span><span className="ltr block text-[11px] text-ink-faint">#{employee.employeeCode} · {employee.companyEmail}</span></span></Link></td>
+    <tr className="group hover:bg-brand-50/30">
+      <td className="px-5 py-3.5"><Link to={`/hr/employees/${employee.employeeCode}`} className="flex items-center gap-3"><Avatar name={name} size={36} color={employee.status === 'active' ? '#1D6FB8' : '#94A3B8'} /><span><span className="block font-bold group-hover:text-[#1D6FB8]">{name}</span><span className="ltr block text-[11px] text-ink-faint">#{employee.employeeCode} · {employee.companyEmail}</span></span></Link></td>
       <td className="px-4 py-3.5"><div className="max-w-[18rem] truncate font-semibold">{employee.title || '—'}</div></td>
       <td className="px-4 py-3.5 text-xs text-ink-muted">{employee.department || employee.sector || '—'}</td>
       <td className="px-4 py-3.5"><div className="flex gap-1.5"><CoverageDot active={employee.hasPayroll} title={lang === 'en' ? 'Payroll' : 'راتب'} /><CoverageDot active={employee.hasInsurance} title={lang === 'en' ? 'Insurance' : 'تأمين'} /><CoverageDot active={Boolean(employee.linkedUserId)} title={lang === 'en' ? 'Qodo account' : 'حساب Qodo'} /></div></td>
       <td className="px-4 py-3.5"><StatusChip status={employee.status} lang={lang} /></td>
-      <td className="px-4 py-3.5"><Link to={`/hr/employees/${employee.employeeCode}`} className="grid h-8 w-8 place-items-center rounded-lg text-ink-faint hover:bg-white hover:text-[#0F766E]"><ChevronRight className="rtl:rotate-180" size={17} /></Link></td>
+      <td className="px-4 py-3.5"><Link to={`/hr/employees/${employee.employeeCode}`} className="grid h-8 w-8 place-items-center rounded-lg text-ink-faint hover:bg-white hover:text-[#1D6FB8]"><ChevronRight className="rtl:rotate-180" size={17} /></Link></td>
     </tr>
   );
 }
 
 function EmployeeMobile({ employee, lang }: { employee: HREmployeeSummary; lang: 'ar' | 'en' }) {
   const name = employee.nameArabic || employee.nameEnglish || `#${employee.employeeCode}`;
-  return <Link to={`/hr/employees/${employee.employeeCode}`} className="flex items-center gap-3 p-4 active:bg-surface-sunken"><Avatar name={name} color={employee.status === 'active' ? '#0F766E' : '#94A3B8'} /><div className="min-w-0 flex-1"><div className="truncate font-bold">{name}</div><div className="mt-0.5 truncate text-xs text-ink-muted">#{employee.employeeCode} · {employee.title}</div></div><StatusChip status={employee.status} lang={lang} /></Link>;
+  return <Link to={`/hr/employees/${employee.employeeCode}`} className="flex items-center gap-3 p-4 active:bg-surface-sunken"><Avatar name={name} color={employee.status === 'active' ? '#1D6FB8' : '#94A3B8'} /><div className="min-w-0 flex-1"><div className="truncate font-bold">{name}</div><div className="mt-0.5 truncate text-xs text-ink-muted">#{employee.employeeCode} · {employee.title}</div></div><StatusChip status={employee.status} lang={lang} /></Link>;
 }
 
 function CoverageDot({ active, title }: { active: boolean; title: string }) {
@@ -426,10 +442,10 @@ function PayrollDesk({ data, lang }: { data: HRDashboardData; lang: 'ar' | 'en' 
   const total = rows.reduce((sum, employee) => sum + Number(employee.totalSalary || 0), 0);
   return (
     <div className="space-y-4">
-      <section className="grid gap-3 sm:grid-cols-3"><MetricCard icon={Banknote} label={l('إجمالي المسير', 'Payroll total')} value={total} hint="EGP" tone="teal" /><MetricCard icon={UsersRound} label={l('عدد الموظفين', 'People paid')} value={rows.length} hint={l('في آخر ملف مرفوع', 'latest uploaded sheet')} tone="navy" /><MetricCard icon={AlertTriangle} label={l('نشط غير موجود', 'Active missing')} value={data.reconciliation?.activeWithoutPayroll.length ?? 0} hint={l('يحتاج مراجعة', 'needs review')} tone="orange" /></section>
+      <section className="grid gap-3 sm:grid-cols-3"><MetricCard icon={Banknote} label={l('إجمالي المسير', 'Payroll total')} value={total} hint="EGP" tone="brand" /><MetricCard icon={UsersRound} label={l('عدد الموظفين', 'People paid')} value={rows.length} hint={l('في آخر ملف مرفوع', 'latest uploaded sheet')} tone="navy" /><MetricCard icon={AlertTriangle} label={l('نشط غير موجود', 'Active missing')} value={data.reconciliation?.activeWithoutPayroll.length ?? 0} hint={l('يحتاج مراجعة', 'needs review')} tone="orange" /></section>
       <section className="card overflow-hidden">
         <div className="border-b border-surface-line px-5 py-4"><h2 className="font-extrabold">{l('مسير الرواتب الحالي', 'Current payroll register')}</h2><p className="mt-1 text-xs text-ink-faint">{l('الأرقام الحساسة لا تظهر إلا لصاحبها أو لحامل صلاحية الرواتب.', 'Sensitive figures are visible only to the employee or payroll-authorised staff.')}</p></div>
-        <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-sm"><thead className="bg-surface-sunken text-[11px] text-ink-faint"><tr><th className="px-5 py-3 text-start">{l('الموظف', 'Employee')}</th><th className="px-4 py-3 text-start">{l('القسم', 'Department')}</th><th className="px-4 py-3 text-end">{l('الإجمالي', 'Total')}</th><th className="px-4 py-3 text-start">{l('التأمين', 'Insurance')}</th><th className="w-12" /></tr></thead><tbody className="divide-y divide-surface-line">{rows.map((employee) => <tr key={employee.employeeCode} className="hover:bg-teal-50/30"><td className="px-5 py-3"><div className="font-bold">{employee.nameArabic || employee.nameEnglish}</div><div className="text-[11px] text-ink-faint">#{employee.employeeCode}</div></td><td className="px-4 py-3 text-xs text-ink-muted">{employee.department}</td><td className="px-4 py-3 text-end font-black tabular-nums text-[#0F766E]">{money(employee.totalSalary, lang)}</td><td className="px-4 py-3"><span className={cx('chip', employee.hasInsurance ? 'bg-status-okBg text-status-ok' : 'bg-status-warnBg text-accent-600')}>{employee.hasInsurance ? l('مربوط', 'Linked') : l('غير موجود', 'Missing')}</span></td><td className="px-4"><Link to={`/hr/employees/${employee.employeeCode}`}><ChevronRight className="rtl:rotate-180" size={17} /></Link></td></tr>)}</tbody></table></div>
+        <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-sm"><thead className="bg-surface-sunken text-[11px] text-ink-faint"><tr><th className="px-5 py-3 text-start">{l('الموظف', 'Employee')}</th><th className="px-4 py-3 text-start">{l('القسم', 'Department')}</th><th className="px-4 py-3 text-end">{l('الإجمالي', 'Total')}</th><th className="px-4 py-3 text-start">{l('التأمين', 'Insurance')}</th><th className="w-12" /></tr></thead><tbody className="divide-y divide-surface-line">{rows.map((employee) => <tr key={employee.employeeCode} className="hover:bg-brand-50/30"><td className="px-5 py-3"><div className="font-bold">{employee.nameArabic || employee.nameEnglish}</div><div className="text-[11px] text-ink-faint">#{employee.employeeCode}</div></td><td className="px-4 py-3 text-xs text-ink-muted">{employee.department}</td><td className="px-4 py-3 text-end font-black tabular-nums text-[#1D6FB8]">{money(employee.totalSalary, lang)}</td><td className="px-4 py-3"><span className={cx('chip', employee.hasInsurance ? 'bg-status-okBg text-status-ok' : 'bg-status-warnBg text-accent-600')}>{employee.hasInsurance ? l('مربوط', 'Linked') : l('غير موجود', 'Missing')}</span></td><td className="px-4"><Link to={`/hr/employees/${employee.employeeCode}`}><ChevronRight className="rtl:rotate-180" size={17} /></Link></td></tr>)}</tbody></table></div>
       </section>
     </div>
   );
@@ -453,7 +469,7 @@ function RecruitmentDesk({ data, lang, onChanged }: { data: HRDashboardData; lan
   };
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2">{['active', 'hold', 'done', 'all'].map((item) => <button key={item} onClick={() => setFilter(item)} className={cx('rounded-xl px-3.5 py-2 text-xs font-bold', filter === item ? 'bg-[#0F766E] text-white' : 'border border-surface-line bg-white text-ink-muted')}>{item === 'active' ? l('نشط', 'Active') : item === 'hold' ? l('معلّق', 'On hold') : item === 'done' ? l('مكتمل', 'Done') : l('الكل', 'All')}</button>)}</div>
+      <div className="flex flex-wrap items-center gap-2">{['active', 'hold', 'done', 'all'].map((item) => <button key={item} onClick={() => setFilter(item)} className={cx('rounded-xl px-3.5 py-2 text-xs font-bold', filter === item ? 'bg-[#1D6FB8] text-white' : 'border border-surface-line bg-white text-ink-muted')}>{item === 'active' ? l('نشط', 'Active') : item === 'hold' ? l('معلّق', 'On hold') : item === 'done' ? l('مكتمل', 'Done') : l('الكل', 'All')}</button>)}</div>
       <div className="grid gap-3 lg:grid-cols-2">{rows.map((request) => (
         <article key={request.id} className="card overflow-hidden p-5">
           <div className="flex items-start justify-between gap-4"><div><div className="flex flex-wrap items-center gap-2"><h2 className="text-base font-extrabold">{request.role}</h2><StatusChip status={request.status} lang={lang} /></div><p className="mt-1 text-xs text-ink-muted">{request.department || '—'} · {request.location || '—'} · {request.vacancyReason || '—'}</p></div><span className="rounded-xl bg-surface-sunken px-3 py-2 text-center"><b className="block text-xl tabular-nums">{request.accepted}/{request.numberNeeded}</b><small className="text-[10px] text-ink-faint">{l('تعيين', 'hired')}</small></span></div>
@@ -490,7 +506,7 @@ function OrganizationDesk({ data, lang }: { data: HRDashboardData; lang: 'ar' | 
 function OrgNode({ node, children, lang, depth }: { node: HROrganizationPosition; children: Map<string, HROrganizationPosition[]>; lang: 'ar' | 'en'; depth: number }) {
   const [open, setOpen] = useState(depth < 2);
   const branch = children.get(node.id) ?? [];
-  return <div className={cx(depth > 0 && 'ms-5 border-s border-teal-200 ps-4 sm:ms-8')}><div className="mb-2 flex items-center gap-2 rounded-xl border border-surface-line bg-white p-3 shadow-sm"><button className={cx('grid h-7 w-7 place-items-center rounded-lg', branch.length ? 'bg-teal-50 text-[#0F766E]' : 'text-transparent')} onClick={() => branch.length && setOpen((value) => !value)}>{branch.length && <ChevronDown size={15} className={cx(!open && '-rotate-90 rtl:rotate-90')} />}</button><span className={cx('h-8 w-1 rounded-full', node.matchState === 'matched' ? 'bg-status-ok' : node.matchState === 'vacant' ? 'bg-accent-400' : 'bg-status-bad')} /><div className="min-w-0 flex-1"><div className="truncate text-sm font-bold">{node.title}</div><div className="truncate text-[11px] text-ink-muted">{node.employeeName || (lang === 'en' ? 'Vacant position' : 'منصب شاغر')} · {node.departmentCode}</div></div>{node.employeeCode && <Link className="text-[11px] font-bold text-[#0F766E] hover:underline" to={`/hr/employees/${node.employeeCode}`}>#{node.employeeCode}</Link>}</div>{open && branch.map((child) => <OrgNode key={child.id} node={child} children={children} lang={lang} depth={depth + 1} />)}</div>;
+  return <div className={cx(depth > 0 && 'ms-5 border-s border-brand-200 ps-4 sm:ms-8')}><div className="mb-2 flex items-center gap-2 rounded-xl border border-surface-line bg-white p-3 shadow-sm"><button className={cx('grid h-7 w-7 place-items-center rounded-lg', branch.length ? 'bg-brand-50 text-[#1D6FB8]' : 'text-transparent')} onClick={() => branch.length && setOpen((value) => !value)}>{branch.length && <ChevronDown size={15} className={cx(!open && '-rotate-90 rtl:rotate-90')} />}</button><span className={cx('h-8 w-1 rounded-full', node.matchState === 'matched' ? 'bg-status-ok' : node.matchState === 'vacant' ? 'bg-accent-400' : 'bg-status-bad')} /><div className="min-w-0 flex-1"><div className="truncate text-sm font-bold">{node.title}</div><div className="truncate text-[11px] text-ink-muted">{node.employeeName || (lang === 'en' ? 'Vacant position' : 'منصب شاغر')} · {node.departmentCode}</div></div>{node.employeeCode && <Link className="text-[11px] font-bold text-[#1D6FB8] hover:underline" to={`/hr/employees/${node.employeeCode}`}>#{node.employeeCode}</Link>}</div>{open && branch.map((child) => <OrgNode key={child.id} node={child} children={children} lang={lang} depth={depth + 1} />)}</div>;
 }
 
 function ImportDesk({ data, lang, uploading, onUpload }: { data: HRDashboardData; lang: 'ar' | 'en'; uploading: HRSource | null; onUpload: (source: HRSource, event: ChangeEvent<HTMLInputElement>) => void }) {
@@ -503,7 +519,7 @@ function ImportDesk({ data, lang, uploading, onUpload }: { data: HRDashboardData
           {data.datasets.map((dataset) => <ImportCard key={dataset.source} dataset={dataset} lang={lang} busy={uploading === dataset.source} disabled={Boolean(uploading)} onUpload={(event) => onUpload(dataset.source, event)} />)}
         </div>
         <aside className="space-y-4">
-          <div className="card overflow-hidden bg-[#082F36] p-5 text-white">
+          <div className="card overflow-hidden bg-[#0B2545] p-5 text-white">
             <div className="flex items-center justify-between"><span className="grid h-10 w-10 place-items-center rounded-xl bg-white/10"><Bot size={21} /></span><span className={cx('chip', data.telegram?.enabled ? 'bg-emerald-400/15 text-emerald-200' : 'bg-white/10 text-white/60')}>{data.telegram?.enabled ? l('متصل', 'Connected') : l('يحتاج إعداد', 'Needs setup')}</span></div>
             <h2 className="mt-4 font-extrabold">{l('قناة Telegram للرواتب', 'Telegram payroll channel')}</h2>
             <p className="mt-2 text-xs leading-6 text-white/65">{l('البوت يقبل نفس ملفات Excel، يتحقق من الشات والسر، ثم يشغّل نفس مسار المطابقة المستخدم داخل الداشبورد.', 'The bot accepts the same Excel files, verifies chat and secret, then uses the exact dashboard reconciliation path.')}</p>
@@ -522,9 +538,9 @@ function ImportCard({ dataset, lang, busy, disabled, onUpload }: { dataset: HRDa
   const meta = HR_SOURCE_LABELS[dataset.source];
   const ready = Boolean(dataset.importedAt);
   return (
-    <article className={cx('card relative overflow-hidden p-5', ready && 'border-teal-200')}>
-      <div className={cx('absolute inset-x-0 top-0 h-1', ready ? 'bg-[#0F766E]' : 'bg-slate-200')} />
-      <div className="flex items-start justify-between gap-3"><span className={cx('grid h-11 w-11 place-items-center rounded-2xl', ready ? 'bg-teal-50 text-[#0F766E]' : 'bg-surface-sunken text-ink-faint')}><Icon size={21} /></span><span className={cx('chip', ready ? 'bg-status-okBg text-status-ok' : 'bg-surface-sunken text-ink-faint')}>{ready ? (lang === 'en' ? 'Ready' : 'متصل') : (lang === 'en' ? 'Missing' : 'ناقص')}</span></div>
+    <article className={cx('card relative overflow-hidden p-5', ready && 'border-brand-200')}>
+      <div className={cx('absolute inset-x-0 top-0 h-1', ready ? 'bg-[#1D6FB8]' : 'bg-slate-200')} />
+      <div className="flex items-start justify-between gap-3"><span className={cx('grid h-11 w-11 place-items-center rounded-2xl', ready ? 'bg-brand-50 text-[#1D6FB8]' : 'bg-surface-sunken text-ink-faint')}><Icon size={21} /></span><span className={cx('chip', ready ? 'bg-status-okBg text-status-ok' : 'bg-surface-sunken text-ink-faint')}>{ready ? (lang === 'en' ? 'Ready' : 'متصل') : (lang === 'en' ? 'Missing' : 'ناقص')}</span></div>
       <h2 className="mt-4 font-extrabold">{meta[lang]}</h2><p className="mt-1 text-xs leading-6 text-ink-muted">{lang === 'en' ? meta.hintEn : meta.hintAr}</p>
       {ready && <div className="mt-3 rounded-xl bg-[#F8FAFC] p-3"><div className="truncate text-[11px] font-bold text-ink">{dataset.fileName}</div><div className="mt-1 text-[10px] text-ink-faint">{formatDateTime(dataset.importedAt, lang)} · {dataset.origin === 'telegram' ? 'Telegram' : 'Dashboard'}</div><div className="mt-2 flex flex-wrap gap-1.5">{Object.entries(dataset.summary ?? {}).slice(0, 3).map(([key, value]) => <span key={key} className="rounded-md bg-white px-2 py-1 text-[10px] text-ink-muted">{key}: <b>{Number(value).toLocaleString()}</b></span>)}</div></div>}
       <label className={cx('btn-ghost btn-sm mt-4 w-full cursor-pointer', disabled && 'pointer-events-none opacity-50')}><input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="hidden" onChange={onUpload} />{busy ? <Spinner size={16} /> : <UploadCloud size={16} />}{busy ? (lang === 'en' ? 'Analysing…' : 'جارٍ التحليل…') : ready ? (lang === 'en' ? 'Replace workbook' : 'استبدال الشيت') : (lang === 'en' ? 'Upload workbook' : 'رفع الشيت')}</label>
@@ -562,11 +578,11 @@ export function HREmployee() {
   const canPayroll = Boolean(employee.payroll || dashboard?.permissions.canViewPayroll);
   return (
     <div className="mx-auto max-w-[1320px] pb-12">
-      <Link to="/hr" className="mb-4 inline-flex items-center gap-2 text-xs font-bold text-ink-muted hover:text-[#0F766E]">{lang === 'en' ? <ArrowLeft size={15} /> : <ArrowRight size={15} />}{l('العودة إلى الموارد البشرية', 'Back to HR')}</Link>
-      <section className="relative overflow-hidden rounded-[28px] bg-[#082F36] p-6 text-white shadow-panel sm:p-8">
-        <div className="absolute -end-16 -top-24 h-72 w-72 rounded-full border-[38px] border-teal-300/10" />
+      <Link to="/hr" className="mb-4 inline-flex items-center gap-2 text-xs font-bold text-ink-muted hover:text-[#1D6FB8]">{lang === 'en' ? <ArrowLeft size={15} /> : <ArrowRight size={15} />}{l('العودة إلى الموارد البشرية', 'Back to HR')}</Link>
+      <section className="relative overflow-hidden rounded-[28px] bg-[#0B2545] p-6 text-white shadow-panel sm:p-8">
+        <div className="absolute -end-16 -top-24 h-72 w-72 rounded-full border-[38px] border-brand-300/10" />
         <div className="relative flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
-          <div className="flex min-w-0 items-center gap-4"><Avatar name={name} color="#14B8A6" size={72} className="ring-4 ring-white/10" /><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><span className="rounded-md bg-white/10 px-2 py-1 font-mono text-xs text-teal-100">EMP-{employee.employeeCode}</span><StatusChip status={employee.status} lang={lang} /></div><h1 className="mt-2 truncate text-2xl font-black sm:text-3xl">{name}</h1><p className="mt-1 truncate text-sm text-white/65">{employee.title || '—'} · {employee.department || employee.sector || '—'}</p></div></div>
+          <div className="flex min-w-0 items-center gap-4"><Avatar name={name} color="#4A8FCB" size={72} className="ring-4 ring-white/10" /><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><span className="rounded-md bg-white/10 px-2 py-1 font-mono text-xs text-brand-100">EMP-{employee.employeeCode}</span><StatusChip status={employee.status} lang={lang} /></div><h1 className="mt-2 truncate text-2xl font-black sm:text-3xl">{name}</h1><p className="mt-1 truncate text-sm text-white/65">{employee.title || '—'} · {employee.department || employee.sector || '—'}</p></div></div>
           <div className="flex flex-wrap gap-2">{canManage && <button className="btn !border-white/15 !bg-white/10 text-white hover:!bg-white/20" onClick={() => setEditor('master')}><Pencil size={16} />{l('تعديل الملف', 'Edit profile')}</button>}</div>
         </div>
       </section>
@@ -616,7 +632,7 @@ export function HREmployee() {
             {dashboard?.permissions.canManage ? <AccountLink employee={employee} dashboard={dashboard} lang={lang} onSaved={load} /> : <div className="text-sm text-ink-muted">{employee.linkedUserId ? l('حسابك مربوط بهذا الملف.', 'Your account is linked to this profile.') : l('الملف غير مربوط بحساب دخول.', 'No sign-in account is linked.')}</div>}
           </ProfileSection>
           <ProfileSection icon={Database} title={l('مصادر الملف', 'Profile sources')}>
-            <div className="grid grid-cols-2 gap-2">{Object.entries(employee.sources).map(([source, active]) => <div key={source} className={cx('rounded-xl border px-3 py-2 text-xs font-bold', active ? 'border-teal-200 bg-teal-50 text-[#0F766E]' : 'border-surface-line bg-surface-sunken text-ink-faint')}>{active ? '✓' : '—'} {source}</div>)}</div>
+            <div className="grid grid-cols-2 gap-2">{Object.entries(employee.sources).map(([source, active]) => <div key={source} className={cx('rounded-xl border px-3 py-2 text-xs font-bold', active ? 'border-brand-200 bg-brand-50 text-[#1D6FB8]' : 'border-surface-line bg-surface-sunken text-ink-faint')}>{active ? '✓' : '—'} {source}</div>)}</div>
           </ProfileSection>
         </aside>
       </section>
@@ -626,7 +642,7 @@ export function HREmployee() {
 }
 
 function ProfileSection({ icon: Icon, title, action, children }: { icon: typeof UsersRound; title: string; action?: ReactNode; children: ReactNode }) {
-  return <section className="card overflow-hidden"><header className="flex items-center justify-between gap-3 border-b border-surface-line px-5 py-4"><div className="flex items-center gap-2"><span className="grid h-8 w-8 place-items-center rounded-lg bg-teal-50 text-[#0F766E]"><Icon size={16} /></span><h2 className="font-extrabold">{title}</h2></div>{action}</header><div className="p-5">{children}</div></section>;
+  return <section className="card overflow-hidden"><header className="flex items-center justify-between gap-3 border-b border-surface-line px-5 py-4"><div className="flex items-center gap-2"><span className="grid h-8 w-8 place-items-center rounded-lg bg-brand-50 text-[#1D6FB8]"><Icon size={16} /></span><h2 className="font-extrabold">{title}</h2></div>{action}</header><div className="p-5">{children}</div></section>;
 }
 
 function EditButton({ onClick, lang }: { onClick: () => void; lang: 'ar' | 'en' }) { return <button className="btn-quiet btn-sm" onClick={onClick}><Pencil size={14} />{lang === 'en' ? 'Edit' : 'تعديل'}</button>; }
@@ -635,7 +651,7 @@ function FactGrid({ items, compact = false }: { items: Array<[string, string | n
   return <dl className={cx('grid gap-x-6 gap-y-4', !compact && 'sm:grid-cols-2')}>{items.map(([label, value]) => <div key={label}><dt className="text-[11px] font-bold text-ink-faint">{label}</dt><dd className="mt-1 break-words text-sm font-semibold text-ink">{value === null || value === undefined || value === '' ? '—' : value}</dd></div>)}</dl>;
 }
 
-function MoneyBlock({ label, value, lang, primary }: { label: string; value: number | null; lang: 'ar' | 'en'; primary?: boolean }) { return <div className={cx('rounded-2xl border p-4', primary ? 'border-teal-200 bg-teal-50' : 'border-surface-line bg-[#F8FAFC]')}><div className="text-[11px] font-bold text-ink-faint">{label}</div><div className={cx('mt-2 text-xl font-black tabular-nums', primary && 'text-[#0F766E]')}>{money(value, lang)}</div></div>; }
+function MoneyBlock({ label, value, lang, primary }: { label: string; value: number | null; lang: 'ar' | 'en'; primary?: boolean }) { return <div className={cx('rounded-2xl border p-4', primary ? 'border-brand-200 bg-brand-50' : 'border-surface-line bg-[#F8FAFC]')}><div className="text-[11px] font-bold text-ink-faint">{label}</div><div className={cx('mt-2 text-xl font-black tabular-nums', primary && 'text-[#1D6FB8]')}>{money(value, lang)}</div></div>; }
 function MiniFact({ label, value }: { label: string; value: string }) { return <div className="rounded-xl bg-[#F8FAFC] p-3"><div className="text-[10px] font-bold text-ink-faint">{label}</div><div className="mt-1 truncate font-semibold">{value}</div></div>; }
 function MissingData({ text }: { text: string }) { return <div className="rounded-xl border border-dashed border-surface-line bg-surface-sunken p-4 text-sm text-ink-muted">{text}</div>; }
 
@@ -644,7 +660,7 @@ function DocumentChecklist({ documents, lang }: { documents: Record<string, bool
   const rows = Object.entries(documents).filter(([key]) => !ignored.has(key));
   const done = rows.filter(([, value]) => Boolean(value)).length;
   const rate = typeof documents.completionRate === 'number' ? Math.round(documents.completionRate * 100) : coverage(done, rows.length);
-  return <div><div className="flex items-end justify-between"><span className="text-xs font-bold text-ink-muted">{lang === 'en' ? 'Ready' : 'مكتمل'}</span><b className="text-2xl text-[#0F766E]">{rate}%</b></div><div className="mt-2 h-2 overflow-hidden rounded-full bg-surface-sunken"><div className="h-full rounded-full bg-[#0F766E]" style={{ width: `${Math.min(100, rate)}%` }} /></div><div className="mt-4 grid grid-cols-2 gap-2">{rows.map(([key, value]) => <div key={key} className={cx('flex items-center gap-2 rounded-lg px-2.5 py-2 text-[11px] font-semibold', value ? 'bg-status-okBg text-status-ok' : 'bg-surface-sunken text-ink-faint')}><span className="grid h-4 w-4 place-items-center rounded-full border">{value && <Check size={10} />}</span>{key}</div>)}</div></div>;
+  return <div><div className="flex items-end justify-between"><span className="text-xs font-bold text-ink-muted">{lang === 'en' ? 'Ready' : 'مكتمل'}</span><b className="text-2xl text-[#1D6FB8]">{rate}%</b></div><div className="mt-2 h-2 overflow-hidden rounded-full bg-surface-sunken"><div className="h-full rounded-full bg-[#1D6FB8]" style={{ width: `${Math.min(100, rate)}%` }} /></div><div className="mt-4 grid grid-cols-2 gap-2">{rows.map(([key, value]) => <div key={key} className={cx('flex items-center gap-2 rounded-lg px-2.5 py-2 text-[11px] font-semibold', value ? 'bg-status-okBg text-status-ok' : 'bg-surface-sunken text-ink-faint')}><span className="grid h-4 w-4 place-items-center rounded-full border">{value && <Check size={10} />}</span>{key}</div>)}</div></div>;
 }
 
 function AccountLink({ employee, dashboard, lang, onSaved }: { employee: HREmployeeProfile; dashboard: HRDashboardData; lang: 'ar' | 'en'; onSaved: () => Promise<void> }) {

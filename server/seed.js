@@ -14,6 +14,9 @@ import {
   normaliseStageId,
 } from '../shared/departments.js';
 import { DEFAULT_ORGANIZATION_ID, organizationOf } from '../shared/organization.js';
+import { KPI_SEED_RECORDS } from '../shared/kpiRecords.js';
+import { kpiTemplateById } from '../shared/kpi.js';
+import { scorecardId } from './kpi.js';
 import { PERMISSIONS, permissionsFor } from '../shared/permissions.js';
 import { inventoryDocuments, inventoryTally } from '../shared/officeInventory.js';
 import {
@@ -231,6 +234,7 @@ export async function seed() {
     if (!known.has(app.id)) await create('apps', { ...app, enabled: true, builtin: true });
   }
   await migrateBuiltinApps(store);
+  await seedKPIScorecards();
 
   const users = await find('users');
   if (users.length === 0) {
@@ -601,5 +605,46 @@ async function migrateOrganisationAndTasks(store) {
           userOrganizations.get(row.userId ?? row.actorId) ?? DEFAULT_ORGANIZATION_ID,
       });
     }
+  }
+}
+
+/**
+ * File the July 2026 scorecards the approved workbooks already carry.
+ *
+ * `createIfAbsent` on a deterministic id makes this a gap-fill, never an
+ * overwrite: once a scorecard exists it belongs to whoever has been editing
+ * it, and a redeploy must not push a workbook's figures back over their work.
+ *
+ * The subjects are `record` — the name as the workbook wrote it. Nothing is
+ * invented about who they are, and an administrator can create the same month
+ * against a real account whenever those people have one.
+ */
+async function seedKPIScorecards() {
+  for (const record of KPI_SEED_RECORDS) {
+    if (!kpiTemplateById(record.templateId)) continue;
+    const id = scorecardId(
+      DEFAULT_ORGANIZATION_ID,
+      record.templateId,
+      'record',
+      record.subjectName,
+      record.period
+    );
+    await createIfAbsent('kpiScorecards', {
+      id,
+      organizationId: DEFAULT_ORGANIZATION_ID,
+      templateId: record.templateId,
+      period: record.period,
+      subjectType: 'record',
+      subjectId: record.subjectName,
+      subjectName: record.subjectName,
+      values: record.values,
+      checks: record.checks,
+      incentives: record.incentives ?? {},
+      notes: '',
+      status: 'draft',
+      origin: 'workbook',
+      createdBy: null,
+      updatedBy: null,
+    });
   }
 }

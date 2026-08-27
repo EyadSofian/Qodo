@@ -136,7 +136,7 @@ export function Profile() {
           <Tile label={t('profile.done')} value={metrics.completed} tone="text-status-ok" />
           <Tile label={t('profile.remaining')} value={metrics.active} tone="text-brand-600" />
           <Tile label={t('performance.overdue')} value={metrics.overdue} tone="text-status-bad" />
-          <Tile label={t('performance.onTime')} value={`${metrics.onTimeRate}%`} tone="text-teal-600" />
+          <Tile label={t('performance.onTime')} value={`${metrics.onTimeRate}%`} tone="text-status-ok" />
           <Tile
             label={t('performance.averageScore')}
             value={metrics.averageScore === null ? '—' : metrics.averageScore}

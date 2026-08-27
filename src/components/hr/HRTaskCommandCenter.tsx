@@ -230,7 +230,7 @@ export function HRTaskCommandCenter({
     { label: t('hrOps.dueToday'), value: dueToday, icon: CalendarDays, tone: 'text-amber-700 bg-amber-50' },
     { label: t('hrOps.overdue'), value: overdue, icon: TriangleAlert, tone: 'text-rose-700 bg-rose-50' },
     { label: t('hrOps.inProgress'), value: inProgress, icon: Clock3, tone: 'text-sky-700 bg-sky-50' },
-    { label: t('hrOps.awaitingReview'), value: awaitingReview, icon: FileCheck2, tone: 'text-teal-700 bg-teal-50' },
+    { label: t('hrOps.awaitingReview'), value: awaitingReview, icon: FileCheck2, tone: 'text-brand-700 bg-brand-50' },
   ];
 
   return (
@@ -246,12 +246,12 @@ export function HRTaskCommandCenter({
         />
         <div className="relative grid gap-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
           <div className="max-w-2xl">
-            <span className="mb-3 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[11px] font-bold tracking-wide text-teal-50">
+            <span className="mb-3 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[11px] font-bold tracking-wide text-brand-50">
               <Sparkles size={13} />
               {t('hrOps.eyebrow')}
             </span>
             <h2 className="text-[24px] font-extrabold leading-tight sm:text-[32px]">{t('hrOps.title')}</h2>
-            <p className="mt-2 max-w-xl text-[13px] leading-7 text-teal-50/80 sm:text-[14px]">
+            <p className="mt-2 max-w-xl text-[13px] leading-7 text-brand-50/80 sm:text-[14px]">
               {t('hrOps.subtitle')}
             </p>
           </div>
@@ -261,16 +261,16 @@ export function HRTaskCommandCenter({
                 <ClipboardCheck size={22} />
               </span>
               <span>
-                <span className="block text-[10px] font-semibold text-teal-50/70">{t('hrOps.basePlan')}</span>
+                <span className="block text-[10px] font-semibold text-brand-50/70">{t('hrOps.basePlan')}</span>
                 <strong className="block text-xl tabular-nums">{templates.length}</strong>
               </span>
             </span>
             <span className="flex items-center gap-3 border-s border-white/10 px-4 py-3">
-              <span className="grid h-11 w-11 place-items-center rounded-xl bg-teal-300 text-[#073B3A]">
+              <span className="grid h-11 w-11 place-items-center rounded-xl bg-brand-300 text-[#073B3A]">
                 <Zap size={21} />
               </span>
               <span>
-                <span className="block text-[10px] font-semibold text-teal-50/70">{t('hrOps.automatic')}</span>
+                <span className="block text-[10px] font-semibold text-brand-50/70">{t('hrOps.automatic')}</span>
                 <strong className="block text-xl tabular-nums">{automationCounts.enabled}</strong>
               </span>
             </span>
@@ -298,7 +298,7 @@ export function HRTaskCommandCenter({
                 <h3 className="text-[17px] font-extrabold text-ink">{t('hrOps.catalogue')}</h3>
                 <p className="mt-0.5 text-[12px] text-ink-faint">{t('hrOps.catalogueHint')}</p>
               </div>
-              <span className="chip bg-teal-50 text-teal-800">
+              <span className="chip bg-brand-50 text-brand-800">
                 {t('hrOps.matches', { n: filteredTemplates.length })}
               </span>
             </div>
@@ -407,9 +407,9 @@ export function HRTaskCommandCenter({
                       key={item.id}
                       type="button"
                       onClick={() => onOpen(item)}
-                      className="group flex w-full items-center gap-3 rounded-xl border border-surface-line px-3 py-2.5 text-start transition-colors hover:border-teal-200 hover:bg-teal-50/40"
+                      className="group flex w-full items-center gap-3 rounded-xl border border-surface-line px-3 py-2.5 text-start transition-colors hover:border-brand-200 hover:bg-brand-50/40"
                     >
-                      <span className={cx('h-9 w-1 rounded-full', late ? 'bg-rose-500' : 'bg-teal-500')} />
+                      <span className={cx('h-9 w-1 rounded-full', late ? 'bg-rose-500' : 'bg-brand-500')} />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-[12.5px] font-bold text-ink">{item.title}</span>
                         <span className={cx('mt-0.5 block text-[10.5px] font-semibold', late ? 'text-rose-600' : 'text-ink-faint')}>
@@ -423,7 +423,7 @@ export function HRTaskCommandCenter({
               </div>
             ) : (
               <div className="rounded-2xl bg-surface-sunken px-4 py-8 text-center">
-                <CheckCircle2 size={24} className="mx-auto text-teal-600" />
+                <CheckCircle2 size={24} className="mx-auto text-brand-600" />
                 <p className="mt-2 text-[12px] font-bold text-ink-muted">{t('hrOps.noLiveWork')}</p>
               </div>
             )}
@@ -441,7 +441,7 @@ export function HRTaskCommandCenter({
                       <span className="tabular-nums text-ink-faint">{count}</span>
                     </span>
                     <span className="block h-1.5 overflow-hidden rounded-full bg-surface-sunken">
-                      <span className="block h-full rounded-full bg-teal-600 transition-all group-hover:bg-amber-500" style={{ width: `${(count / templates.length) * 100}%` }} />
+                      <span className="block h-full rounded-full bg-brand-600 transition-all group-hover:bg-amber-500" style={{ width: `${(count / templates.length) * 100}%` }} />
                     </span>
                   </button>
                 );
@@ -449,27 +449,27 @@ export function HRTaskCommandCenter({
             </div>
           </section>
 
-          <section className="relative overflow-hidden rounded-[24px] border border-teal-200 bg-[#EAF8F5] p-4">
-            <span className="pointer-events-none absolute -end-8 -top-8 h-24 w-24 rounded-full bg-teal-200/50" />
+          <section className="relative overflow-hidden rounded-[24px] border border-brand-200 bg-[#EAF8F5] p-4">
+            <span className="pointer-events-none absolute -end-8 -top-8 h-24 w-24 rounded-full bg-brand-200/50" />
             <div className="flex gap-3">
-              <span className="relative grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-teal-700 text-white">
+              <span className="relative grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand-700 text-white">
                 <ShieldCheck size={18} />
               </span>
               <div className="relative min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-2">
-                  <h3 className="text-[13px] font-extrabold text-teal-950">{t('hrOps.automationTitle')}</h3>
-                  <span className="rounded-full bg-white/80 px-2 py-1 text-[10px] font-extrabold text-teal-800">
+                  <h3 className="text-[13px] font-extrabold text-brand-900">{t('hrOps.automationTitle')}</h3>
+                  <span className="rounded-full bg-white/80 px-2 py-1 text-[10px] font-extrabold text-brand-800">
                     {automationCounts.enabled}/{automationCounts.scheduled}
                   </span>
                 </div>
-                <p className="mt-1 text-[11.5px] leading-5 text-teal-900/70">{t('hrOps.automationBody')}</p>
+                <p className="mt-1 text-[11.5px] leading-5 text-brand-900/70">{t('hrOps.automationBody')}</p>
                 {canManageAutomation && (
                   <div className="mt-3 grid grid-cols-2 gap-2">
-                    <button type="button" onClick={generateNow} disabled={generating || automationCounts.enabled === 0} className="btn-primary btn-sm gap-1.5 !bg-teal-800 disabled:opacity-50">
+                    <button type="button" onClick={generateNow} disabled={generating || automationCounts.enabled === 0} className="btn-primary btn-sm gap-1.5 !bg-brand-800 disabled:opacity-50">
                       {generating ? <Spinner size={14} /> : <Play size={14} />}
                       {t('hrOps.runDue')}
                     </button>
-                    <button type="button" onClick={openAutomationSettings} className="btn-ghost btn-sm gap-1.5 border-teal-200 bg-white/70">
+                    <button type="button" onClick={openAutomationSettings} className="btn-ghost btn-sm gap-1.5 border-brand-200 bg-white/70">
                       <Settings2 size={14} />
                       {t('hrOps.configure')}
                     </button>
@@ -492,29 +492,29 @@ export function HRTaskCommandCenter({
           <button type="button" onClick={() => setSettingsOpen(false)} className="btn-ghost">
             {t('common.cancel')}
           </button>
-          <button type="button" onClick={saveAutomation} disabled={savingPlans} className="btn-primary gap-2 !bg-teal-800">
+          <button type="button" onClick={saveAutomation} disabled={savingPlans} className="btn-primary gap-2 !bg-brand-800">
             {savingPlans ? <Spinner size={16} /> : <ShieldCheck size={16} />}
             {t('hrOps.saveAutomation')}
           </button>
         </>
       )}
     >
-      <div className="rounded-2xl border border-teal-200 bg-teal-50 p-4">
+      <div className="rounded-2xl border border-brand-200 bg-brand-50 p-4">
         <div className="flex gap-3">
-          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-teal-700 text-white"><Zap size={17} /></span>
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand-700 text-white"><Zap size={17} /></span>
           <div>
-            <h3 className="text-[13px] font-extrabold text-teal-950">{t('hrOps.safeAutomation')}</h3>
-            <p className="mt-1 text-[11.5px] leading-5 text-teal-900/70">{t('hrOps.safeAutomationBody')}</p>
+            <h3 className="text-[13px] font-extrabold text-brand-900">{t('hrOps.safeAutomation')}</h3>
+            <p className="mt-1 text-[11.5px] leading-5 text-brand-900/70">{t('hrOps.safeAutomationBody')}</p>
           </div>
         </div>
       </div>
 
       <div className="no-scrollbar mt-4 flex gap-1.5 overflow-x-auto pb-1">
-        <button type="button" onClick={() => setSettingsCategory('')} className={cx('chip shrink-0', !settingsCategory ? 'bg-teal-700 text-white' : 'bg-surface-sunken text-ink-muted')}>
+        <button type="button" onClick={() => setSettingsCategory('')} className={cx('chip shrink-0', !settingsCategory ? 'bg-brand-700 text-white' : 'bg-surface-sunken text-ink-muted')}>
           {t('hrOps.allTracks')}
         </button>
         {HR_TASK_CATEGORIES.map((item) => (
-          <button key={item.id} type="button" onClick={() => setSettingsCategory(item.id)} className={cx('chip shrink-0', settingsCategory === item.id ? 'bg-teal-700 text-white' : 'bg-surface-sunken text-ink-muted')}>
+          <button key={item.id} type="button" onClick={() => setSettingsCategory(item.id)} className={cx('chip shrink-0', settingsCategory === item.id ? 'bg-brand-700 text-white' : 'bg-surface-sunken text-ink-muted')}>
             {lang === 'en' ? item.en : item.ar}
           </button>
         ))}
@@ -533,7 +533,7 @@ export function HRTaskCommandCenter({
             return (
               <article key={template.id} className={cx(
                 'grid gap-3 rounded-2xl border p-3 transition-colors md:grid-cols-[auto_minmax(0,1fr)_minmax(13rem,16rem)] md:items-center',
-                itemDraft.enabled ? 'border-teal-300 bg-teal-50/50' : 'border-surface-line bg-white'
+                itemDraft.enabled ? 'border-brand-300 bg-brand-50/50' : 'border-surface-line bg-white'
               )}>
                 <label className="relative inline-flex h-6 w-11 cursor-pointer items-center">
                   <input
@@ -545,13 +545,13 @@ export function HRTaskCommandCenter({
                     }))}
                     className="peer sr-only"
                   />
-                  <span className="absolute inset-0 rounded-full bg-slate-200 transition-colors peer-checked:bg-teal-700" />
+                  <span className="absolute inset-0 rounded-full bg-slate-200 transition-colors peer-checked:bg-brand-700" />
                   <span className="relative ms-1 h-4 w-4 rounded-full bg-white shadow-sm transition-transform peer-checked:translate-x-5 rtl:peer-checked:-translate-x-5" />
                 </label>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="font-mono text-[10px] font-bold text-ink-faint">#{template.sourceNumber}</span>
-                    <span className="text-[10px] font-bold text-teal-700">{lang === 'en' ? track.en : track.ar}</span>
+                    <span className="text-[10px] font-bold text-brand-700">{lang === 'en' ? track.en : track.ar}</span>
                   </div>
                   <h4 className="mt-1 text-[12.5px] font-extrabold leading-5 text-ink">{template.title}</h4>
                   <p className="mt-0.5 text-[10.5px] leading-4 text-ink-faint">{template.dueRule}</p>

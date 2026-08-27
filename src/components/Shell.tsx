@@ -239,7 +239,7 @@ export function Shell({ children }: { children: ReactNode }) {
             className={({ isActive }) =>
               cx(
                 'btn !min-h-10 hidden shrink-0 gap-1.5 rounded-xl px-2.5 text-[13px] font-semibold md:flex',
-                isActive ? 'bg-[#0F766E] text-white' : 'text-ink-muted hover:bg-surface-sunken hover:text-ink'
+                isActive ? 'bg-[#1D6FB8] text-white' : 'text-ink-muted hover:bg-surface-sunken hover:text-ink'
               )
             }
           >

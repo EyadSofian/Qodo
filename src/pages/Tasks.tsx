@@ -1257,7 +1257,7 @@ function PerformancePanel({
       tone: 'text-brand-600',
       hint: t('performance.firstPassHint'),
     },
-    { label: t('performance.onTime'), value: `${summary.onTimeRate}%`, tone: 'text-teal-600', hint: undefined },
+    { label: t('performance.onTime'), value: `${summary.onTimeRate}%`, tone: 'text-status-ok', hint: undefined },
     {
       label: t('performance.averageScore'),
       value: summary.averageScore ?? '—',

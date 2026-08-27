@@ -17,6 +17,7 @@
 import { useCallback, useEffect, useState, type DragEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { FileText, Trash2, X } from 'lucide-react';
+import { useI18n } from '../lib/i18n';
 import { cx, formatBytes } from '../lib/utils';
 
 export interface AttachmentLike {
@@ -134,6 +135,8 @@ function Lightbox({
   src: string;
   onClose: () => void;
 }) {
+  const { lang } = useI18n();
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
@@ -152,7 +155,7 @@ function Lightbox({
         <img src={src} alt={file.name} className="max-h-[80dvh] rounded-2xl object-contain shadow-panel" />
         <figcaption className="mt-2 flex items-center justify-between gap-3 text-[12px] font-semibold text-white/90">
           <span className="min-w-0 truncate">{file.name}</span>
-          <button type="button" onClick={onClose} className="shrink-0 rounded-lg p-1 hover:bg-white/15" aria-label="إغلاق">
+          <button type="button" onClick={onClose} className="shrink-0 rounded-lg p-1 hover:bg-white/15" aria-label={lang === 'en' ? 'Close' : 'إغلاق'}>
             <X size={16} />
           </button>
         </figcaption>
