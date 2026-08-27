@@ -33,6 +33,8 @@ import eventRoutes from './routes/events.js';
 import mailRoutes from './routes/mail.js';
 import calendarRoutes from './routes/calendar.js';
 import officeRoutes from './routes/offices.js';
+import bookingRoutes from './routes/booking.js';
+import publicBookingRoutes from './routes/publicBooking.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DIST = path.join(__dirname, '..', 'dist');
@@ -78,6 +80,13 @@ app.use('/api/calendar', calendarRoutes);
 // The seating plan. Reading it needs a session and nothing more; moving anyone
 // needs `offices.manage`, which belongs to no role.
 app.use('/api/offices', officeRoutes);
+// Publishing a booking page and reading who took an hour — behind
+// `calendar.booking`, which an administrator grants one person at a time.
+app.use('/api/booking', bookingRoutes);
+// The only router in this app a stranger can reach. Every handler inside is
+// throttled per address and answers with nothing that identifies an employee
+// beyond the name they chose to publish — see routes/publicBooking.js.
+app.use('/api/book', publicBookingRoutes);
 
 app.get('/api/health', async (_req, res) => {
   const store = await getStore();

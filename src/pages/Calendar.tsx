@@ -22,6 +22,7 @@ import {
   ChevronRight,
   Clock,
   MapPin,
+  Globe,
   Plus,
   RefreshCw,
   Users,
@@ -55,6 +56,8 @@ import {
 } from '../lib/calendar';
 import { EventForm } from '../components/calendar/EventForm';
 import { EventDetail } from '../components/calendar/EventDetail';
+import { BookingSettings } from '../components/calendar/BookingSettings';
+import { PERMISSIONS } from '@shared/permissions';
 import { EmptyState, Modal, Segmented, Spinner, useToast } from '../components/ui';
 import { cx } from '../lib/utils';
 
@@ -64,9 +67,10 @@ const WEEKDAYS = ['السبت', 'الأحد', 'الاثنين', 'الثلاثا�
 const monthFormat = new Intl.DateTimeFormat('ar-EG', { month: 'long', year: 'numeric' });
 
 export function Calendar() {
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const { push } = useToast();
   const [params, setParams] = useSearchParams();
+  const [bookingOpen, setBookingOpen] = useState(false);
 
   const [view, setView] = useState<View>('month');
   const [anchor, setAnchor] = useState(() => startOfDay(new Date()));
@@ -171,7 +175,13 @@ export function Calendar() {
       await load();
       openEvent(saved.id);
       // An appointment invites nobody, so it is not "the invitation was sent".
-      push(editingId ? 'اتعدّل.' : draft.kind === 'meeting' ? 'اتبعتت الدعوة.' : 'اتحجز في تقويمك.');
+      push(
+        editingId
+          ? 'تم التعديل.'
+          : draft.kind === 'meeting'
+            ? 'تم إرسال الدعوة.'
+            : 'تم الحجز في تقويمك.'
+      );
     } catch (error) {
       push(errorMessage(error), 'bad');
     } finally {
@@ -180,10 +190,10 @@ export function Calendar() {
   };
 
   const cancel = async (event: CalendarEvent) => {
-    if (!window.confirm(`إلغاء «${event.title}»؟ هيتبعت إشعار لكل المدعوين.`)) return;
+    if (!window.confirm(`هل تريد إلغاء «${event.title}»؟ سيصل إشعار إلى جميع المدعوّين.`)) return;
     try {
       replaceEvent(await cancelEvent(event.id));
-      push('اتلغى واتبلّغ المدعوون.');
+      push('تم الإلغاء، وأُبلغ المدعوّون.');
     } catch (error) {
       push(errorMessage(error), 'bad');
     }
@@ -222,6 +232,17 @@ export function Calendar() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {/* Granted one person at a time, so most people never see this at all
+              — see shared/permissions.js. */}
+          {can(PERMISSIONS.BOOKING_MANAGE) && (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => setBookingOpen(true)}
+            >
+              <Globe size={14} /> صفحة الحجز
+            </button>
+          )}
           <button type="button" className="btn btn-ghost btn-sm" onClick={load} disabled={loading}>
             {loading ? <Spinner size={14} /> : <RefreshCw size={14} />}
             تحديث
@@ -241,10 +262,10 @@ export function Calendar() {
           <Users size={15} className="shrink-0" />
           <span className="min-w-0 flex-1 truncate">
             {pending.length === 1
-              ? `دعوة مستنية ردك: ${pending[0].title}`
-              : `${pending.length} دعوات مستنية ردك`}
+              ? `دعوة بانتظار ردك: ${pending[0].title}`
+              : `${pending.length} دعوات بانتظار ردك`}
           </span>
-          <span className="shrink-0 text-[11px] underline">افتح</span>
+          <span className="shrink-0 text-[11px] underline">فتح</span>
         </button>
       )}
 
@@ -381,6 +402,15 @@ export function Calendar() {
             editingId={editingId}
           />
         )}
+      </Modal>
+
+      <Modal
+        open={bookingOpen}
+        onClose={() => setBookingOpen(false)}
+        title="صفحة حجز العملاء"
+        width="lg"
+      >
+        {bookingOpen && <BookingSettings onClose={() => setBookingOpen(false)} />}
       </Modal>
     </div>
   );
@@ -552,7 +582,6 @@ function DayList({
         <EmptyState
           icon={<CalendarDays size={30} />}
           title="مفيش حاجة في اليوم ده"
-          body="اليوم فاضي. تقدر تحجز اجتماع أو تسجّل موعد."
         />
       ) : (
         <ul className="grid gap-2">

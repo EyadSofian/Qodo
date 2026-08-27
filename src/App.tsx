@@ -19,6 +19,7 @@ import { Settings } from './pages/Settings';
 import { Mail } from './pages/Mail';
 import { Calendar } from './pages/Calendar';
 import { Offices } from './pages/Offices';
+import { Book } from './pages/Book';
 import { HR, HREmployee } from './pages/HR';
 
 export default function App() {
@@ -52,6 +53,18 @@ function Gate() {
     return (
       <Routes>
         <Route path="/join/:token" element={<Join />} />
+      </Routes>
+    );
+  }
+
+  // A booking page is for a customer, who will never have an account here. It
+  // renders outside the shell entirely: no navigation, no launcher, nothing
+  // that implies the visitor is inside the workspace — because they are not.
+  if (location.pathname.startsWith('/book/')) {
+    return (
+      <Routes>
+        <Route path="/book/manage/:token" element={<Book manage />} />
+        <Route path="/book/:slug" element={<Book />} />
       </Routes>
     );
   }

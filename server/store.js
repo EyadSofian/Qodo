@@ -71,6 +71,11 @@ export const COLLECTIONS = [
   // subject id per seat to say who moved whom.
   'offices',
   'officeSeats',
+  // Client booking. The page is the offer, the booking is one acceptance of it,
+  // and they are separate documents because editing your working hours must not
+  // rewrite an appointment somebody already has with you.
+  'bookingPages',
+  'bookings',
   'pushSubscriptions',
   'settings',
   // The management desk — the executive's own tasks, meetings, appointments,

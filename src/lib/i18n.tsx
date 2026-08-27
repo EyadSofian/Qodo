@@ -883,6 +883,10 @@ const STRINGS = {
   },
   'management.title': { ar: 'الإدارة', en: 'Management' },
   'perm.management.view': { ar: 'فتح لوحة الإدارة', en: 'Open the management desk' },
+  'perm.calendar.booking': {
+    ar: 'نشر صفحة حجز للعملاء',
+    en: 'Publish a client booking page',
+  },
   'perm.management.manage': {
     ar: 'تسجيل وتعديل بنود الإدارة',
     en: 'File and edit management items',

@@ -31,6 +31,7 @@ export const PERMISSIONS = {
   MANAGEMENT_MANAGE: 'management.manage',
   // Reading the seating plan needs no key at all — see the note below.
   OFFICES_MANAGE: 'offices.manage',
+  BOOKING_MANAGE: 'calendar.booking',
   USERS_VIEW: 'users.view',
   USERS_MANAGE: 'users.manage',
   SETTINGS_MANAGE: 'settings.manage',
@@ -65,6 +66,13 @@ const AUTHORITY_PERMISSIONS = [
  * management desk", and no role can express that. So both keys are granted one
  * person at a time through the permission override, and only `admin` carries
  * them by virtue of holding everything.
+ *
+ * `calendar.booking` is absent from every role for a different reason. It does
+ * not open anything inside the workspace — it publishes a page on the open
+ * internet with an employee's name and their free hours on it. Whether a
+ * particular person should be reachable that way is a decision about how the
+ * company faces its customers, not about seniority, so it too is granted one
+ * person at a time.
  */
 
 /**
