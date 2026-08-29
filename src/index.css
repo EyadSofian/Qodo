@@ -33,8 +33,30 @@
     unicode-bidi: isolate;
   }
 
+  /* ── HR module ────────────────────────────────────────────────────
+     Every HR screen sits under `.hr-suite`, so the module reads the
+     Engosoft ramp from one place and nothing outside HR is touched. The
+     values are the same ones tailwind.config.js already publishes; they
+     are repeated as custom properties only so the HR surfaces below can
+     mix them into rgba() glass without a build-time helper. */
   .hr-suite {
-    font-family: 'IBM Plex Sans Arabic', 'Cairo', ui-sans-serif, system-ui, sans-serif;
+    /* Rubik carries both scripts in one family, so an Arabic label and the
+       Latin figure beside it share a skeleton instead of being two
+       typefaces pretending to match. Tajawal and Cairo back it up. */
+    font-family: 'Rubik', 'Tajawal', 'Cairo', ui-sans-serif, system-ui, sans-serif;
+    --hr-navy: 11 37 69;
+    --hr-blue: 29 111 184;
+    --hr-line: #E1E9F2;
+    --hr-line-soft: #EAF0F7;
+    --hr-sunken: #F1F5FA;
+    --hr-muted: #5A6C82;
+  }
+
+  /* Arabic sets tighter than Latin at the same size and never takes
+     letter-spacing or uppercasing well, so the Arabic side gets a little
+     more leading and none of the Latin eyebrow treatment. */
+  html[dir='rtl'] .hr-suite {
+    line-height: 1.65;
   }
 
   :focus-visible {
@@ -116,6 +138,105 @@
     box-shadow:
       0 22px 55px -34px rgba(11, 37, 69, 0.52),
       inset 0 1px 0 rgba(255, 255, 255, 0.92);
+  }
+
+  /* ── HR surfaces ─────────────────────────────────────────────────
+     One material for the whole module: a light glass panel that lets the
+     page wash through without costing a number or a label any contrast.
+     Blur stays low and opacity high on purpose — this is a records system,
+     not a showpiece. */
+  .hr-panel {
+    @apply rounded-[18px] border bg-white/75 backdrop-blur-[10px] backdrop-saturate-150;
+    border-color: rgb(var(--hr-navy, 11 37 69) / 0.09);
+    box-shadow:
+      0 1px 2px rgb(var(--hr-navy, 11 37 69) / 0.04),
+      0 18px 38px -28px rgb(var(--hr-navy, 11 37 69) / 0.3);
+  }
+
+  /* Same frame, opaque — for anything that scrolls its own body (tables,
+     the org chart) where a blurred backdrop would smear while scrolling. */
+  .hr-panel-solid {
+    @apply rounded-[18px] border bg-white;
+    border-color: rgb(var(--hr-navy, 11 37 69) / 0.09);
+    box-shadow:
+      0 1px 2px rgb(var(--hr-navy, 11 37 69) / 0.04),
+      0 18px 38px -28px rgb(var(--hr-navy, 11 37 69) / 0.3);
+  }
+
+  /* The navy header band on Overview and the employee profile. Translucent
+     enough to sit in the same material family as the panels below it. */
+  .hr-hero {
+    @apply overflow-hidden rounded-[20px] border backdrop-blur-[10px];
+    border-color: rgb(255 255 255 / 0.12);
+    background-color: rgb(var(--hr-navy, 11 37 69) / 0.96);
+    box-shadow:
+      0 1px 2px rgb(var(--hr-navy, 11 37 69) / 0.1),
+      0 26px 55px -34px rgb(var(--hr-navy, 11 37 69) / 0.72);
+  }
+
+  .hr-head {
+    @apply flex flex-wrap items-end justify-between gap-3 border-b px-5 py-4;
+    border-color: var(--hr-line-soft, #EAF0F7);
+  }
+
+  /* Section kicker. Latin gets the small-caps treatment; Arabic does not. */
+  .hr-eyebrow {
+    @apply text-[10px] font-bold uppercase tracking-[0.14em];
+    color: rgb(var(--hr-blue, 29 111 184));
+  }
+  html[dir='rtl'] .hr-eyebrow {
+    @apply text-[11px] tracking-normal;
+    text-transform: none;
+  }
+
+  .hr-title {
+    @apply text-[15px] font-bold sm:text-base;
+    color: rgb(var(--hr-navy, 11 37 69));
+  }
+
+  /* Figures: aligned, and isolated from the surrounding bidi run so an
+     Arabic label next to "‏345,000 US$" never reorders the line. */
+  .hr-num {
+    font-variant-numeric: tabular-nums;
+    unicode-bidi: isolate;
+  }
+
+  /* Segmented filters — one control shared by People, Payroll and
+     Recruitment so the three tabs never disagree about what a filter is. */
+  .hr-seg {
+    @apply inline-flex overflow-hidden rounded-xl border bg-white;
+    border-color: var(--hr-line, #E1E9F2);
+  }
+  .hr-seg-btn {
+    @apply min-h-10 px-3 text-xs font-bold transition-colors;
+    color: var(--hr-muted, #5A6C82);
+  }
+  .hr-seg-btn + .hr-seg-btn {
+    border-inline-start: 1px solid var(--hr-line, #E1E9F2);
+  }
+  .hr-seg-btn:hover {
+    background: var(--hr-sunken, #F1F5FA);
+    color: rgb(var(--hr-navy, 11 37 69));
+  }
+  .hr-seg-btn[aria-pressed='true'] {
+    background: rgb(var(--hr-navy, 11 37 69));
+    color: #fff;
+  }
+  .hr-seg-btn[aria-pressed='true']:hover {
+    background: rgb(var(--hr-navy, 11 37 69));
+    color: #fff;
+  }
+
+  /* The KPI tab is a shared component that renders inside `.hr-suite`;
+     pulling `.card` onto the same glass keeps it in the module's material
+     without editing the component or its behaviour. Modals portal to
+     <body>, so editors stay solid white where forms need the contrast. */
+  .hr-suite .card {
+    @apply bg-white/75 backdrop-blur-[10px] backdrop-saturate-150;
+    border-color: rgb(var(--hr-navy, 11 37 69) / 0.09);
+    box-shadow:
+      0 1px 2px rgb(var(--hr-navy, 11 37 69) / 0.04),
+      0 18px 38px -28px rgb(var(--hr-navy, 11 37 69) / 0.3);
   }
 
   /* Loading placeholder that doesn't flash — used while the grid resolves. */
