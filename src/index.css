@@ -252,6 +252,21 @@
     unicode-bidi: isolate;
   }
 
+  /* One meter for the whole module. There were five: three track colours
+     and three heights describing the same relationship. Square ends on a
+     3px rule read as a measurement; a 6px rounded pill reads as Bootstrap. */
+  .hr-meter {
+    @apply h-[3px] w-full overflow-hidden;
+    background: rgb(var(--hr-navy, 11 37 69) / 0.1);
+  }
+  .hr-meter > span {
+    @apply block h-full;
+    background: rgb(var(--hr-blue, 29 111 184));
+  }
+  .hr-meter > span[data-tone='navy'] {
+    background: rgb(var(--hr-navy, 11 37 69));
+  }
+
   /* Segmented filters — one control shared by People, Payroll and
      Recruitment so the three tabs never disagree about what a filter is. */
   .hr-seg {
