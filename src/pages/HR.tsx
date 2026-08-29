@@ -196,7 +196,7 @@ export function HR() {
               {l('ملخص تنفيذي قابل للقرار، ثم التفاصيل والمصدر والتعديل في نفس المسار.', 'An executive decision layer, with detail, source, and editing in the same flow.')}
             </p>
           </div>
-          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 lg:shrink-0">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:shrink-0">
             <HeadlineStat label={l('نشط', 'Active')} value={data.summary.active} />
             <HeadlineStat label={l('جدد هذا الشهر', 'New this month')} value={data.analytics?.workforce.newHires ?? 0} />
             <HeadlineStat label={l('شواغر', 'Open seats')} value={data.summary.openPositions} signal />
@@ -252,11 +252,11 @@ export function HR() {
 
 function HRLoading() {
   return (
-    <div className="hr-suite mx-auto w-full max-w-[1540px] space-y-4 px-4 py-6 sm:px-6 sm:py-8">
+    <div className="hr-suite mx-auto w-full max-w-[1540px] space-y-8 px-4 py-6 sm:px-6 sm:py-8">
       <div className="skeleton h-40 rounded-2xl" />
       <div className="skeleton h-14 rounded-2xl" />
-      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-5">{Array.from({ length: 5 }, (_, index) => <div key={index} className="skeleton h-[8.75rem] rounded-2xl" />)}</div>
-      <div className="grid gap-4 xl:grid-cols-2">{Array.from({ length: 2 }, (_, index) => <div key={index} className="skeleton h-56 rounded-[20px]" />)}</div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">{Array.from({ length: 5 }, (_, index) => <div key={index} className="skeleton h-[8.75rem] rounded-2xl" />)}</div>
+      <div className="grid gap-3 xl:grid-cols-2">{Array.from({ length: 2 }, (_, index) => <div key={index} className="skeleton h-56 rounded-[20px]" />)}</div>
     </div>
   );
 }
@@ -284,7 +284,7 @@ function TabSummary({ title, items, footer }: {
       {/* Separate sheets with air between them. The old ruled grid shared
           hairlines like a spreadsheet, and left a visible empty cell
           whenever five items met a two- or three-column layout. */}
-      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
         {items.map((item) => (
           <div key={item.label} className={cx('hr-stat relative min-h-[6rem] p-4', item.featured && 'ring-1 ring-brand-500/25')}>
             <div className="text-[11px] font-semibold leading-snug text-ink-muted">{item.label}</div>
@@ -336,8 +336,8 @@ function Overview({ data, lang, onOpen }: { data: HRDashboardData; lang: 'ar' | 
   }
 
   return (
-    <div className="space-y-4">
-      <section className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-5">
+    <div className="space-y-8">
+      <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
         <ExecutiveMetric icon={UsersRound} label={l('القوة الفعلية', 'Active workforce')} value={data.summary.active} note={l(`${workforce?.gender.female ?? 0} سيدة · ${workforce?.gender.male ?? 0} رجل`, `${workforce?.gender.female ?? 0} women · ${workforce?.gender.male ?? 0} men`)} />
         <ExecutiveMetric icon={ShieldCheck} label={l('تأمين اجتماعي', 'Socially insured')} value={data.summary.insured} note={l('التأمين الصحي بلا مصدر حاليًا', 'Health insurance source missing')} />
         <ExecutiveMetric icon={CircleDollarSign} label={l('إجمالي الرواتب', 'Total payroll')} value={payroll ? usd(payroll.totalUsd, lang) : '••••'} note={payroll ? l(`بسعر ${payroll.rate.sell} ج.م`, `at EGP ${payroll.rate.sell}`) : l('صلاحية الرواتب مطلوبة', 'Payroll access required')} strong />
@@ -345,7 +345,7 @@ function Overview({ data, lang, onOpen }: { data: HRDashboardData; lang: 'ar' | 
         <ExecutiveMetric icon={UserPlus} label={l('موظفون جدد', 'New hires')} value={workforce?.newHires ?? 0} note={formatMonth(workforce?.period, lang)} />
       </section>
 
-      <div className="grid gap-4 xl:grid-cols-[1.05fr_.95fr]">
+      <div className="grid gap-3 xl:grid-cols-[1.05fr_.95fr]">
         <InsightPanel eyebrow={l('تركيبة القوة', 'Workforce composition')} title={l('الناس والأقسام', 'People and departments')} action={<button onClick={() => onOpen('people')}>{l('فتح الموظفين', 'Open people')}</button>}>
           <div className="grid gap-5 md:grid-cols-[12rem_1fr]">
             <GenderSplit female={workforce?.gender.female ?? 0} male={workforce?.gender.male ?? 0} lang={lang} />
@@ -365,7 +365,7 @@ function Overview({ data, lang, onOpen }: { data: HRDashboardData; lang: 'ar' | 
         </InsightPanel>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[1.35fr_.65fr]">
+      <div className="grid gap-3 xl:grid-cols-[1.35fr_.65fr]">
         <InsightPanel eyebrow={l('دورة التعيين', 'Hiring cycle')} title={l('تقدم الوظائف النشطة', 'Active recruitment progress')} action={<button onClick={() => onOpen('recruitment')}>{l('فتح التوظيف', 'Open recruitment')}</button>}>
           <RecruitmentFunnel analytics={recruitment} lang={lang} />
           <div className="mt-5 grid grid-cols-3 border-t border-navy/[0.07] pt-4 text-center">
@@ -378,7 +378,7 @@ function Overview({ data, lang, onOpen }: { data: HRDashboardData; lang: 'ar' | 
         <InsightPanel eyebrow={l('مراجعة البيانات', 'Data control')} title={l('طابور الإجراءات', 'Action queue')}>
           <div className="flex items-end justify-between gap-3 border-b border-navy/[0.07] pb-4">
             <div className="min-w-0"><div className="hr-num text-4xl font-bold leading-none text-navy">{qualityIssues}</div><p className="mt-1.5 text-xs leading-5 text-ink-muted">{l('فرق يحتاج قرارًا', 'differences need a decision')}</p></div>
-            <span className={cx('grid h-10 w-10 shrink-0 place-items-center rounded-xl', qualityIssues ? 'bg-accent-50 text-accent-700' : 'bg-status-okBg text-status-ok')}>{qualityIssues ? <AlertTriangle size={20} /> : <BadgeCheck size={20} />}</span>
+            <span className={cx('shrink-0', qualityIssues ? 'text-accent-700' : 'text-status-ok')}>{qualityIssues ? <AlertTriangle size={22} /> : <BadgeCheck size={22} />}</span>
           </div>
           {reconciliation && <QualityMini reconciliation={reconciliation} lang={lang} />}
           {data.permissions.canManage && <button className="mt-4 w-full border-t border-navy/[0.07] pt-3 text-xs font-bold text-brand-500 hover:underline" onClick={() => onOpen('imports')}>{l('راجع المصادر والتحديثات', 'Review sources and updates')}</button>}
@@ -410,7 +410,7 @@ function InsightPanel({ eyebrow, title, action, children }: { eyebrow: string; t
         </div>
         {action && <div className="shrink-0 text-xs font-semibold text-brand-600 [&_button:hover]:underline">{action}</div>}
       </header>
-      <div className="flex-1 p-4 sm:p-5">{children}</div>
+      <div className="flex-1 p-5">{children}</div>
     </section>
   );
 }
@@ -441,8 +441,8 @@ function BarRow({ label, value, numericValue, max, accent }: { label: string; va
         <span className="truncate font-semibold text-ink-muted">{label}</span>
         <b className="hr-num shrink-0 font-semibold text-navy">{value}</b>
       </div>
-      <div className="h-1.5 overflow-hidden rounded-full bg-[#E6EDF5]">
-        <div className={cx('h-full rounded-full', accent ? 'bg-brand-700' : 'bg-brand-400')} style={{ width: `${width}%` }} />
+      <div className="hr-meter">
+        <span data-tone={accent ? 'navy' : undefined} style={{ width: `${width}%` }} />
       </div>
     </div>
   );
@@ -467,7 +467,7 @@ function RecruitmentFunnel({ analytics, lang }: { analytics: HRRecruitmentAnalyt
     [l('تم قبول مرشح', 'Accepted'), analytics?.funnel.accepted ?? 0],
   ] as const;
   return (
-    <ol className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+    <ol className="grid grid-cols-2 gap-3 sm:grid-cols-4">
       {stages.map(([label, value], index) => {
         const percent = Math.round((value / total) * 100);
         return (
@@ -478,8 +478,8 @@ function RecruitmentFunnel({ analytics, lang }: { analytics: HRRecruitmentAnalyt
             </div>
             <div className="hr-num mt-2.5 text-2xl font-bold leading-none text-navy">{value}<span className="text-xs font-semibold text-ink-faint">/{total}</span></div>
             <div className="mt-1.5 min-h-8 text-[11.5px] font-semibold leading-5 text-ink-muted">{label}</div>
-            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#E6EDF5]">
-              <div className="h-full rounded-full bg-brand-500" style={{ width: `${percent}%` }} />
+            <div className="hr-meter mt-2.5">
+              <span style={{ width: `${percent}%` }} />
             </div>
           </li>
         );
@@ -525,7 +525,7 @@ function PeopleDirectory({ data, lang }: { data: HRDashboardData; lang: 'ar' | '
   }, [data.employees, department, query, status]);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-8">
       <TabSummary title={l('ملخص الموظفين', 'People summary')} items={[
         { label: l('نشط', 'Active'), value: workforce?.active ?? data.summary.active },
         { label: l('سيدات / رجال', 'Women / men'), value: `${workforce?.gender.female ?? 0} / ${workforce?.gender.male ?? 0}` },
@@ -534,7 +534,7 @@ function PeopleDirectory({ data, lang }: { data: HRDashboardData; lang: 'ar' | '
         { label: l('جدد هذا الشهر', 'New this month'), value: workforce?.newHires ?? 0 },
       ]} />
       <section className="hr-panel-solid overflow-hidden">
-        <div className="grid gap-3 border-b border-navy/[0.07] p-4 lg:grid-cols-[minmax(0,1fr)_15rem_auto] lg:items-center">
+        <div className="grid gap-3 border-b border-navy/[0.07] p-5 lg:grid-cols-[minmax(0,1fr)_15rem_auto] lg:items-center">
           <div className="relative min-w-0">
             <Search className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-ink-muted" size={16} />
             <input className="field ps-10" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={l('الاسم، الكود أو المسمى الوظيفي…', 'Name, code, or job title…')} />
@@ -568,12 +568,12 @@ function EmployeeRow({ employee, lang }: { employee: HREmployeeSummary; lang: 'a
   const name = employee.nameArabic || employee.nameEnglish || `#${employee.employeeCode}`;
   return (
     <tr className="group transition-colors hover:bg-brand-50/50">
-      <td className="px-5 py-3.5"><Link to={`/hr/employees/${employee.employeeCode}`} className="flex items-center gap-3"><Avatar name={name} size={36} color={employee.status === 'active' ? '#1D6FB8' : '#94A3B8'} /><span className="min-w-0"><span className="block font-semibold text-navy group-hover:text-brand-500">{name}</span><span className="ltr block truncate text-[11px] text-ink-muted">#{employee.employeeCode} · {employee.companyEmail}</span></span></Link></td>
-      <td className="px-4 py-3.5"><div className="max-w-[18rem] truncate font-semibold" title={employee.title || undefined}>{employee.title || '—'}</div></td>
-      <td className="px-4 py-3.5 text-xs text-ink-muted">{employee.department || employee.sector || '—'}</td>
-      <td className="px-4 py-3.5"><div className="flex gap-1.5"><CoverageDot active={employee.hasPayroll} title={lang === 'en' ? 'Payroll' : 'راتب'} /><CoverageDot active={employee.hasInsurance} title={lang === 'en' ? 'Insurance' : 'تأمين'} /><CoverageDot active={Boolean(employee.linkedUserId)} title={lang === 'en' ? 'Qodo account' : 'حساب Qodo'} /></div></td>
-      <td className="px-4 py-3.5"><StatusChip status={employee.status} lang={lang} /></td>
-      <td className="px-4 py-3.5"><Link to={`/hr/employees/${employee.employeeCode}`} className="grid h-8 w-8 place-items-center rounded-lg text-ink-faint transition-colors hover:bg-brand-50 hover:text-brand-500" aria-label={lang === 'en' ? 'Open profile' : 'فتح الملف'}><ChevronRight className="rtl:rotate-180" size={17} /></Link></td>
+      <td className="px-5 py-3"><Link to={`/hr/employees/${employee.employeeCode}`} className="flex items-center gap-3"><Avatar name={name} size={36} color={employee.status === 'active' ? '#1D6FB8' : '#94A3B8'} /><span className="min-w-0"><span className="block font-semibold text-navy group-hover:text-brand-500">{name}</span><span className="ltr block truncate text-[11px] text-ink-muted">#{employee.employeeCode} · {employee.companyEmail}</span></span></Link></td>
+      <td className="px-4 py-3"><div className="max-w-[18rem] truncate font-semibold" title={employee.title || undefined}>{employee.title || '—'}</div></td>
+      <td className="px-4 py-3 text-xs text-ink-muted">{employee.department || employee.sector || '—'}</td>
+      <td className="px-4 py-3"><div className="flex gap-1.5"><CoverageDot active={employee.hasPayroll} title={lang === 'en' ? 'Payroll' : 'راتب'} /><CoverageDot active={employee.hasInsurance} title={lang === 'en' ? 'Insurance' : 'تأمين'} /><CoverageDot active={Boolean(employee.linkedUserId)} title={lang === 'en' ? 'Qodo account' : 'حساب Qodo'} /></div></td>
+      <td className="px-4 py-3"><StatusChip status={employee.status} lang={lang} /></td>
+      <td className="px-4 py-3"><Link to={`/hr/employees/${employee.employeeCode}`} className="grid h-8 w-8 place-items-center rounded-lg text-ink-faint transition-colors hover:bg-brand-50 hover:text-brand-500" aria-label={lang === 'en' ? 'Open profile' : 'فتح الملف'}><ChevronRight className="rtl:rotate-180" size={17} /></Link></td>
     </tr>
   );
 }
@@ -610,7 +610,7 @@ function PayrollDesk({ data, lang }: { data: HRDashboardData; lang: 'ar' | 'en' 
   const maxDepartment = analytics?.departments[0]?.totalUsd || 1;
   if (!analytics) return <MissingData text={l('تحتاج صلاحية الرواتب لعرض الملخص.', 'Payroll permission is required.')} />;
   return (
-    <div className="space-y-4">
+    <div className="space-y-8">
       <TabSummary title={l('ملخص الرواتب', 'Payroll summary')} items={[
         { label: l('إجمالي المسير بالدولار', 'Total payroll in USD'), value: usd(analytics.totalUsd, lang), featured: true },
         { label: l('متوسط الموظف', 'Average per employee'), value: usd(analytics.averageUsd, lang) },
@@ -619,7 +619,7 @@ function PayrollDesk({ data, lang }: { data: HRDashboardData; lang: 'ar' | 'en' 
         { label: l('نشط بدون راتب', 'Active missing payroll'), value: data.reconciliation?.activeWithoutPayroll.length ?? 0 },
       ]} footer={l(`التحويل على سعر بيع الدولار ${analytics.rate.sell} ج.م · ${analytics.rate.source} · ${analytics.rate.asOf}`, `Converted at USD sell rate EGP ${analytics.rate.sell} · ${analytics.rate.source} · ${analytics.rate.asOf}`)} />
 
-      <div className="grid gap-4 xl:grid-cols-[.8fr_1.2fr]">
+      <div className="grid gap-3 xl:grid-cols-[.8fr_1.2fr]">
         <InsightPanel eyebrow={l('مقارنة الأقسام', 'Department comparison')} title={l('تكلفة الرواتب بالدولار', 'Payroll cost in USD')}>
           <div className="space-y-3">{analytics.departments.map((item) => <BarRow key={item.department} label={`${item.department} · ${item.employees}`} value={usd(item.totalUsd, lang)} numericValue={item.totalUsd} max={maxDepartment} accent />)}</div>
         </InsightPanel>
@@ -722,7 +722,7 @@ function RecruitmentDesk({ data, lang, onChanged }: { data: HRDashboardData; lan
     } finally { setSaving(''); }
   };
   return (
-    <div className="space-y-4">
+    <div className="space-y-8">
       <TabSummary title={l('ملخص التوظيف', 'Recruitment summary')} items={[
         { label: l('طلبات نشطة', 'Active requests'), value: analytics?.active ?? 0 },
         { label: l('مقاعد مفتوحة', 'Open seats'), value: analytics?.openSeats ?? 0, featured: true },
@@ -735,7 +735,7 @@ function RecruitmentDesk({ data, lang, onChanged }: { data: HRDashboardData; lan
         <RecruitmentFunnel analytics={analytics} lang={lang} />
       </InsightPanel>
 
-      <section className="hr-panel p-4">
+      <section className="hr-panel p-5">
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(15rem,1fr)_repeat(2,11rem)_auto] xl:items-end">
           <div className="relative sm:col-span-2 xl:col-span-1">
             <span className="mb-1 block text-[11px] font-bold text-ink-muted">{l('بحث', 'Search')}</span>
@@ -790,7 +790,7 @@ function RecruitmentRequestCard({ request, match, lang, canManage, saving, onSta
   return (
     <article className={cx('hr-panel overflow-hidden', overdue && '!border-accent-500/45')}>
       {overdue && <div className="h-0.5 bg-accent-500" aria-hidden="true" />}
-      <div className="flex items-start justify-between gap-4 border-b border-navy/[0.07] p-4 sm:p-5">
+      <div className="flex items-start justify-between gap-4 border-b border-navy/[0.07] p-5">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-base font-semibold text-navy">{request.role}</h2>
@@ -804,7 +804,7 @@ function RecruitmentRequestCard({ request, match, lang, canManage, saving, onSta
           <small className="mt-1 block text-[11px] text-ink-muted">{remaining} {l('متبقي', 'remaining')}</small>
         </div>
       </div>
-      <div className="p-4 sm:p-5">
+      <div className="p-5">
         <div className="grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-4">
           <MiniFact label={l('المسؤول', 'Owner')} value={request.assignedTo.join('، ') || '—'} />
           <MiniFact label={l('بدء', 'Started')} value={formatDate(request.activeDate, lang)} />
@@ -881,7 +881,7 @@ function RecruitmentEditor({ request, lang, onClose, onSaved }: { request: HRRec
   };
   const stageOptions = (value: string) => <>{!['done', 'wait', 'hold'].includes(value) && <option value={value}>{value || '—'}</option>}<option value="done">Done</option><option value="wait">Wait</option><option value="hold">Hold</option></>;
   const input = (key: string, label: string, type = 'text') => <label><span className="label">{label}</span><input className="field" type={type} value={form[key]} onChange={(event) => set(key, event.target.value)} /></label>;
-  return <Modal open onClose={onClose} title={l('تعديل طلب التوظيف', 'Edit recruitment request')} width="xl" footer={<><button className="btn-ghost" onClick={onClose}>{l('إلغاء', 'Cancel')}</button><button className="btn-primary" onClick={() => void save()} disabled={saving}>{saving ? <Spinner size={16} /> : <Check size={16} />}{l('حفظ', 'Save')}</button></>}><div className="grid max-h-[70dvh] gap-4 overflow-y-auto pe-1 sm:grid-cols-2 lg:grid-cols-3">{input('role', l('الوظيفة', 'Role'))}{input('department', l('القسم', 'Department'))}{input('location', l('الموقع', 'Location'))}{input('numberNeeded', l('العدد المطلوب', 'Needed'), 'number')}{input('accepted', l('تم قبوله', 'Accepted'), 'number')}<label><span className="label">{l('الحالة', 'Status')}</span><select className="field" value={form.status} onChange={(event) => set('status', event.target.value)}><option value="active">Active</option><option value="hold">Hold</option><option value="done">Done</option></select></label>{input('activeDate', l('تاريخ التفعيل', 'Active date'), 'date')}{input('dueDate', l('تاريخ الاستحقاق', 'Due date'), 'date')}{input('actualHiringDate', l('تاريخ التعيين الفعلي', 'Actual hire date'), 'date')}{input('hiringPeriodDays', l('مدة التعيين بالأيام', 'Hiring period days'), 'number')}{input('assignedTo', l('المسؤولون بفاصلة', 'Owners, comma separated'))}{input('interviewer', l('المقابل', 'Interviewer'))}{input('priority', l('الأولوية', 'Priority'))}{input('seniority', l('المستوى', 'Seniority'))}{input('vacancyReason', l('سبب الشاغر', 'Vacancy reason'))}{input('salaryRange', l('نطاق الراتب', 'Salary range'))}{input('actualSalary', l('الراتب الفعلي', 'Actual salary'))}{input('validation', l('الاعتماد', 'Validation'))}<label><span className="label">{l('استلام المتطلبات', 'Requirements')}</span><select className="field" value={form.receivedRequirements} onChange={(event) => set('receivedRequirements', event.target.value)}>{stageOptions(form.receivedRequirements)}</select></label><label><span className="label">{l('النشر', 'Published')}</span><select className="field" value={form.published} onChange={(event) => set('published', event.target.value)}>{stageOptions(form.published)}</select></label><label><span className="label">{l('استلام المرشحين', 'Candidates received')}</span><select className="field" value={form.receivedCandidates} onChange={(event) => set('receivedCandidates', event.target.value)}>{stageOptions(form.receivedCandidates)}</select></label><label className="sm:col-span-2 lg:col-span-3"><span className="label">{l('الملاحظات', 'Feedback')}</span><textarea className="field min-h-24" value={form.feedback} onChange={(event) => set('feedback', event.target.value)} /></label></div></Modal>;
+  return <Modal open onClose={onClose} title={l('تعديل طلب التوظيف', 'Edit recruitment request')} width="xl" footer={<><button className="btn-ghost" onClick={onClose}>{l('إلغاء', 'Cancel')}</button><button className="btn-primary" onClick={() => void save()} disabled={saving}>{saving ? <Spinner size={16} /> : <Check size={16} />}{l('حفظ', 'Save')}</button></>}><div className="grid max-h-[70dvh] gap-3 overflow-y-auto pe-1 sm:grid-cols-2 lg:grid-cols-3">{input('role', l('الوظيفة', 'Role'))}{input('department', l('القسم', 'Department'))}{input('location', l('الموقع', 'Location'))}{input('numberNeeded', l('العدد المطلوب', 'Needed'), 'number')}{input('accepted', l('تم قبوله', 'Accepted'), 'number')}<label><span className="label">{l('الحالة', 'Status')}</span><select className="field" value={form.status} onChange={(event) => set('status', event.target.value)}><option value="active">Active</option><option value="hold">Hold</option><option value="done">Done</option></select></label>{input('activeDate', l('تاريخ التفعيل', 'Active date'), 'date')}{input('dueDate', l('تاريخ الاستحقاق', 'Due date'), 'date')}{input('actualHiringDate', l('تاريخ التعيين الفعلي', 'Actual hire date'), 'date')}{input('hiringPeriodDays', l('مدة التعيين بالأيام', 'Hiring period days'), 'number')}{input('assignedTo', l('المسؤولون بفاصلة', 'Owners, comma separated'))}{input('interviewer', l('المقابل', 'Interviewer'))}{input('priority', l('الأولوية', 'Priority'))}{input('seniority', l('المستوى', 'Seniority'))}{input('vacancyReason', l('سبب الشاغر', 'Vacancy reason'))}{input('salaryRange', l('نطاق الراتب', 'Salary range'))}{input('actualSalary', l('الراتب الفعلي', 'Actual salary'))}{input('validation', l('الاعتماد', 'Validation'))}<label><span className="label">{l('استلام المتطلبات', 'Requirements')}</span><select className="field" value={form.receivedRequirements} onChange={(event) => set('receivedRequirements', event.target.value)}>{stageOptions(form.receivedRequirements)}</select></label><label><span className="label">{l('النشر', 'Published')}</span><select className="field" value={form.published} onChange={(event) => set('published', event.target.value)}>{stageOptions(form.published)}</select></label><label><span className="label">{l('استلام المرشحين', 'Candidates received')}</span><select className="field" value={form.receivedCandidates} onChange={(event) => set('receivedCandidates', event.target.value)}>{stageOptions(form.receivedCandidates)}</select></label><label className="sm:col-span-2 lg:col-span-3"><span className="label">{l('الملاحظات', 'Feedback')}</span><textarea className="field min-h-24" value={form.feedback} onChange={(event) => set('feedback', event.target.value)} /></label></div></Modal>;
 }
 
 function OrganizationDesk({ data, lang }: { data: HRDashboardData; lang: 'ar' | 'en' }) {
@@ -898,7 +898,7 @@ function OrganizationDesk({ data, lang }: { data: HRDashboardData; lang: 'ar' | 
     children.set(position.managerPositionId, [...(children.get(position.managerPositionId) ?? []), position]);
   });
   return (
-    <div className="space-y-4">
+    <div className="space-y-8">
       <TabSummary title={l('ملخص الهيكل', 'Organization summary')} items={[
         { label: l('إجمالي المناصب', 'Total positions'), value: analytics?.total ?? data.summary.organizationPositions },
         { label: l('مرتبط بموظف', 'Matched to employee'), value: analytics?.matched ?? 0, featured: true },
@@ -907,7 +907,7 @@ function OrganizationDesk({ data, lang }: { data: HRDashboardData; lang: 'ar' | 
         { label: l('أقسام', 'Departments'), value: analytics?.departments ?? 0 },
       ]} />
       <section className="hr-panel-solid overflow-hidden">
-        <div className="flex flex-col gap-3 border-b border-navy/[0.07] p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-3 border-b border-navy/[0.07] p-5 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
             <p className="hr-eyebrow">{l('خطوط الإدارة', 'Reporting lines')}</p>
             <h2 className="hr-title mt-1">{l('خريطة المسؤولية', 'Accountability map')}</h2>
@@ -964,7 +964,7 @@ function ImportDesk({ data, lang, uploading, onUpload }: { data: HRDashboardData
   const qualityIssues = quality ? Object.values(quality).reduce((sum, items) => sum + items.length, 0) : 0;
   const latest = [...data.datasets].filter((dataset) => dataset.importedAt).sort((left, right) => String(right.importedAt).localeCompare(String(left.importedAt)))[0];
   return (
-    <div className="space-y-4">
+    <div className="space-y-8">
       <TabSummary title={l('ملخص تحديث البيانات', 'Data sync summary')} items={[
         { label: l('مصادر جاهزة', 'Ready sources'), value: `${ready}/${data.datasets.length}`, featured: true },
         { label: l('تحذيرات الاستيراد', 'Import warnings'), value: warnings },
@@ -972,14 +972,14 @@ function ImportDesk({ data, lang, uploading, onUpload }: { data: HRDashboardData
         { label: l('آخر مصدر', 'Latest source'), value: latest ? HR_SOURCE_LABELS[latest.source][lang] : '—', note: latest ? formatDateTime(latest.importedAt, lang) : '' },
         { label: l('بوت الرواتب', 'Payroll bot'), value: data.telegram?.enabled ? l('متصل', 'Connected') : l('يحتاج إعداد', 'Needs setup') },
       ]} />
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
+      <section className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="grid gap-3 sm:grid-cols-2">
           {data.datasets.map((dataset) => <ImportCard key={dataset.source} dataset={dataset} lang={lang} busy={uploading === dataset.source} disabled={Boolean(uploading)} onUpload={(event) => onUpload(dataset.source, event)} />)}
         </div>
-        <aside className="space-y-4">
+        <aside className="space-y-3">
           <div className="overflow-hidden rounded-[20px] bg-navy p-5 text-white shadow-[0_24px_50px_-30px_rgba(11,37,69,0.85)]">
             <div className="flex items-center justify-between gap-3">
-              <span className="grid h-10 w-10 place-items-center rounded-xl bg-white/10"><Bot size={21} /></span>
+              <span className="text-white/80"><Bot size={22} /></span>
               <span className={cx('chip', data.telegram?.enabled ? 'bg-white/15 text-white' : 'bg-white/10 text-white/60')}>{data.telegram?.enabled ? l('متصل', 'Connected') : l('يحتاج إعداد', 'Needs setup')}</span>
             </div>
             <h2 className="mt-4 font-extrabold">{l('قناة Telegram للرواتب', 'Telegram payroll channel')}</h2>
@@ -1001,7 +1001,7 @@ function ImportCard({ dataset, lang, busy, disabled, onUpload }: { dataset: HRDa
   return (
     <article className={cx('hr-panel relative flex flex-col overflow-hidden p-5', ready && 'ring-1 ring-brand-500/25')}>
       <div className="flex items-start justify-between gap-3">
-        <span className={cx('grid h-11 w-11 place-items-center rounded-2xl', ready ? 'bg-brand-50 text-brand-500' : 'bg-surface-sunken text-ink-faint')}><Icon size={21} /></span>
+        <span className={cx(ready ? 'text-brand-600' : 'text-ink-faint')}><Icon size={20} /></span>
         <span className={cx('chip', ready ? 'bg-status-okBg text-status-ok' : 'bg-surface-sunken text-ink-faint')}>{ready ? (lang === 'en' ? 'Ready' : 'متصل') : (lang === 'en' ? 'Missing' : 'ناقص')}</span>
       </div>
       <h2 className="mt-4 font-extrabold text-navy">{meta[lang]}</h2>
@@ -1067,8 +1067,8 @@ export function HREmployee() {
         </div>
       </header>
 
-      <section className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(19rem,.65fr)]">
-        <div className="space-y-4">
+      <section className="mt-8 grid gap-3 lg:grid-cols-[minmax(0,1.35fr)_minmax(19rem,.65fr)]">
+        <div className="space-y-3">
           <ProfileSection icon={BriefcaseBusiness} title={l('البيانات الوظيفية', 'Employment')} action={canManage ? <EditButton onClick={() => setEditor('master')} lang={lang} /> : null}>
             <FactGrid items={[
               [l('المسمى الوظيفي', 'Job title'), employee.title], [l('القسم', 'Department'), employee.department],
@@ -1101,7 +1101,7 @@ export function HREmployee() {
           </ProfileSection>}
         </div>
 
-        <aside className="space-y-4">
+        <aside className="space-y-3">
           <ProfileSection icon={FileCheck2} title={l('اكتمال المستندات', 'Document readiness')}>
             <DocumentChecklist documents={employee.documents} lang={lang} />
           </ProfileSection>
@@ -1124,14 +1124,14 @@ export function HREmployee() {
 function ProfileSection({ icon: Icon, title, action, children }: { icon: typeof UsersRound; title: string; action?: ReactNode; children: ReactNode }) {
   return (
     <section className="hr-panel overflow-hidden">
-      <header className="flex items-center justify-between gap-3 border-b border-navy/[0.07] px-4 py-3.5 sm:px-5 sm:py-4">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-500"><Icon size={16} /></span>
+      <header className="flex items-center justify-between gap-3 border-b border-navy/[0.07] px-5 py-4">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="shrink-0 text-brand-600"><Icon size={17} /></span>
           <h2 className="hr-title truncate">{title}</h2>
         </div>
         {action}
       </header>
-      <div className="p-4 sm:p-5">{children}</div>
+      <div className="p-5">{children}</div>
     </section>
   );
 }
@@ -1182,8 +1182,8 @@ function DocumentChecklist({ documents, lang }: { documents: Record<string, bool
         <span className="text-xs font-bold text-ink-muted">{lang === 'en' ? 'Ready' : 'مكتمل'}</span>
         <b className="hr-num text-2xl font-semibold text-navy">{rate}%</b>
       </div>
-      <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#E6EDF5]">
-        <div className="h-full rounded-full bg-brand-500 transition-[width] duration-500" style={{ width: `${Math.min(100, rate)}%` }} />
+      <div className="hr-meter mt-2.5">
+        <span className="transition-[width] duration-500" style={{ width: `${Math.min(100, rate)}%` }} />
       </div>
       <div className="mt-4 grid grid-cols-2 gap-2">
         {rows.map(([key, value]) => (
@@ -1224,7 +1224,7 @@ function EmployeeEditor({ open, section, employee, lang, onClose, onSaved }: { o
   const numeric = new Set(['baseSalary', 'kpiAmount', 'totalSalary', 'insuredSalary', 'subscriptionSalary', 'employeeShare', 'employerShare', 'monthlyTax']);
   const label: Record<string, { ar: string; en: string }> = { nameArabic: { ar: 'الاسم بالعربي', en: 'Arabic name' }, nameEnglish: { ar: 'الاسم بالإنجليزي', en: 'English name' }, title: { ar: 'المسمى الوظيفي', en: 'Job title' }, department: { ar: 'القسم', en: 'Department' }, directManager: { ar: 'المدير المباشر', en: 'Direct manager' }, workType: { ar: 'نوع العمل', en: 'Work type' }, companyEmail: { ar: 'الإيميل الوظيفي', en: 'Company email' }, mobile: { ar: 'الموبايل', en: 'Mobile' }, baseSalary: { ar: 'المرتب الأساسي', en: 'Base salary' }, kpiAmount: { ar: 'قيمة KPI', en: 'KPI amount' }, totalSalary: { ar: 'الإجمالي', en: 'Total salary' }, insuredSalary: { ar: 'الراتب التأميني', en: 'Insured salary' }, subscriptionSalary: { ar: 'أجر الاشتراك', en: 'Contribution salary' }, employeeShare: { ar: 'حصة الموظف', en: 'Employee share' }, employerShare: { ar: 'حصة الشركة', en: 'Employer share' }, monthlyTax: { ar: 'الضريبة الشهرية', en: 'Monthly tax' }, bankName: { ar: 'اسم البنك', en: 'Bank name' }, bankStatus: { ar: 'حالة الحساب', en: 'Account status' }, bankAccount: { ar: 'رقم الحساب', en: 'Account number' } };
   const save = async () => { setSaving(true); try { const payload = Object.fromEntries(Object.entries(form).map(([key, value]) => [key, numeric.has(key) ? (value === '' ? null : Number(value)) : value.trim()])); await api.patch(`/hr/employees/${employee.employeeCode}/${section}`, payload); await onSaved(); } catch (error) { push(errorMessage(error, lang), 'bad'); } finally { setSaving(false); } };
-  return <Modal open={open} onClose={onClose} title={l('تعديل بيانات الموظف', 'Edit employee record')} width="lg" footer={<><button className="btn-ghost" onClick={onClose}>{l('إلغاء', 'Cancel')}</button><button className="btn-primary" onClick={() => void save()} disabled={saving}>{saving ? <Spinner size={16} /> : <Check size={16} />}{l('حفظ التعديل', 'Save changes')}</button></>}><div className="mb-4 rounded-xl bg-brand-50 px-4 py-3 text-xs leading-6 text-brand-800">{l('التعديل يُحفظ في نفس مصدر الشيت ويظهر في الملف الموحّد فورًا. رفع شيت أحدث سيستبدل قيم هذا المصدر.', 'The edit is saved in the same source and appears immediately. A newer workbook will replace values from that source.')}</div><div className="grid gap-4 sm:grid-cols-2">{Object.keys(form).map((key) => <label key={key}><span className="label">{label[key]?.[lang] ?? key}</span><input className="field" type={numeric.has(key) ? 'number' : 'text'} value={form[key]} onChange={(event) => setForm((current) => ({ ...current, [key]: event.target.value }))} /></label>)}</div></Modal>;
+  return <Modal open={open} onClose={onClose} title={l('تعديل بيانات الموظف', 'Edit employee record')} width="lg" footer={<><button className="btn-ghost" onClick={onClose}>{l('إلغاء', 'Cancel')}</button><button className="btn-primary" onClick={() => void save()} disabled={saving}>{saving ? <Spinner size={16} /> : <Check size={16} />}{l('حفظ التعديل', 'Save changes')}</button></>}><div className="mb-4 rounded-xl bg-brand-50 px-4 py-3 text-xs leading-6 text-brand-800">{l('التعديل يُحفظ في نفس مصدر الشيت ويظهر في الملف الموحّد فورًا. رفع شيت أحدث سيستبدل قيم هذا المصدر.', 'The edit is saved in the same source and appears immediately. A newer workbook will replace values from that source.')}</div><div className="grid gap-3 sm:grid-cols-2">{Object.keys(form).map((key) => <label key={key}><span className="label">{label[key]?.[lang] ?? key}</span><input className="field" type={numeric.has(key) ? 'number' : 'text'} value={form[key]} onChange={(event) => setForm((current) => ({ ...current, [key]: event.target.value }))} /></label>)}</div></Modal>;
 }
 
 function coverage(part: number, total: number) { return total > 0 ? Math.min(100, Math.round((part / total) * 100)) : 0; }

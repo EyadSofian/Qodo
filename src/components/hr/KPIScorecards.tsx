@@ -421,9 +421,9 @@ function ScorecardRow({ card, lang, onOpen }: { card: KPIScorecard; lang: 'ar' |
       </div>
 
       <div className="flex items-center gap-3 sm:w-56">
-        <div className="h-2 flex-1 overflow-hidden rounded-full bg-surface-sunken">
-          <div
-            className="h-full rounded-full transition-all duration-500"
+        <div className="hr-meter flex-1">
+          <span
+            className="transition-all duration-500"
             style={{
               width: `${Math.min(100, Math.max(0, percent ?? 0))}%`,
               backgroundColor: rating?.color ?? '#CBD5E1',
@@ -793,9 +793,9 @@ function GroupPanel({
           </div>
           {/* The meter reads against the axis weight, so a 20-point axis and a
               50-point one are comparable at a glance. */}
-          <div className="mt-1.5 h-1.5 max-w-xs overflow-hidden rounded-full bg-white">
-            <div
-              className="h-full rounded-full transition-all duration-500"
+          <div className="hr-meter mt-2 max-w-xs">
+            <span
+              className="transition-all duration-500"
               style={{
                 width: `${Math.min(100, Math.max(0, ((group.score ?? 0) / group.weight) * 100))}%`,
                 backgroundColor: group.gated ? '#DC2626' : '#1D6FB8',
