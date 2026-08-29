@@ -165,7 +165,9 @@ export function currentPeriod(date = new Date()): string {
 export function formatPeriod(period: string, lang: 'ar' | 'en'): string {
   const [year, month] = period.split('-').map(Number);
   if (!year || !month) return period;
-  return new Date(year, month - 1, 1).toLocaleDateString(lang === 'en' ? 'en-GB' : 'ar-EG', {
+  // Arabic month name, Latin year — the same numeral system the rest of the
+  // HR module uses, so a period reads the same on every tab.
+  return new Date(year, month - 1, 1).toLocaleDateString(lang === 'en' ? 'en-GB' : 'ar-EG-u-nu-latn', {
     month: 'long',
     year: 'numeric',
   });

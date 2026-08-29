@@ -122,11 +122,11 @@ export function KPIScorecards({
 
   return (
     <div className="space-y-5">
-      <section className="overflow-hidden rounded-2xl border border-surface-line bg-surface-card shadow-card">
-        <div className="grid gap-5 p-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+      <section className="hr-panel overflow-hidden">
+        <div className="grid gap-5 p-4 sm:p-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
           <div className="min-w-0">
             <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-              <span className="text-4xl font-black tabular-nums text-navy">{formatPercent(average)}</span>
+              <span className="hr-num text-4xl font-black text-navy">{formatPercent(average)}</span>
               <span className="text-[13px] font-bold text-ink-muted">{l('متوسط الدرجة المعتمدة', 'Average approved score')}</span>
             </div>
             <RatingBar scorecards={scorecards} lang={lang} />
@@ -137,7 +137,7 @@ export function KPIScorecards({
             <StatPill label={l('مسودة', 'Draft')} value={String(scorecards.length - finalised)} />
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2 border-t border-surface-line bg-surface-sunken/50 px-5 py-3">
+        <div className="flex flex-wrap items-center gap-2 border-t border-[#EAF0F7] bg-surface-sunken/60 px-4 py-3 sm:px-5">
           <div className="flex gap-1 rounded-xl bg-white p-1 shadow-sm">
             {([
               ['all', 'الكل', 'All'],
@@ -150,7 +150,7 @@ export function KPIScorecards({
                 onClick={() => setAudience(id)}
                 className={cx(
                   'rounded-lg px-3 py-1.5 text-xs font-bold transition-colors',
-                  audience === id ? 'bg-brand-500 text-white shadow-sm' : 'text-ink-muted hover:text-ink'
+                  audience === id ? 'bg-navy text-white shadow-sm' : 'text-ink-muted hover:text-ink'
                 )}
               >
                 {l(ar, en)}
@@ -179,7 +179,7 @@ export function KPIScorecards({
       </section>
 
       <section>
-        <h2 className="mb-2 px-1 text-[13px] font-extrabold text-ink-muted">
+        <h2 className="hr-eyebrow mb-2 px-1">
           {l('البطاقات المعتمدة', 'Approved templates')}
         </h2>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -195,17 +195,17 @@ export function KPIScorecards({
         </div>
       </section>
 
-      <section className="card overflow-hidden">
-        <div className="flex items-center justify-between border-b border-surface-line px-5 py-4">
-          <div>
-            <h2 className="font-extrabold">{l('البطاقات', 'Scorecards')}</h2>
-            <p className="mt-0.5 text-xs text-ink-faint">
+      <section className="hr-panel overflow-hidden">
+        <div className="flex items-center justify-between border-b border-[#EAF0F7] px-4 py-4 sm:px-5">
+          <div className="min-w-0">
+            <h2 className="hr-title">{l('البطاقات', 'Scorecards')}</h2>
+            <p className="mt-1 text-xs leading-5 text-ink-faint">
               {l('الدرجة بتتحسب من الأرقام اللي اتسجلت، وبتتحدث لحظة ما تغيّر رقم.', 'The score follows the numbers you record, and updates the moment you change one.')}
             </p>
           </div>
         </div>
         {scorecards.length ? (
-          <div className="divide-y divide-surface-line">
+          <div className="divide-y divide-[#EAF0F7]">
             {scorecards.map((card) => (
               <ScorecardRow key={card.id} card={card} lang={lang} onOpen={() => setOpenId(card.id)} />
             ))}
@@ -253,9 +253,9 @@ function StatPill({ label, value, tone }: { label: string; value: string; tone?:
   return (
     <div className={cx(
       'rounded-xl border px-3 py-2 text-center',
-      tone === 'brand' ? 'border-brand-200 bg-brand-50' : 'border-surface-line bg-surface-sunken'
+      tone === 'brand' ? 'border-[#C8D5E3] bg-white' : 'border-surface-line bg-surface-sunken'
     )}>
-      <div className="text-lg font-black tabular-nums leading-tight text-navy">{value}</div>
+      <div className="hr-num text-lg font-black leading-tight text-navy">{value}</div>
       <div className="text-[10px] font-semibold text-ink-faint">{label}</div>
     </div>
   );
@@ -332,7 +332,7 @@ function TemplateCard({
 
   return (
     <article className="card group relative flex flex-col overflow-hidden p-4 transition-shadow hover:shadow-lift">
-      <span className="absolute inset-x-0 top-0 h-1" style={{ backgroundColor: accent }} aria-hidden="true" />
+      <span className="absolute inset-x-0 top-0 h-0.5" style={{ backgroundColor: accent }} aria-hidden="true" />
       <div className="flex items-start justify-between gap-2">
         <span
           className="chip"
@@ -430,7 +430,7 @@ function ScorecardRow({ card, lang, onOpen }: { card: KPIScorecard; lang: 'ar' |
             }}
           />
         </div>
-        <span className="w-12 text-end text-lg font-black tabular-nums text-navy">{formatPercent(percent)}</span>
+        <span className="hr-num w-12 text-end text-lg font-black text-navy">{formatPercent(percent)}</span>
         {/* One glyph, mirrored in RTL, so "open this" always points forward. */}
         <ChevronRight size={16} className="shrink-0 text-ink-faint rtl:-scale-x-100" />
       </div>
@@ -713,11 +713,11 @@ function ScoreHeader({ card, lang }: { card: KPIScorecard; lang: 'ar' | 'en' }) 
   const l = (ar: string, en: string) => (lang === 'en' ? en : ar);
   const { approved, performance, verification } = card.result;
   return (
-    <section className="grid gap-3 rounded-2xl bg-[#0B2545] p-4 text-white sm:grid-cols-4">
+    <section className="grid gap-3 rounded-2xl bg-navy p-4 text-white sm:grid-cols-4">
       <div className="sm:col-span-2">
         <div className="text-[11px] font-semibold text-white/60">{l('الدرجة المعتمدة', 'Approved score')}</div>
         <div className="mt-1 flex items-end gap-2">
-          <span className="text-4xl font-black tabular-nums">{formatPercent(approved.percent)}</span>
+          <span className="hr-num text-4xl font-black">{formatPercent(approved.percent)}</span>
           {approved.rating && (
             <span className="mb-1 rounded-full px-2 py-0.5 text-[11px] font-bold" style={{ backgroundColor: `${approved.rating.color}33`, color: '#fff' }}>
               {lang === 'en' ? approved.rating.en : approved.rating.ar}
