@@ -40,23 +40,40 @@
      are repeated as custom properties only so the HR surfaces below can
      mix them into rgba() glass without a build-time helper. */
   .hr-suite {
-    /* Rubik carries both scripts in one family, so an Arabic label and the
-       Latin figure beside it share a skeleton instead of being two
-       typefaces pretending to match. Tajawal and Cairo back it up. */
-    font-family: 'Rubik', 'Tajawal', 'Cairo', ui-sans-serif, system-ui, sans-serif;
+    /* Readex Pro was drawn for Arabic and Latin together rather than having
+       a Latin face bolted onto an Arabic one — so a job title in Arabic and
+       the salary figure next to it sit on the same baseline with the same
+       weight, which is most of what a bilingual records screen needs. */
+    font-family: 'Readex Pro', 'Almarai', 'Tajawal', ui-sans-serif, system-ui, sans-serif;
     --hr-navy: 11 37 69;
     --hr-blue: 29 111 184;
     --hr-line: #E1E9F2;
     --hr-line-soft: #EAF0F7;
     --hr-sunken: #F1F5FA;
     --hr-muted: #5A6C82;
+    position: relative;
+  }
+
+  /* Glass needs something behind it or it is just a white box. This is the
+     something: three very soft colour fields, fixed, well under the content,
+     large enough that no edge of one is ever visible on screen. */
+  .hr-suite::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(1000px 680px at 14% -6%, rgba(29, 111, 184, 0.2), transparent 62%),
+      radial-gradient(820px 560px at 94% 6%, rgba(11, 37, 69, 0.17), transparent 64%),
+      radial-gradient(720px 500px at 66% 98%, rgba(245, 130, 31, 0.09), transparent 62%);
   }
 
   /* Arabic sets tighter than Latin at the same size and never takes
      letter-spacing or uppercasing well, so the Arabic side gets a little
      more leading and none of the Latin eyebrow treatment. */
   html[dir='rtl'] .hr-suite {
-    line-height: 1.65;
+    line-height: 1.7;
   }
 
   :focus-visible {
@@ -141,47 +158,57 @@
   }
 
   /* ── HR surfaces ─────────────────────────────────────────────────
-     One material for the whole module: a light glass panel that lets the
-     page wash through without costing a number or a label any contrast.
-     Blur stays low and opacity high on purpose — this is a records system,
-     not a showpiece. */
+     One material for the whole module. What makes it read as glass is not
+     the blur on its own — it is the lit top edge and the shadow underneath,
+     which is what tells the eye the sheet is floating above the wash rather
+     than painted onto it. */
   .hr-panel {
-    @apply rounded-[18px] border bg-white/75 backdrop-blur-[10px] backdrop-saturate-150;
-    border-color: rgb(var(--hr-navy, 11 37 69) / 0.09);
+    @apply rounded-[20px] border backdrop-blur-2xl backdrop-saturate-150;
+    border-color: rgb(255 255 255 / 0.72);
+    background-color: rgb(255 255 255 / 0.6);
     box-shadow:
-      0 1px 2px rgb(var(--hr-navy, 11 37 69) / 0.04),
-      0 18px 38px -28px rgb(var(--hr-navy, 11 37 69) / 0.3);
+      inset 0 1px 0 rgb(255 255 255 / 0.95),
+      0 8px 24px -14px rgb(var(--hr-navy, 11 37 69) / 0.2),
+      0 32px 64px -34px rgb(var(--hr-navy, 11 37 69) / 0.34);
   }
 
-  /* Same frame, opaque — for anything that scrolls its own body (tables,
-     the org chart) where a blurred backdrop would smear while scrolling. */
+  /* Denser sheet for anything holding a table or a long scrolling body,
+     where text has to win over atmosphere. */
   .hr-panel-solid {
-    @apply rounded-[18px] border bg-white;
-    border-color: rgb(var(--hr-navy, 11 37 69) / 0.09);
+    @apply rounded-[20px] border backdrop-blur-2xl backdrop-saturate-150;
+    border-color: rgb(255 255 255 / 0.8);
+    background-color: rgb(255 255 255 / 0.86);
     box-shadow:
-      0 1px 2px rgb(var(--hr-navy, 11 37 69) / 0.04),
-      0 18px 38px -28px rgb(var(--hr-navy, 11 37 69) / 0.3);
+      inset 0 1px 0 rgb(255 255 255 / 0.95),
+      0 8px 24px -14px rgb(var(--hr-navy, 11 37 69) / 0.2),
+      0 32px 64px -34px rgb(var(--hr-navy, 11 37 69) / 0.34);
   }
 
-  /* The navy header band on Overview and the employee profile. Translucent
-     enough to sit in the same material family as the panels below it. */
-  .hr-hero {
-    @apply overflow-hidden rounded-[20px] border backdrop-blur-[10px];
-    border-color: rgb(255 255 255 / 0.12);
-    background-color: rgb(var(--hr-navy, 11 37 69) / 0.96);
+  /* A single figure and its label. These float with a gap between them
+     instead of sharing hairlines in a ruled grid — the ruled version read
+     as a spreadsheet, which is the look this module was trying to leave. */
+  .hr-stat {
+    @apply rounded-2xl border backdrop-blur-xl backdrop-saturate-150 transition-shadow;
+    border-color: rgb(255 255 255 / 0.7);
+    background-color: rgb(255 255 255 / 0.62);
     box-shadow:
-      0 1px 2px rgb(var(--hr-navy, 11 37 69) / 0.1),
-      0 26px 55px -34px rgb(var(--hr-navy, 11 37 69) / 0.72);
+      inset 0 1px 0 rgb(255 255 255 / 0.9),
+      0 6px 18px -12px rgb(var(--hr-navy, 11 37 69) / 0.22);
+  }
+  .hr-stat:hover {
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.9),
+      0 12px 28px -14px rgb(var(--hr-navy, 11 37 69) / 0.3);
   }
 
   .hr-head {
     @apply flex flex-wrap items-end justify-between gap-3 border-b px-5 py-4;
-    border-color: var(--hr-line-soft, #EAF0F7);
+    border-color: rgb(var(--hr-navy, 11 37 69) / 0.07);
   }
 
   /* Section kicker. Latin gets the small-caps treatment; Arabic does not. */
   .hr-eyebrow {
-    @apply text-[10px] font-bold uppercase tracking-[0.14em];
+    @apply text-[10px] font-semibold uppercase tracking-[0.14em];
     color: rgb(var(--hr-blue, 29 111 184));
   }
   html[dir='rtl'] .hr-eyebrow {
@@ -190,12 +217,12 @@
   }
 
   .hr-title {
-    @apply text-[15px] font-bold sm:text-base;
+    @apply text-[15px] font-semibold sm:text-base;
     color: rgb(var(--hr-navy, 11 37 69));
   }
 
   /* Figures: aligned, and isolated from the surrounding bidi run so an
-     Arabic label next to "‏345,000 US$" never reorders the line. */
+     Arabic label next to "345,000 US$" never reorders the line. */
   .hr-num {
     font-variant-numeric: tabular-nums;
     unicode-bidi: isolate;
@@ -204,24 +231,23 @@
   /* Segmented filters — one control shared by People, Payroll and
      Recruitment so the three tabs never disagree about what a filter is. */
   .hr-seg {
-    @apply inline-flex overflow-hidden rounded-xl border bg-white;
-    border-color: var(--hr-line, #E1E9F2);
+    @apply inline-flex overflow-hidden rounded-xl border backdrop-blur;
+    border-color: rgb(255 255 255 / 0.8);
+    background-color: rgb(255 255 255 / 0.6);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.9);
   }
   .hr-seg-btn {
-    @apply min-h-10 px-3 text-xs font-bold transition-colors;
+    @apply min-h-10 px-3 text-xs font-semibold transition-colors;
     color: var(--hr-muted, #5A6C82);
   }
   .hr-seg-btn + .hr-seg-btn {
-    border-inline-start: 1px solid var(--hr-line, #E1E9F2);
+    border-inline-start: 1px solid rgb(var(--hr-navy, 11 37 69) / 0.08);
   }
   .hr-seg-btn:hover {
-    background: var(--hr-sunken, #F1F5FA);
+    background: rgb(255 255 255 / 0.7);
     color: rgb(var(--hr-navy, 11 37 69));
   }
-  .hr-seg-btn[aria-pressed='true'] {
-    background: rgb(var(--hr-navy, 11 37 69));
-    color: #fff;
-  }
+  .hr-seg-btn[aria-pressed='true'],
   .hr-seg-btn[aria-pressed='true']:hover {
     background: rgb(var(--hr-navy, 11 37 69));
     color: #fff;
@@ -232,11 +258,18 @@
      without editing the component or its behaviour. Modals portal to
      <body>, so editors stay solid white where forms need the contrast. */
   .hr-suite .card {
-    @apply bg-white/75 backdrop-blur-[10px] backdrop-saturate-150;
-    border-color: rgb(var(--hr-navy, 11 37 69) / 0.09);
+    @apply rounded-2xl border backdrop-blur-xl backdrop-saturate-150;
+    border-color: rgb(255 255 255 / 0.7);
+    background-color: rgb(255 255 255 / 0.62);
     box-shadow:
-      0 1px 2px rgb(var(--hr-navy, 11 37 69) / 0.04),
-      0 18px 38px -28px rgb(var(--hr-navy, 11 37 69) / 0.3);
+      inset 0 1px 0 rgb(255 255 255 / 0.9),
+      0 8px 24px -14px rgb(var(--hr-navy, 11 37 69) / 0.2);
+  }
+
+  .hr-suite .field {
+    @apply rounded-xl border backdrop-blur;
+    border-color: rgb(255 255 255 / 0.85);
+    background-color: rgb(255 255 255 / 0.78);
   }
 
   /* Loading placeholder that doesn't flash — used while the grid resolves. */
