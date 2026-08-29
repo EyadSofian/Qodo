@@ -194,7 +194,20 @@ function asStatus(value) {
   if (['in active', 'inactive'].includes(key)) return 'inactive';
   if (key === 'done') return 'done';
   if (key === 'hold') return 'hold';
+  if (['wait', 'wiat'].includes(key)) return 'wait';
   return key || 'unknown';
+}
+
+function recruitmentRole(value) {
+  return cleanText(value)
+    .replace(/\bvedio\b/gi, 'Video')
+    .replace(/\bteamleader\b/gi, 'Team Leader')
+    .replace(/\bspecialit\b|\bspecilaist\b/gi, 'Specialist')
+    .replace(/\bengenieer\b/gi, 'Engineer')
+    .replace(/\bsoftwear\b/gi, 'Software')
+    .replace(/\bpowerpi\b/gi, 'Power BI')
+    .replace(/\bpremiavira\b/gi, 'Primavera')
+    .replace(/\bbim arche\b/gi, 'BIM Arch');
 }
 
 function headerIndex(row) {
@@ -489,10 +502,13 @@ function normalizeRecruitment(sheets) {
   const requests = rowsAfter(selected.sheet, selected.header)
     .map((row) => {
       const sequence = asId(get(row, map, 'NO.'));
-      const role = cleanText(get(row, map, 'Total'));
+      const role = recruitmentRole(get(row, map, 'Total'));
       if (!sequence || !role) return null;
       return {
-        id: `${period}:${sequence}`,
+        // Sequence numbers are duplicated in the live workbook (46 and 47).
+        // The physical row keeps every request independently editable while
+        // `sequence` remains the human-facing report number.
+        id: `${period}:${sequence}:${row.number}`,
         sequence,
         role,
         numberNeeded: asNumber(get(row, map, 'Number needed')) ?? 0,
@@ -531,7 +547,7 @@ function normalizeRecruitment(sheets) {
       needed: requests.reduce((sum, item) => sum + item.numberNeeded, 0),
       accepted: requests.reduce((sum, item) => sum + item.accepted, 0),
     },
-    warnings: duplicateIds(requests, 'id').map((id) => ({ code: 'duplicate_recruitment_id', id })),
+    warnings: duplicateIds(requests, 'sequence').map((id) => ({ code: 'duplicate_recruitment_sequence', id })),
   };
 }
 

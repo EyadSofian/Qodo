@@ -8,6 +8,8 @@ export interface HREmployeeSummary {
   sector: string;
   title: string;
   hiringDate: string | null;
+  birthDate: string | null;
+  gender: string;
   status: string;
   companyEmail: string;
   linkedUserId: string | null;
@@ -76,6 +78,70 @@ export interface HRReconciliation {
   unmatchedOrganizationPositions: string[];
 }
 
+export interface HRWorkforceAnalytics {
+  period: string;
+  active: number;
+  inactive: number;
+  newHires: number;
+  gender: { male: number; female: number; unspecified: number };
+  averageAge: number | null;
+  ageBands: { under25: number; from25To34: number; from35To44: number; over45: number; unspecified: number };
+  departments: Array<{ department: string; employees: number }>;
+  largestDepartment: { department: string; employees: number } | null;
+  socialInsured: number;
+  healthInsured: number | null;
+}
+
+export interface HRPayrollAnalytics {
+  rate: { buy: number; sell: number; asOf: string; source: string; sourceUrl: string; live: boolean };
+  totalEgp: number;
+  totalUsd: number;
+  averageUsd: number;
+  employees: number;
+  departments: Array<{ department: string; employees: number; totalEgp: number; totalUsd: number; averageUsd: number }>;
+  highestCostDepartment: { department: string; employees: number; totalEgp: number; totalUsd: number; averageUsd: number } | null;
+  lowestCostDepartment: { department: string; employees: number; totalEgp: number; totalUsd: number; averageUsd: number } | null;
+  ranking: Array<{ employeeCode: string; name: string; department: string; totalEgp: number; totalUsd: number }>;
+}
+
+export interface HRRecruitmentAnalytics {
+  total: number;
+  active: number;
+  hold: number;
+  done: number;
+  totalNeeded: number;
+  totalAccepted: number;
+  openSeats: number;
+  fillRate: number;
+  overdue: number;
+  dueSoon: number;
+  averagePlannedDays: number | null;
+  averageActualDays: number | null;
+  funnel: { requirements: number; published: number; candidates: number; accepted: number; total: number };
+}
+
+export interface HROdooRecruitmentMatch {
+  jobId: number;
+  name: string;
+  active: boolean;
+  expectedEmployees: number;
+  department: string;
+  openedDate: string | null;
+  publishedDate: string | null;
+  applicantCount: number | null;
+  stages: Array<{ stage: string; count: number }>;
+  confidence: number;
+  url: string;
+}
+
+export interface HROdooRecruitmentData {
+  configured: boolean;
+  connected: boolean;
+  applicantsAvailable: boolean;
+  summary: { matched: number; total: number; staleActive: number; candidateTotal: number | null };
+  matches: Record<string, HROdooRecruitmentMatch>;
+}
+
 export interface HRDashboardData {
   permissions: {
     canViewPeople: boolean;
@@ -94,6 +160,12 @@ export interface HRDashboardData {
     openPositions: number;
     organizationPositions: number;
     organizationVacancies: number;
+  };
+  analytics: null | {
+    workforce: HRWorkforceAnalytics;
+    payroll: HRPayrollAnalytics | null;
+    recruitment: HRRecruitmentAnalytics;
+    organization: { total: number; matched: number; vacant: number; unmatched: number; departments: number };
   };
   employees: HREmployeeSummary[];
   recruitment: HRRecruitmentRequest[];
@@ -120,8 +192,6 @@ export interface HREmployeeProfile extends HREmployeeSummary {
   bankStatus: string;
   bankAccount: string;
   nationalId: string;
-  gender: string;
-  birthDate: string | null;
   address: string;
   maritalStatus: string;
   children: number | null;

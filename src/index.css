@@ -33,6 +33,10 @@
     unicode-bidi: isolate;
   }
 
+  .hr-suite {
+    font-family: 'IBM Plex Sans Arabic', 'Cairo', ui-sans-serif, system-ui, sans-serif;
+  }
+
   :focus-visible {
     @apply outline-none ring-2 ring-brand-500 ring-offset-2 ring-offset-surface-bg;
   }

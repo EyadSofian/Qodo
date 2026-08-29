@@ -34,6 +34,7 @@ before(async () => {
       SSO_SECRET: 'hr-test-sso-secret-1234567890123456',
       HR_TELEGRAM_WEBHOOK_SECRET: 'hr-webhook-secret-123456',
       HR_TELEGRAM_CHAT_IDS: '12345',
+      HR_FX_LIVE: 'off',
       OPENAI_API_KEY: '',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -114,10 +115,24 @@ async function workbookBuffer(kind) {
       new Date('2024-01-01'), 'In-Active', 'former@test.local', '', '', '28801011234567',
       'Male', new Date('1988-01-01'), 'Giza', '', '', '', 0.2, 1, 0, 0,
     ]);
-  } else {
+  } else if (kind === 'payroll') {
     sheet.addRow(['NO.', 'Emp ID', 'Name English', 'Title', 'KPI`S CONT', 'Department', 'Hiring Date', 'status', new Date('2026-08-01')]);
     sheet.addRow([null, null, null, null, null, null, null, null, new Date('2026-08-01'), 'KPI`S ', 'Total']);
     sheet.addRow(['1', 611, 'Eyad Employee', 'AI Engineer', 'YES', 'AI', new Date('2026-01-15'), 'Active', 27_500, 2_500, 30_000]);
+  } else {
+    sheet.addRow(['Recruitment requests 8-2026']);
+    sheet.addRow([
+      'NO.', 'Total', 'Number needed', 'Accepted NUMB.', 'FeedBack', 'Department',
+      'Vacancy Reason', 'Status', 'priority', 'Seniority', 'Location', 'Assigned to I',
+      'Assigned to II', 'Hiring Period', 'Active Date', 'Due date / Time of hire',
+      'Actual Hiring Date', 'Received Requirements', 'Published', 'Received Candidate',
+      'Salary Range', 'Actual Salary', 'Interviewer', 'Validation',
+    ]);
+    sheet.addRow([
+      1, 'Vedio LMS TeamLeader', 1, 0, 'Urgent', 'AI', 'Replacement', 'Active', 'High', 'Senior',
+      'Cairo', 'Karim', '', 15, new Date('2026-08-20'), new Date('2026-09-04'), '',
+      'Done', 'Done', 'Wiat', '20k-30k', '', 'Eyad', 'Approved',
+    ]);
   }
   return Buffer.from(await workbook.xlsx.writeBuffer());
 }
@@ -183,6 +198,12 @@ test('HR imports reconcile on employee code and preserve least-privilege profile
   assert.equal(observerProfile.data.employee.nationalId, '••••4567');
   assert.equal(observerProfile.data.employee.payroll, null);
 
+  const payrollDashboard = await request('/hr/dashboard', { cookie: payrollCookie });
+  assert.equal(payrollDashboard.status, 200);
+  assert.equal(payrollDashboard.data.analytics.payroll.totalEgp, 30_000);
+  assert.equal(payrollDashboard.data.analytics.payroll.rate.sell, 50.27);
+  assert.ok(Math.abs(payrollDashboard.data.analytics.payroll.totalUsd - (30_000 / 50.27)) < 0.001);
+
   const updated = await request('/hr/employees/611/payroll', {
     method: 'PATCH', cookie: payrollCookie, body: { totalSalary: 31_500, baseSalary: 28_500 },
   });
@@ -195,6 +216,31 @@ test('HR imports reconcile on employee code and preserve least-privilege profile
   });
   assert.equal(mismatch.status, 409);
   assert.equal(mismatch.data.error, 'hr_source_mismatch');
+});
+
+test('recruitment imports expose cycle analytics and auto-close filled requests', async () => {
+  const recruitment = await request('/hr/imports/recruitment', {
+    method: 'POST', cookie: adminCookie, body: await workbookBuffer('recruitment'), raw: true,
+    headers: { 'X-File-Name': encodeURIComponent('recruitment-2026-08.xlsx') },
+  });
+  assert.equal(recruitment.status, 200, JSON.stringify(recruitment.data));
+  assert.equal(recruitment.data.dataset.summary.rows, 1);
+
+  const before = await request('/hr/dashboard', { cookie: payrollCookie });
+  assert.equal(before.data.analytics.recruitment.active, 1);
+  assert.equal(before.data.analytics.recruitment.averagePlannedDays, 15);
+  assert.equal(before.data.recruitment[0].role, 'Video LMS Team Leader');
+  assert.equal(before.data.recruitment[0].receivedCandidates, 'wait');
+
+  const filled = await request(`/hr/recruitment/${encodeURIComponent(before.data.recruitment[0].id)}`, {
+    method: 'PATCH', cookie: payrollCookie, body: { accepted: 1 },
+  });
+  assert.equal(filled.status, 200, JSON.stringify(filled.data));
+  assert.equal(filled.data.request.status, 'done');
+
+  const after = await request('/hr/dashboard', { cookie: payrollCookie });
+  assert.equal(after.data.analytics.recruitment.active, 0);
+  assert.equal(after.data.analytics.recruitment.done, 1);
 });
 
 test('the Telegram endpoint rejects unauthorised webhook calls before downloading files', async () => {

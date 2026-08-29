@@ -8,6 +8,7 @@ import {
   hrDashboardFor,
   hrEmployeeFor,
   hrImportHistory,
+  hrRecruitmentOdooFor,
   importHRDataset,
   linkHREmployee,
   updateHREmployee,
@@ -159,6 +160,14 @@ router.get('/dashboard', async (req, res) => {
 router.get('/employees/:employeeCode', async (req, res) => {
   try {
     res.json({ employee: await hrEmployeeFor(req.user, req.params.employeeCode) });
+  } catch (error) {
+    fail(res, error);
+  }
+});
+
+router.get('/recruitment/odoo', requirePermission(PERMISSIONS.HR_VIEW), async (req, res) => {
+  try {
+    res.json(await hrRecruitmentOdooFor(req.user));
   } catch (error) {
     fail(res, error);
   }

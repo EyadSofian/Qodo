@@ -2,6 +2,8 @@ import { create, find, findOne, getStore, now } from './store.js';
 import { can, PERMISSIONS } from '../shared/permissions.js';
 import { organizationOf } from '../shared/organization.js';
 import { HR_IMPORT_SOURCES, HRWorkbookError, parseHRWorkbook } from './hrWorkbook.js';
+import { usdEgpRate } from './hrFx.js';
+import { odooRecruitmentMatches } from './hrRecruitmentOdoo.js';
 
 const datasetId = (organizationId, source) => `hr-dataset:${organizationId}:${source}`;
 const linkDocumentId = (organizationId) => `hr-links:${organizationId}`;
@@ -208,6 +210,8 @@ function employeeSummary(profile, includePayroll) {
     sector: profile.sector,
     title: profile.title,
     hiringDate: profile.hiringDate,
+    birthDate: profile.birthDate,
+    gender: profile.gender,
     status: profile.status,
     companyEmail: profile.companyEmail,
     linkedUserId: profile.linkedUserId,
@@ -216,6 +220,164 @@ function employeeSummary(profile, includePayroll) {
     documentCompletionRate: profile.documents?.completionRate ?? null,
     totalSalary: includePayroll ? profile.payroll?.totalSalary ?? null : undefined,
   };
+}
+
+function cairoDay() {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Africa/Cairo', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date());
+}
+
+function genderKey(value) {
+  const key = String(value || '').trim().toLowerCase();
+  if (['male', 'm', 'ذكر', 'رجل'].includes(key)) return 'male';
+  if (['female', 'f', 'أنثى', 'انثى', 'سيدة'].includes(key)) return 'female';
+  return 'unspecified';
+}
+
+function ageOn(birthDate, today) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(birthDate || ''))) return null;
+  const [year, month, day] = birthDate.split('-').map(Number);
+  const [currentYear, currentMonth, currentDay] = today.split('-').map(Number);
+  const age = currentYear - year - (currentMonth < month || (currentMonth === month && currentDay < day) ? 1 : 0);
+  return age >= 15 && age <= 100 ? age : null;
+}
+
+function departmentBreakdown(profiles) {
+  const groups = new Map();
+  for (const profile of profiles) {
+    const department = String(profile.department || profile.sector || 'غير محدد').trim();
+    groups.set(department, (groups.get(department) ?? 0) + 1);
+  }
+  return [...groups.entries()]
+    .map(([department, employees]) => ({ department, employees }))
+    .sort((left, right) => right.employees - left.employees || left.department.localeCompare(right.department, 'ar'));
+}
+
+function workforceAnalytics(profiles, insured) {
+  const today = cairoDay();
+  const period = today.slice(0, 7);
+  const active = profiles.filter((profile) => profile.status === 'active' && profile.sources.master);
+  const gender = { male: 0, female: 0, unspecified: 0 };
+  const ageBands = { under25: 0, from25To34: 0, from35To44: 0, over45: 0, unspecified: 0 };
+  const ages = [];
+  for (const profile of active) {
+    gender[genderKey(profile.gender)] += 1;
+    const age = ageOn(profile.birthDate, today);
+    if (age === null) ageBands.unspecified += 1;
+    else {
+      ages.push(age);
+      if (age < 25) ageBands.under25 += 1;
+      else if (age < 35) ageBands.from25To34 += 1;
+      else if (age < 45) ageBands.from35To44 += 1;
+      else ageBands.over45 += 1;
+    }
+  }
+  const departments = departmentBreakdown(active);
+  return {
+    period,
+    active: active.length,
+    inactive: profiles.filter((profile) => profile.status === 'inactive' && profile.sources.master).length,
+    newHires: active.filter((profile) => String(profile.hiringDate || '').startsWith(period)).length,
+    gender,
+    averageAge: ages.length ? Math.round((ages.reduce((sum, value) => sum + value, 0) / ages.length) * 10) / 10 : null,
+    ageBands,
+    departments,
+    largestDepartment: departments[0] ?? null,
+    socialInsured: insured.length,
+    healthInsured: null,
+  };
+}
+
+function payrollAnalytics(profiles, fx) {
+  const paid = profiles.filter((profile) => profile.sources.payroll && Number.isFinite(Number(profile.payroll?.totalSalary)));
+  const byDepartment = new Map();
+  let totalEgp = 0;
+  const ranking = [];
+  for (const profile of paid) {
+    const total = Number(profile.payroll?.totalSalary || 0);
+    totalEgp += total;
+    const department = String(profile.department || profile.payroll?.department || 'غير محدد').trim();
+    const current = byDepartment.get(department) ?? { department, employees: 0, totalEgp: 0 };
+    current.employees += 1;
+    current.totalEgp += total;
+    byDepartment.set(department, current);
+    ranking.push({
+      employeeCode: profile.employeeCode,
+      name: profile.nameArabic || profile.nameEnglish || `#${profile.employeeCode}`,
+      department,
+      totalEgp: total,
+      totalUsd: total / fx.sell,
+    });
+  }
+  const departments = [...byDepartment.values()]
+    .map((item) => ({ ...item, totalUsd: item.totalEgp / fx.sell, averageUsd: item.totalEgp / fx.sell / item.employees }))
+    .sort((left, right) => right.totalEgp - left.totalEgp || left.department.localeCompare(right.department, 'ar'));
+  ranking.sort((left, right) => right.totalEgp - left.totalEgp || left.name.localeCompare(right.name, 'ar'));
+  return {
+    rate: fx,
+    totalEgp,
+    totalUsd: totalEgp / fx.sell,
+    averageUsd: paid.length ? totalEgp / fx.sell / paid.length : 0,
+    employees: paid.length,
+    departments,
+    highestCostDepartment: departments[0] ?? null,
+    lowestCostDepartment: departments.at(-1) ?? null,
+    ranking,
+  };
+}
+
+function daysBetween(from, to) {
+  const start = Date.parse(`${from}T12:00:00Z`);
+  const end = Date.parse(`${to}T12:00:00Z`);
+  return Number.isFinite(start) && Number.isFinite(end) ? Math.round((end - start) / 86_400_000) : null;
+}
+
+function recruitmentAnalytics(requests) {
+  const today = cairoDay();
+  const active = requests.filter((request) => request.status === 'active');
+  const plannedDays = requests
+    .map((request) => request.activeDate && request.dueDate ? daysBetween(request.activeDate, request.dueDate) : null)
+    .filter((value) => value !== null && value >= 0);
+  const actualDays = requests
+    .map((request) => request.activeDate && request.actualHiringDate ? daysBetween(request.activeDate, request.actualHiringDate) : null)
+    .filter((value) => value !== null && value >= 0);
+  const totalNeeded = requests.reduce((sum, request) => sum + Math.max(0, request.numberNeeded), 0);
+  const totalAccepted = requests.reduce((sum, request) => sum + Math.max(0, request.accepted), 0);
+  const openSeats = active.reduce((sum, request) => sum + Math.max(0, request.numberNeeded - request.accepted), 0);
+  return {
+    total: requests.length,
+    active: active.length,
+    hold: requests.filter((request) => request.status === 'hold').length,
+    done: requests.filter((request) => request.status === 'done').length,
+    totalNeeded,
+    totalAccepted,
+    openSeats,
+    fillRate: totalNeeded ? Math.round((totalAccepted / totalNeeded) * 100) : 0,
+    overdue: active.filter((request) => request.dueDate && request.dueDate < today && request.accepted < request.numberNeeded).length,
+    dueSoon: active.filter((request) => {
+      if (!request.dueDate || request.dueDate < today) return false;
+      const days = daysBetween(today, request.dueDate);
+      return days !== null && days <= 14;
+    }).length,
+    averagePlannedDays: plannedDays.length ? Math.round(plannedDays.reduce((sum, value) => sum + value, 0) / plannedDays.length) : null,
+    averageActualDays: actualDays.length ? Math.round(actualDays.reduce((sum, value) => sum + value, 0) / actualDays.length) : null,
+    funnel: {
+      requirements: active.filter((request) => request.receivedRequirements === 'done').length,
+      published: active.filter((request) => request.published === 'done').length,
+      candidates: active.filter((request) => request.receivedCandidates === 'done').length,
+      accepted: active.filter((request) => request.accepted > 0).length,
+      total: active.length,
+    },
+  };
+}
+
+function organizationAnalytics(positions) {
+  const matched = positions.filter((position) => position.matchState === 'matched').length;
+  const vacant = positions.filter((position) => position.matchState === 'vacant').length;
+  const unmatched = positions.filter((position) => position.matchState === 'unmatched').length;
+  const departments = new Set(positions.map((position) => position.departmentCode).filter(Boolean));
+  return { total: positions.length, matched, vacant, unmatched, departments: departments.size };
 }
 
 function reconciliation(profiles, positions) {
@@ -248,6 +410,7 @@ export async function hrDashboardFor(user) {
   const canViewPeople = can(user, PERMISSIONS.HR_VIEW);
   const canManage = can(user, PERMISSIONS.HR_MANAGE);
   const canViewPayroll = can(user, PERMISSIONS.HR_PAYROLL);
+  const fxPromise = canViewPayroll ? usdEgpRate() : Promise.resolve(null);
   const allProfiles = [...state.profiles.values()];
   const visibleProfiles = canViewPeople
     ? allProfiles
@@ -258,6 +421,7 @@ export async function hrDashboardFor(user) {
   const insuranceRecords = allProfiles.filter((profile) => profile.sources.insurance);
   const insured = insuranceRecords.filter((profile) => profile.insurance?.insuranceNumber);
   const activeRecruitment = recruitment.filter((request) => request.status === 'active');
+  const fx = await fxPromise;
 
   const summary = canViewPeople
     ? {
@@ -296,6 +460,14 @@ export async function hrDashboardFor(user) {
       selfOnly: !canViewPeople,
     },
     summary,
+    analytics: canViewPeople
+      ? {
+          workforce: workforceAnalytics(allProfiles, insured),
+          payroll: canViewPayroll ? payrollAnalytics(allProfiles, fx) : null,
+          recruitment: recruitmentAnalytics(recruitment),
+          organization: organizationAnalytics(state.positions),
+        }
+      : null,
     employees: visibleProfiles
       .map((profile) => employeeSummary(profile, canViewPayroll))
       .sort((left, right) =>
@@ -330,6 +502,12 @@ export async function hrDashboardFor(user) {
         }
       : null,
   };
+}
+
+export async function hrRecruitmentOdooFor(user) {
+  if (!can(user, PERMISSIONS.HR_VIEW)) throw new HRWorkbookError('forbidden', 403);
+  const state = await organizationState(organizationOf(user));
+  return odooRecruitmentMatches(state.bySource.recruitment?.payload?.requests ?? []);
 }
 
 function stripSensitive(profile, includeSensitive, includePayroll) {
@@ -501,6 +679,12 @@ export async function updateRecruitmentRequest({ organizationId, requestId, patc
   const index = payload.requests.findIndex((request) => request.id === requestId);
   if (index < 0) throw new HRWorkbookError('hr_recruitment_not_found', 404);
   payload.requests[index] = { ...payload.requests[index], ...updates, id: requestId };
+  if (
+    Number(payload.requests[index].numberNeeded) > 0
+    && Number(payload.requests[index].accepted) >= Number(payload.requests[index].numberNeeded)
+  ) {
+    payload.requests[index].status = 'done';
+  }
   await (await getStore()).update('hrDatasets', id, { payload, lastEditedAt: now(), lastEditedBy: actorId });
   return payload.requests[index];
 }

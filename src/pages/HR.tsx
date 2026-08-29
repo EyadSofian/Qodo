@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
+  Activity,
   AlertTriangle,
   ArrowLeft,
   ArrowRight,
@@ -13,6 +14,7 @@ import {
   ChevronRight,
   CircleDollarSign,
   Database,
+  ExternalLink,
   FileCheck2,
   Fingerprint,
   GitBranch,
@@ -27,9 +29,9 @@ import {
   ShieldCheck,
   Sparkles,
   UploadCloud,
+  UserPlus,
   UsersRound,
   WalletCards,
-  X,
 } from 'lucide-react';
 import { api, errorMessage } from '../lib/api';
 import { useI18n } from '../lib/i18n';
@@ -43,6 +45,8 @@ import {
   type HREmployeeProfile,
   type HREmployeeSummary,
   type HROrganizationPosition,
+  type HROdooRecruitmentData,
+  type HRRecruitmentAnalytics,
   type HRRecruitmentRequest,
   type HRSource,
 } from '../lib/hr';
@@ -151,6 +155,9 @@ export function HR() {
   ];
 
   const readySources = data.datasets.filter((dataset) => dataset.importedAt).length;
+  const latestDataset = data.datasets
+    .filter((dataset) => dataset.importedAt)
+    .sort((left, right) => String(right.importedAt).localeCompare(String(left.importedAt)))[0];
   const shownTabs = TABS.filter((item) => {
     // Someone who may only see themselves still gets the KPI desk: the endpoint
     // returns their own scorecards and nobody else's, and their own grade is
@@ -162,39 +169,34 @@ export function HR() {
   });
 
   return (
-    <div className="mx-auto w-full max-w-[1500px] pb-12">
-      <section className="relative isolate overflow-hidden rounded-[28px] bg-[#0B2545] px-5 py-6 text-white shadow-panel sm:px-8 sm:py-8">
-        <div className="pointer-events-none absolute inset-0 opacity-80" aria-hidden="true">
-          <div className="absolute -end-24 -top-32 h-80 w-80 rounded-full border-[42px] border-[#4A8FCB]/20" />
-          <div className="absolute -bottom-36 start-1/3 h-64 w-64 rounded-full bg-[#F5821F]/15 blur-3xl" />
-          <div className="absolute inset-y-0 start-0 w-1/2 bg-[linear-gradient(115deg,rgba(255,255,255,.06),transparent_70%)]" />
+    <div className="hr-suite mx-auto w-full max-w-[1540px] pb-12">
+      <section className="overflow-hidden rounded-[22px] border border-[#244B40] bg-[#173B33] text-[#F5F0E4] shadow-[0_18px_45px_-32px_rgba(15,49,42,.9)]">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/15 px-5 py-3 text-[11px] font-semibold sm:px-7">
+          <span className="flex items-center gap-2 uppercase tracking-[0.18em] text-[#D9C889]"><Activity size={14} /> People Operations</span>
+          <span className="text-white/55">
+            {latestDataset?.importedAt
+              ? l(`آخر تحديث ${formatDateTime(latestDataset.importedAt, lang)}`, `Updated ${formatDateTime(latestDataset.importedAt, lang)}`)
+              : l(`${readySources} مصادر جاهزة`, `${readySources} sources ready`)}
+          </span>
         </div>
-        <div className="relative grid gap-7 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-end">
+        <div className="grid gap-7 px-5 py-7 sm:px-7 lg:grid-cols-[minmax(0,1fr)_minmax(34rem,.9fr)] lg:items-end">
           <div>
-            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[11px] font-bold tracking-[0.12em] text-brand-100 backdrop-blur">
-              <Fingerprint size={14} />
-              {l('ملف واحد لكل موظف', 'ONE FILE PER EMPLOYEE')}
-            </div>
-            <h1 className="max-w-3xl text-2xl font-extrabold leading-tight sm:text-4xl">
-              {l('كل بيانات الموظفين في مكان واحد', 'All your people data in one place')}
-            </h1>
-            <p className="mt-3 max-w-2xl text-sm leading-7 text-white/70 sm:text-[15px]">
-              {l(
-                'البيانات الوظيفية والرواتب والتأمينات والتوظيف والهيكل، كلها مربوطة بكود الموظف. وكل تحديث تعرف مصدره وتاريخه.',
-                'Records, payroll, insurance, recruitment and the org chart are all linked to the employee code — and every update shows where it came from and when.'
-              )}
+            <div className="mb-3 flex items-center gap-2 text-xs font-bold text-[#D9C889]"><Fingerprint size={15} />{l('سجل تشغيلي موحّد', 'Unified operating record')}</div>
+            <h1 className="max-w-3xl text-3xl font-bold leading-tight sm:text-5xl">{l('غرفة عمليات الموارد البشرية', 'People operations room')}</h1>
+            <p className="mt-3 max-w-2xl text-sm leading-7 text-white/62">
+              {l('ملخص تنفيذي قابل للقرار، ثم التفاصيل والمصدر والتعديل في نفس المسار.', 'An executive decision layer, with detail, source, and editing in the same flow.')}
             </p>
           </div>
-          <div className="grid grid-cols-2 gap-2.5">
-            <HeroMetric label={l('موظف نشط', 'Active people')} value={data.summary.active} />
-            <HeroMetric label={l('على كشف الرواتب', 'On payroll')} value={data.summary.payroll} />
-            <HeroMetric label={l('مصادر متصلة', 'Sources ready')} value={readySources} suffix="/5" />
-            <HeroMetric label={l('شواغر مفتوحة', 'Open seats')} value={data.summary.openPositions} accent />
+          <div className="grid grid-cols-2 border border-white/15 sm:grid-cols-4">
+            <LedgerMetric label={l('نشط', 'Active')} value={data.summary.active} />
+            <LedgerMetric label={l('جدد هذا الشهر', 'New this month')} value={data.analytics?.workforce.newHires ?? 0} />
+            <LedgerMetric label={l('شواغر', 'Open seats')} value={data.summary.openPositions} signal />
+            <LedgerMetric label={l('مصادر', 'Sources')} value={`${readySources}/5`} />
           </div>
         </div>
       </section>
 
-      <nav className="no-scrollbar -mx-1 mt-5 flex gap-2 overflow-x-auto px-1 pb-2" aria-label={l('أقسام الموارد البشرية', 'HR sections')}>
+      <nav className="no-scrollbar mt-4 flex overflow-x-auto border-b border-[#CFC8B8]" aria-label={l('أقسام الموارد البشرية', 'HR sections')}>
         {shownTabs.map((item) => {
           const Icon = item.icon;
           return (
@@ -203,10 +205,10 @@ export function HR() {
               type="button"
               onClick={() => setTab(item.id)}
               className={cx(
-                'inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl border px-3.5 text-[13px] font-bold transition-all',
+                'relative inline-flex min-h-12 shrink-0 items-center gap-2 px-4 text-[13px] font-bold transition-colors after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:bg-[#C89B2C] after:transition-transform',
                 tab === item.id
-                  ? 'border-[#1D6FB8] bg-[#1D6FB8] text-white shadow-md'
-                  : 'border-surface-line bg-white/80 text-ink-muted hover:-translate-y-0.5 hover:border-brand-300 hover:text-[#1D6FB8]'
+                  ? 'text-[#173B33] after:scale-x-100'
+                  : 'text-[#6E746F] after:scale-x-0 hover:text-[#173B33]'
               )}
             >
               <Icon size={16} />
@@ -214,12 +216,12 @@ export function HR() {
             </button>
           );
         })}
-        <button type="button" onClick={() => void load()} className="btn-ghost btn-sm ms-auto shrink-0" aria-label={l('تحديث', 'Refresh')}>
+        <button type="button" onClick={() => void load()} className="ms-auto grid h-12 w-12 shrink-0 place-items-center text-[#66716B] hover:text-[#173B33]" aria-label={l('تحديث', 'Refresh')}>
           <RefreshCw size={15} />
         </button>
       </nav>
 
-      <div className="mt-3 animate-fade-up" key={tab}>
+      <div className="mt-5 animate-fade-up" key={tab}>
         {tab === 'overview' && <Overview data={data} lang={lang} onOpen={setTab} />}
         {tab === 'people' && <PeopleDirectory data={data} lang={lang} />}
         {tab === 'payroll' && <PayrollDesk data={data} lang={lang} />}
@@ -244,12 +246,34 @@ function HRLoading() {
   );
 }
 
-function HeroMetric({ label, value, suffix, accent }: { label: string; value: number; suffix?: string; accent?: boolean }) {
+function LedgerMetric({ label, value, signal }: { label: string; value: string | number; signal?: boolean }) {
   return (
-    <div className={cx('rounded-2xl border px-4 py-3 backdrop-blur', accent ? 'border-[#F5821F]/40 bg-[#F5821F]/15' : 'border-white/10 bg-white/[.07]')}>
-      <div className="text-[11px] font-semibold text-white/60">{label}</div>
-      <div className="mt-1 text-2xl font-black tabular-nums">{value}<span className="text-sm text-white/50">{suffix}</span></div>
+    <div className={cx('border-white/15 px-3 py-3 text-center [&:not(:last-child)]:border-e', signal && 'bg-[#C89B2C] text-[#173B33]')}>
+      <div className={cx('text-[10px] font-semibold', signal ? 'text-[#173B33]/65' : 'text-white/55')}>{label}</div>
+      <div className="mt-1 text-2xl font-bold tabular-nums">{value}</div>
     </div>
+  );
+}
+
+function TabSummary({ title, items, footer }: {
+  title: string;
+  items: Array<{ label: string; value: ReactNode; note?: string; featured?: boolean }>;
+  footer?: string;
+}) {
+  return (
+    <section className="overflow-hidden rounded-[18px] border border-[#CFC8B8] bg-[#FBF9F3]">
+      <header className="border-b border-[#DCD5C7] px-4 py-2.5 text-[10px] font-bold uppercase tracking-[0.14em] text-[#817B6D]">{title}</header>
+      <div className="grid grid-cols-2 xl:grid-cols-5">
+        {items.map((item) => (
+          <div key={item.label} className={cx('min-h-24 border-[#DCD5C7] px-4 py-3 [&:not(:last-child)]:border-e', item.featured && 'bg-[#EFE3B7]')}>
+            <div className="text-[10px] font-bold text-[#777367]">{item.label}</div>
+            <div className="mt-2 truncate text-xl font-bold tabular-nums text-[#173B33]" title={typeof item.value === 'string' ? item.value : undefined}>{item.value}</div>
+            {item.note && <div className="mt-1 truncate text-[10px] text-[#8A867C]">{item.note}</div>}
+          </div>
+        ))}
+      </div>
+      {footer && <footer className="border-t border-[#DCD5C7] px-4 py-2 text-[10px] text-[#817B6D]">{footer}</footer>}
+    </section>
   );
 }
 
@@ -259,15 +283,18 @@ function Overview({ data, lang, onOpen }: { data: HRDashboardData; lang: 'ar' | 
   const qualityIssues = reconciliation
     ? Object.values(reconciliation).reduce((sum, items) => sum + items.length, 0)
     : 0;
-  const activeRecruitment = data.recruitment.filter((request) => request.status === 'active').slice(0, 4);
-  const missingSources = data.datasets.filter((dataset) => !dataset.importedAt);
+  const workforce = data.analytics?.workforce;
+  const payroll = data.analytics?.payroll;
+  const recruitment = data.analytics?.recruitment;
+  const maxDepartment = workforce?.departments[0]?.employees || 1;
+  const payrollMax = payroll?.departments[0]?.totalUsd || 1;
 
   if (data.permissions.selfOnly) {
     return (
-      <div className="card overflow-hidden p-6 sm:p-8">
+      <div className="rounded-[18px] border border-[#CFC8B8] bg-[#FBF9F3] p-6 sm:p-8">
         <div className="grid items-center gap-6 md:grid-cols-[1fr_auto]">
           <div>
-            <p className="text-xs font-bold text-[#1D6FB8]">{l('ملفك الشخصي في HR', 'Your HR profile')}</p>
+            <p className="text-xs font-bold text-[#39705E]">{l('ملفك الشخصي في HR', 'Your HR profile')}</p>
             <h2 className="mt-2 text-2xl font-extrabold">{l('كل بياناتك الوظيفية في مكان واحد', 'All your employment data in one place')}</h2>
             <p className="mt-2 max-w-xl text-sm leading-7 text-ink-muted">
               {l('البيانات الشخصية والوظيفة والراتب والتأمين والمستندات لا يراها هنا إلا أنت وفريق HR المخوّل.', 'Personal, employment, payroll, insurance, and documents are visible only to you and authorised HR staff.')}
@@ -288,83 +315,91 @@ function Overview({ data, lang, onOpen }: { data: HRDashboardData; lang: 'ar' | 
   }
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(18rem,.55fr)]">
-      <div className="space-y-4">
-        <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <MetricCard icon={UsersRound} label={l('إجمالي السجل', 'Employee records')} value={data.summary.employees} hint={l(`${data.summary.active} نشط`, `${data.summary.active} active`)} tone="brand" />
-          <MetricCard icon={CircleDollarSign} label={l('تغطية الرواتب', 'Payroll coverage')} value={coverage(data.summary.payroll, data.summary.active)} suffix="%" hint={l(`${data.summary.payroll} موظف`, `${data.summary.payroll} people`)} tone="navy" />
-          <MetricCard icon={ShieldCheck} label={l('مؤمّن عليهم', 'Insured people')} value={data.summary.insured} hint={l(`من ${data.summary.insuranceRecords} سجل تأمين`, `from ${data.summary.insuranceRecords} insurance rows`)} tone="orange" />
-          <MetricCard icon={BriefcaseBusiness} label={l('احتياج التوظيف', 'Hiring demand')} value={data.summary.openPositions} hint={l(`${data.summary.openRecruitmentRequests} طلب نشط`, `${data.summary.openRecruitmentRequests} active requests`)} tone="slate" />
-        </section>
+    <div className="space-y-4">
+      <section className="grid grid-cols-2 overflow-hidden rounded-[18px] border border-[#CFC8B8] bg-[#FBF9F3] xl:grid-cols-5">
+        <ExecutiveMetric icon={UsersRound} label={l('القوة الفعلية', 'Active workforce')} value={data.summary.active} note={l(`${workforce?.gender.female ?? 0} سيدة · ${workforce?.gender.male ?? 0} رجل`, `${workforce?.gender.female ?? 0} women · ${workforce?.gender.male ?? 0} men`)} />
+        <ExecutiveMetric icon={ShieldCheck} label={l('تأمين اجتماعي', 'Socially insured')} value={data.summary.insured} note={l('التأمين الصحي بلا مصدر حاليًا', 'Health insurance source missing')} />
+        <ExecutiveMetric icon={CircleDollarSign} label={l('إجمالي الرواتب', 'Total payroll')} value={payroll ? usd(payroll.totalUsd, lang) : '••••'} note={payroll ? l(`بسعر ${payroll.rate.sell} ج.م`, `at EGP ${payroll.rate.sell}`) : l('صلاحية الرواتب مطلوبة', 'Payroll access required')} strong />
+        <ExecutiveMetric icon={BriefcaseBusiness} label={l('وظائف مفتوحة', 'Open seats')} value={recruitment?.openSeats ?? 0} note={l(`${recruitment?.overdue ?? 0} متأخرة`, `${recruitment?.overdue ?? 0} overdue`)} />
+        <ExecutiveMetric icon={UserPlus} label={l('موظفون جدد', 'New hires')} value={workforce?.newHires ?? 0} note={formatMonth(workforce?.period, lang)} />
+      </section>
 
-        <section className="card overflow-hidden">
-          <div className="flex items-center justify-between border-b border-surface-line px-5 py-4">
-            <div>
-              <h2 className="font-extrabold">{l('نبض التوظيف', 'Recruitment pulse')}</h2>
-              <p className="mt-0.5 text-xs text-ink-faint">{l('الطلبات النشطة الأقرب للقرار', 'Active requests closest to a decision')}</p>
+      <div className="grid gap-4 xl:grid-cols-[1.05fr_.95fr]">
+        <InsightPanel eyebrow={l('تركيبة القوة', 'Workforce composition')} title={l('الناس والأقسام', 'People and departments')} action={<button onClick={() => onOpen('people')}>{l('فتح الموظفين', 'Open people')}</button>}>
+          <div className="grid gap-5 md:grid-cols-[12rem_1fr]">
+            <GenderSplit female={workforce?.gender.female ?? 0} male={workforce?.gender.male ?? 0} lang={lang} />
+            <div className="space-y-3">
+              {(workforce?.departments ?? []).slice(0, 5).map((item) => <BarRow key={item.department} label={item.department} value={item.employees} max={maxDepartment} />)}
             </div>
-            <button className="text-xs font-bold text-brand-500 hover:underline" onClick={() => onOpen('recruitment')}>{l('كل الطلبات', 'All requests')}</button>
           </div>
-          {activeRecruitment.length ? (
-            <div className="grid gap-px bg-surface-line sm:grid-cols-2">
-              {activeRecruitment.map((request) => (
-                <div key={request.id} className="bg-white p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div><h3 className="font-bold">{request.role}</h3><p className="mt-1 text-xs text-ink-muted">{request.department || request.location}</p></div>
-                    <span className="chip bg-status-warnBg text-accent-600">{Math.max(0, request.numberNeeded - request.accepted)} {l('مطلوب', 'open')}</span>
-                  </div>
-                  <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-surface-sunken"><div className="h-full rounded-full bg-[#1D6FB8]" style={{ width: `${coverage(request.accepted, request.numberNeeded)}%` }} /></div>
-                </div>
-              ))}
+        </InsightPanel>
+
+        <InsightPanel eyebrow={l('تكلفة التشغيل', 'Operating cost')} title={l('الرواتب حسب القسم', 'Payroll by department')} action={data.permissions.canViewPayroll ? <button onClick={() => onOpen('payroll')}>{l('فتح الرواتب', 'Open payroll')}</button> : null}>
+          {payroll ? (
+            <div className="space-y-3">
+              {payroll.departments.slice(0, 5).map((item) => <BarRow key={item.department} label={item.department} value={usd(item.totalUsd, lang)} numericValue={item.totalUsd} max={payrollMax} accent />)}
+              <p className="pt-1 text-[10px] text-[#817B6D]">{l(`سعر بيع الدولار · ${payroll.rate.source} · ${payroll.rate.asOf}`, `USD sell rate · ${payroll.rate.source} · ${payroll.rate.asOf}`)}</p>
             </div>
-          ) : <EmptyState title={l('لا توجد طلبات توظيف نشطة', 'No active recruitment requests')} />}
-        </section>
+          ) : <MissingData text={l('تفاصيل الرواتب محجوبة حسب الصلاحية.', 'Payroll details are permission-gated.')} />}
+        </InsightPanel>
       </div>
 
-      <aside className="space-y-4">
-        <section className={cx('card border-s-4 p-5', qualityIssues ? 'border-s-accent-500' : 'border-s-status-ok')}>
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <div className="text-xs font-bold text-ink-faint">{l('جودة الربط', 'Reconciliation')}</div>
-              <div className="mt-1 text-3xl font-black tabular-nums">{qualityIssues}</div>
-            </div>
-            {qualityIssues ? <AlertTriangle className="text-accent-500" /> : <BadgeCheck className="text-status-ok" />}
+      <div className="grid gap-4 xl:grid-cols-[1.35fr_.65fr]">
+        <InsightPanel eyebrow={l('دورة التعيين', 'Hiring cycle')} title={l('تقدم الوظائف النشطة', 'Active recruitment progress')} action={<button onClick={() => onOpen('recruitment')}>{l('فتح التوظيف', 'Open recruitment')}</button>}>
+          <RecruitmentFunnel analytics={recruitment} lang={lang} />
+          <div className="mt-5 grid grid-cols-3 border-t border-[#DCD5C7] pt-4 text-center">
+            <InlineStat label={l('معدل الشغل', 'Fill rate')} value={`${recruitment?.fillRate ?? 0}%`} />
+            <InlineStat label={l('متوسط المخطط', 'Planned average')} value={recruitment?.averagePlannedDays === null || recruitment?.averagePlannedDays === undefined ? '—' : `${recruitment.averagePlannedDays} ${l('يوم', 'days')}`} />
+            <InlineStat label={l('قريب الاستحقاق', 'Due soon')} value={recruitment?.dueSoon ?? 0} />
           </div>
-          <p className="mt-2 text-xs leading-6 text-ink-muted">
-            {qualityIssues ? l('فروق تحتاج مراجعة؛ لا يتم إسقاطها أو دمجها تلقائيًا.', 'Differences need review; nothing is silently dropped or merged.') : l('كل المفاتيح والروابط متسقة.', 'All keys and links are consistent.')}
-          </p>
-          {reconciliation && <QualityMini reconciliation={reconciliation} lang={lang} />}
-        </section>
+        </InsightPanel>
 
-        <section className="card p-5">
-          <div className="flex items-center gap-2"><Database size={18} className="text-[#1D6FB8]" /><h2 className="font-extrabold">{l('حالة المصادر', 'Source health')}</h2></div>
-          <div className="mt-4 space-y-3">
-            {data.datasets.map((dataset) => (
-              <div key={dataset.source} className="flex items-center gap-3">
-                <span className={cx('grid h-8 w-8 place-items-center rounded-lg', dataset.importedAt ? 'bg-brand-50 text-[#1D6FB8]' : 'bg-surface-sunken text-ink-faint')}>
-                  {dataset.importedAt ? <Check size={15} /> : <X size={15} />}
-                </span>
-                <div className="min-w-0 flex-1"><div className="truncate text-xs font-bold">{dataset.label[lang]}</div><div className="truncate text-[11px] text-ink-faint">{dataset.importedAt ? formatDateTime(dataset.importedAt, lang) : l('لم يُرفع بعد', 'Not uploaded')}</div></div>
-              </div>
-            ))}
+        <InsightPanel eyebrow={l('مراجعة البيانات', 'Data control')} title={l('طابور الإجراءات', 'Action queue')}>
+          <div className="flex items-end justify-between border-b border-[#DCD5C7] pb-4">
+            <div><div className="text-4xl font-bold tabular-nums text-[#173B33]">{qualityIssues}</div><p className="mt-1 text-xs text-[#777367]">{l('فرق يحتاج قرارًا', 'differences need a decision')}</p></div>
+            {qualityIssues ? <AlertTriangle className="text-[#B66D32]" /> : <BadgeCheck className="text-[#39705E]" />}
           </div>
-          {missingSources.length > 0 && <button className="btn-ghost btn-sm mt-4 w-full" onClick={() => onOpen('imports')}><UploadCloud size={15} />{l('أكمل المصادر', 'Complete sources')}</button>}
-        </section>
-      </aside>
+          {reconciliation && <QualityMini reconciliation={reconciliation} lang={lang} />}
+          {data.permissions.canManage && <button className="mt-4 w-full border-t border-[#DCD5C7] pt-3 text-xs font-bold text-[#39705E]" onClick={() => onOpen('imports')}>{l('راجع المصادر والتحديثات', 'Review sources and updates')}</button>}
+        </InsightPanel>
+      </div>
     </div>
   );
 }
 
-function MetricCard({ icon: Icon, label, value, suffix, hint, tone }: { icon: typeof UsersRound; label: string; value: number; suffix?: string; hint: string; tone: 'brand' | 'navy' | 'orange' | 'slate' }) {
-  const tones = { brand: 'bg-brand-50 text-brand-500', navy: 'bg-navy/10 text-navy', orange: 'bg-accent-50 text-accent-600', slate: 'bg-surface-sunken text-ink-muted' };
-  return (
-    <article className="card p-4 transition-transform hover:-translate-y-0.5">
-      <div className={cx('grid h-9 w-9 place-items-center rounded-xl', tones[tone])}><Icon size={18} /></div>
-      <div className="mt-4 text-3xl font-black tabular-nums">{value}<span className="ms-0.5 text-base text-ink-faint">{suffix}</span></div>
-      <div className="mt-1 text-xs font-bold">{label}</div>
-      <div className="mt-0.5 text-[11px] text-ink-faint">{hint}</div>
-    </article>
-  );
+function ExecutiveMetric({ icon: Icon, label, value, note, strong }: { icon: typeof UsersRound; label: string; value: ReactNode; note: string; strong?: boolean }) {
+  return <article className={cx('min-h-32 border-[#DCD5C7] p-4 [&:not(:last-child)]:border-e', strong && 'bg-[#EFE3B7]')}><div className="flex items-center gap-2 text-[11px] font-bold text-[#6B716C]"><Icon size={15} />{label}</div><div className="mt-4 text-3xl font-bold tabular-nums text-[#173B33]">{value}</div><p className="mt-1 text-[10px] text-[#817B6D]">{note}</p></article>;
+}
+
+function InsightPanel({ eyebrow, title, action, children }: { eyebrow: string; title: string; action?: ReactNode; children: ReactNode }) {
+  return <section className="rounded-[18px] border border-[#CFC8B8] bg-[#FBF9F3]"><header className="flex items-end justify-between gap-4 border-b border-[#DCD5C7] px-5 py-4"><div><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9B7A29]">{eyebrow}</p><h2 className="mt-1 text-lg font-bold text-[#173B33]">{title}</h2></div>{action && <div className="text-xs font-bold text-[#39705E] [&_button:hover]:underline">{action}</div>}</header><div className="p-5">{children}</div></section>;
+}
+
+function GenderSplit({ female, male, lang }: { female: number; male: number; lang: 'ar' | 'en' }) {
+  const total = female + male;
+  const femalePercent = total ? Math.round((female / total) * 100) : 0;
+  return <div className="flex flex-col justify-between border-e border-[#DCD5C7] pe-5"><div><p className="text-[11px] font-bold text-[#777367]">{lang === 'en' ? 'Gender split' : 'توزيع النوع'}</p><div className="mt-2 text-4xl font-bold text-[#173B33]">{femalePercent}%</div><p className="text-[10px] text-[#817B6D]">{lang === 'en' ? 'women in active workforce' : 'سيدات من القوة الفعلية'}</p></div><div className="mt-5 flex gap-4 text-xs"><span className="flex items-center gap-1.5"><b className="text-[#A64E65]">♀</b>{female}</span><span className="flex items-center gap-1.5"><b className="text-[#39705E]">♂</b>{male}</span></div></div>;
+}
+
+function BarRow({ label, value, numericValue, max, accent }: { label: string; value: string | number; numericValue?: number; max: number; accent?: boolean }) {
+  const width = Math.max(3, Math.min(100, ((numericValue ?? (Number(value) || 0)) / Math.max(1, max)) * 100));
+  return <div><div className="mb-1 flex items-center justify-between gap-3 text-[11px]"><span className="truncate font-semibold text-[#4F5D56]">{label}</span><b className="shrink-0 tabular-nums text-[#173B33]">{value}</b></div><div className="h-1.5 bg-[#E7E1D5]"><div className={cx('h-full', accent ? 'bg-[#C89B2C]' : 'bg-[#39705E]')} style={{ width: `${width}%` }} /></div></div>;
+}
+
+function InlineStat({ label, value }: { label: string; value: string | number }) {
+  return <div className="px-2 [&:not(:last-child)]:border-e [&:not(:last-child)]:border-[#DCD5C7]"><div className="text-lg font-bold tabular-nums text-[#173B33]">{value}</div><div className="mt-0.5 text-[10px] text-[#817B6D]">{label}</div></div>;
+}
+
+function RecruitmentFunnel({ analytics, lang }: { analytics: HRRecruitmentAnalytics | undefined; lang: 'ar' | 'en' }) {
+  const l = (ar: string, en: string) => (lang === 'en' ? en : ar);
+  const total = Math.max(1, analytics?.funnel.total ?? 0);
+  const stages = [
+    [l('استلام المتطلبات', 'Requirements'), analytics?.funnel.requirements ?? 0],
+    [l('النشر', 'Published'), analytics?.funnel.published ?? 0],
+    [l('استلام مرشحين', 'Candidates received'), analytics?.funnel.candidates ?? 0],
+    [l('تم قبول مرشح', 'Accepted'), analytics?.funnel.accepted ?? 0],
+  ] as const;
+  return <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">{stages.map(([label, value], index) => <div key={label} className="relative border border-[#DCD5C7] bg-white p-3"><div className="text-[10px] text-[#817B6D]">0{index + 1}</div><div className="mt-3 text-2xl font-bold text-[#173B33]">{value}<span className="text-xs text-[#817B6D]">/{total}</span></div><div className="mt-1 text-[11px] font-semibold text-[#4F5D56]">{label}</div><div className="mt-3 h-1 bg-[#E7E1D5]"><div className="h-full bg-[#C89B2C]" style={{ width: `${(value / total) * 100}%` }} /></div></div>)}</div>;
 }
 
 function QualityMini({ reconciliation, lang }: { reconciliation: NonNullable<HRDashboardData['reconciliation']>; lang: 'ar' | 'en' }) {
@@ -374,37 +409,51 @@ function QualityMini({ reconciliation, lang }: { reconciliation: NonNullable<HRD
     ['unlinkedAccounts', 'حساب غير مربوط', 'Unlinked accounts'],
     ['unmatchedOrganizationPositions', 'منصب غير مطابق', 'Unmatched positions'],
   ] as const;
-  return <div className="mt-4 space-y-2">{rows.map(([key, ar, en]) => <div key={key} className="flex items-center justify-between rounded-lg bg-surface-sunken px-3 py-2 text-[11px]"><span className="font-semibold text-ink-muted">{lang === 'en' ? en : ar}</span><b className={reconciliation[key].length ? 'text-accent-600' : 'text-status-ok'}>{reconciliation[key].length}</b></div>)}</div>;
+  return <div className="mt-4 divide-y divide-[#DCD5C7] border-y border-[#DCD5C7]">{rows.map(([key, ar, en]) => <div key={key} className="flex items-center justify-between px-1 py-2.5 text-[11px]"><span className="font-semibold text-[#66716B]">{lang === 'en' ? en : ar}</span><b className={reconciliation[key].length ? 'text-[#A5532D]' : 'text-[#39705E]'}>{reconciliation[key].length}</b></div>)}</div>;
 }
 
 function PeopleDirectory({ data, lang }: { data: HRDashboardData; lang: 'ar' | 'en' }) {
   const l = (ar: string, en: string) => (lang === 'en' ? en : ar);
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState<'all' | 'active' | 'inactive'>('active');
+  const [department, setDepartment] = useState('all');
+  const workforce = data.analytics?.workforce;
+  const departments = useMemo(() => [...new Set(data.employees.map((employee) => employee.department || employee.sector).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ar')), [data.employees]);
   const people = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return data.employees.filter((employee) => {
       const matchesStatus = status === 'all' || employee.status === status;
+      const matchesDepartment = department === 'all' || employee.department === department || employee.sector === department;
       const haystack = `${employee.employeeCode} ${employee.nameArabic} ${employee.nameEnglish} ${employee.department} ${employee.title}`.toLowerCase();
-      return matchesStatus && (!needle || haystack.includes(needle));
+      return matchesStatus && matchesDepartment && (!needle || haystack.includes(needle));
     });
-  }, [data.employees, query, status]);
+  }, [data.employees, department, query, status]);
 
   return (
-    <section className="card overflow-hidden">
-      <div className="flex flex-col gap-3 border-b border-surface-line p-4 sm:flex-row sm:items-center">
-        <div className="relative min-w-0 flex-1"><Search className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-ink-faint" size={16} /><input className="field ps-10" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={l('ابحث بالاسم، الكود، القسم أو الوظيفة…', 'Search name, code, department, or role…')} /></div>
-        <div className="flex gap-1 rounded-xl bg-surface-sunken p-1">{(['active', 'inactive', 'all'] as const).map((item) => <button key={item} className={cx('rounded-lg px-3 py-2 text-xs font-bold', status === item ? 'bg-white text-[#1D6FB8] shadow-sm' : 'text-ink-muted')} onClick={() => setStatus(item)}>{item === 'active' ? l('نشط', 'Active') : item === 'inactive' ? l('سابق', 'Former') : l('الكل', 'All')}</button>)}</div>
-      </div>
-      <div className="hidden overflow-x-auto md:block">
-        <table className="w-full text-start text-sm">
-          <thead className="bg-[#F8FAFC] text-[11px] font-bold text-ink-faint"><tr><th className="px-5 py-3 text-start">{l('الموظف', 'Employee')}</th><th className="px-4 py-3 text-start">{l('الوظيفة', 'Role')}</th><th className="px-4 py-3 text-start">{l('القسم', 'Department')}</th><th className="px-4 py-3 text-start">{l('الربط', 'Coverage')}</th><th className="px-4 py-3 text-start">{l('الحالة', 'Status')}</th><th className="w-12" /></tr></thead>
-          <tbody className="divide-y divide-surface-line">{people.map((employee) => <EmployeeRow key={employee.employeeCode} employee={employee} lang={lang} />)}</tbody>
-        </table>
-      </div>
-      <div className="divide-y divide-surface-line md:hidden">{people.map((employee) => <EmployeeMobile key={employee.employeeCode} employee={employee} lang={lang} />)}</div>
-      {!people.length && <EmptyState title={l('لا توجد نتائج', 'No matching employees')} body={l('جرّب كلمة بحث أو حالة مختلفة.', 'Try another search or status.')} />}
-    </section>
+    <div className="space-y-4">
+      <TabSummary title={l('ملخص الموظفين', 'People summary')} items={[
+        { label: l('نشط', 'Active'), value: workforce?.active ?? data.summary.active },
+        { label: l('سيدات / رجال', 'Women / men'), value: `${workforce?.gender.female ?? 0} / ${workforce?.gender.male ?? 0}` },
+        { label: l('متوسط العمر', 'Average age'), value: workforce?.averageAge ? `${workforce.averageAge}` : '—', note: l('سنة', 'years') },
+        { label: l('أكبر قسم', 'Largest department'), value: workforce?.largestDepartment?.department || '—', note: workforce?.largestDepartment ? `${workforce.largestDepartment.employees}` : '' },
+        { label: l('جدد هذا الشهر', 'New this month'), value: workforce?.newHires ?? 0 },
+      ]} />
+      <section className="overflow-hidden rounded-[18px] border border-[#CFC8B8] bg-[#FBF9F3]">
+        <div className="grid gap-3 border-b border-[#DCD5C7] p-4 lg:grid-cols-[minmax(0,1fr)_15rem_auto] lg:items-center">
+          <div className="relative min-w-0"><Search className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-[#8A867C]" size={16} /><input className="field ps-10" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={l('الاسم، الكود أو المسمى الوظيفي…', 'Name, code, or job title…')} /></div>
+          <select className="field" value={department} onChange={(event) => setDepartment(event.target.value)}><option value="all">{l('كل الأقسام', 'All departments')}</option>{departments.map((item) => <option key={item} value={item}>{item}</option>)}</select>
+          <div className="flex border border-[#DCD5C7] bg-white">{(['active', 'inactive', 'all'] as const).map((item) => <button key={item} className={cx('px-3 py-2 text-xs font-bold [&:not(:last-child)]:border-e [&:not(:last-child)]:border-[#DCD5C7]', status === item ? 'bg-[#173B33] text-white' : 'text-[#6E746F]')} onClick={() => setStatus(item)}>{item === 'active' ? l('نشط', 'Active') : item === 'inactive' ? l('سابق', 'Former') : l('الكل', 'All')}</button>)}</div>
+        </div>
+        <div className="hidden overflow-x-auto md:block">
+          <table className="w-full text-start text-sm">
+            <thead className="bg-[#F0ECE2] text-[11px] font-bold text-[#777367]"><tr><th className="px-5 py-3 text-start">{l('الموظف', 'Employee')}</th><th className="px-4 py-3 text-start">{l('الوظيفة', 'Role')}</th><th className="px-4 py-3 text-start">{l('القسم', 'Department')}</th><th className="px-4 py-3 text-start">{l('الربط', 'Coverage')}</th><th className="px-4 py-3 text-start">{l('الحالة', 'Status')}</th><th className="w-12" /></tr></thead>
+            <tbody className="divide-y divide-[#E2DCCF]">{people.map((employee) => <EmployeeRow key={employee.employeeCode} employee={employee} lang={lang} />)}</tbody>
+          </table>
+        </div>
+        <div className="divide-y divide-[#E2DCCF] md:hidden">{people.map((employee) => <EmployeeMobile key={employee.employeeCode} employee={employee} lang={lang} />)}</div>
+        {!people.length && <EmptyState title={l('لا توجد نتائج', 'No matching employees')} body={l('جرّب كلمة بحث أو فلتر مختلف.', 'Try another search or filter.')} />}
+      </section>
+    </div>
   );
 }
 
@@ -438,15 +487,31 @@ function StatusChip({ status, lang }: { status: string; lang: 'ar' | 'en' }) {
 
 function PayrollDesk({ data, lang }: { data: HRDashboardData; lang: 'ar' | 'en' }) {
   const l = (ar: string, en: string) => (lang === 'en' ? en : ar);
-  const rows = data.employees.filter((employee) => employee.hasPayroll);
-  const total = rows.reduce((sum, employee) => sum + Number(employee.totalSalary || 0), 0);
+  const [order, setOrder] = useState<'high' | 'low'>('high');
+  const analytics = data.analytics?.payroll;
+  const employeeByCode = new Map(data.employees.map((employee) => [employee.employeeCode, employee]));
+  const ranking = analytics ? (order === 'high' ? analytics.ranking : [...analytics.ranking].reverse()) : [];
+  const maxDepartment = analytics?.departments[0]?.totalUsd || 1;
+  if (!analytics) return <MissingData text={l('تحتاج صلاحية الرواتب لعرض الملخص.', 'Payroll permission is required.')} />;
   return (
     <div className="space-y-4">
-      <section className="grid gap-3 sm:grid-cols-3"><MetricCard icon={Banknote} label={l('إجمالي المسير', 'Payroll total')} value={total} hint="EGP" tone="brand" /><MetricCard icon={UsersRound} label={l('عدد الموظفين', 'People paid')} value={rows.length} hint={l('في آخر ملف مرفوع', 'latest uploaded sheet')} tone="navy" /><MetricCard icon={AlertTriangle} label={l('نشط غير موجود', 'Active missing')} value={data.reconciliation?.activeWithoutPayroll.length ?? 0} hint={l('يحتاج مراجعة', 'needs review')} tone="orange" /></section>
-      <section className="card overflow-hidden">
-        <div className="border-b border-surface-line px-5 py-4"><h2 className="font-extrabold">{l('مسير الرواتب الحالي', 'Current payroll register')}</h2><p className="mt-1 text-xs text-ink-faint">{l('الأرقام الحساسة لا تظهر إلا لصاحبها أو لحامل صلاحية الرواتب.', 'Sensitive figures are visible only to the employee or payroll-authorised staff.')}</p></div>
-        <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-sm"><thead className="bg-surface-sunken text-[11px] text-ink-faint"><tr><th className="px-5 py-3 text-start">{l('الموظف', 'Employee')}</th><th className="px-4 py-3 text-start">{l('القسم', 'Department')}</th><th className="px-4 py-3 text-end">{l('الإجمالي', 'Total')}</th><th className="px-4 py-3 text-start">{l('التأمين', 'Insurance')}</th><th className="w-12" /></tr></thead><tbody className="divide-y divide-surface-line">{rows.map((employee) => <tr key={employee.employeeCode} className="hover:bg-brand-50/30"><td className="px-5 py-3"><div className="font-bold">{employee.nameArabic || employee.nameEnglish}</div><div className="text-[11px] text-ink-faint">#{employee.employeeCode}</div></td><td className="px-4 py-3 text-xs text-ink-muted">{employee.department}</td><td className="px-4 py-3 text-end font-black tabular-nums text-[#1D6FB8]">{money(employee.totalSalary, lang)}</td><td className="px-4 py-3"><span className={cx('chip', employee.hasInsurance ? 'bg-status-okBg text-status-ok' : 'bg-status-warnBg text-accent-600')}>{employee.hasInsurance ? l('مربوط', 'Linked') : l('غير موجود', 'Missing')}</span></td><td className="px-4"><Link to={`/hr/employees/${employee.employeeCode}`}><ChevronRight className="rtl:rotate-180" size={17} /></Link></td></tr>)}</tbody></table></div>
-      </section>
+      <TabSummary title={l('ملخص الرواتب', 'Payroll summary')} items={[
+        { label: l('إجمالي المسير بالدولار', 'Total payroll in USD'), value: usd(analytics.totalUsd, lang), featured: true },
+        { label: l('متوسط الموظف', 'Average per employee'), value: usd(analytics.averageUsd, lang) },
+        { label: l('أعلى قسم تكلفة', 'Highest-cost department'), value: analytics.highestCostDepartment?.department || '—', note: analytics.highestCostDepartment ? usd(analytics.highestCostDepartment.totalUsd, lang) : '' },
+        { label: l('أقل قسم تكلفة', 'Lowest-cost department'), value: analytics.lowestCostDepartment?.department || '—', note: analytics.lowestCostDepartment ? usd(analytics.lowestCostDepartment.totalUsd, lang) : '' },
+        { label: l('نشط بدون راتب', 'Active missing payroll'), value: data.reconciliation?.activeWithoutPayroll.length ?? 0 },
+      ]} footer={l(`التحويل على سعر بيع الدولار ${analytics.rate.sell} ج.م · ${analytics.rate.source} · ${analytics.rate.asOf}`, `Converted at USD sell rate EGP ${analytics.rate.sell} · ${analytics.rate.source} · ${analytics.rate.asOf}`)} />
+
+      <div className="grid gap-4 xl:grid-cols-[.8fr_1.2fr]">
+        <InsightPanel eyebrow={l('مقارنة الأقسام', 'Department comparison')} title={l('تكلفة الرواتب بالدولار', 'Payroll cost in USD')}>
+          <div className="space-y-3">{analytics.departments.map((item) => <BarRow key={item.department} label={`${item.department} · ${item.employees}`} value={usd(item.totalUsd, lang)} numericValue={item.totalUsd} max={maxDepartment} accent />)}</div>
+        </InsightPanel>
+        <section className="overflow-hidden rounded-[18px] border border-[#CFC8B8] bg-[#FBF9F3]">
+          <header className="flex flex-wrap items-end justify-between gap-3 border-b border-[#DCD5C7] px-5 py-4"><div><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9B7A29]">{l('ترتيب الرواتب', 'Salary ranking')}</p><h2 className="mt-1 text-lg font-bold text-[#173B33]">{l('من الأعلى إلى الأقل', 'Highest and lowest')}</h2></div><div className="flex border border-[#DCD5C7] bg-white">{(['high', 'low'] as const).map((item) => <button key={item} onClick={() => setOrder(item)} className={cx('px-3 py-2 text-xs font-bold', order === item ? 'bg-[#173B33] text-white' : 'text-[#6E746F]')}>{item === 'high' ? l('الأعلى', 'Highest') : l('الأقل', 'Lowest')}</button>)}</div></header>
+          <div className="max-h-[620px] overflow-auto"><table className="w-full min-w-[680px] text-sm"><thead className="sticky top-0 bg-[#F0ECE2] text-[11px] text-[#777367]"><tr><th className="px-5 py-3 text-start">{l('الموظف', 'Employee')}</th><th className="px-4 py-3 text-start">{l('القسم', 'Department')}</th><th className="px-4 py-3 text-end">USD</th><th className="px-4 py-3 text-end">EGP</th><th className="px-4 py-3 text-start">{l('التأمين', 'Insurance')}</th><th className="w-12" /></tr></thead><tbody className="divide-y divide-[#E2DCCF]">{ranking.map((row) => { const employee = employeeByCode.get(row.employeeCode); return <tr key={row.employeeCode} className="hover:bg-[#F3EFE5]"><td className="px-5 py-3"><div className="font-bold text-[#173B33]">{row.name}</div><div className="text-[10px] text-[#8A867C]">#{row.employeeCode}</div></td><td className="px-4 py-3 text-xs text-[#66716B]">{row.department}</td><td className="px-4 py-3 text-end font-bold tabular-nums text-[#173B33]">{usd(row.totalUsd, lang)}</td><td className="px-4 py-3 text-end text-xs tabular-nums text-[#777367]">{money(row.totalEgp, lang)}</td><td className="px-4 py-3"><span className={cx('chip', employee?.hasInsurance ? 'bg-status-okBg text-status-ok' : 'bg-status-warnBg text-accent-600')}>{employee?.hasInsurance ? l('مربوط', 'Linked') : l('غير موجود', 'Missing')}</span></td><td className="px-4"><Link to={`/hr/employees/${row.employeeCode}`}><ChevronRight className="rtl:rotate-180" size={17} /></Link></td></tr>; })}</tbody></table></div>
+        </section>
+      </div>
     </div>
   );
 }
@@ -455,8 +520,34 @@ function RecruitmentDesk({ data, lang, onChanged }: { data: HRDashboardData; lan
   const l = (ar: string, en: string) => (lang === 'en' ? en : ar);
   const { push } = useToast();
   const [filter, setFilter] = useState('active');
+  const [query, setQuery] = useState('');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
   const [saving, setSaving] = useState('');
-  const rows = data.recruitment.filter((request) => filter === 'all' || request.status === filter);
+  const [editor, setEditor] = useState<HRRecruitmentRequest | null>(null);
+  const [odoo, setOdoo] = useState<HROdooRecruitmentData | null>(null);
+  const [odooLoading, setOdooLoading] = useState(true);
+  const analytics = data.analytics?.recruitment;
+  useEffect(() => {
+    let live = true;
+    api.get<HROdooRecruitmentData>('/hr/recruitment/odoo')
+      .then((result) => { if (live) setOdoo(result); })
+      .catch(() => { if (live) setOdoo(null); })
+      .finally(() => { if (live) setOdooLoading(false); });
+    return () => { live = false; };
+  }, []);
+  const rows = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return data.recruitment
+      .filter((request) => {
+        const haystack = `${request.role} ${request.department} ${request.location} ${request.assignedTo.join(' ')} ${request.interviewer}`.toLowerCase();
+        return (filter === 'all' || request.status === filter)
+          && (!needle || haystack.includes(needle))
+          && (!fromDate || Boolean(request.activeDate && request.activeDate >= fromDate))
+          && (!toDate || Boolean(request.dueDate && request.dueDate <= toDate));
+      })
+      .sort((left, right) => String(left.dueDate || '9999').localeCompare(String(right.dueDate || '9999')));
+  }, [data.recruitment, filter, fromDate, query, toDate]);
   const updateStatus = async (request: HRRecruitmentRequest, status: string) => {
     setSaving(request.id);
     try {
@@ -469,23 +560,136 @@ function RecruitmentDesk({ data, lang, onChanged }: { data: HRDashboardData; lan
   };
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2">{['active', 'hold', 'done', 'all'].map((item) => <button key={item} onClick={() => setFilter(item)} className={cx('rounded-xl px-3.5 py-2 text-xs font-bold', filter === item ? 'bg-[#1D6FB8] text-white' : 'border border-surface-line bg-white text-ink-muted')}>{item === 'active' ? l('نشط', 'Active') : item === 'hold' ? l('معلّق', 'On hold') : item === 'done' ? l('مكتمل', 'Done') : l('الكل', 'All')}</button>)}</div>
-      <div className="grid gap-3 lg:grid-cols-2">{rows.map((request) => (
-        <article key={request.id} className="card overflow-hidden p-5">
-          <div className="flex items-start justify-between gap-4"><div><div className="flex flex-wrap items-center gap-2"><h2 className="text-base font-extrabold">{request.role}</h2><StatusChip status={request.status} lang={lang} /></div><p className="mt-1 text-xs text-ink-muted">{request.department || '—'} · {request.location || '—'} · {request.vacancyReason || '—'}</p></div><span className="rounded-xl bg-surface-sunken px-3 py-2 text-center"><b className="block text-xl tabular-nums">{request.accepted}/{request.numberNeeded}</b><small className="text-[10px] text-ink-faint">{l('تعيين', 'hired')}</small></span></div>
-          <div className="mt-4 grid gap-2 text-xs sm:grid-cols-3"><MiniFact label={l('المسؤول', 'Owner')} value={request.assignedTo.join('، ') || '—'} /><MiniFact label={l('الموعد', 'Due')} value={formatDate(request.dueDate, lang)} /><MiniFact label={l('نطاق الراتب', 'Salary range')} value={request.salaryRange || '—'} /></div>
-          {request.feedback && <p className="mt-3 rounded-xl bg-[#F8FAFC] px-3 py-2 text-xs leading-6 text-ink-muted">{request.feedback}</p>}
-          {data.permissions.canManage && <div className="mt-4 flex items-center gap-2 border-t border-surface-line pt-3"><span className="text-[11px] font-bold text-ink-faint">{l('تغيير الحالة', 'Change status')}</span><select className="field !w-auto !py-1.5 text-xs" value={request.status} disabled={saving === request.id} onChange={(event) => void updateStatus(request, event.target.value)}><option value="active">Active</option><option value="hold">Hold</option><option value="done">Done</option></select>{saving === request.id && <Spinner size={15} />}</div>}
-        </article>
-      ))}</div>
+      <TabSummary title={l('ملخص التوظيف', 'Recruitment summary')} items={[
+        { label: l('طلبات نشطة', 'Active requests'), value: analytics?.active ?? 0 },
+        { label: l('مقاعد مفتوحة', 'Open seats'), value: analytics?.openSeats ?? 0, featured: true },
+        { label: l('معدل الشغل', 'Fill rate'), value: `${analytics?.fillRate ?? 0}%` },
+        { label: l('متأخر', 'Overdue'), value: analytics?.overdue ?? 0 },
+        { label: l('متوسط مدة التعيين', 'Average hiring cycle'), value: analytics?.averageActualDays === null || analytics?.averageActualDays === undefined ? '—' : analytics.averageActualDays, note: analytics?.averageActualDays ? l('يوم فعلي', 'actual days') : l('لا توجد تواريخ تعيين فعلية', 'No actual hire dates') },
+      ]} />
+
+      <InsightPanel eyebrow={l('مراحل الطلبات النشطة', 'Active request stages')} title={l('دورة التعيين من الشيت', 'Workbook recruitment funnel')}>
+        <RecruitmentFunnel analytics={analytics} lang={lang} />
+      </InsightPanel>
+
+      <section className="rounded-[18px] border border-[#CFC8B8] bg-[#FBF9F3] p-4">
+        <div className="grid gap-3 xl:grid-cols-[minmax(15rem,1fr)_repeat(2,11rem)_auto] xl:items-center">
+          <div className="relative"><Search size={15} className="absolute start-3 top-1/2 -translate-y-1/2 text-[#8A867C]" /><input className="field ps-9" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={l('الوظيفة، القسم، المسؤول أو المقابل…', 'Role, department, owner, or interviewer…')} /></div>
+          <label><span className="mb-1 block text-[10px] font-bold text-[#777367]">{l('من تاريخ التفعيل', 'Active from')}</span><input className="field ltr" type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} /></label>
+          <label><span className="mb-1 block text-[10px] font-bold text-[#777367]">{l('حتى الاستحقاق', 'Due by')}</span><input className="field ltr" type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} /></label>
+          <div className="flex self-end border border-[#DCD5C7] bg-white">{['active', 'hold', 'done', 'all'].map((item) => <button key={item} onClick={() => setFilter(item)} className={cx('px-3 py-2.5 text-[11px] font-bold', filter === item ? 'bg-[#173B33] text-white' : 'text-[#6E746F]')}>{item === 'active' ? l('نشط', 'Active') : item === 'hold' ? l('معلق', 'Hold') : item === 'done' ? l('مكتمل', 'Done') : l('الكل', 'All')}</button>)}</div>
+        </div>
+      </section>
+
+      {!odooLoading && odoo?.configured && (
+        <div className={cx('flex flex-wrap items-center justify-between gap-3 border px-4 py-3 text-xs', odoo.connected ? 'border-[#B8CBBF] bg-[#EDF3EE] text-[#315C4D]' : 'border-[#E5C7A9] bg-[#F8EEE3] text-[#8B572F]')}>
+          <span><b>Odoo:</b> {odoo.connected ? l(`تم ربط ${odoo.summary.matched} من ${odoo.summary.total} وظيفة.`, `${odoo.summary.matched} of ${odoo.summary.total} roles linked.`) : l('تعذر قراءة وظائف Odoo الآن.', 'Odoo jobs are currently unavailable.')}</span>
+          {odoo.connected && !odoo.applicantsAvailable && <span>{l('أعداد المرشحين تحتاج صلاحية Recruitment لحساب التكامل.', 'Candidate counts require Recruitment access for the integration account.')}</span>}
+        </div>
+      )}
+
+      <div className="grid gap-3 lg:grid-cols-2">{rows.map((request) => <RecruitmentRequestCard key={request.id} request={request} match={odoo?.matches[request.id]} lang={lang} canManage={data.permissions.canManage} saving={saving === request.id} onStatus={(status) => updateStatus(request, status)} onEdit={() => setEditor(request)} />)}</div>
       {!rows.length && <EmptyState title={l('لا توجد طلبات بهذه الحالة', 'No requests in this state')} />}
+      {editor && <RecruitmentEditor request={editor} lang={lang} onClose={() => setEditor(null)} onSaved={async () => { setEditor(null); await onChanged(); }} />}
     </div>
   );
+}
+
+function RecruitmentRequestCard({ request, match, lang, canManage, saving, onStatus, onEdit }: {
+  request: HRRecruitmentRequest;
+  match?: HROdooRecruitmentData['matches'][string];
+  lang: 'ar' | 'en';
+  canManage: boolean;
+  saving: boolean;
+  onStatus: (status: string) => void;
+  onEdit: () => void;
+}) {
+  const l = (ar: string, en: string) => (lang === 'en' ? en : ar);
+  const remaining = Math.max(0, request.numberNeeded - request.accepted);
+  const due = request.dueDate ? daysUntil(request.dueDate) : null;
+  const overdue = request.status === 'active' && due !== null && due < 0 && remaining > 0;
+  const stages = [
+    [l('متطلبات', 'Requirements'), request.receivedRequirements === 'done'],
+    [l('نشر', 'Published'), request.published === 'done'],
+    [l('مرشحون', 'Candidates'), request.receivedCandidates === 'done'],
+    [l('قبول', 'Accepted'), request.accepted > 0],
+  ] as const;
+  return (
+    <article className={cx('overflow-hidden rounded-[18px] border bg-[#FBF9F3]', overdue ? 'border-[#C98351]' : 'border-[#CFC8B8]')}>
+      <div className="flex items-start justify-between gap-4 border-b border-[#DCD5C7] p-5">
+        <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h2 className="text-base font-bold text-[#173B33]">{request.role}</h2><StatusChip status={request.status} lang={lang} />{overdue && <span className="text-[10px] font-bold text-[#A5532D]">{l(`متأخر ${Math.abs(due ?? 0)} يوم`, `${Math.abs(due ?? 0)} days overdue`)}</span>}</div><p className="mt-1 truncate text-xs text-[#777367]">{request.department || '—'} · {request.location || '—'} · {request.vacancyReason || '—'}</p></div>
+        <div className="shrink-0 border-s-2 border-[#C89B2C] ps-3 text-end"><b className="block text-2xl tabular-nums text-[#173B33]">{request.accepted}/{request.numberNeeded}</b><small className="text-[10px] text-[#817B6D]">{remaining} {l('متبقي', 'remaining')}</small></div>
+      </div>
+      <div className="p-5">
+        <div className="grid gap-2 text-xs sm:grid-cols-4"><MiniFact label={l('المسؤول', 'Owner')} value={request.assignedTo.join('، ') || '—'} /><MiniFact label={l('بدء', 'Started')} value={formatDate(request.activeDate, lang)} /><MiniFact label={l('استحقاق', 'Due')} value={formatDate(request.dueDate, lang)} /><MiniFact label={l('مدة مستهدفة', 'Target cycle')} value={request.hiringPeriodDays ? `${request.hiringPeriodDays} ${l('يوم', 'days')}` : request.activeDate && request.dueDate ? `${Math.max(0, daysBetweenClient(request.activeDate, request.dueDate) ?? 0)} ${l('يوم', 'days')}` : '—'} /></div>
+        <div className="mt-4 grid grid-cols-4 border border-[#DCD5C7] bg-white">{stages.map(([label, done], index) => <div key={label} className="px-2 py-2.5 text-center [&:not(:last-child)]:border-e [&:not(:last-child)]:border-[#DCD5C7]"><span className={cx('mx-auto mb-1 grid h-5 w-5 place-items-center rounded-full border', done ? 'border-[#39705E] bg-[#39705E] text-white' : 'border-[#C8C1B3] text-transparent')}>{done && <Check size={11} />}</span><span className="text-[9px] font-semibold text-[#777367]">0{index + 1} · {label}</span></div>)}</div>
+        {request.feedback && <p className="mt-3 border-s-2 border-[#D3C28D] bg-[#F3EFE4] px-3 py-2 text-xs leading-6 text-[#66716B]">{request.feedback}</p>}
+        <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[#DCD5C7] pt-3">
+          {match ? <a href={match.url} target="_blank" rel="noreferrer noopener" className="inline-flex items-center gap-1.5 text-xs font-bold text-[#39705E] hover:underline"><ExternalLink size={14} />{l('فتح الوظيفة في Odoo', 'Open job in Odoo')}{match.applicantCount !== null && ` · ${match.applicantCount}`}</a> : <span className="text-[10px] text-[#918B7E]">{l('لا توجد مطابقة مؤكدة في Odoo', 'No confident Odoo match')}</span>}
+          {canManage && <div className="ms-auto flex items-center gap-2"><button className="inline-flex items-center gap-1.5 px-2 py-1.5 text-xs font-bold text-[#39705E]" onClick={onEdit}><Pencil size={13} />{l('تعديل', 'Edit')}</button><select className="field !w-auto !py-1.5 text-xs" value={request.status} disabled={saving} onChange={(event) => onStatus(event.target.value)}><option value="active">Active</option><option value="hold">Hold</option><option value="done">Done</option></select>{saving && <Spinner size={15} />}</div>}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function RecruitmentEditor({ request, lang, onClose, onSaved }: { request: HRRecruitmentRequest; lang: 'ar' | 'en'; onClose: () => void; onSaved: () => Promise<void> }) {
+  const l = (ar: string, en: string) => (lang === 'en' ? en : ar);
+  const { push } = useToast();
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState<Record<string, string>>(() => ({
+    role: request.role,
+    numberNeeded: String(request.numberNeeded),
+    accepted: String(request.accepted),
+    department: request.department,
+    vacancyReason: request.vacancyReason,
+    status: request.status,
+    priority: request.priority,
+    seniority: request.seniority,
+    location: request.location,
+    assignedTo: request.assignedTo.join(', '),
+    hiringPeriodDays: request.hiringPeriodDays === null ? '' : String(request.hiringPeriodDays),
+    activeDate: request.activeDate || '',
+    dueDate: request.dueDate || '',
+    actualHiringDate: request.actualHiringDate || '',
+    receivedRequirements: request.receivedRequirements,
+    published: request.published,
+    receivedCandidates: request.receivedCandidates,
+    salaryRange: request.salaryRange,
+    actualSalary: request.actualSalary,
+    interviewer: request.interviewer,
+    validation: request.validation,
+    feedback: request.feedback,
+  }));
+  const set = (key: string, value: string) => setForm((current) => ({ ...current, [key]: value }));
+  const save = async () => {
+    setSaving(true);
+    try {
+      await api.patch(`/hr/recruitment/${encodeURIComponent(request.id)}`, {
+        ...form,
+        numberNeeded: Number(form.numberNeeded || 0),
+        accepted: Number(form.accepted || 0),
+        hiringPeriodDays: form.hiringPeriodDays ? Number(form.hiringPeriodDays) : null,
+        assignedTo: form.assignedTo.split(',').map((value) => value.trim()).filter(Boolean),
+        activeDate: form.activeDate || null,
+        dueDate: form.dueDate || null,
+        actualHiringDate: form.actualHiringDate || null,
+      });
+      await onSaved();
+      push(l('تم حفظ بيانات الوظيفة.', 'Recruitment request saved.'));
+    } catch (error) {
+      push(errorMessage(error, lang), 'bad');
+    } finally { setSaving(false); }
+  };
+  const stageOptions = (value: string) => <>{!['done', 'wait', 'hold'].includes(value) && <option value={value}>{value || '—'}</option>}<option value="done">Done</option><option value="wait">Wait</option><option value="hold">Hold</option></>;
+  const input = (key: string, label: string, type = 'text') => <label><span className="label">{label}</span><input className="field" type={type} value={form[key]} onChange={(event) => set(key, event.target.value)} /></label>;
+  return <Modal open onClose={onClose} title={l('تعديل طلب التوظيف', 'Edit recruitment request')} width="xl" footer={<><button className="btn-ghost" onClick={onClose}>{l('إلغاء', 'Cancel')}</button><button className="btn-primary" onClick={() => void save()} disabled={saving}>{saving ? <Spinner size={16} /> : <Check size={16} />}{l('حفظ', 'Save')}</button></>}><div className="grid max-h-[70dvh] gap-4 overflow-y-auto pe-1 sm:grid-cols-2 lg:grid-cols-3">{input('role', l('الوظيفة', 'Role'))}{input('department', l('القسم', 'Department'))}{input('location', l('الموقع', 'Location'))}{input('numberNeeded', l('العدد المطلوب', 'Needed'), 'number')}{input('accepted', l('تم قبوله', 'Accepted'), 'number')}<label><span className="label">{l('الحالة', 'Status')}</span><select className="field" value={form.status} onChange={(event) => set('status', event.target.value)}><option value="active">Active</option><option value="hold">Hold</option><option value="done">Done</option></select></label>{input('activeDate', l('تاريخ التفعيل', 'Active date'), 'date')}{input('dueDate', l('تاريخ الاستحقاق', 'Due date'), 'date')}{input('actualHiringDate', l('تاريخ التعيين الفعلي', 'Actual hire date'), 'date')}{input('hiringPeriodDays', l('مدة التعيين بالأيام', 'Hiring period days'), 'number')}{input('assignedTo', l('المسؤولون بفاصلة', 'Owners, comma separated'))}{input('interviewer', l('المقابل', 'Interviewer'))}{input('priority', l('الأولوية', 'Priority'))}{input('seniority', l('المستوى', 'Seniority'))}{input('vacancyReason', l('سبب الشاغر', 'Vacancy reason'))}{input('salaryRange', l('نطاق الراتب', 'Salary range'))}{input('actualSalary', l('الراتب الفعلي', 'Actual salary'))}{input('validation', l('الاعتماد', 'Validation'))}<label><span className="label">{l('استلام المتطلبات', 'Requirements')}</span><select className="field" value={form.receivedRequirements} onChange={(event) => set('receivedRequirements', event.target.value)}>{stageOptions(form.receivedRequirements)}</select></label><label><span className="label">{l('النشر', 'Published')}</span><select className="field" value={form.published} onChange={(event) => set('published', event.target.value)}>{stageOptions(form.published)}</select></label><label><span className="label">{l('استلام المرشحين', 'Candidates received')}</span><select className="field" value={form.receivedCandidates} onChange={(event) => set('receivedCandidates', event.target.value)}>{stageOptions(form.receivedCandidates)}</select></label><label className="sm:col-span-2 lg:col-span-3"><span className="label">{l('الملاحظات', 'Feedback')}</span><textarea className="field min-h-24" value={form.feedback} onChange={(event) => set('feedback', event.target.value)} /></label></div></Modal>;
 }
 
 function OrganizationDesk({ data, lang }: { data: HRDashboardData; lang: 'ar' | 'en' }) {
   const l = (ar: string, en: string) => (lang === 'en' ? en : ar);
   const [query, setQuery] = useState('');
+  const analytics = data.analytics?.organization;
   const needle = query.trim().toLowerCase();
   const positions = data.organization.filter((position) => !needle || `${position.title} ${position.employeeName} ${position.departmentCode}`.toLowerCase().includes(needle));
   const ids = new Set(positions.map((position) => position.id));
@@ -496,30 +700,50 @@ function OrganizationDesk({ data, lang }: { data: HRDashboardData; lang: 'ar' | 
     children.set(position.managerPositionId, [...(children.get(position.managerPositionId) ?? []), position]);
   });
   return (
-    <section className="card overflow-hidden">
-      <div className="flex flex-col gap-3 border-b border-surface-line p-4 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="font-extrabold">{l('خريطة المسؤولية', 'Accountability map')}</h2><p className="mt-1 text-xs text-ink-faint">{l(`${data.summary.organizationPositions} منصب · ${data.summary.organizationVacancies} شاغر`, `${data.summary.organizationPositions} positions · ${data.summary.organizationVacancies} vacant`)}</p></div><div className="relative sm:w-80"><Search size={15} className="absolute start-3 top-1/2 -translate-y-1/2 text-ink-faint" /><input className="field ps-9" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={l('ابحث في الهيكل…', 'Search structure…')} /></div></div>
-      <div className="max-h-[68dvh] overflow-auto bg-[linear-gradient(#f8fafc_1px,transparent_1px),linear-gradient(90deg,#f8fafc_1px,transparent_1px)] bg-[size:24px_24px] p-4 sm:p-6">{roots.map((root) => <OrgNode key={root.id} node={root} children={children} lang={lang} depth={0} />)}</div>
-    </section>
+    <div className="space-y-4">
+      <TabSummary title={l('ملخص الهيكل', 'Organization summary')} items={[
+        { label: l('إجمالي المناصب', 'Total positions'), value: analytics?.total ?? data.summary.organizationPositions },
+        { label: l('مرتبط بموظف', 'Matched to employee'), value: analytics?.matched ?? 0, featured: true },
+        { label: l('شواغر', 'Vacant'), value: analytics?.vacant ?? data.summary.organizationVacancies },
+        { label: l('يحتاج مطابقة', 'Needs matching'), value: analytics?.unmatched ?? 0 },
+        { label: l('أقسام', 'Departments'), value: analytics?.departments ?? 0 },
+      ]} />
+      <section className="overflow-hidden rounded-[18px] border border-[#CFC8B8] bg-[#FBF9F3]">
+        <div className="flex flex-col gap-3 border-b border-[#DCD5C7] p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9B7A29]">{l('خطوط الإدارة', 'Reporting lines')}</p><h2 className="mt-1 font-bold text-[#173B33]">{l('خريطة المسؤولية', 'Accountability map')}</h2></div><div className="relative sm:w-80"><Search size={15} className="absolute start-3 top-1/2 -translate-y-1/2 text-[#8A867C]" /><input className="field ps-9" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={l('ابحث في الهيكل…', 'Search structure…')} /></div></div>
+        <div className="max-h-[68dvh] overflow-auto bg-[linear-gradient(#E7E1D5_1px,transparent_1px),linear-gradient(90deg,#E7E1D5_1px,transparent_1px)] bg-[size:24px_24px] p-4 sm:p-6">{roots.map((root) => <OrgNode key={root.id} node={root} children={children} lang={lang} depth={0} />)}</div>
+      </section>
+    </div>
   );
 }
 
 function OrgNode({ node, children, lang, depth }: { node: HROrganizationPosition; children: Map<string, HROrganizationPosition[]>; lang: 'ar' | 'en'; depth: number }) {
   const [open, setOpen] = useState(depth < 2);
   const branch = children.get(node.id) ?? [];
-  return <div className={cx(depth > 0 && 'ms-5 border-s border-brand-200 ps-4 sm:ms-8')}><div className="mb-2 flex items-center gap-2 rounded-xl border border-surface-line bg-white p-3 shadow-sm"><button className={cx('grid h-7 w-7 place-items-center rounded-lg', branch.length ? 'bg-brand-50 text-[#1D6FB8]' : 'text-transparent')} onClick={() => branch.length && setOpen((value) => !value)}>{branch.length && <ChevronDown size={15} className={cx(!open && '-rotate-90 rtl:rotate-90')} />}</button><span className={cx('h-8 w-1 rounded-full', node.matchState === 'matched' ? 'bg-status-ok' : node.matchState === 'vacant' ? 'bg-accent-400' : 'bg-status-bad')} /><div className="min-w-0 flex-1"><div className="truncate text-sm font-bold">{node.title}</div><div className="truncate text-[11px] text-ink-muted">{node.employeeName || (lang === 'en' ? 'Vacant position' : 'منصب شاغر')} · {node.departmentCode}</div></div>{node.employeeCode && <Link className="text-[11px] font-bold text-[#1D6FB8] hover:underline" to={`/hr/employees/${node.employeeCode}`}>#{node.employeeCode}</Link>}</div>{open && branch.map((child) => <OrgNode key={child.id} node={child} children={children} lang={lang} depth={depth + 1} />)}</div>;
+  return <div className={cx(depth > 0 && 'ms-5 border-s border-[#AFC3B8] ps-4 sm:ms-8')}><div className="mb-2 flex items-center gap-2 border border-[#D4CDBF] bg-[#FBF9F3] p-3"><button className={cx('grid h-7 w-7 place-items-center', branch.length ? 'bg-[#E5EEE9] text-[#39705E]' : 'text-transparent')} onClick={() => branch.length && setOpen((value) => !value)}>{branch.length && <ChevronDown size={15} className={cx(!open && '-rotate-90 rtl:rotate-90')} />}</button><span className={cx('h-8 w-1', node.matchState === 'matched' ? 'bg-[#39705E]' : node.matchState === 'vacant' ? 'bg-[#C89B2C]' : 'bg-[#A5532D]')} /><div className="min-w-0 flex-1"><div className="truncate text-sm font-bold text-[#173B33]">{node.title}</div><div className="truncate text-[11px] text-[#6E746F]">{node.employeeName || (lang === 'en' ? 'Vacant position' : 'منصب شاغر')} · {node.departmentCode}</div></div>{node.employeeCode && <Link className="text-[11px] font-bold text-[#39705E] hover:underline" to={`/hr/employees/${node.employeeCode}`}>#{node.employeeCode}</Link>}</div>{open && branch.map((child) => <OrgNode key={child.id} node={child} children={children} lang={lang} depth={depth + 1} />)}</div>;
 }
 
 function ImportDesk({ data, lang, uploading, onUpload }: { data: HRDashboardData; lang: 'ar' | 'en'; uploading: HRSource | null; onUpload: (source: HRSource, event: ChangeEvent<HTMLInputElement>) => void }) {
   const l = (ar: string, en: string) => (lang === 'en' ? en : ar);
   const quality = data.reconciliation;
+  const ready = data.datasets.filter((dataset) => dataset.importedAt).length;
+  const warnings = data.datasets.reduce((sum, dataset) => sum + dataset.warnings.length, 0);
+  const qualityIssues = quality ? Object.values(quality).reduce((sum, items) => sum + items.length, 0) : 0;
+  const latest = [...data.datasets].filter((dataset) => dataset.importedAt).sort((left, right) => String(right.importedAt).localeCompare(String(left.importedAt)))[0];
   return (
     <div className="space-y-4">
+      <TabSummary title={l('ملخص تحديث البيانات', 'Data sync summary')} items={[
+        { label: l('مصادر جاهزة', 'Ready sources'), value: `${ready}/${data.datasets.length}`, featured: true },
+        { label: l('تحذيرات الاستيراد', 'Import warnings'), value: warnings },
+        { label: l('فروق المطابقة', 'Reconciliation gaps'), value: qualityIssues },
+        { label: l('آخر مصدر', 'Latest source'), value: latest ? HR_SOURCE_LABELS[latest.source][lang] : '—', note: latest ? formatDateTime(latest.importedAt, lang) : '' },
+        { label: l('بوت الرواتب', 'Payroll bot'), value: data.telegram?.enabled ? l('متصل', 'Connected') : l('يحتاج إعداد', 'Needs setup') },
+      ]} />
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="grid gap-3 sm:grid-cols-2">
           {data.datasets.map((dataset) => <ImportCard key={dataset.source} dataset={dataset} lang={lang} busy={uploading === dataset.source} disabled={Boolean(uploading)} onUpload={(event) => onUpload(dataset.source, event)} />)}
         </div>
         <aside className="space-y-4">
-          <div className="card overflow-hidden bg-[#0B2545] p-5 text-white">
+          <div className="overflow-hidden rounded-[18px] border border-[#244B40] bg-[#173B33] p-5 text-white">
             <div className="flex items-center justify-between"><span className="grid h-10 w-10 place-items-center rounded-xl bg-white/10"><Bot size={21} /></span><span className={cx('chip', data.telegram?.enabled ? 'bg-emerald-400/15 text-emerald-200' : 'bg-white/10 text-white/60')}>{data.telegram?.enabled ? l('متصل', 'Connected') : l('يحتاج إعداد', 'Needs setup')}</span></div>
             <h2 className="mt-4 font-extrabold">{l('قناة Telegram للرواتب', 'Telegram payroll channel')}</h2>
             <p className="mt-2 text-xs leading-6 text-white/65">{l('البوت يقبل نفس ملفات Excel، يتحقق من الشات والسر، ثم يشغّل نفس مسار المطابقة المستخدم داخل الداشبورد.', 'The bot accepts the same Excel files, verifies chat and secret, then uses the exact dashboard reconciliation path.')}</p>
@@ -577,12 +801,12 @@ export function HREmployee() {
   const canManage = Boolean(dashboard?.permissions.canManage);
   const canPayroll = Boolean(employee.payroll || dashboard?.permissions.canViewPayroll);
   return (
-    <div className="mx-auto max-w-[1320px] pb-12">
-      <Link to="/hr" className="mb-4 inline-flex items-center gap-2 text-xs font-bold text-ink-muted hover:text-[#1D6FB8]">{lang === 'en' ? <ArrowLeft size={15} /> : <ArrowRight size={15} />}{l('العودة إلى الموارد البشرية', 'Back to HR')}</Link>
-      <section className="relative overflow-hidden rounded-[28px] bg-[#0B2545] p-6 text-white shadow-panel sm:p-8">
-        <div className="absolute -end-16 -top-24 h-72 w-72 rounded-full border-[38px] border-brand-300/10" />
-        <div className="relative flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
-          <div className="flex min-w-0 items-center gap-4"><Avatar name={name} color="#4A8FCB" size={72} className="ring-4 ring-white/10" /><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><span className="rounded-md bg-white/10 px-2 py-1 font-mono text-xs text-brand-100">EMP-{employee.employeeCode}</span><StatusChip status={employee.status} lang={lang} /></div><h1 className="mt-2 truncate text-2xl font-black sm:text-3xl">{name}</h1><p className="mt-1 truncate text-sm text-white/65">{employee.title || '—'} · {employee.department || employee.sector || '—'}</p></div></div>
+    <div className="hr-suite mx-auto max-w-[1320px] pb-12">
+      <Link to="/hr" className="mb-4 inline-flex items-center gap-2 text-xs font-bold text-[#66716B] hover:text-[#173B33]">{lang === 'en' ? <ArrowLeft size={15} /> : <ArrowRight size={15} />}{l('العودة إلى الموارد البشرية', 'Back to HR')}</Link>
+      <section className="overflow-hidden rounded-[22px] border border-[#244B40] bg-[#173B33] text-[#F5F0E4] shadow-[0_18px_45px_-32px_rgba(15,49,42,.9)]">
+        <div className="flex items-center justify-between border-b border-white/15 px-6 py-3 text-[10px] font-bold uppercase tracking-[0.14em] text-[#D9C889]"><span>{l('سجل الموظف الموحّد', 'Unified employee record')}</span><span>EMP-{employee.employeeCode}</span></div>
+        <div className="flex flex-col gap-6 p-6 sm:flex-row sm:items-end sm:justify-between sm:p-8">
+          <div className="flex min-w-0 items-center gap-4"><Avatar name={name} color="#C89B2C" size={72} className="ring-4 ring-white/10" /><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><StatusChip status={employee.status} lang={lang} /></div><h1 className="mt-2 truncate text-2xl font-bold sm:text-3xl">{name}</h1><p className="mt-1 truncate text-sm text-white/65">{employee.title || '—'} · {employee.department || employee.sector || '—'}</p></div></div>
           <div className="flex flex-wrap gap-2">{canManage && <button className="btn !border-white/15 !bg-white/10 text-white hover:!bg-white/20" onClick={() => setEditor('master')}><Pencil size={16} />{l('تعديل الملف', 'Edit profile')}</button>}</div>
         </div>
       </section>
@@ -632,7 +856,7 @@ export function HREmployee() {
             {dashboard?.permissions.canManage ? <AccountLink employee={employee} dashboard={dashboard} lang={lang} onSaved={load} /> : <div className="text-sm text-ink-muted">{employee.linkedUserId ? l('حسابك مربوط بهذا الملف.', 'Your account is linked to this profile.') : l('الملف غير مربوط بحساب دخول.', 'No sign-in account is linked.')}</div>}
           </ProfileSection>
           <ProfileSection icon={Database} title={l('مصادر الملف', 'Profile sources')}>
-            <div className="grid grid-cols-2 gap-2">{Object.entries(employee.sources).map(([source, active]) => <div key={source} className={cx('rounded-xl border px-3 py-2 text-xs font-bold', active ? 'border-brand-200 bg-brand-50 text-[#1D6FB8]' : 'border-surface-line bg-surface-sunken text-ink-faint')}>{active ? '✓' : '—'} {source}</div>)}</div>
+            <div className="grid grid-cols-2 gap-2">{Object.entries(employee.sources).map(([source, active]) => <div key={source} className={cx('border px-3 py-2 text-xs font-bold', active ? 'border-[#AFC3B8] bg-[#EDF3EE] text-[#315C4D]' : 'border-[#DCD5C7] bg-[#F0ECE2] text-[#8A867C]')}>{active ? '✓' : '—'} {source}</div>)}</div>
           </ProfileSection>
         </aside>
       </section>
@@ -642,7 +866,7 @@ export function HREmployee() {
 }
 
 function ProfileSection({ icon: Icon, title, action, children }: { icon: typeof UsersRound; title: string; action?: ReactNode; children: ReactNode }) {
-  return <section className="card overflow-hidden"><header className="flex items-center justify-between gap-3 border-b border-surface-line px-5 py-4"><div className="flex items-center gap-2"><span className="grid h-8 w-8 place-items-center rounded-lg bg-brand-50 text-[#1D6FB8]"><Icon size={16} /></span><h2 className="font-extrabold">{title}</h2></div>{action}</header><div className="p-5">{children}</div></section>;
+  return <section className="overflow-hidden rounded-[18px] border border-[#CFC8B8] bg-[#FBF9F3]"><header className="flex items-center justify-between gap-3 border-b border-[#DCD5C7] px-5 py-4"><div className="flex items-center gap-2"><span className="grid h-8 w-8 place-items-center bg-[#E5EEE9] text-[#39705E]"><Icon size={16} /></span><h2 className="font-bold text-[#173B33]">{title}</h2></div>{action}</header><div className="p-5">{children}</div></section>;
 }
 
 function EditButton({ onClick, lang }: { onClick: () => void; lang: 'ar' | 'en' }) { return <button className="btn-quiet btn-sm" onClick={onClick}><Pencil size={14} />{lang === 'en' ? 'Edit' : 'تعديل'}</button>; }
@@ -651,9 +875,9 @@ function FactGrid({ items, compact = false }: { items: Array<[string, string | n
   return <dl className={cx('grid gap-x-6 gap-y-4', !compact && 'sm:grid-cols-2')}>{items.map(([label, value]) => <div key={label}><dt className="text-[11px] font-bold text-ink-faint">{label}</dt><dd className="mt-1 break-words text-sm font-semibold text-ink">{value === null || value === undefined || value === '' ? '—' : value}</dd></div>)}</dl>;
 }
 
-function MoneyBlock({ label, value, lang, primary }: { label: string; value: number | null; lang: 'ar' | 'en'; primary?: boolean }) { return <div className={cx('rounded-2xl border p-4', primary ? 'border-brand-200 bg-brand-50' : 'border-surface-line bg-[#F8FAFC]')}><div className="text-[11px] font-bold text-ink-faint">{label}</div><div className={cx('mt-2 text-xl font-black tabular-nums', primary && 'text-[#1D6FB8]')}>{money(value, lang)}</div></div>; }
-function MiniFact({ label, value }: { label: string; value: string }) { return <div className="rounded-xl bg-[#F8FAFC] p-3"><div className="text-[10px] font-bold text-ink-faint">{label}</div><div className="mt-1 truncate font-semibold">{value}</div></div>; }
-function MissingData({ text }: { text: string }) { return <div className="rounded-xl border border-dashed border-surface-line bg-surface-sunken p-4 text-sm text-ink-muted">{text}</div>; }
+function MoneyBlock({ label, value, lang, primary }: { label: string; value: number | null; lang: 'ar' | 'en'; primary?: boolean }) { return <div className={cx('border p-4', primary ? 'border-[#D3C28D] bg-[#EFE3B7]' : 'border-[#DCD5C7] bg-white')}><div className="text-[11px] font-bold text-[#817B6D]">{label}</div><div className={cx('mt-2 text-xl font-bold tabular-nums', primary && 'text-[#173B33]')}>{money(value, lang)}</div></div>; }
+function MiniFact({ label, value }: { label: string; value: string }) { return <div className="border border-[#E2DCCF] bg-white p-3"><div className="text-[10px] font-bold text-[#817B6D]">{label}</div><div className="mt-1 truncate font-semibold text-[#173B33]">{value}</div></div>; }
+function MissingData({ text }: { text: string }) { return <div className="border border-dashed border-[#CFC8B8] bg-[#F0ECE2] p-4 text-sm text-[#66716B]">{text}</div>; }
 
 function DocumentChecklist({ documents, lang }: { documents: Record<string, boolean | number | string | null>; lang: 'ar' | 'en' }) {
   const ignored = new Set(['completionRate', 'collectionStatus']);
@@ -694,6 +918,10 @@ function EmployeeEditor({ open, section, employee, lang, onClose, onSaved }: { o
 }
 
 function coverage(part: number, total: number) { return total > 0 ? Math.min(100, Math.round((part / total) * 100)) : 0; }
+function usd(value: number | null | undefined, lang: 'ar' | 'en') { if (value === null || value === undefined || !Number.isFinite(Number(value))) return '—'; return new Intl.NumberFormat(lang === 'en' ? 'en-US' : 'ar-EG', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(Number(value)); }
 function money(value: number | null | undefined, lang: 'ar' | 'en') { if (value === null || value === undefined || !Number.isFinite(Number(value))) return '—'; return new Intl.NumberFormat(lang === 'en' ? 'en-US' : 'ar-EG', { style: 'currency', currency: 'EGP', maximumFractionDigits: 0 }).format(Number(value)); }
+function formatMonth(value: string | null | undefined, lang: 'ar' | 'en') { if (!value) return '—'; const date = new Date(`${value}-01T12:00:00`); return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat(lang === 'en' ? 'en-GB' : 'ar-EG', { month: 'long', year: 'numeric' }).format(date); }
+function daysBetweenClient(from: string, to: string) { const start = Date.parse(`${from}T12:00:00Z`); const end = Date.parse(`${to}T12:00:00Z`); return Number.isFinite(start) && Number.isFinite(end) ? Math.round((end - start) / 86_400_000) : null; }
+function daysUntil(value: string) { return daysBetweenClient(new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' }), value); }
 function formatDate(value: string | null | undefined, lang: 'ar' | 'en') { if (!value) return '—'; const date = new Date(`${value}T12:00:00`); return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat(lang === 'en' ? 'en-GB' : 'ar-EG', { dateStyle: 'medium' }).format(date); }
 function formatDateTime(value: string | null | undefined, lang: 'ar' | 'en') { if (!value) return '—'; const date = new Date(value); return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat(lang === 'en' ? 'en-GB' : 'ar-EG', { dateStyle: 'medium', timeStyle: 'short' }).format(date); }
