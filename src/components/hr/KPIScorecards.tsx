@@ -126,7 +126,7 @@ export function KPIScorecards({
         <div className="grid gap-5 p-4 sm:p-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
           <div className="min-w-0">
             <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-              <span className="hr-num text-4xl font-black text-navy">{formatPercent(average)}</span>
+              <span className="hr-num text-4xl font-semibold text-navy">{formatPercent(average)}</span>
               <span className="text-[13px] font-bold text-ink-muted">{l('متوسط الدرجة المعتمدة', 'Average approved score')}</span>
             </div>
             <RatingBar scorecards={scorecards} lang={lang} />
@@ -255,7 +255,7 @@ function StatPill({ label, value, tone }: { label: string; value: string; tone?:
       'rounded-xl border px-3 py-2 text-center',
       tone === 'brand' ? 'border-[#C8D5E3] bg-white' : 'border-surface-line bg-surface-sunken'
     )}>
-      <div className="hr-num text-lg font-black leading-tight text-navy">{value}</div>
+      <div className="hr-num text-lg font-semibold leading-tight text-navy">{value}</div>
       <div className="text-[10px] font-semibold text-ink-faint">{label}</div>
     </div>
   );
@@ -430,7 +430,7 @@ function ScorecardRow({ card, lang, onOpen }: { card: KPIScorecard; lang: 'ar' |
             }}
           />
         </div>
-        <span className="hr-num w-12 text-end text-lg font-black text-navy">{formatPercent(percent)}</span>
+        <span className="hr-num w-12 text-end text-lg font-semibold text-navy">{formatPercent(percent)}</span>
         {/* One glyph, mirrored in RTL, so "open this" always points forward. */}
         <ChevronRight size={16} className="shrink-0 text-ink-faint rtl:-scale-x-100" />
       </div>
@@ -717,7 +717,7 @@ function ScoreHeader({ card, lang }: { card: KPIScorecard; lang: 'ar' | 'en' }) 
       <div className="sm:col-span-2">
         <div className="text-[11px] font-semibold text-white/60">{l('الدرجة المعتمدة', 'Approved score')}</div>
         <div className="mt-1 flex items-end gap-2">
-          <span className="hr-num text-4xl font-black">{formatPercent(approved.percent)}</span>
+          <span className="hr-num text-4xl font-semibold">{formatPercent(approved.percent)}</span>
           {approved.rating && (
             <span className="mb-1 rounded-full px-2 py-0.5 text-[11px] font-bold" style={{ backgroundColor: `${approved.rating.color}33`, color: '#fff' }}>
               {lang === 'en' ? approved.rating.en : approved.rating.ar}
@@ -731,11 +731,11 @@ function ScoreHeader({ card, lang }: { card: KPIScorecard; lang: 'ar' | 'en' }) 
       </div>
       <div className="rounded-xl bg-white/[.07] px-3 py-2">
         <div className="text-[11px] font-semibold text-white/60">{l('الأداء قبل التحقق', 'Before verification')}</div>
-        <div className="mt-1 text-xl font-black tabular-nums">{formatPercent(performance.percent)}</div>
+        <div className="mt-1 text-xl font-semibold tabular-nums">{formatPercent(performance.percent)}</div>
       </div>
       <div className="rounded-xl bg-white/[.07] px-3 py-2">
         <div className="text-[11px] font-semibold text-white/60">{l('تحقق قائمة المراجعة', 'Verification')}</div>
-        <div className="mt-1 text-xl font-black tabular-nums">
+        <div className="mt-1 text-xl font-semibold tabular-nums">
           {verification.ratio === null ? '—' : formatPercent(verification.ratio * 100)}
         </div>
         <div className="text-[10px] text-white/45">{verification.answered}/{verification.total} {l('بند', 'items')}</div>
@@ -808,7 +808,7 @@ function GroupPanel({
             <AlertTriangle size={11} /> {l('تحت الحد الأدنى', 'Below floor')}
           </span>
         )}
-        <span className="shrink-0 text-lg font-black tabular-nums text-navy">
+        <span className="shrink-0 text-lg font-semibold tabular-nums text-navy">
           {formatScore(group.score)}
           <span className="text-xs font-bold text-ink-faint">/{group.weight}</span>
         </span>
@@ -879,7 +879,7 @@ function GroupPanel({
                           <span className="ms-1 text-[10px] font-semibold text-ink-faint">({formatPercent(kpi.rawRatio * 100)})</span>
                         )}
                       </td>
-                      <td className="py-2.5 text-end text-[13px] font-black tabular-nums">{formatScore(kpi.score)}</td>
+                      <td className="py-2.5 text-end text-[13px] font-semibold tabular-nums">{formatScore(kpi.score)}</td>
                     </tr>
                   );
                 })}

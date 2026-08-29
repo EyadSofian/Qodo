@@ -51,13 +51,31 @@
     --hr-line: #E1E9F2;
     --hr-line-soft: #EAF0F7;
     --hr-sunken: #F1F5FA;
+    /* 5.38:1 on white. The old --ink-faint (#94A3B8) is 2.56:1 and was
+       carrying most of the module's explanatory text. */
     --hr-muted: #5A6C82;
+    --hr-ground: #E9EFF6;
+
+    /* The scale had 89 declarations at or under 12px, 23 between 13 and 16,
+       and then nothing but numerals until 26px. Every subhead in the module
+       was competing with its own labels. --t-sub is the missing step. */
+    --t-micro: 0.75rem;
+    --t-label: 0.8125rem;
+    --t-body: 0.9375rem;
+    --t-sub: 1.25rem;
     position: relative;
   }
 
-  /* Glass needs something behind it or it is just a white box. This is the
-     something: three very soft colour fields, fixed, well under the content,
-     large enough that no edge of one is ever visible on screen. */
+  /* Glass needs something behind it, and the first attempt at this did not
+     supply one: all three fields were centred off-canvas and reached their
+     transparent stop before the middle of the viewport, so every panel sat
+     over flat #F6F8FB and composited to a 1.04:1 white-on-white box.
+     Blurring a constant field returns the constant field.
+
+     Two fixes. The fields now sit inside the viewport, so the middle of the
+     page is actually tinted. And the grid is the part that matters: a 40px
+     blur smearing a 32px rule is what the eye reads as glass — a gradient
+     alone has no high-frequency content to bend. */
   .hr-suite::before {
     content: '';
     position: fixed;
@@ -65,16 +83,19 @@
     z-index: -1;
     pointer-events: none;
     background:
-      radial-gradient(1000px 680px at 14% -6%, rgba(29, 111, 184, 0.2), transparent 62%),
-      radial-gradient(820px 560px at 94% 6%, rgba(11, 37, 69, 0.17), transparent 64%),
-      radial-gradient(720px 500px at 66% 98%, rgba(245, 130, 31, 0.09), transparent 62%);
+      radial-gradient(1100px 820px at 26% 22%, rgba(29, 111, 184, 0.3), transparent 76%),
+      radial-gradient(900px 700px at 82% 68%, rgba(11, 37, 69, 0.24), transparent 74%),
+      radial-gradient(620px 460px at 58% 4%, rgba(245, 130, 31, 0.07), transparent 70%),
+      repeating-linear-gradient(0deg, rgba(11, 37, 69, 0.045) 0 1px, transparent 1px 32px),
+      repeating-linear-gradient(90deg, rgba(11, 37, 69, 0.045) 0 1px, transparent 1px 32px),
+      var(--hr-ground);
   }
 
   /* Arabic sets tighter than Latin at the same size and never takes
      letter-spacing or uppercasing well, so the Arabic side gets a little
      more leading and none of the Latin eyebrow treatment. */
   html[dir='rtl'] .hr-suite {
-    line-height: 1.7;
+    line-height: 1.6;
   }
 
   :focus-visible {
@@ -165,8 +186,8 @@
      than painted onto it. */
   .hr-panel {
     @apply rounded-[20px] border backdrop-blur-2xl backdrop-saturate-150;
-    border-color: rgb(255 255 255 / 0.72);
-    background-color: rgb(255 255 255 / 0.6);
+    border-color: rgb(255 255 255 / 0.78);
+    background-color: rgb(255 255 255 / 0.74);
     box-shadow:
       inset 0 1px 0 rgb(255 255 255 / 0.95),
       0 8px 24px -14px rgb(var(--hr-navy, 11 37 69) / 0.2),
@@ -177,8 +198,8 @@
      where text has to win over atmosphere. */
   .hr-panel-solid {
     @apply rounded-[20px] border backdrop-blur-2xl backdrop-saturate-150;
-    border-color: rgb(255 255 255 / 0.8);
-    background-color: rgb(255 255 255 / 0.86);
+    border-color: rgb(255 255 255 / 0.82);
+    background-color: rgb(255 255 255 / 0.92);
     box-shadow:
       inset 0 1px 0 rgb(255 255 255 / 0.95),
       0 8px 24px -14px rgb(var(--hr-navy, 11 37 69) / 0.2),
@@ -190,11 +211,11 @@
      as a spreadsheet, which is the look this module was trying to leave. */
   .hr-stat {
     @apply rounded-2xl border backdrop-blur-xl backdrop-saturate-150 transition-shadow;
-    border-color: rgb(255 255 255 / 0.7);
-    background-color: rgb(255 255 255 / 0.62);
+    border-color: rgb(255 255 255 / 0.78);
+    background-color: rgb(255 255 255 / 0.76);
     box-shadow:
       inset 0 1px 0 rgb(255 255 255 / 0.9),
-      0 6px 18px -12px rgb(var(--hr-navy, 11 37 69) / 0.22);
+      0 6px 16px -10px rgb(var(--hr-navy, 11 37 69) / 0.26);
   }
   .hr-stat:hover {
     box-shadow:
@@ -209,16 +230,18 @@
 
   /* Section kicker. Latin gets the small-caps treatment; Arabic does not. */
   .hr-eyebrow {
-    @apply text-[10px] font-semibold uppercase tracking-[0.14em];
+    @apply text-[11px] font-semibold uppercase tracking-[0.12em];
     color: rgb(var(--hr-blue, 29 111 184));
   }
   html[dir='rtl'] .hr-eyebrow {
-    @apply text-[11px] tracking-normal;
+    @apply text-[12px] tracking-normal;
     text-transform: none;
   }
 
   .hr-title {
-    @apply text-[15px] font-semibold sm:text-base;
+    font-size: var(--t-sub);
+    line-height: 1.35;
+    font-weight: 600;
     color: rgb(var(--hr-navy, 11 37 69));
   }
 

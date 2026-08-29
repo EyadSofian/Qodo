@@ -29,6 +29,8 @@ export default {
           400: '#F79B4A',
           500: '#F5821F',
           600: '#D96C0E',
+          // 5.84:1 on white — the only accent that passes AA at label sizes.
+          700: '#A8480A',
           DEFAULT: '#F5821F',
         },
         surface: {

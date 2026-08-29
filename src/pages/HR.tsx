@@ -27,7 +27,7 @@ import {
   RefreshCw,
   Search,
   ShieldCheck,
-  Sparkles,
+  LayoutDashboard,
   UploadCloud,
   UserPlus,
   UsersRound,
@@ -54,7 +54,7 @@ import {
 type HRTab = 'overview' | 'people' | 'payroll' | 'recruitment' | 'kpi' | 'organization' | 'imports';
 
 const TABS: Array<{ id: HRTab; ar: string; en: string; icon: typeof UsersRound }> = [
-  { id: 'overview', ar: 'نظرة عامة', en: 'Overview', icon: Sparkles },
+  { id: 'overview', ar: 'نظرة عامة', en: 'Overview', icon: LayoutDashboard },
   { id: 'people', ar: 'الموظفون', en: 'People', icon: UsersRound },
   { id: 'payroll', ar: 'الرواتب', en: 'Payroll', icon: Banknote },
   { id: 'recruitment', ar: 'التوظيف', en: 'Recruitment', icon: BriefcaseBusiness },
@@ -74,7 +74,7 @@ const SOURCE_ICONS: Record<HRSource, typeof Database> = {
 const STATUS_STYLE: Record<string, string> = {
   active: 'bg-status-okBg text-status-ok',
   done: 'bg-status-okBg text-status-ok',
-  hold: 'bg-status-warnBg text-accent-600',
+  hold: 'bg-status-warnBg text-accent-700',
   inactive: 'bg-surface-sunken text-ink-muted',
   unknown: 'bg-surface-sunken text-ink-muted',
 };
@@ -289,7 +289,7 @@ function TabSummary({ title, items, footer }: {
           <div key={item.label} className={cx('hr-stat relative min-h-[6rem] p-4', item.featured && 'ring-1 ring-brand-500/25')}>
             <div className="text-[11px] font-semibold leading-snug text-ink-muted">{item.label}</div>
             <div className={cx('hr-num mt-2 truncate font-semibold text-navy', item.featured ? 'text-[22px] sm:text-2xl' : 'text-xl sm:text-[22px]')} title={typeof item.value === 'string' ? item.value : undefined}>{item.value}</div>
-            {item.note && <div className="mt-1 truncate text-[11px] text-ink-faint">{item.note}</div>}
+            {item.note && <div className="mt-1 truncate text-[11px] text-ink-muted">{item.note}</div>}
           </div>
         ))}
       </div>
@@ -326,7 +326,7 @@ function Overview({ data, lang, onOpen }: { data: HRDashboardData; lang: 'ar' | 
               <IdCard size={18} /> {l('افتح ملفي', 'Open my profile')}
             </Link>
           ) : (
-            <div className="rounded-xl bg-status-warnBg px-4 py-3 text-sm font-semibold text-accent-600">
+            <div className="rounded-xl bg-status-warnBg px-4 py-3 text-sm font-semibold text-accent-700">
               {l('حسابك لم يُربط بكود موظف بعد.', 'Your account is not linked to an employee code yet.')}
             </div>
           )}
@@ -359,7 +359,7 @@ function Overview({ data, lang, onOpen }: { data: HRDashboardData; lang: 'ar' | 
           {payroll ? (
             <div className="space-y-3">
               {payroll.departments.slice(0, 5).map((item) => <BarRow key={item.department} label={item.department} value={usd(item.totalUsd, lang)} numericValue={item.totalUsd} max={payrollMax} accent />)}
-              <p className="pt-1 text-[11px] leading-5 text-ink-faint">{l(`سعر بيع الدولار · ${payroll.rate.source} · ${payroll.rate.asOf}`, `USD sell rate · ${payroll.rate.source} · ${payroll.rate.asOf}`)}</p>
+              <p className="pt-1 text-[11px] leading-5 text-ink-muted">{l(`سعر بيع الدولار · ${payroll.rate.source} · ${payroll.rate.asOf}`, `USD sell rate · ${payroll.rate.source} · ${payroll.rate.asOf}`)}</p>
             </div>
           ) : <MissingData text={l('تفاصيل الرواتب محجوبة حسب الصلاحية.', 'Payroll details are permission-gated.')} />}
         </InsightPanel>
@@ -378,7 +378,7 @@ function Overview({ data, lang, onOpen }: { data: HRDashboardData; lang: 'ar' | 
         <InsightPanel eyebrow={l('مراجعة البيانات', 'Data control')} title={l('طابور الإجراءات', 'Action queue')}>
           <div className="flex items-end justify-between gap-3 border-b border-navy/[0.07] pb-4">
             <div className="min-w-0"><div className="hr-num text-4xl font-bold leading-none text-navy">{qualityIssues}</div><p className="mt-1.5 text-xs leading-5 text-ink-muted">{l('فرق يحتاج قرارًا', 'differences need a decision')}</p></div>
-            <span className={cx('grid h-10 w-10 shrink-0 place-items-center rounded-xl', qualityIssues ? 'bg-accent-50 text-accent-600' : 'bg-status-okBg text-status-ok')}>{qualityIssues ? <AlertTriangle size={20} /> : <BadgeCheck size={20} />}</span>
+            <span className={cx('grid h-10 w-10 shrink-0 place-items-center rounded-xl', qualityIssues ? 'bg-accent-50 text-accent-700' : 'bg-status-okBg text-status-ok')}>{qualityIssues ? <AlertTriangle size={20} /> : <BadgeCheck size={20} />}</span>
           </div>
           {reconciliation && <QualityMini reconciliation={reconciliation} lang={lang} />}
           {data.permissions.canManage && <button className="mt-4 w-full border-t border-navy/[0.07] pt-3 text-xs font-bold text-brand-500 hover:underline" onClick={() => onOpen('imports')}>{l('راجع المصادر والتحديثات', 'Review sources and updates')}</button>}
@@ -395,7 +395,7 @@ function ExecutiveMetric({ icon: Icon, label, value, note, strong }: { icon: typ
       {/* Sized down on the narrowest column so a full USD payroll total is
           never clipped — this figure is the reason the tile exists. */}
       <div className={cx('hr-num mt-3.5 truncate font-semibold leading-none text-navy', strong ? 'text-[22px] sm:text-[28px] lg:text-[32px]' : 'text-xl sm:text-[26px] lg:text-3xl')} title={typeof value === 'string' ? value : undefined}>{value}</div>
-      <p className="mt-2 line-clamp-2 text-[11px] leading-5 text-ink-faint">{note}</p>
+      <p className="mt-2 line-clamp-2 text-[11px] leading-5 text-ink-muted">{note}</p>
     </article>
   );
 }
@@ -423,7 +423,7 @@ function GenderSplit({ female, male, lang }: { female: number; male: number; lan
       <div>
         <p className="text-[11px] font-bold text-ink-muted">{lang === 'en' ? 'Gender split' : 'توزيع النوع'}</p>
         <div className="hr-num mt-2 text-4xl font-semibold text-navy">{femalePercent}%</div>
-        <p className="mt-0.5 text-[11px] leading-5 text-ink-faint">{lang === 'en' ? 'women in active workforce' : 'سيدات من القوة الفعلية'}</p>
+        <p className="mt-0.5 text-[11px] leading-5 text-ink-muted">{lang === 'en' ? 'women in active workforce' : 'سيدات من القوة الفعلية'}</p>
       </div>
       <div className="mt-4 flex gap-4 text-xs font-semibold md:mt-5">
         <span className="flex items-center gap-1.5"><b className="text-base leading-none text-accent-500">♀</b><span className="hr-num">{female}</span></span>
@@ -452,7 +452,7 @@ function InlineStat({ label, value }: { label: string; value: string | number })
   return (
     <div className="px-2 [&:not(:last-child)]:border-e [&:not(:last-child)]:border-navy/[0.07]">
       <div className="hr-num text-lg font-semibold text-navy">{value}</div>
-      <div className="mt-0.5 text-[11px] leading-5 text-ink-faint">{label}</div>
+      <div className="mt-0.5 text-[11px] leading-5 text-ink-muted">{label}</div>
     </div>
   );
 }
@@ -568,7 +568,7 @@ function EmployeeRow({ employee, lang }: { employee: HREmployeeSummary; lang: 'a
   const name = employee.nameArabic || employee.nameEnglish || `#${employee.employeeCode}`;
   return (
     <tr className="group transition-colors hover:bg-brand-50/50">
-      <td className="px-5 py-3.5"><Link to={`/hr/employees/${employee.employeeCode}`} className="flex items-center gap-3"><Avatar name={name} size={36} color={employee.status === 'active' ? '#1D6FB8' : '#94A3B8'} /><span className="min-w-0"><span className="block font-semibold text-navy group-hover:text-brand-500">{name}</span><span className="ltr block truncate text-[11px] text-ink-faint">#{employee.employeeCode} · {employee.companyEmail}</span></span></Link></td>
+      <td className="px-5 py-3.5"><Link to={`/hr/employees/${employee.employeeCode}`} className="flex items-center gap-3"><Avatar name={name} size={36} color={employee.status === 'active' ? '#1D6FB8' : '#94A3B8'} /><span className="min-w-0"><span className="block font-semibold text-navy group-hover:text-brand-500">{name}</span><span className="ltr block truncate text-[11px] text-ink-muted">#{employee.employeeCode} · {employee.companyEmail}</span></span></Link></td>
       <td className="px-4 py-3.5"><div className="max-w-[18rem] truncate font-semibold" title={employee.title || undefined}>{employee.title || '—'}</div></td>
       <td className="px-4 py-3.5 text-xs text-ink-muted">{employee.department || employee.sector || '—'}</td>
       <td className="px-4 py-3.5"><div className="flex gap-1.5"><CoverageDot active={employee.hasPayroll} title={lang === 'en' ? 'Payroll' : 'راتب'} /><CoverageDot active={employee.hasInsurance} title={lang === 'en' ? 'Insurance' : 'تأمين'} /><CoverageDot active={Boolean(employee.linkedUserId)} title={lang === 'en' ? 'Qodo account' : 'حساب Qodo'} /></div></td>
@@ -637,7 +637,7 @@ function PayrollDesk({ data, lang }: { data: HRDashboardData; lang: 'ar' | 'en' 
               ))}
             </div>
           </header>
-          <p className="border-b border-navy/[0.07] bg-surface-sunken/60 px-5 py-2 text-[11px] text-ink-faint lg:hidden">
+          <p className="border-b border-navy/[0.07] bg-surface-sunken/60 px-5 py-2 text-[11px] text-ink-muted lg:hidden">
             {l('اسحب الجدول أفقيًا لعرض EGP والتأمين.', 'Scroll the table sideways for EGP and insurance.')}
           </p>
           <div className="max-h-[620px] overflow-auto">
@@ -659,13 +659,13 @@ function PayrollDesk({ data, lang }: { data: HRDashboardData; lang: 'ar' | 'en' 
                     <tr key={row.employeeCode} className="transition-colors hover:bg-brand-50/50">
                       <td className="px-5 py-3">
                         <div className="font-semibold text-navy">{row.name}</div>
-                        <div className="ltr text-[10px] text-ink-faint">#{row.employeeCode}</div>
+                        <div className="ltr text-[11px] text-ink-muted">#{row.employeeCode}</div>
                       </td>
                       <td className="px-4 py-3 text-xs text-ink-muted">{row.department}</td>
                       {/* USD is the figure this desk is read for, so it carries the weight. */}
                       <td className="hr-num px-4 py-3 text-end text-[15px] font-semibold text-navy">{usd(row.totalUsd, lang)}</td>
                       <td className="hr-num px-4 py-3 text-end text-xs text-ink-muted">{money(row.totalEgp, lang)}</td>
-                      <td className="px-4 py-3"><span className={cx('chip', employee?.hasInsurance ? 'bg-status-okBg text-status-ok' : 'bg-accent-50 text-accent-600')}>{employee?.hasInsurance ? l('مربوط', 'Linked') : l('غير موجود', 'Missing')}</span></td>
+                      <td className="px-4 py-3"><span className={cx('chip', employee?.hasInsurance ? 'bg-status-okBg text-status-ok' : 'bg-accent-50 text-accent-700')}>{employee?.hasInsurance ? l('مربوط', 'Linked') : l('غير موجود', 'Missing')}</span></td>
                       <td className="px-4"><Link to={`/hr/employees/${row.employeeCode}`} className="grid h-8 w-8 place-items-center rounded-lg text-ink-faint transition-colors hover:bg-brand-50 hover:text-brand-500" aria-label={l('فتح الملف', 'Open profile')}><ChevronRight className="rtl:rotate-180" size={17} /></Link></td>
                     </tr>
                   );
@@ -755,7 +755,7 @@ function RecruitmentDesk({ data, lang, onChanged }: { data: HRDashboardData; lan
       </section>
 
       {!odooLoading && odoo?.configured && (
-        <div className={cx('flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 text-xs leading-6', odoo.connected ? 'border-brand-200 bg-brand-50 text-brand-700' : 'border-accent-100 bg-accent-50 text-accent-600')}>
+        <div className={cx('flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 text-xs leading-6', odoo.connected ? 'border-brand-200 bg-brand-50 text-brand-700' : 'border-accent-100 bg-accent-50 text-accent-700')}>
           <span><b>Odoo:</b> {odoo.connected ? l(`تم ربط ${odoo.summary.matched} من ${odoo.summary.total} وظيفة.`, `${odoo.summary.matched} of ${odoo.summary.total} roles linked.`) : l('تعذر قراءة وظائف Odoo الآن.', 'Odoo jobs are currently unavailable.')}</span>
           {odoo.connected && !odoo.applicantsAvailable && <span>{l('أعداد المرشحين تحتاج صلاحية Recruitment لحساب التكامل.', 'Candidate counts require Recruitment access for the integration account.')}</span>}
         </div>
@@ -801,7 +801,7 @@ function RecruitmentRequestCard({ request, match, lang, canManage, saving, onSta
         </div>
         <div className={cx('shrink-0 border-s-2 ps-3 text-end', overdue ? 'border-accent-500' : 'border-navy/[0.09]')}>
           <b className="hr-num block text-2xl font-bold leading-none text-navy">{request.accepted}/{request.numberNeeded}</b>
-          <small className="mt-1 block text-[11px] text-ink-faint">{remaining} {l('متبقي', 'remaining')}</small>
+          <small className="mt-1 block text-[11px] text-ink-muted">{remaining} {l('متبقي', 'remaining')}</small>
         </div>
       </div>
       <div className="p-4 sm:p-5">
@@ -823,7 +823,7 @@ function RecruitmentRequestCard({ request, match, lang, canManage, saving, onSta
         </ol>
         {request.feedback && <p className="mt-3 rounded-e-xl border-s-2 border-[#C8D5E3] bg-surface-sunken/70 px-3 py-2.5 text-xs leading-6 text-ink-muted">{request.feedback}</p>}
         <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-navy/[0.07] pt-3">
-          {match ? <a href={match.url} target="_blank" rel="noreferrer noopener" className="inline-flex items-center gap-1.5 text-xs font-bold text-brand-500 hover:underline"><ExternalLink size={14} />{l('فتح الوظيفة في Odoo', 'Open job in Odoo')}{match.applicantCount !== null && ` · ${match.applicantCount}`}</a> : <span className="text-[11px] text-ink-faint">{l('لا توجد مطابقة مؤكدة في Odoo', 'No confident Odoo match')}</span>}
+          {match ? <a href={match.url} target="_blank" rel="noreferrer noopener" className="inline-flex items-center gap-1.5 text-xs font-bold text-brand-500 hover:underline"><ExternalLink size={14} />{l('فتح الوظيفة في Odoo', 'Open job in Odoo')}{match.applicantCount !== null && ` · ${match.applicantCount}`}</a> : <span className="text-[11px] text-ink-muted">{l('لا توجد مطابقة مؤكدة في Odoo', 'No confident Odoo match')}</span>}
           {canManage && <div className="ms-auto flex items-center gap-2"><button className="btn-quiet btn-sm !min-h-9 text-brand-500 hover:bg-brand-50 hover:text-brand-600" onClick={onEdit}><Pencil size={13} />{l('تعديل', 'Edit')}</button><select className="field !w-auto !py-1.5 text-xs" value={request.status} disabled={saving} onChange={(event) => onStatus(event.target.value)} aria-label={l('حالة الطلب', 'Request status')}><option value="active">Active</option><option value="hold">Hold</option><option value="done">Done</option></select>{saving && <Spinner size={15} />}</div>}
         </div>
       </div>
@@ -1009,7 +1009,7 @@ function ImportCard({ dataset, lang, busy, disabled, onUpload }: { dataset: HRDa
       {ready && (
         <div className="mt-3 rounded-xl border border-navy/[0.07] bg-surface-sunken/70 p-3">
           <div className="truncate text-[11px] font-bold text-ink" title={dataset.fileName}>{dataset.fileName}</div>
-          <div className="mt-1 text-[10px] text-ink-faint">{formatDateTime(dataset.importedAt, lang)} · {dataset.origin === 'telegram' ? 'Telegram' : 'Dashboard'}</div>
+          <div className="mt-1 text-[11px] text-ink-muted">{formatDateTime(dataset.importedAt, lang)} · {dataset.origin === 'telegram' ? 'Telegram' : 'Dashboard'}</div>
           <div className="mt-2 flex flex-wrap gap-1.5">{Object.entries(dataset.summary ?? {}).slice(0, 3).map(([key, value]) => <span key={key} className="ltr rounded-md bg-white px-2 py-1 text-[10px] text-ink-muted">{key}: <b className="hr-num">{Number(value).toLocaleString()}</b></span>)}</div>
         </div>
       )}
@@ -1162,7 +1162,7 @@ function MoneyBlock({ label, value, lang, primary }: { label: string; value: num
 function MiniFact({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-xl bg-white/55 p-3 ring-1 ring-white/70">
-      <div className="text-[10px] font-semibold text-ink-faint">{label}</div>
+      <div className="text-[11px] font-semibold text-ink-muted">{label}</div>
       <div className="mt-1 truncate font-semibold text-navy" title={value}>{value}</div>
     </div>
   );
