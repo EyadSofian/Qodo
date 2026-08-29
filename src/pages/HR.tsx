@@ -29,7 +29,6 @@ import {
   ShieldCheck,
   LayoutDashboard,
   UploadCloud,
-  UserPlus,
   UsersRound,
   WalletCards,
 } from 'lucide-react';
@@ -205,7 +204,7 @@ export function HR() {
         </div>
       </header>
 
-      <div className="hr-panel sticky top-[calc(var(--topbar-h)+var(--sat)+0.5rem)] z-20 mt-6 flex items-center gap-1 !rounded-2xl !bg-white/80 p-1.5">
+      <div className="hr-rail sticky top-[calc(var(--topbar-h)+var(--sat)+0.5rem)] z-20 mt-8 flex items-center gap-1 p-1.5">
         <nav className="no-scrollbar flex min-w-0 flex-1 overflow-x-auto" role="tablist" aria-label={l('أقسام الموارد البشرية', 'HR sections')}>
           {shownTabs.map((item) => {
             const Icon = item.icon;
@@ -337,12 +336,37 @@ function Overview({ data, lang, onOpen }: { data: HRDashboardData; lang: 'ar' | 
 
   return (
     <div className="space-y-8">
-      <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
-        <ExecutiveMetric icon={UsersRound} label={l('القوة الفعلية', 'Active workforce')} value={data.summary.active} note={l(`${workforce?.gender.female ?? 0} سيدة · ${workforce?.gender.male ?? 0} رجل`, `${workforce?.gender.female ?? 0} women · ${workforce?.gender.male ?? 0} men`)} />
-        <ExecutiveMetric icon={ShieldCheck} label={l('تأمين اجتماعي', 'Socially insured')} value={data.summary.insured} note={l('التأمين الصحي بلا مصدر حاليًا', 'Health insurance source missing')} />
-        <ExecutiveMetric icon={CircleDollarSign} label={l('إجمالي الرواتب', 'Total payroll')} value={payroll ? usd(payroll.totalUsd, lang) : '••••'} note={payroll ? l(`بسعر ${payroll.rate.sell} ج.م`, `at EGP ${payroll.rate.sell}`) : l('صلاحية الرواتب مطلوبة', 'Payroll access required')} strong />
-        <ExecutiveMetric icon={BriefcaseBusiness} label={l('وظائف مفتوحة', 'Open seats')} value={recruitment?.openSeats ?? 0} note={l(`${recruitment?.overdue ?? 0} متأخرة`, `${recruitment?.overdue ?? 0} overdue`)} />
-        <ExecutiveMetric icon={UserPlus} label={l('موظفون جدد', 'New hires')} value={workforce?.newHires ?? 0} note={formatMonth(workforce?.period, lang)} />
+      {/* One figure carries this screen, and it is not the same figure for
+          everyone: payroll for whoever may read it, headcount for whoever
+          may not. The other four are rows, not tiles — five equal boxes
+          said nothing was more important than anything else. */}
+      <section className="grid gap-3 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+        {payroll ? (
+          <HeroMetric
+            label={l('إجمالي الرواتب', 'Total payroll')}
+            value={usd(payroll.totalUsd, lang)}
+            note={l(`بسعر ${payroll.rate.sell} ج.م · ${payroll.rate.source} · ${payroll.rate.asOf}`, `at EGP ${payroll.rate.sell} · ${payroll.rate.source} · ${payroll.rate.asOf}`)}
+            caption={l(`${payroll.employees} موظف على المسير`, `${payroll.employees} employees on payroll`)}
+          />
+        ) : (
+          <HeroMetric
+            label={l('القوة الفعلية', 'Active workforce')}
+            value={String(data.summary.active)}
+            note={l(`${workforce?.gender.female ?? 0} سيدة · ${workforce?.gender.male ?? 0} رجل`, `${workforce?.gender.female ?? 0} women · ${workforce?.gender.male ?? 0} men`)}
+            caption={l('صلاحية الرواتب مطلوبة لعرض المسير', 'Payroll access required for the total')}
+          />
+        )}
+        <div className="hr-panel divide-y divide-navy/[0.07] px-5">
+          {payroll && (
+            <QuietMetric label={l('القوة الفعلية', 'Active workforce')} value={data.summary.active} note={l(`${workforce?.gender.female ?? 0} سيدة · ${workforce?.gender.male ?? 0} رجل`, `${workforce?.gender.female ?? 0} women · ${workforce?.gender.male ?? 0} men`)} />
+          )}
+          {!payroll && (
+            <QuietMetric label={l('إجمالي الرواتب', 'Total payroll')} value="••••" note={l('صلاحية الرواتب مطلوبة', 'Payroll access required')} />
+          )}
+          <QuietMetric label={l('تأمين اجتماعي', 'Socially insured')} value={data.summary.insured} note={l('التأمين الصحي بلا مصدر حاليًا', 'Health insurance source missing')} />
+          <QuietMetric label={l('وظائف مفتوحة', 'Open seats')} value={recruitment?.openSeats ?? 0} note={l(`${recruitment?.overdue ?? 0} متأخرة`, `${recruitment?.overdue ?? 0} overdue`)} />
+          <QuietMetric label={l('موظفون جدد', 'New hires')} value={workforce?.newHires ?? 0} note={formatMonth(workforce?.period, lang)} />
+        </div>
       </section>
 
       <div className="grid gap-3 xl:grid-cols-[1.05fr_.95fr]">
@@ -388,15 +412,31 @@ function Overview({ data, lang, onOpen }: { data: HRDashboardData; lang: 'ar' | 
   );
 }
 
-function ExecutiveMetric({ icon: Icon, label, value, note, strong }: { icon: typeof UsersRound; label: string; value: ReactNode; note: string; strong?: boolean }) {
+function HeroMetric({ label, value, note, caption }: { label: string; value: string; note: string; caption: string }) {
   return (
-    <article className={cx('hr-stat relative min-h-[8.75rem] p-4', strong && 'ring-1 ring-brand-500/25')}>
-      <div className="flex items-start gap-2 text-[11px] font-semibold leading-snug text-ink-muted"><Icon size={15} className="mt-px shrink-0 text-brand-500/70" />{label}</div>
-      {/* Sized down on the narrowest column so a full USD payroll total is
-          never clipped — this figure is the reason the tile exists. */}
-      <div className={cx('hr-num mt-3.5 truncate font-semibold leading-none text-navy', strong ? 'text-[22px] sm:text-[28px] lg:text-[32px]' : 'text-xl sm:text-[26px] lg:text-3xl')} title={typeof value === 'string' ? value : undefined}>{value}</div>
-      <p className="mt-2 line-clamp-2 text-[11px] leading-5 text-ink-muted">{note}</p>
+    <article className="hr-hero-card flex flex-col justify-between p-6 sm:p-7">
+      <div className="flex items-center gap-2 text-[12px] font-semibold text-white/70">
+        <CircleDollarSign size={15} className="shrink-0" />
+        {label}
+      </div>
+      {/* clamp() rather than a breakpoint ladder: the string is a formatted
+          currency total, so it has to fit the column it is given. */}
+      <div className="hr-num mt-6 font-semibold leading-none text-white [font-size:clamp(2.25rem,5.5vw,3.5rem)]" title={value}>{value}</div>
+      <p className="mt-3 text-[12px] leading-6 text-white/60">{note}</p>
+      <p className="mt-5 border-t border-white/12 pt-3 text-[12px] text-white/50">{caption}</p>
     </article>
+  );
+}
+
+function QuietMetric({ label, value, note }: { label: string; value: ReactNode; note: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-4 py-4">
+      <div className="min-w-0">
+        <div className="text-[13px] font-semibold text-navy">{label}</div>
+        <p className="mt-0.5 truncate text-[11px] leading-5 text-ink-muted">{note}</p>
+      </div>
+      <div className="hr-num shrink-0 text-2xl font-semibold text-navy">{value}</div>
+    </div>
   );
 }
 

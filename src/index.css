@@ -223,9 +223,34 @@
       0 12px 28px -14px rgb(var(--hr-navy, 11 37 69) / 0.3);
   }
 
+  /* The one dark surface in the module, and it earns it: it holds the
+     figure the screen is opened for. A gradient rather than a flat fill so
+     it reads as a lit object rather than the header slab this module used
+     to wear across the top. */
+  .hr-hero-card {
+    @apply overflow-hidden rounded-[20px];
+    background: linear-gradient(155deg, #0b2545 0%, #14497f 100%);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.1),
+      0 20px 44px -26px rgb(var(--hr-navy, 11 37 69) / 0.6);
+  }
+
   .hr-head {
     @apply flex flex-wrap items-end justify-between gap-3 border-b px-5 py-4;
     border-color: rgb(var(--hr-navy, 11 37 69) / 0.07);
+  }
+
+  /* The tab rail is the one surface content scrolls *underneath*, so it
+     cannot use the panel's translucency — at 74% the row behind it showed
+     through and read as a rendering fault. Near-opaque, and its own rule
+     rather than `.hr-panel` plus two !important overrides. */
+  .hr-rail {
+    @apply rounded-2xl border backdrop-blur-xl backdrop-saturate-150;
+    border-color: rgb(255 255 255 / 0.8);
+    background-color: rgb(255 255 255 / 0.96);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.95),
+      0 8px 24px -14px rgb(var(--hr-navy, 11 37 69) / 0.28);
   }
 
   /* Section kicker. Latin gets the small-caps treatment; Arabic does not. */
