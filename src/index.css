@@ -40,11 +40,12 @@
      are repeated as custom properties only so the HR surfaces below can
      mix them into rgba() glass without a build-time helper. */
   .hr-suite {
-    /* Readex Pro was drawn for Arabic and Latin together rather than having
-       a Latin face bolted onto an Arabic one — so a job title in Arabic and
-       the salary figure next to it sit on the same baseline with the same
-       weight, which is most of what a bilingual records screen needs. */
-    font-family: 'Readex Pro', 'Almarai', 'Tajawal', ui-sans-serif, system-ui, sans-serif;
+    /* Cairo, which the rest of the workspace already loads. Its Arabic and
+       Latin were drawn to align stroke for stroke, and — checked against
+       the shipped font, not assumed — its figures are already monospaced
+       at 560 units, so a payroll column lines up without needing a `tnum`
+       feature the family does not carry. */
+    font-family: 'Cairo', 'Tajawal', ui-sans-serif, system-ui, sans-serif;
     --hr-navy: 11 37 69;
     --hr-blue: 29 111 184;
     --hr-line: #E1E9F2;
