@@ -1419,7 +1419,7 @@ function RecruitmentMappingModal({ requests, odoo, lang, onClose, onChanged }: {
         </div>
       </div>
 
-      <div className="grid min-h-[31rem] gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]">
+      <div className="grid h-[calc(92dvh-15rem)] min-h-[20rem] max-h-[31rem] gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]">
         <aside className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-navy/[0.07] bg-surface-sunken/55">
           <div className="border-b border-navy/[0.07] p-3">
             <div className="hr-seg flex w-full">
