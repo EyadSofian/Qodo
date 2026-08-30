@@ -138,7 +138,19 @@ export interface HROdooRecruitmentData {
   configured: boolean;
   connected: boolean;
   applicantsAvailable: boolean;
-  summary: { matched: number; total: number; staleActive: number; candidateTotal: number | null };
+  summary: {
+    matched: number;
+    total: number;
+    unmatched: number;
+    linkedJobs: number;
+    staleActive: number;
+    candidateTotal: number | null;
+    activeCandidateTotal: number | null;
+    linkedCandidateTotal: number | null;
+    odooJobs: number;
+    activeOdooJobs: number;
+    stageTotals: Array<{ stage: string; count: number }>;
+  };
   matches: Record<string, HROdooRecruitmentMatch>;
 }
 

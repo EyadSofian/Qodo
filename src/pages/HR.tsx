@@ -78,6 +78,21 @@ const STATUS_STYLE: Record<string, string> = {
   unknown: 'bg-surface-sunken text-ink-muted',
 };
 
+const ODOO_STAGE_LABEL_AR: Record<string, string> = {
+  New: 'جديد',
+  'Initial Screening': 'فرز أولي',
+  'HR Evaluation': 'تقييم الموارد البشرية',
+  'Technical Evaluation': 'تقييم فني',
+  'On boarding': 'تهيئة للتعيين',
+  'Final Review & Decision': 'مراجعة نهائية وقرار',
+  Rejected: 'مرفوض',
+  'Shortlisted I': 'قائمة مختصرة ١',
+  'Shortlisted II': 'قائمة مختصرة ٢',
+  'Contract Signed': 'تم توقيع العقد',
+  'Contract negotiation': 'تفاوض العقد',
+  Unstaged: 'بلا مرحلة',
+};
+
 const STATUS_LABEL: Record<string, { ar: string; en: string }> = {
   active: { ar: 'نشط', en: 'Active' },
   done: { ar: 'مكتمل', en: 'Done' },
@@ -1172,6 +1187,8 @@ function RecruitmentDesk({ data, lang, onChanged }: { data: HRDashboardData; lan
         { label: l('متوسط مدة التعيين', 'Average hiring cycle'), value: analytics?.averageActualDays === null || analytics?.averageActualDays === undefined ? '—' : analytics.averageActualDays, note: analytics?.averageActualDays ? l('يوم فعلي', 'actual days') : l('لا توجد تواريخ تعيين فعلية', 'No actual hire dates') },
       ]} />
 
+      <OdooRecruitmentPanel odoo={odoo} loading={odooLoading} lang={lang} />
+
       <InsightPanel eyebrow={l('مراحل الطلبات النشطة', 'Active request stages')} title={l('دورة التعيين من الشيت', 'Workbook recruitment funnel')}>
         <RecruitmentFunnel analytics={analytics} lang={lang} />
       </InsightPanel>
@@ -1195,17 +1212,87 @@ function RecruitmentDesk({ data, lang, onChanged }: { data: HRDashboardData; lan
         </div>
       </section>
 
-      {!odooLoading && odoo?.configured && (
-        <div className={cx('flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 text-xs leading-6', odoo.connected ? 'border-brand-200 bg-brand-50 text-brand-700' : 'border-accent-100 bg-accent-50 text-accent-700')}>
-          <span><b>Odoo:</b> {odoo.connected ? l(`تم ربط ${odoo.summary.matched} من ${odoo.summary.total} وظيفة.`, `${odoo.summary.matched} of ${odoo.summary.total} roles linked.`) : l('تعذر قراءة وظائف Odoo الآن.', 'Odoo jobs are currently unavailable.')}</span>
-          {odoo.connected && !odoo.applicantsAvailable && <span>{l('أعداد المرشحين تحتاج صلاحية Recruitment لحساب التكامل.', 'Candidate counts require Recruitment access for the integration account.')}</span>}
-        </div>
-      )}
-
       <div className="grid gap-3 lg:grid-cols-2">{rows.map((request) => <RecruitmentRequestCard key={request.id} request={request} match={odoo?.matches[request.id]} lang={lang} canManage={data.permissions.canManage} saving={saving === request.id} onStatus={(status) => updateStatus(request, status)} onEdit={() => setEditor(request)} />)}</div>
       {!rows.length && <EmptyState title={l('لا توجد طلبات بهذه الحالة', 'No requests in this state')} />}
       {editor && <RecruitmentEditor request={editor} lang={lang} onClose={() => setEditor(null)} onSaved={async () => { setEditor(null); await onChanged(); }} />}
     </div>
+  );
+}
+
+function OdooRecruitmentPanel({ odoo, loading, lang }: { odoo: HROdooRecruitmentData | null; loading: boolean; lang: 'ar' | 'en' }) {
+  const l = (ar: string, en: string) => (lang === 'en' ? en : ar);
+  if (loading) {
+    return <section className="hr-panel flex min-h-36 items-center justify-center gap-2 text-xs font-semibold text-ink-muted"><Spinner size={16} />{l('جاري قراءة مسار التوظيف من Odoo…', 'Reading the Odoo recruitment pipeline…')}</section>;
+  }
+  if (!odoo?.configured) return null;
+  if (!odoo.connected) {
+    return (
+      <section className="hr-panel border-accent-500/25 p-5">
+        <p className="hr-eyebrow">Odoo Recruitment</p>
+        <p className="mt-2 text-sm font-semibold text-navy">{l('تعذر قراءة وظائف Odoo الآن.', 'Odoo jobs are currently unavailable.')}</p>
+        <p className="mt-1 text-xs leading-6 text-ink-muted">{l('بيانات الشيت ما زالت ظاهرة، وسنحاول قراءة Odoo مرة أخرى عند فتح الصفحة.', 'Workbook data remains available; Odoo will be retried when the page is opened again.')}</p>
+      </section>
+    );
+  }
+
+  const summary = odoo.summary;
+  const maxStage = Math.max(1, ...summary.stageTotals.map((stage) => stage.count));
+  const stats = [
+    [l('سجلات المرشحين', 'Candidate records'), integer(summary.candidateTotal, lang), l('كل السجل في Odoo', 'all Odoo history')],
+    [l('وظائف Odoo النشطة', 'Active Odoo jobs'), `${integer(summary.activeOdooJobs, lang)} / ${integer(summary.odooJobs, lang)}`, l('بحسب حالة الوظيفة في Odoo', 'from the Odoo job status')],
+    [l('طلبات الشيت المرتبطة', 'Linked workbook requests'), `${integer(summary.matched, lang)} / ${integer(summary.total, lang)}`, l('مطابقة مؤكدة فقط', 'confident matches only')],
+    [l('مرشحون بوظائف مرتبطة', 'Records in linked jobs'), integer(summary.linkedCandidateTotal, lang), l(`${integer(summary.linkedJobs, lang)} وظائف بدون تكرار`, `${integer(summary.linkedJobs, lang)} unique jobs`)],
+  ] as const;
+
+  return (
+    <section className="hr-panel-solid overflow-hidden">
+      <header className="hr-head items-start">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="hr-eyebrow">Odoo Recruitment</p>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-50 px-2 py-1 text-[10px] font-bold text-brand-600"><span className="h-1.5 w-1.5 rounded-full bg-brand-500" />{l('متصل مباشر', 'Live connection')}</span>
+          </div>
+          <h2 className="hr-title mt-1">{l('صورة التوظيف الفعلية ومراحل المرشحين', 'Live hiring picture and candidate stages')}</h2>
+        </div>
+        <p className="max-w-md text-xs leading-6 text-ink-muted">{l('الأرقام هنا من Odoo مباشرة؛ أرقام دورة الطلبات أسفلها مصدرها شيت الموارد البشرية.', 'These figures come directly from Odoo; the request cycle below still comes from the HR workbook.')}</p>
+      </header>
+
+      <div className="grid grid-cols-2 gap-px bg-navy/[0.06] lg:grid-cols-4">
+        {stats.map(([label, value, note]) => (
+          <div key={label} className="bg-white/75 p-4 sm:p-5">
+            <div className="text-[11px] font-semibold leading-5 text-ink-muted">{label}</div>
+            <div className="hr-num mt-1.5 text-xl font-semibold text-navy sm:text-2xl">{value}</div>
+            <div className="mt-1 text-[10px] leading-5 text-ink-faint">{note}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid gap-6 p-5 lg:grid-cols-[minmax(0,1fr)_17rem]">
+        <div>
+          <div className="mb-3 flex items-end justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-bold text-ink-muted">{l('مراحل المرشحين في Odoo', 'Odoo candidate stages')}</p>
+              <p className="mt-0.5 text-[10px] leading-5 text-ink-faint">{l('تشمل السجلات الحالية والتاريخية', 'Includes current and historical records')}</p>
+            </div>
+            {summary.activeCandidateTotal !== null && <span className="hr-num text-[11px] font-semibold text-brand-600">{integer(summary.activeCandidateTotal, lang)} {l('على وظائف نشطة', 'on active jobs')}</span>}
+          </div>
+          {odoo.applicantsAvailable && summary.stageTotals.length > 0 ? (
+            <div className="grid gap-x-8 gap-y-3 sm:grid-cols-2">
+              {summary.stageTotals.map((stage) => <BarRow key={stage.stage} label={odooStageLabel(stage.stage, lang)} value={integer(stage.count, lang)} numericValue={stage.count} max={maxStage} />)}
+            </div>
+          ) : <p className="rounded-xl bg-surface-sunken px-4 py-3 text-xs leading-6 text-ink-muted">{l('صلاحية الوظائف متاحة، لكن مراحل المرشحين غير قابلة للقراءة بهذا الحساب.', 'Jobs are available, but candidate stages cannot be read by this account.')}</p>}
+        </div>
+
+        <aside className="rounded-2xl border border-navy/[0.07] bg-surface-sunken/65 p-4">
+          <p className="text-[11px] font-bold text-navy">{l('سلامة الربط', 'Link health')}</p>
+          <div className="mt-3 space-y-3 text-xs leading-5 text-ink-muted">
+            <p><b className="hr-num text-base text-navy">{integer(summary.unmatched, lang)}</b><br />{l('طلب غير مربوط تلقائيًا لأن الاسم غير مطابق بثقة.', 'requests left unlinked because the title is not a confident match.')}</p>
+            <p><b className="hr-num text-base text-navy">{integer(summary.staleActive, lang)}</b><br />{l('وظيفة Odoo نشطة بينما طلب الشيت المقابل غير نشط.', 'Odoo jobs are active while the linked workbook request is not.')}</p>
+          </div>
+          <p className="mt-4 border-t border-navy/[0.07] pt-3 text-[10px] leading-5 text-ink-faint">{l('لا يتم تخمين المطابقة من كلمة عامة مثل “Instructor”؛ الحالات غير المؤكدة تظل للمراجعة اليدوية.', 'Generic titles such as “Instructor” are never guessed; uncertain links stay available for manual review.')}</p>
+        </aside>
+      </div>
+    </section>
   );
 }
 
@@ -1263,8 +1350,24 @@ function RecruitmentRequestCard({ request, match, lang, canManage, saving, onSta
           ))}
         </ol>
         {request.feedback && <p className="mt-3 rounded-e-xl border-s-2 border-[#C8D5E3] bg-surface-sunken/70 px-3 py-2.5 text-xs leading-6 text-ink-muted">{request.feedback}</p>}
+        {match && (
+          <details className="group mt-4 rounded-xl border border-brand-500/10 bg-brand-50/55 px-3.5 py-3">
+            <summary className="flex cursor-pointer list-none items-center gap-2 text-xs font-semibold text-navy [&::-webkit-details-marker]:hidden">
+              <ChevronDown size={14} className="shrink-0 text-brand-500 transition-transform group-open:rotate-180" />
+              <span className="min-w-0 flex-1 truncate">{l('مسار Odoo', 'Odoo pipeline')} · {match.name}</span>
+              {match.applicantCount !== null && <span className="hr-num shrink-0 text-brand-600">{integer(match.applicantCount, lang)} {l('مرشح', 'records')}</span>}
+            </summary>
+            <div className="mt-3 border-t border-brand-500/10 pt-3">
+              {match.stages.length > 0 ? (
+                <div className="grid gap-x-5 gap-y-2.5 sm:grid-cols-2">
+                  {match.stages.map((stage) => <BarRow key={stage.stage} label={odooStageLabel(stage.stage, lang)} value={integer(stage.count, lang)} numericValue={stage.count} max={Math.max(1, match.applicantCount ?? 0)} />)}
+                </div>
+              ) : <p className="text-[11px] text-ink-muted">{l('لا توجد سجلات مراحل لهذه الوظيفة.', 'No stage records for this job.')}</p>}
+            </div>
+          </details>
+        )}
         <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-navy/[0.07] pt-3">
-          {match ? <a href={match.url} target="_blank" rel="noreferrer noopener" className="inline-flex items-center gap-1.5 text-xs font-bold text-brand-500 hover:underline"><ExternalLink size={14} />{l('فتح الوظيفة في Odoo', 'Open job in Odoo')}{match.applicantCount !== null && ` · ${match.applicantCount}`}</a> : <span className="text-[11px] text-ink-muted">{l('لا توجد مطابقة مؤكدة في Odoo', 'No confident Odoo match')}</span>}
+          {match ? <a href={match.url} target="_blank" rel="noreferrer noopener" className="inline-flex items-center gap-1.5 text-xs font-bold text-brand-500 hover:underline"><ExternalLink size={14} />{l('فتح الوظيفة في Odoo', 'Open job in Odoo')}</a> : <span className="text-[11px] text-ink-muted">{l('لا توجد مطابقة مؤكدة في Odoo', 'No confident Odoo match')}</span>}
           {canManage && <div className="ms-auto flex items-center gap-2"><button className="btn-quiet btn-sm !min-h-9 text-brand-500 hover:bg-brand-50 hover:text-brand-600" onClick={onEdit}><Pencil size={13} />{l('تعديل', 'Edit')}</button><select className="field !w-auto !py-1.5 text-xs" value={request.status} disabled={saving} onChange={(event) => onStatus(event.target.value)} aria-label={l('حالة الطلب', 'Request status')}><option value="active">Active</option><option value="hold">Hold</option><option value="done">Done</option></select>{saving && <Spinner size={15} />}</div>}
         </div>
       </div>
@@ -1683,6 +1786,10 @@ const DATE_LOCALE = { ar: 'ar-EG-u-nu-latn', en: 'en-GB' } as const;
 
 function usd(value: number | null | undefined, lang: 'ar' | 'en') { if (value === null || value === undefined || !Number.isFinite(Number(value))) return '—'; return new Intl.NumberFormat(NUM_LOCALE[lang], { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(Number(value)); }
 function money(value: number | null | undefined, lang: 'ar' | 'en') { if (value === null || value === undefined || !Number.isFinite(Number(value))) return '—'; return new Intl.NumberFormat(NUM_LOCALE[lang], { style: 'currency', currency: 'EGP', maximumFractionDigits: 0 }).format(Number(value)); }
+function integer(value: number | null | undefined, lang: 'ar' | 'en') { if (value === null || value === undefined || !Number.isFinite(Number(value))) return '—'; return new Intl.NumberFormat(NUM_LOCALE[lang], { maximumFractionDigits: 0 }).format(Number(value)); }
+function odooStageLabel(value: string, lang: 'ar' | 'en') {
+  return lang === 'en' ? value : (ODOO_STAGE_LABEL_AR[value] ?? value);
+}
 function formatMonth(value: string | null | undefined, lang: 'ar' | 'en') { if (!value) return '—'; const date = new Date(`${value}-01T12:00:00`); return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat(DATE_LOCALE[lang], { month: 'long', year: 'numeric' }).format(date); }
 function daysBetweenClient(from: string, to: string) { const start = Date.parse(`${from}T12:00:00Z`); const end = Date.parse(`${to}T12:00:00Z`); return Number.isFinite(start) && Number.isFinite(end) ? Math.round((end - start) / 86_400_000) : null; }
 function daysUntil(value: string) { return daysBetweenClient(new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' }), value); }

@@ -15,6 +15,8 @@ function clean(value) {
     .replace(/\be\s*commerce\b/g, ' ecommerce ')
     .replace(/\bvedio\b/g, ' video ')
     .replace(/\bspecialit\b/g, ' specialist ')
+    .replace(/\badministrator\b/g, ' admin ')
+    .replace(/\bcama\s*2\b/g, ' cama ')
     .replace(/\bnormal\b|\bnoraml\b/g, '')
     .replace(/\s+/g, ' ')
     .trim();
@@ -39,14 +41,36 @@ function similarity(left, right) {
   return Math.min(0.99, jaccard * 0.58 + containment * 0.32 + (contains ? 0.1 : 0));
 }
 
+// A workbook role is linked automatically only when Odoo is at least as
+// specific. This intentionally rejects tempting partial matches such as
+// "Power BI" -> "Power", "SCADA Instructor" -> "Instructor", and a
+// location-specific "Telesales (KSA)" -> "Telesales". Those links look useful
+// but put real candidate totals against the wrong hiring request.
+const BENIGN_ODOO_SUFFIXES = new Set(['instructor']);
+
+function confidentMatchScore(role, jobName) {
+  const roleKey = clean(role);
+  const jobKey = clean(jobName);
+  if (!roleKey || !jobKey) return 0;
+  if (roleKey === jobKey) return 1;
+
+  const roleTokens = tokens(roleKey);
+  const jobTokens = tokens(jobKey);
+  const roleIsContained = [...roleTokens].every((token) => jobTokens.has(token));
+  if (!roleIsContained) return 0;
+
+  const extraJobTokens = [...jobTokens].filter((token) => !roleTokens.has(token));
+  return extraJobTokens.length > 0 && extraJobTokens.every((token) => BENIGN_ODOO_SUFFIXES.has(token))
+    ? 0.92
+    : 0;
+}
+
 function bestJob(role, jobs) {
   const ranked = jobs
-    .map((job) => ({ job, score: similarity(role, job.name) }))
+    .map((job) => ({ job, score: confidentMatchScore(role, job.name) }))
     .sort((left, right) => right.score - left.score || right.job.id - left.job.id);
   const first = ranked[0];
-  const second = ranked[1];
-  if (!first || first.score < 0.58) return null;
-  if (first.score < 0.86 && second && first.score - second.score < 0.08) return null;
+  if (!first || first.score === 0) return null;
   return first;
 }
 
@@ -79,19 +103,35 @@ async function readOdooState() {
     });
   }
   const stagesByJob = new Map();
+  const stageTotals = new Map();
   if (stagesResult.status === 'fulfilled') {
     stagesResult.value.forEach((row) => {
       const jobId = relationId(row.job_id);
-      if (!jobId) return;
       const stage = Array.isArray(row.stage_id) ? String(row.stage_id[1]) : 'Unstaged';
-      stagesByJob.set(jobId, [...(stagesByJob.get(jobId) ?? []), { stage, count: Number(row.__count || 0) }]);
+      const count = Number(row.__count || 0);
+      stageTotals.set(stage, (stageTotals.get(stage) ?? 0) + count);
+      if (!jobId) return;
+      stagesByJob.set(jobId, [...(stagesByJob.get(jobId) ?? []), { stage, count }]);
     });
   }
+  stagesByJob.forEach((items, jobId) => {
+    stagesByJob.set(jobId, items.sort((left, right) => right.count - left.count || left.stage.localeCompare(right.stage)));
+  });
+  const candidateTotal = countsResult.status === 'fulfilled'
+    ? countsResult.value.reduce((sum, row) => sum + Number(row.__count || 0), 0)
+    : null;
+  const activeJobIds = new Set(jobs.filter((job) => job.active).map((job) => job.id));
+  const activeCandidateTotal = candidateTotal === null
+    ? null
+    : [...applicantByJob].reduce((sum, [jobId, count]) => sum + (activeJobIds.has(jobId) ? count : 0), 0);
   const value = {
     configured: true,
     jobs,
     applicantByJob,
     stagesByJob,
+    stageTotals: [...stageTotals].map(([stage, count]) => ({ stage, count })).sort((left, right) => right.count - left.count || left.stage.localeCompare(right.stage)),
+    candidateTotal,
+    activeCandidateTotal,
     applicantsAvailable: countsResult.status === 'fulfilled',
   };
   cached = { at: Date.now(), value };
@@ -106,22 +146,18 @@ export async function odooRecruitmentMatches(requests) {
         configured: false,
         connected: false,
         applicantsAvailable: false,
-        summary: { matched: 0, total: requests.length, staleActive: 0, candidateTotal: null },
+        summary: emptySummary(requests.length),
         matches: {},
       };
     }
 
     const baseUrl = String(process.env.ODOO_URL || '').replace(/\/+$/, '');
     const matches = {};
-    let staleActive = 0;
-    let candidateTotal = 0;
     for (const request of requests) {
       const match = bestJob(request.role, state.jobs);
       if (!match) continue;
       const { job, score } = match;
       const applicantCount = state.applicantsAvailable ? (state.applicantByJob.get(job.id) ?? 0) : null;
-      if (applicantCount !== null) candidateTotal += applicantCount;
-      if (request.status !== 'active' && job.active) staleActive += 1;
       matches[request.id] = {
         jobId: job.id,
         name: job.name,
@@ -136,6 +172,15 @@ export async function odooRecruitmentMatches(requests) {
         url: `${baseUrl}/web#id=${job.id}&model=hr.job&view_type=form`,
       };
     }
+    const linkedJobIds = new Set(Object.values(matches).map((match) => match.jobId));
+    const staleActiveJobIds = new Set(
+      requests
+        .filter((request) => request.status !== 'active' && matches[request.id]?.active)
+        .map((request) => matches[request.id].jobId)
+    );
+    const linkedCandidateTotal = state.applicantsAvailable
+      ? [...linkedJobIds].reduce((sum, jobId) => sum + (state.applicantByJob.get(jobId) ?? 0), 0)
+      : null;
 
     return {
       configured: true,
@@ -144,8 +189,15 @@ export async function odooRecruitmentMatches(requests) {
       summary: {
         matched: Object.keys(matches).length,
         total: requests.length,
-        staleActive,
-        candidateTotal: state.applicantsAvailable ? candidateTotal : null,
+        unmatched: requests.length - Object.keys(matches).length,
+        linkedJobs: linkedJobIds.size,
+        staleActive: staleActiveJobIds.size,
+        candidateTotal: state.candidateTotal,
+        activeCandidateTotal: state.activeCandidateTotal,
+        linkedCandidateTotal,
+        odooJobs: state.jobs.length,
+        activeOdooJobs: state.jobs.filter((job) => job.active).length,
+        stageTotals: state.stageTotals,
       },
       matches,
     };
@@ -155,10 +207,26 @@ export async function odooRecruitmentMatches(requests) {
       configured: true,
       connected: false,
       applicantsAvailable: false,
-      summary: { matched: 0, total: requests.length, staleActive: 0, candidateTotal: null },
+      summary: emptySummary(requests.length),
       matches: {},
     };
   }
 }
 
-export const __test = { clean, similarity, bestJob };
+function emptySummary(total) {
+  return {
+    matched: 0,
+    total,
+    unmatched: total,
+    linkedJobs: 0,
+    staleActive: 0,
+    candidateTotal: null,
+    activeCandidateTotal: null,
+    linkedCandidateTotal: null,
+    odooJobs: 0,
+    activeOdooJobs: 0,
+    stageTotals: [],
+  };
+}
+
+export const __test = { clean, similarity, confidentMatchScore, bestJob };
