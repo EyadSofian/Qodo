@@ -547,22 +547,108 @@ function QualityMini({ reconciliation, lang }: { reconciliation: NonNullable<HRD
   );
 }
 
+/**
+ * One department, assembled from the employee rows themselves.
+ *
+ * Nothing here is typed into the code: the departments are whatever the
+ * `department` field says, falling back to `sector` so a row with only a
+ * sector still lands somewhere, and to an "unassigned" bucket so a row with
+ * neither is never silently dropped from the directory.
+ */
+type DepartmentSummary = {
+  key: string;
+  name: string;
+  people: HREmployeeSummary[];
+  active: number;
+  former: number;
+  withPayroll: number;
+  withInsurance: number;
+  linkedAccounts: number;
+  openSeats: number;
+  totalUsd: number | null;
+};
+
+const UNASSIGNED = '\u0000unassigned';
+
+function departmentKey(employee: HREmployeeSummary) {
+  return employee.department || employee.sector || UNASSIGNED;
+}
+
+function buildDepartments(data: HRDashboardData): DepartmentSummary[] {
+  const groups = new Map<string, HREmployeeSummary[]>();
+  for (const employee of data.employees) {
+    const key = departmentKey(employee);
+    const bucket = groups.get(key);
+    if (bucket) bucket.push(employee);
+    else groups.set(key, [employee]);
+  }
+
+  // Payroll totals only exist when the endpoint returned them, which it does
+  // only for a reader with the payroll permission. No client-side gate is
+  // added or removed here — the absence of the object is the gate.
+  const payrollByDepartment = new Map(
+    (data.analytics?.payroll?.departments ?? []).map((row) => [row.department, row.totalUsd])
+  );
+
+  const openByDepartment = new Map<string, number>();
+  for (const request of data.recruitment) {
+    if (request.status !== 'active') continue;
+    const remaining = Math.max(0, request.numberNeeded - request.accepted);
+    if (!remaining) continue;
+    openByDepartment.set(request.department, (openByDepartment.get(request.department) ?? 0) + remaining);
+  }
+
+  return [...groups.entries()]
+    .map(([key, people]) => ({
+      key,
+      name: key === UNASSIGNED ? '' : key,
+      people,
+      active: people.filter((person) => person.status === 'active').length,
+      former: people.filter((person) => person.status !== 'active').length,
+      withPayroll: people.filter((person) => person.hasPayroll).length,
+      withInsurance: people.filter((person) => person.hasInsurance).length,
+      linkedAccounts: people.filter((person) => Boolean(person.linkedUserId)).length,
+      openSeats: openByDepartment.get(key) ?? 0,
+      totalUsd: payrollByDepartment.has(key) ? (payrollByDepartment.get(key) as number) : null,
+    }))
+    .sort((left, right) => right.active - left.active || left.key.localeCompare(right.key, 'ar'));
+}
+
+function matchesEmployee(employee: HREmployeeSummary, needle: string, status: string) {
+  const matchesStatus = status === 'all' || employee.status === status;
+  if (!matchesStatus) return false;
+  if (!needle) return true;
+  return `${employee.employeeCode} ${employee.nameArabic} ${employee.nameEnglish} ${employee.department} ${employee.title}`
+    .toLowerCase()
+    .includes(needle);
+}
+
 function PeopleDirectory({ data, lang }: { data: HRDashboardData; lang: 'ar' | 'en' }) {
   const l = (ar: string, en: string) => (lang === 'en' ? en : ar);
+  const [view, setView] = useState<'departments' | 'all'>('departments');
+  const [openDepartment, setOpenDepartment] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState<'all' | 'active' | 'inactive'>('active');
   const [department, setDepartment] = useState('all');
   const workforce = data.analytics?.workforce;
-  const departments = useMemo(() => [...new Set(data.employees.map((employee) => employee.department || employee.sector).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ar')), [data.employees]);
+
+  const groups = useMemo(() => buildDepartments(data), [data]);
+  const departments = useMemo(
+    () => [...new Set(data.employees.map((employee) => employee.department || employee.sector).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ar')),
+    [data.employees]
+  );
   const people = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return data.employees.filter((employee) => {
-      const matchesStatus = status === 'all' || employee.status === status;
       const matchesDepartment = department === 'all' || employee.department === department || employee.sector === department;
-      const haystack = `${employee.employeeCode} ${employee.nameArabic} ${employee.nameEnglish} ${employee.department} ${employee.title}`.toLowerCase();
-      return matchesStatus && matchesDepartment && (!needle || haystack.includes(needle));
+      return matchesDepartment && matchesEmployee(employee, needle, status);
     });
   }, [data.employees, department, query, status]);
+
+  const open = groups.find((group) => group.key === openDepartment) ?? null;
+  if (open) {
+    return <DepartmentTeam group={open} lang={lang} onBack={() => setOpenDepartment(null)} />;
+  }
 
   return (
     <div className="space-y-8">
@@ -573,16 +659,192 @@ function PeopleDirectory({ data, lang }: { data: HRDashboardData; lang: 'ar' | '
         { label: l('أكبر قسم', 'Largest department'), value: workforce?.largestDepartment?.department || '—', note: workforce?.largestDepartment ? `${workforce.largestDepartment.employees}` : '' },
         { label: l('جدد هذا الشهر', 'New this month'), value: workforce?.newHires ?? 0 },
       ]} />
-      <section className="hr-panel-solid overflow-hidden">
-        <div className="grid gap-3 border-b border-navy/[0.07] p-5 lg:grid-cols-[minmax(0,1fr)_15rem_auto] lg:items-center">
+
+      <section className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="hr-seg">
+            <button type="button" className="hr-seg-btn" aria-pressed={view === 'departments'} onClick={() => setView('departments')}>
+              {l('الأقسام', 'Departments')}
+            </button>
+            <button type="button" className="hr-seg-btn" aria-pressed={view === 'all'} onClick={() => setView('all')}>
+              {l('كل الموظفين', 'All employees')}
+            </button>
+          </div>
+          <p className="text-[12px] text-ink-muted">
+            {view === 'departments'
+              ? l(`${groups.length} قسم · ${data.employees.length} موظف`, `${groups.length} departments · ${data.employees.length} people`)
+              : l(`${people.length} من ${data.employees.length}`, `${people.length} of ${data.employees.length}`)}
+          </p>
+        </div>
+
+        {view === 'departments' ? (
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {groups.map((group) => (
+              <DepartmentCard key={group.key} group={group} lang={lang} onOpen={() => setOpenDepartment(group.key)} />
+            ))}
+            {!groups.length && <EmptyState title={l('لا توجد أقسام', 'No departments')} body={l('لم يُستورد أي موظف بعد.', 'No employees have been imported yet.')} />}
+          </div>
+        ) : (
+          <div className="hr-panel-solid overflow-hidden">
+            <div className="grid gap-3 border-b border-navy/[0.07] p-5 lg:grid-cols-[minmax(0,1fr)_15rem_auto] lg:items-center">
+              <div className="relative min-w-0">
+                <Search className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-ink-muted" size={16} />
+                <input className="field ps-10" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={l('الاسم، الكود أو المسمى الوظيفي…', 'Name, code, or job title…')} />
+              </div>
+              <select className="field" value={department} onChange={(event) => setDepartment(event.target.value)}>
+                <option value="all">{l('كل الأقسام', 'All departments')}</option>
+                {departments.map((item) => <option key={item} value={item}>{item}</option>)}
+              </select>
+              <div className="hr-seg">
+                {(['active', 'inactive', 'all'] as const).map((item) => (
+                  <button key={item} type="button" className="hr-seg-btn" aria-pressed={status === item} onClick={() => setStatus(item)}>
+                    {item === 'active' ? l('نشط', 'Active') : item === 'inactive' ? l('سابق', 'Former') : l('الكل', 'All')}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="hidden overflow-x-auto md:block">
+              <table className="w-full text-start text-sm">
+                <thead className="bg-navy/[0.035] text-[11px] font-semibold text-ink-muted"><tr><th className="px-5 py-3 text-start">{l('الموظف', 'Employee')}</th><th className="px-4 py-3 text-start">{l('الوظيفة', 'Role')}</th><th className="px-4 py-3 text-start">{l('القسم', 'Department')}</th><th className="px-4 py-3 text-start">{l('الربط', 'Coverage')}</th><th className="px-4 py-3 text-start">{l('الحالة', 'Status')}</th><th className="w-12" /></tr></thead>
+                <tbody className="divide-y divide-navy/[0.06]">{people.map((employee) => <EmployeeRow key={employee.employeeCode} employee={employee} lang={lang} />)}</tbody>
+              </table>
+            </div>
+            <div className="divide-y divide-navy/[0.06] md:hidden">{people.map((employee) => <EmployeeMobile key={employee.employeeCode} employee={employee} lang={lang} />)}</div>
+            {!people.length && <EmptyState title={l('لا توجد نتائج', 'No matching employees')} body={l('جرّب كلمة بحث أو فلتر مختلف.', 'Try another search or filter.')} />}
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function DepartmentCard({ group, lang, onOpen }: { group: DepartmentSummary; lang: 'ar' | 'en'; onOpen: () => void }) {
+  const l = (ar: string, en: string) => (lang === 'en' ? en : ar);
+  const total = group.people.length;
+  const faces = group.people.filter((person) => person.status === 'active').slice(0, 4);
+  const rest = group.active - faces.length;
+  return (
+    <article className="hr-panel flex flex-col overflow-hidden">
+      <header className="border-b border-navy/[0.07] px-5 py-4">
+        <div className="flex items-start justify-between gap-3">
+          <h3 className="hr-title min-w-0 truncate" title={group.name || l('بدون قسم', 'Unassigned')}>
+            {group.name || l('بدون قسم', 'Unassigned')}
+          </h3>
+          {group.openSeats > 0 && (
+            <span className="chip shrink-0 bg-accent-50 text-[11px] text-accent-700">
+              {l(`${group.openSeats} شاغر`, `${group.openSeats} open`)}
+            </span>
+          )}
+        </div>
+        <div className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1">
+          <span className="flex items-baseline gap-1.5">
+            <b className="hr-num text-2xl font-semibold text-navy">{group.active}</b>
+            <span className="text-[12px] text-ink-muted">{l('نشط', 'active')}</span>
+          </span>
+          <span className="flex items-baseline gap-1.5 text-[12px] text-ink-muted">
+            <b className="hr-num font-semibold">{group.former}</b>
+            {l('سابق', 'former')}
+          </span>
+        </div>
+      </header>
+
+      <div className="grid gap-3 p-5">
+        <CoverageRow label={l('تغطية الرواتب', 'Payroll coverage')} part={group.withPayroll} total={total} />
+        <CoverageRow label={l('التأمينات', 'Insurance')} part={group.withInsurance} total={total} />
+        <div className="flex items-center justify-between gap-3 text-[12px]">
+          <span className="text-ink-muted">{l('حسابات Qodo المرتبطة', 'Linked Qodo accounts')}</span>
+          <b className="hr-num font-semibold text-navy">{group.linkedAccounts}<span className="font-normal text-ink-faint">/{total}</span></b>
+        </div>
+        {/* Rendered only when the dashboard returned payroll at all, which it
+            does only for a reader who may see it. */}
+        {group.totalUsd !== null && (
+          <div className="flex items-center justify-between gap-3 border-t border-navy/[0.07] pt-3 text-[12px]">
+            <span className="text-ink-muted">{l('إجمالي رواتب القسم', 'Department payroll')}</span>
+            <b className="hr-num text-[15px] font-semibold text-navy">{usd(group.totalUsd, lang)}</b>
+          </div>
+        )}
+      </div>
+
+      <footer className="mt-auto flex items-center justify-between gap-3 border-t border-navy/[0.07] px-5 py-4">
+        <div className="flex items-center [&>*:not(:first-child)]:-ms-1.5">
+          {faces.map((person) => (
+            <Avatar
+              key={person.employeeCode}
+              name={person.nameArabic || person.nameEnglish || `#${person.employeeCode}`}
+              size={30}
+              color="#1D6FB8"
+              className="ring-2 ring-white"
+            />
+          ))}
+          {rest > 0 && (
+            <span className="hr-num grid h-[30px] w-[30px] shrink-0 place-items-center rounded-full bg-navy text-[10px] font-semibold text-white ring-2 ring-white">
+              +{rest}
+            </span>
+          )}
+          {!faces.length && <span className="text-[11px] text-ink-faint">{l('لا يوجد نشطون', 'No active people')}</span>}
+        </div>
+        <button type="button" className="btn-ghost btn-sm shrink-0" onClick={onOpen}>
+          {l('عرض فريق القسم', 'View team')}
+          <ChevronRight className="rtl:rotate-180" size={15} />
+        </button>
+      </footer>
+    </article>
+  );
+}
+
+function CoverageRow({ label, part, total }: { label: string; part: number; total: number }) {
+  const percent = coverage(part, total);
+  return (
+    <div>
+      <div className="mb-1.5 flex items-center justify-between gap-3 text-[12px]">
+        <span className="text-ink-muted">{label}</span>
+        <b className="hr-num font-semibold text-navy">{percent}%<span className="font-normal text-ink-faint"> · {part}/{total}</span></b>
+      </div>
+      <div className="hr-meter"><span style={{ width: `${percent}%` }} /></div>
+    </div>
+  );
+}
+
+function DepartmentTeam({ group, lang, onBack }: { group: DepartmentSummary; lang: 'ar' | 'en'; onBack: () => void }) {
+  const l = (ar: string, en: string) => (lang === 'en' ? en : ar);
+  const [query, setQuery] = useState('');
+  const [status, setStatus] = useState<'all' | 'active' | 'inactive'>('active');
+  const total = group.people.length;
+  const roster = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return group.people.filter((employee) => matchesEmployee(employee, needle, status));
+  }, [group.people, query, status]);
+
+  return (
+    <div className="space-y-8">
+      <button type="button" onClick={onBack} className="inline-flex items-center gap-2 rounded-lg text-xs font-semibold text-ink-muted transition-colors hover:text-navy">
+        {lang === 'en' ? <ArrowLeft size={15} /> : <ArrowRight size={15} />}
+        {l('كل الأقسام', 'All departments')}
+      </button>
+
+      <header>
+        <p className="hr-eyebrow">{l('فريق القسم', 'Department team')}</p>
+        <h2 className="mt-1 text-2xl font-semibold tracking-tight text-navy sm:text-[32px]">
+          {group.name || l('بدون قسم', 'Unassigned')}
+        </h2>
+      </header>
+
+      <TabSummary title={l('ملخص القسم', 'Department summary')} items={[
+        { label: l('نشط', 'Active'), value: group.active, featured: true },
+        { label: l('سابق', 'Former'), value: group.former },
+        { label: l('تغطية الرواتب', 'Payroll coverage'), value: `${coverage(group.withPayroll, total)}%`, note: `${group.withPayroll}/${total}` },
+        { label: l('التأمينات', 'Insurance'), value: `${coverage(group.withInsurance, total)}%`, note: `${group.withInsurance}/${total}` },
+        ...(group.totalUsd !== null
+          ? [{ label: l('إجمالي رواتب القسم', 'Department payroll'), value: usd(group.totalUsd, lang) }]
+          : [{ label: l('حسابات Qodo', 'Qodo accounts'), value: group.linkedAccounts, note: `${group.linkedAccounts}/${total}` }]),
+      ]} />
+
+      <section className="space-y-3">
+        <div className="hr-panel grid gap-3 p-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
           <div className="relative min-w-0">
             <Search className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-ink-muted" size={16} />
             <input className="field ps-10" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={l('الاسم، الكود أو المسمى الوظيفي…', 'Name, code, or job title…')} />
           </div>
-          <select className="field" value={department} onChange={(event) => setDepartment(event.target.value)}>
-            <option value="all">{l('كل الأقسام', 'All departments')}</option>
-            {departments.map((item) => <option key={item} value={item}>{item}</option>)}
-          </select>
           <div className="hr-seg">
             {(['active', 'inactive', 'all'] as const).map((item) => (
               <button key={item} type="button" className="hr-seg-btn" aria-pressed={status === item} onClick={() => setStatus(item)}>
@@ -591,16 +853,56 @@ function PeopleDirectory({ data, lang }: { data: HRDashboardData; lang: 'ar' | '
             ))}
           </div>
         </div>
-        <div className="hidden overflow-x-auto md:block">
-          <table className="w-full text-start text-sm">
-            <thead className="bg-navy/[0.035] text-[11px] font-semibold text-ink-muted"><tr><th className="px-5 py-3 text-start">{l('الموظف', 'Employee')}</th><th className="px-4 py-3 text-start">{l('الوظيفة', 'Role')}</th><th className="px-4 py-3 text-start">{l('القسم', 'Department')}</th><th className="px-4 py-3 text-start">{l('الربط', 'Coverage')}</th><th className="px-4 py-3 text-start">{l('الحالة', 'Status')}</th><th className="w-12" /></tr></thead>
-            <tbody className="divide-y divide-navy/[0.06]">{people.map((employee) => <EmployeeRow key={employee.employeeCode} employee={employee} lang={lang} />)}</tbody>
-          </table>
+
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {roster.map((employee) => <EmployeeCard key={employee.employeeCode} employee={employee} lang={lang} />)}
         </div>
-        <div className="divide-y divide-navy/[0.06] md:hidden">{people.map((employee) => <EmployeeMobile key={employee.employeeCode} employee={employee} lang={lang} />)}</div>
-        {!people.length && <EmptyState title={l('لا توجد نتائج', 'No matching employees')} body={l('جرّب كلمة بحث أو فلتر مختلف.', 'Try another search or filter.')} />}
+        {!roster.length && <EmptyState title={l('لا توجد نتائج', 'No matching employees')} body={l('جرّب كلمة بحث أو فلتر مختلف.', 'Try another search or filter.')} />}
       </section>
     </div>
+  );
+}
+
+function EmployeeCard({ employee, lang }: { employee: HREmployeeSummary; lang: 'ar' | 'en' }) {
+  const l = (ar: string, en: string) => (lang === 'en' ? en : ar);
+  const name = employee.nameArabic || employee.nameEnglish || `#${employee.employeeCode}`;
+  return (
+    <article className="hr-stat flex flex-col gap-4 p-5">
+      <div className="flex items-start gap-3">
+        <Avatar name={name} size={44} color={employee.status === 'active' ? '#1D6FB8' : '#94A3B8'} className="shrink-0" />
+        <div className="min-w-0 flex-1">
+          <div className="truncate font-semibold text-navy" title={name}>{name}</div>
+          <div className="ltr mt-0.5 truncate text-[11px] text-ink-muted">#{employee.employeeCode}</div>
+          <div className="mt-1.5 truncate text-[12px] leading-5 text-ink-muted" title={employee.title || undefined}>{employee.title || '—'}</div>
+        </div>
+        <StatusChip status={employee.status} lang={lang} />
+      </div>
+
+      {/* Named badges rather than three unlabelled dots — the dots needed a
+          tooltip to mean anything. */}
+      <div className="flex flex-wrap gap-1.5">
+        <CoverageBadge ok={employee.hasPayroll} label={l('راتب', 'Payroll')} />
+        <CoverageBadge ok={employee.hasInsurance} label={l('تأمين', 'Insurance')} />
+        <CoverageBadge ok={Boolean(employee.linkedUserId)} label={l('حساب Qodo', 'Qodo account')} />
+      </div>
+
+      <Link to={`/hr/employees/${employee.employeeCode}`} className="btn-ghost btn-sm mt-auto w-full">
+        <IdCard size={15} />
+        {l('فتح الملف', 'Open profile')}
+      </Link>
+    </article>
+  );
+}
+
+function CoverageBadge({ ok, label }: { ok: boolean; label: string }) {
+  return (
+    <span className={cx(
+      'inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold',
+      ok ? 'bg-status-okBg text-status-ok' : 'bg-surface-sunken text-ink-faint'
+    )}>
+      {ok ? <Check size={11} /> : <span aria-hidden="true">—</span>}
+      {label}
+    </span>
   );
 }
 
