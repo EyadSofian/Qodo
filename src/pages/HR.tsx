@@ -1238,10 +1238,10 @@ function OdooRecruitmentPanel({ odoo, loading, lang }: { odoo: HROdooRecruitment
   const summary = odoo.summary;
   const maxStage = Math.max(1, ...summary.stageTotals.map((stage) => stage.count));
   const stats = [
-    [l('سجلات المرشحين', 'Candidate records'), integer(summary.candidateTotal, lang), l('كل السجل في Odoo', 'all Odoo history')],
-    [l('وظائف Odoo النشطة', 'Active Odoo jobs'), `${integer(summary.activeOdooJobs, lang)} / ${integer(summary.odooJobs, lang)}`, l('بحسب حالة الوظيفة في Odoo', 'from the Odoo job status')],
-    [l('طلبات الشيت المرتبطة', 'Linked workbook requests'), `${integer(summary.matched, lang)} / ${integer(summary.total, lang)}`, l('مطابقة مؤكدة فقط', 'confident matches only')],
-    [l('مرشحون بوظائف مرتبطة', 'Records in linked jobs'), integer(summary.linkedCandidateTotal, lang), l(`${integer(summary.linkedJobs, lang)} وظائف بدون تكرار`, `${integer(summary.linkedJobs, lang)} unique jobs`)],
+    [l('سجلات المرشحين', 'Candidate records'), integer(summary.candidateTotal, lang), l('كل السجل في Odoo', 'all Odoo history'), false],
+    [l('وظائف Odoo النشطة', 'Active Odoo jobs'), `${integer(summary.activeOdooJobs, lang)} / ${integer(summary.odooJobs, lang)}`, l('بحسب حالة الوظيفة في Odoo', 'from the Odoo job status'), true],
+    [l('طلبات الشيت المرتبطة', 'Linked workbook requests'), `${integer(summary.matched, lang)} / ${integer(summary.total, lang)}`, l('مطابقة مؤكدة فقط', 'confident matches only'), true],
+    [l('مرشحون بوظائف مرتبطة', 'Records in linked jobs'), integer(summary.linkedCandidateTotal, lang), l(`${integer(summary.linkedJobs, lang)} وظائف بدون تكرار`, `${integer(summary.linkedJobs, lang)} unique jobs`), false],
   ] as const;
 
   return (
@@ -1258,10 +1258,10 @@ function OdooRecruitmentPanel({ odoo, loading, lang }: { odoo: HROdooRecruitment
       </header>
 
       <div className="grid grid-cols-2 gap-px bg-navy/[0.06] lg:grid-cols-4">
-        {stats.map(([label, value, note]) => (
+        {stats.map(([label, value, note, forceLtr]) => (
           <div key={label} className="bg-white/75 p-4 sm:p-5">
             <div className="text-[11px] font-semibold leading-5 text-ink-muted">{label}</div>
-            <div className="hr-num mt-1.5 text-xl font-semibold text-navy sm:text-2xl">{value}</div>
+            <div className="hr-num mt-1.5 text-xl font-semibold text-navy sm:text-2xl" dir={forceLtr ? 'ltr' : undefined}>{value}</div>
             <div className="mt-1 text-[10px] leading-5 text-ink-faint">{note}</div>
           </div>
         ))}
