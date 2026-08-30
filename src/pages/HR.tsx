@@ -555,63 +555,130 @@ function QualityMini({ reconciliation, lang }: { reconciliation: NonNullable<HRD
  * sector still lands somewhere, and to an "unassigned" bucket so a row with
  * neither is never silently dropped from the directory.
  */
+type DepartmentPayroll =
+  | { state: 'gated' }
+  | { state: 'matched'; totalUsd: number }
+  | { state: 'unmatched' };
+
 type DepartmentSummary = {
   key: string;
   name: string;
+  variants: string[];
   people: HREmployeeSummary[];
   active: number;
   former: number;
+  unspecified: number;
   withPayroll: number;
   withInsurance: number;
   linkedAccounts: number;
   openSeats: number;
-  totalUsd: number | null;
+  payroll: DepartmentPayroll;
 };
 
 const UNASSIGNED = '\u0000unassigned';
 
+/**
+ * Fold the spellings of one department onto one key.
+ *
+ * The department name is free text typed into a workbook, so the same team
+ * arrives as "الموارد البشرية" in one sheet and "الموارد البشريه" in the
+ * next, or as "IT" and "it", or with a stray trailing space. Matching those
+ * literally split one department into several cards and — worse — silently
+ * lost the payroll total and the open seats, because those live in other
+ * sheets keyed by the same free text.
+ *
+ * NFKD splits the hamza off أ إ آ into a combining mark, so stripping all
+ * nonspacing marks handles both the hamza forms and the harakat in one pass.
+ * ة/ه and ى/ي are atomic and need their own rule.
+ */
+function normaliseDepartment(value: string) {
+  return value
+    .normalize('NFKD')
+    .replace(/\p{Mn}/gu, '')
+    .replace(/\u0640/g, '')
+    .replace(/\u0629/g, '\u0647')
+    .replace(/\u0649/g, '\u064A')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
 function departmentKey(employee: HREmployeeSummary) {
-  return employee.department || employee.sector || UNASSIGNED;
+  const raw = employee.department || employee.sector;
+  return raw ? normaliseDepartment(raw) : UNASSIGNED;
+}
+
+/** The spelling most rows actually used, so the card shows their words. */
+function commonestLabel(values: string[]) {
+  const counts = new Map<string, number>();
+  for (const value of values) counts.set(value, (counts.get(value) ?? 0) + 1);
+  return [...counts.entries()].sort((left, right) => right[1] - left[1])[0]?.[0] ?? '';
 }
 
 function buildDepartments(data: HRDashboardData): DepartmentSummary[] {
-  const groups = new Map<string, HREmployeeSummary[]>();
+  const groups = new Map<string, { people: HREmployeeSummary[]; labels: string[] }>();
   for (const employee of data.employees) {
     const key = departmentKey(employee);
+    const label = employee.department || employee.sector || '';
     const bucket = groups.get(key);
-    if (bucket) bucket.push(employee);
-    else groups.set(key, [employee]);
+    if (bucket) {
+      bucket.people.push(employee);
+      if (label) bucket.labels.push(label);
+    } else {
+      groups.set(key, { people: [employee], labels: label ? [label] : [] });
+    }
   }
 
-  // Payroll totals only exist when the endpoint returned them, which it does
-  // only for a reader with the payroll permission. No client-side gate is
-  // added or removed here — the absence of the object is the gate.
+  // Payroll totals exist only when the endpoint returned them, which it does
+  // only for a reader with the payroll permission. The absence of the object
+  // is the gate — no client-side check is added or removed here.
+  const payrollGated = !data.analytics?.payroll;
   const payrollByDepartment = new Map(
-    (data.analytics?.payroll?.departments ?? []).map((row) => [row.department, row.totalUsd])
+    (data.analytics?.payroll?.departments ?? []).map((row) => [normaliseDepartment(row.department), row.totalUsd])
   );
 
   const openByDepartment = new Map<string, number>();
+  const recruitmentLabels = new Map<string, string[]>();
   for (const request of data.recruitment) {
     if (request.status !== 'active') continue;
     const remaining = Math.max(0, request.numberNeeded - request.accepted);
-    if (!remaining) continue;
-    openByDepartment.set(request.department, (openByDepartment.get(request.department) ?? 0) + remaining);
+    if (!remaining || !request.department) continue;
+    const key = normaliseDepartment(request.department);
+    openByDepartment.set(key, (openByDepartment.get(key) ?? 0) + remaining);
+    recruitmentLabels.set(key, [...(recruitmentLabels.get(key) ?? []), request.department]);
+  }
+
+  // A department that is hiring but has nobody in it yet still has to appear,
+  // or its open seats are invisible on the only screen that lists departments.
+  for (const [key, labels] of recruitmentLabels) {
+    if (!groups.has(key)) groups.set(key, { people: [], labels });
   }
 
   return [...groups.entries()]
-    .map(([key, people]) => ({
+    .map(([key, { people, labels }]) => ({
       key,
-      name: key === UNASSIGNED ? '' : key,
+      name: key === UNASSIGNED ? '' : commonestLabel(labels) || key,
+      // Every distinct spelling folded in here, so a merge is inspectable
+      // rather than something the screen quietly did.
+      variants: [...new Set(labels)],
       people,
       active: people.filter((person) => person.status === 'active').length,
-      former: people.filter((person) => person.status !== 'active').length,
+      // Only `inactive` is a leaver. `unknown`, `hold` and `done` mean the
+      // record is incomplete or mid-process, and counting them as former
+      // reported people as gone who never left.
+      former: people.filter((person) => person.status === 'inactive').length,
+      unspecified: people.filter((person) => person.status !== 'active' && person.status !== 'inactive').length,
       withPayroll: people.filter((person) => person.hasPayroll).length,
       withInsurance: people.filter((person) => person.hasInsurance).length,
       linkedAccounts: people.filter((person) => Boolean(person.linkedUserId)).length,
       openSeats: openByDepartment.get(key) ?? 0,
-      totalUsd: payrollByDepartment.has(key) ? (payrollByDepartment.get(key) as number) : null,
+      payroll: (payrollGated
+        ? { state: 'gated' }
+        : payrollByDepartment.has(key)
+          ? { state: 'matched', totalUsd: payrollByDepartment.get(key) as number }
+          : { state: 'unmatched' }) as DepartmentPayroll,
     }))
-    .sort((left, right) => right.active - left.active || left.key.localeCompare(right.key, 'ar'));
+    .sort((left, right) => right.active - left.active || right.people.length - left.people.length || left.key.localeCompare(right.key, 'ar'));
 }
 
 function matchesEmployee(employee: HREmployeeSummary, needle: string, status: string) {
@@ -745,22 +812,52 @@ function DepartmentCard({ group, lang, onOpen }: { group: DepartmentSummary; lan
             <b className="hr-num font-semibold">{group.former}</b>
             {l('سابق', 'former')}
           </span>
+          {/* Only shown when it is not zero — an incomplete record is worth
+              surfacing, an empty count is not. */}
+          {group.unspecified > 0 && (
+            <span className="flex items-baseline gap-1.5 text-[12px] text-ink-faint">
+              <b className="hr-num font-semibold">{group.unspecified}</b>
+              {l('غير محدد', 'unspecified')}
+            </span>
+          )}
         </div>
+        {group.variants.length > 1 && (
+          <p className="mt-2 text-[11px] leading-5 text-ink-faint" title={group.variants.join(' · ')}>
+            {l(`دُمجت ${group.variants.length} صيغ كتابة`, `${group.variants.length} spellings merged`)}
+          </p>
+        )}
       </header>
 
       <div className="grid gap-3 p-5">
-        <CoverageRow label={l('تغطية الرواتب', 'Payroll coverage')} part={group.withPayroll} total={total} />
-        <CoverageRow label={l('التأمينات', 'Insurance')} part={group.withInsurance} total={total} />
-        <div className="flex items-center justify-between gap-3 text-[12px]">
-          <span className="text-ink-muted">{l('حسابات Qodo المرتبطة', 'Linked Qodo accounts')}</span>
-          <b className="hr-num font-semibold text-navy">{group.linkedAccounts}<span className="font-normal text-ink-faint">/{total}</span></b>
-        </div>
-        {/* Rendered only when the dashboard returned payroll at all, which it
-            does only for a reader who may see it. */}
-        {group.totalUsd !== null && (
+        {/* A department that only exists in the recruitment sheet has nothing
+            to take a percentage of; ratio bars reading 0% would suggest a
+            coverage problem where there is only an empty team. */}
+        {!total && (
+          <p className="rounded-xl border border-dashed border-navy/[0.12] bg-surface-sunken/60 p-3 text-[12px] leading-6 text-ink-muted">
+            {l('لا يوجد موظفون في هذا القسم بعد — ظهر هنا لأن له طلبات توظيف نشطة.', 'No employees in this department yet — it appears here because it has active recruitment requests.')}
+          </p>
+        )}
+        {total > 0 && <CoverageRow label={l('تغطية الرواتب', 'Payroll coverage')} part={group.withPayroll} total={total} />}
+        {total > 0 && <CoverageRow label={l('التأمينات', 'Insurance')} part={group.withInsurance} total={total} />}
+        {total > 0 && (
+          <div className="flex items-center justify-between gap-3 text-[12px]">
+            <span className="text-ink-muted">{l('حسابات Qodo المرتبطة', 'Linked Qodo accounts')}</span>
+            <b className="hr-num font-semibold text-navy">{group.linkedAccounts}<span className="font-normal text-ink-faint">/{total}</span></b>
+          </div>
+        )}
+        {/* Nothing at all when payroll is gated. When it is readable but this
+            department has no row in the payroll sheet, say so — that used to
+            render identically to "no permission". */}
+        {group.payroll.state === 'matched' && (
           <div className="flex items-center justify-between gap-3 border-t border-navy/[0.07] pt-3 text-[12px]">
             <span className="text-ink-muted">{l('إجمالي رواتب القسم', 'Department payroll')}</span>
-            <b className="hr-num text-[15px] font-semibold text-navy">{usd(group.totalUsd, lang)}</b>
+            <b className="hr-num text-[15px] font-semibold text-navy">{usd(group.payroll.totalUsd, lang)}</b>
+          </div>
+        )}
+        {group.payroll.state === 'unmatched' && (
+          <div className="flex items-center justify-between gap-3 border-t border-navy/[0.07] pt-3 text-[12px]">
+            <span className="text-ink-muted">{l('إجمالي رواتب القسم', 'Department payroll')}</span>
+            <span className="text-[11px] text-accent-700">{l('لا يوجد صف مطابق في شيت الرواتب', 'No matching row in the payroll sheet')}</span>
           </div>
         )}
       </div>
@@ -831,12 +928,14 @@ function DepartmentTeam({ group, lang, onBack }: { group: DepartmentSummary; lan
 
       <TabSummary title={l('ملخص القسم', 'Department summary')} items={[
         { label: l('نشط', 'Active'), value: group.active, featured: true },
-        { label: l('سابق', 'Former'), value: group.former },
+        { label: l('سابق', 'Former'), value: group.former, note: group.unspecified > 0 ? l(`${group.unspecified} غير محدد`, `${group.unspecified} unspecified`) : '' },
         { label: l('تغطية الرواتب', 'Payroll coverage'), value: `${coverage(group.withPayroll, total)}%`, note: `${group.withPayroll}/${total}` },
         { label: l('التأمينات', 'Insurance'), value: `${coverage(group.withInsurance, total)}%`, note: `${group.withInsurance}/${total}` },
-        ...(group.totalUsd !== null
-          ? [{ label: l('إجمالي رواتب القسم', 'Department payroll'), value: usd(group.totalUsd, lang) }]
-          : [{ label: l('حسابات Qodo', 'Qodo accounts'), value: group.linkedAccounts, note: `${group.linkedAccounts}/${total}` }]),
+        ...(group.payroll.state === 'matched'
+          ? [{ label: l('إجمالي رواتب القسم', 'Department payroll'), value: usd(group.payroll.totalUsd, lang) }]
+          : group.payroll.state === 'unmatched'
+            ? [{ label: l('إجمالي رواتب القسم', 'Department payroll'), value: '—', note: l('لا يوجد صف مطابق', 'No matching row') }]
+            : [{ label: l('حسابات Qodo', 'Qodo accounts'), value: group.linkedAccounts, note: `${group.linkedAccounts}/${total}` }]),
       ]} />
 
       <section className="space-y-3">
