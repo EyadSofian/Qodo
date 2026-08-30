@@ -29,6 +29,7 @@ import {
   ShieldCheck,
   LayoutDashboard,
   UploadCloud,
+  Unlink,
   UsersRound,
   WalletCards,
 } from 'lucide-react';
@@ -45,6 +46,7 @@ import {
   type HREmployeeSummary,
   type HROrganizationPosition,
   type HROdooRecruitmentData,
+  type HROdooRecruitmentJobOption,
   type HRRecruitmentAnalytics,
   type HRRecruitmentRequest,
   type HRSource,
@@ -1146,6 +1148,8 @@ function RecruitmentDesk({ data, lang, onChanged }: { data: HRDashboardData; lan
   const [editor, setEditor] = useState<HRRecruitmentRequest | null>(null);
   const [odoo, setOdoo] = useState<HROdooRecruitmentData | null>(null);
   const [odooLoading, setOdooLoading] = useState(true);
+  const [odooRefreshing, setOdooRefreshing] = useState(false);
+  const [mappingOpen, setMappingOpen] = useState(false);
   const analytics = data.analytics?.recruitment;
   useEffect(() => {
     let live = true;
@@ -1177,6 +1181,18 @@ function RecruitmentDesk({ data, lang, onChanged }: { data: HRDashboardData; lan
       push(errorMessage(error, lang), 'bad');
     } finally { setSaving(''); }
   };
+  const reloadOdoo = async (force = false) => {
+    if (force) setOdooRefreshing(true);
+    try {
+      const result = await api.get<HROdooRecruitmentData>(`/hr/recruitment/odoo${force ? '?refresh=1' : ''}`);
+      setOdoo(result);
+      if (force) push(l('تمت مزامنة أحدث بيانات Odoo.', 'Latest Odoo data synced.'));
+    } catch (error) {
+      push(errorMessage(error, lang), 'bad');
+    } finally {
+      if (force) setOdooRefreshing(false);
+    }
+  };
   return (
     <div className="space-y-8">
       <TabSummary title={l('ملخص التوظيف', 'Recruitment summary')} items={[
@@ -1187,7 +1203,15 @@ function RecruitmentDesk({ data, lang, onChanged }: { data: HRDashboardData; lan
         { label: l('متوسط مدة التعيين', 'Average hiring cycle'), value: analytics?.averageActualDays === null || analytics?.averageActualDays === undefined ? '—' : analytics.averageActualDays, note: analytics?.averageActualDays ? l('يوم فعلي', 'actual days') : l('لا توجد تواريخ تعيين فعلية', 'No actual hire dates') },
       ]} />
 
-      <OdooRecruitmentPanel odoo={odoo} loading={odooLoading} lang={lang} />
+      <OdooRecruitmentPanel
+        odoo={odoo}
+        loading={odooLoading}
+        refreshing={odooRefreshing}
+        lang={lang}
+        canManage={data.permissions.canManage}
+        onManage={() => setMappingOpen(true)}
+        onRefresh={() => void reloadOdoo(true)}
+      />
 
       <InsightPanel eyebrow={l('مراحل الطلبات النشطة', 'Active request stages')} title={l('دورة التعيين من الشيت', 'Workbook recruitment funnel')}>
         <RecruitmentFunnel analytics={analytics} lang={lang} />
@@ -1215,11 +1239,20 @@ function RecruitmentDesk({ data, lang, onChanged }: { data: HRDashboardData; lan
       <div className="grid gap-3 lg:grid-cols-2">{rows.map((request) => <RecruitmentRequestCard key={request.id} request={request} match={odoo?.matches[request.id]} lang={lang} canManage={data.permissions.canManage} saving={saving === request.id} onStatus={(status) => updateStatus(request, status)} onEdit={() => setEditor(request)} />)}</div>
       {!rows.length && <EmptyState title={l('لا توجد طلبات بهذه الحالة', 'No requests in this state')} />}
       {editor && <RecruitmentEditor request={editor} lang={lang} onClose={() => setEditor(null)} onSaved={async () => { setEditor(null); await onChanged(); }} />}
+      {mappingOpen && odoo && <RecruitmentMappingModal requests={data.recruitment} odoo={odoo} lang={lang} onClose={() => setMappingOpen(false)} onChanged={() => reloadOdoo(false)} />}
     </div>
   );
 }
 
-function OdooRecruitmentPanel({ odoo, loading, lang }: { odoo: HROdooRecruitmentData | null; loading: boolean; lang: 'ar' | 'en' }) {
+function OdooRecruitmentPanel({ odoo, loading, refreshing, lang, canManage, onManage, onRefresh }: {
+  odoo: HROdooRecruitmentData | null;
+  loading: boolean;
+  refreshing: boolean;
+  lang: 'ar' | 'en';
+  canManage: boolean;
+  onManage: () => void;
+  onRefresh: () => void;
+}) {
   const l = (ar: string, en: string) => (lang === 'en' ? en : ar);
   if (loading) {
     return <section className="hr-panel flex min-h-36 items-center justify-center gap-2 text-xs font-semibold text-ink-muted"><Spinner size={16} />{l('جاري قراءة مسار التوظيف من Odoo…', 'Reading the Odoo recruitment pipeline…')}</section>;
@@ -1254,7 +1287,19 @@ function OdooRecruitmentPanel({ odoo, loading, lang }: { odoo: HROdooRecruitment
           </div>
           <h2 className="hr-title mt-1">{l('صورة التوظيف الفعلية ومراحل المرشحين', 'Live hiring picture and candidate stages')}</h2>
         </div>
-        <p className="max-w-md text-xs leading-6 text-ink-muted">{l('الأرقام هنا من Odoo مباشرة؛ أرقام دورة الطلبات أسفلها مصدرها شيت الموارد البشرية.', 'These figures come directly from Odoo; the request cycle below still comes from the HR workbook.')}</p>
+        <div className="flex max-w-lg flex-col items-end gap-2">
+          <p className="text-xs leading-6 text-ink-muted">{l('الأرقام هنا من Odoo مباشرة؛ أرقام دورة الطلبات أسفلها مصدرها شيت الموارد البشرية.', 'These figures come directly from Odoo; the request cycle below still comes from the HR workbook.')}</p>
+          {canManage && (
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <button type="button" className="btn-quiet btn-sm !min-h-9" onClick={onRefresh} disabled={refreshing}>
+                {refreshing ? <Spinner size={14} /> : <RefreshCw size={14} />}{l('مزامنة الآن', 'Sync now')}
+              </button>
+              <button type="button" className="btn-primary btn-sm !min-h-9" onClick={onManage}>
+                <Link2 size={14} />{l(`إدارة الربط (${summary.unmatched})`, `Manage mapping (${summary.unmatched})`)}
+              </button>
+            </div>
+          )}
+        </div>
       </header>
 
       <div className="grid grid-cols-2 gap-px bg-navy/[0.06] lg:grid-cols-4">
@@ -1287,12 +1332,206 @@ function OdooRecruitmentPanel({ odoo, loading, lang }: { odoo: HROdooRecruitment
           <p className="text-[11px] font-bold text-navy">{l('سلامة الربط', 'Link health')}</p>
           <div className="mt-3 space-y-3 text-xs leading-5 text-ink-muted">
             <p><b className="hr-num text-base text-navy">{integer(summary.unmatched, lang)}</b><br />{l('طلب غير مربوط تلقائيًا لأن الاسم غير مطابق بثقة.', 'requests left unlinked because the title is not a confident match.')}</p>
+            <p><b className="hr-num text-base text-navy">{integer(summary.manualMatched, lang)}</b><br />{l('ربط يدوي راجعه فريق الموارد البشرية.', 'links reviewed manually by HR.')}</p>
             <p><b className="hr-num text-base text-navy">{integer(summary.staleActive, lang)}</b><br />{l('وظيفة Odoo نشطة بينما طلب الشيت المقابل غير نشط.', 'Odoo jobs are active while the linked workbook request is not.')}</p>
           </div>
           <p className="mt-4 border-t border-navy/[0.07] pt-3 text-[10px] leading-5 text-ink-faint">{l('لا يتم تخمين المطابقة من كلمة عامة مثل “Instructor”؛ الحالات غير المؤكدة تظل للمراجعة اليدوية.', 'Generic titles such as “Instructor” are never guessed; uncertain links stay available for manual review.')}</p>
         </aside>
       </div>
     </section>
+  );
+}
+
+function RecruitmentMappingModal({ requests, odoo, lang, onClose, onChanged }: {
+  requests: HRRecruitmentRequest[];
+  odoo: HROdooRecruitmentData;
+  lang: 'ar' | 'en';
+  onClose: () => void;
+  onChanged: () => Promise<void>;
+}) {
+  const l = (ar: string, en: string) => (lang === 'en' ? en : ar);
+  const { push } = useToast();
+  const [mode, setMode] = useState<'unmatched' | 'all'>('unmatched');
+  const [requestQuery, setRequestQuery] = useState('');
+  const [jobQuery, setJobQuery] = useState('');
+  const [selectedId, setSelectedId] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const visibleRequests = useMemo(() => {
+    const needle = requestQuery.trim().toLowerCase();
+    return requests
+      .filter((request) => mode === 'all' || !odoo.matches[request.id])
+      .filter((request) => !needle || `${request.role} ${request.department} ${request.location}`.toLowerCase().includes(needle))
+      .sort((left, right) => Number(right.status === 'active') - Number(left.status === 'active') || left.role.localeCompare(right.role, lang === 'ar' ? 'ar' : 'en'));
+  }, [lang, mode, odoo.matches, requestQuery, requests]);
+
+  const selected = visibleRequests.find((request) => request.id === selectedId) ?? visibleRequests[0] ?? null;
+  const currentMatch = selected ? odoo.matches[selected.id] : undefined;
+  const savedManualJobId = selected ? odoo.manualLinks[selected.id] : undefined;
+  const jobChoices = useMemo(() => {
+    if (!selected) return [];
+    const needle = jobQuery.trim().toLowerCase();
+    if (!needle) return odoo.suggestions[selected.id] ?? [];
+    const terms = needle.split(/\s+/).filter(Boolean);
+    return odoo.jobOptions
+      .filter((job) => {
+        const haystack = `${job.name} ${job.department} ${job.jobId}`.toLowerCase();
+        return terms.every((term) => haystack.includes(term));
+      })
+      .slice(0, 30);
+  }, [jobQuery, odoo.jobOptions, odoo.suggestions, selected]);
+
+  const chooseRequest = (requestId: string) => {
+    setSelectedId(requestId);
+    setJobQuery('');
+  };
+  const saveLink = async (jobId: number | null) => {
+    if (!selected) return;
+    setSaving(true);
+    try {
+      await api.put(`/hr/recruitment/${encodeURIComponent(selected.id)}/odoo-link`, { jobId });
+      await onChanged();
+      setJobQuery('');
+      push(jobId === null ? l('تم فك الربط اليدوي.', 'Manual link removed.') : l('تم حفظ ربط الوظيفة ومزامنة بياناتها.', 'Job link saved and synced.'));
+    } catch (error) {
+      push(errorMessage(error, lang), 'bad');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={l('ربط طلبات التوظيف بوظائف Odoo', 'Map recruitment requests to Odoo jobs')}
+      width="xl"
+      footer={<button type="button" className="btn-primary" onClick={onClose}>{l('تم', 'Done')}</button>}
+    >
+      <div className="mb-4 grid gap-3 rounded-2xl border border-brand-500/10 bg-brand-50/60 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+        <div>
+          <p className="text-sm font-bold text-navy">{l('قرار بشري واحد، وبعده الأرقام تتحدث تلقائيًا', 'One human decision, then the numbers stay in sync')}</p>
+          <p className="mt-1 text-[11px] leading-5 text-ink-muted">{l('اختيارك يُحفظ خارج الشيت، لذلك رفع نسخة Excel جديدة لن يمسح الربط. المزامنة للقراءة من Odoo فقط.', 'Your choice is stored outside the workbook, so a new Excel upload will not erase it. Sync is read-only from Odoo.')}</p>
+        </div>
+        <div className="flex items-center gap-2 text-xs font-semibold text-brand-700">
+          <span className="hr-num text-xl text-navy" dir="ltr">{integer(odoo.summary.matched, lang)}/{integer(odoo.summary.total, lang)}</span>
+          <span>{l('مربوط', 'linked')}</span>
+        </div>
+      </div>
+
+      <div className="grid min-h-[31rem] gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]">
+        <aside className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-navy/[0.07] bg-surface-sunken/55">
+          <div className="border-b border-navy/[0.07] p-3">
+            <div className="hr-seg flex w-full">
+              <button type="button" className="hr-seg-btn flex-1" aria-pressed={mode === 'unmatched'} onClick={() => setMode('unmatched')}>{l(`غير مرتبط (${odoo.summary.unmatched})`, `Unlinked (${odoo.summary.unmatched})`)}</button>
+              <button type="button" className="hr-seg-btn flex-1" aria-pressed={mode === 'all'} onClick={() => setMode('all')}>{l('الكل', 'All')}</button>
+            </div>
+            <div className="relative mt-2.5">
+              <Search size={14} className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-ink-faint" />
+              <input className="field !py-2 ps-9 text-xs" value={requestQuery} onChange={(event) => setRequestQuery(event.target.value)} placeholder={l('ابحث في طلبات الشيت…', 'Search workbook requests…')} />
+            </div>
+          </div>
+          <div className="max-h-[50dvh] flex-1 space-y-1 overflow-y-auto p-2">
+            {visibleRequests.map((request) => {
+              const match = odoo.matches[request.id];
+              const invalid = Boolean(odoo.manualLinks[request.id] && !match);
+              return (
+                <button
+                  key={request.id}
+                  type="button"
+                  onClick={() => chooseRequest(request.id)}
+                  className={cx('w-full rounded-xl px-3 py-2.5 text-start transition-colors', selected?.id === request.id ? 'bg-navy text-white shadow-sm' : 'hover:bg-white')}
+                >
+                  <span className="block truncate text-xs font-bold">{request.role}</span>
+                  <span className={cx('mt-1 flex items-center justify-between gap-2 text-[10px]', selected?.id === request.id ? 'text-white/65' : 'text-ink-faint')}>
+                    <span className="truncate">{request.department || request.location || '—'}</span>
+                    <span className="shrink-0">{invalid ? l('رابط قديم', 'stale link') : match?.matchType === 'manual' ? l('يدوي', 'manual') : match ? l('تلقائي', 'automatic') : l('غير مرتبط', 'unlinked')}</span>
+                  </span>
+                </button>
+              );
+            })}
+            {!visibleRequests.length && <div className="p-5 text-center text-xs leading-6 text-ink-muted">{mode === 'unmatched' ? l('كل الطلبات مرتبطة الآن.', 'Every request is linked now.') : l('لا توجد نتائج.', 'No results.')}</div>}
+          </div>
+        </aside>
+
+        <section className="min-w-0 rounded-2xl border border-navy/[0.07] bg-white/70 p-4">
+          {selected ? (
+            <>
+              <div className="flex flex-wrap items-start justify-between gap-3 border-b border-navy/[0.07] pb-4">
+                <div className="min-w-0">
+                  <p className="hr-eyebrow">{l('طلب الشيت المختار', 'Selected workbook request')}</p>
+                  <h3 className="mt-1 text-base font-bold text-navy">{selected.role}</h3>
+                  <p className="mt-1 text-[11px] leading-5 text-ink-muted">{selected.department || '—'} · {selected.location || '—'} · {selected.status}</p>
+                </div>
+                {(currentMatch?.matchType === 'manual' || savedManualJobId) && (
+                  <button type="button" className="btn-quiet btn-sm !min-h-9 text-status-bad" disabled={saving} onClick={() => void saveLink(null)}>
+                    <Unlink size={14} />{l('فك الربط اليدوي', 'Remove manual link')}
+                  </button>
+                )}
+              </div>
+
+              {currentMatch && (
+                <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-brand-500/10 bg-brand-50/55 px-3 py-2.5 text-xs">
+                  <Check size={14} className="text-brand-500" />
+                  <span className="font-bold text-navy">{l('مرتبط حاليًا:', 'Currently linked:')} {currentMatch.name}</span>
+                  <span className="text-ink-muted">· {currentMatch.matchType === 'manual' ? l('يدوي', 'manual') : l('تلقائي', 'automatic')}</span>
+                </div>
+              )}
+              {savedManualJobId && !currentMatch && (
+                <div className="mt-3 rounded-xl border border-accent-500/20 bg-accent-50 px-3 py-2.5 text-xs leading-6 text-accent-700">{l('الرابط المحفوظ يشير إلى وظيفة لم تعد موجودة في Odoo. اختر وظيفة جديدة أو فك الرابط القديم.', 'The saved link points to a job that no longer exists in Odoo. Choose a new job or remove the stale link.')}</div>
+              )}
+
+              <label className="mt-4 block">
+                <span className="label">{l('ابحث في وظائف Odoo', 'Search Odoo jobs')}</span>
+                <div className="relative">
+                  <Search size={15} className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-ink-faint" />
+                  <input className="field ps-9" value={jobQuery} onChange={(event) => setJobQuery(event.target.value)} placeholder={l('اسم الوظيفة، القسم أو رقم Odoo…', 'Job title, department, or Odoo ID…')} autoFocus />
+                </div>
+              </label>
+              {!jobQuery && <p className="mt-2 text-[10px] leading-5 text-ink-faint">{l('النتائج التالية اقتراحات بالاسم فقط وتحتاج قرارك قبل الحفظ.', 'The results below are title suggestions only and require your decision before saving.')}</p>}
+
+              <div className="mt-3 max-h-[36dvh] space-y-2 overflow-y-auto pe-1">
+                {jobChoices.map((job) => (
+                  <OdooJobChoice
+                    key={job.jobId}
+                    job={job}
+                    lang={lang}
+                    selected={currentMatch?.jobId === job.jobId}
+                    saving={saving}
+                    onChoose={() => void saveLink(job.jobId)}
+                  />
+                ))}
+                {!jobChoices.length && <div className="rounded-xl bg-surface-sunken px-4 py-6 text-center text-xs leading-6 text-ink-muted">{jobQuery ? l('لا توجد وظيفة Odoo مطابقة للبحث.', 'No Odoo job matches this search.') : l('لا توجد اقتراحات كافية. استخدم البحث للوصول إلى الوظيفة.', 'No useful suggestions. Search for the Odoo job instead.')}</div>}
+              </div>
+            </>
+          ) : <EmptyState title={l('لا توجد طلبات تحتاج ربطًا', 'No requests need mapping')} />}
+        </section>
+      </div>
+    </Modal>
+  );
+}
+
+function OdooJobChoice({ job, lang, selected, saving, onChoose }: {
+  job: HROdooRecruitmentJobOption;
+  lang: 'ar' | 'en';
+  selected: boolean;
+  saving: boolean;
+  onChoose: () => void;
+}) {
+  const l = (ar: string, en: string) => (lang === 'en' ? en : ar);
+  return (
+    <button type="button" disabled={saving || selected} onClick={onChoose} className={cx('flex w-full items-center gap-3 rounded-xl border px-3 py-3 text-start transition-colors', selected ? 'border-brand-500/25 bg-brand-50' : 'border-navy/[0.07] bg-white hover:border-brand-500/25 hover:bg-brand-50/40', saving && 'opacity-60')}>
+      <span className={cx('grid h-8 min-w-10 shrink-0 place-items-center rounded-lg px-1 text-[10px] font-bold', selected ? 'bg-brand-500 text-white' : 'bg-surface-sunken text-brand-600')}>{selected ? <Check size={15} /> : job.jobId}</span>
+      <span className="min-w-0 flex-1">
+        <span className="flex flex-wrap items-center gap-2">
+          <b className="truncate text-xs text-navy">{job.name}</b>
+          <span className={cx('rounded-full px-2 py-0.5 text-[9px] font-bold', job.active ? 'bg-brand-50 text-brand-600' : 'bg-surface-sunken text-ink-muted')}>{job.active ? l('نشطة', 'Active') : l('سابقة', 'Archived')}</span>
+          {job.suggestionScore !== undefined && <span className="text-[9px] font-semibold text-ink-faint">{l('اقتراح اسم', 'Title suggestion')} {Math.round(job.suggestionScore * 100)}%</span>}
+        </span>
+        <span className="mt-1 block truncate text-[10px] text-ink-muted">{job.department || l('بدون قسم', 'No department')} · {job.applicantCount === null ? '—' : `${integer(job.applicantCount, lang)} ${l('سجل', 'records')}`}</span>
+      </span>
+      <span className="shrink-0 text-[10px] font-bold text-brand-600">{selected ? l('مربوط', 'Linked') : l('اختيار', 'Choose')}</span>
+    </button>
   );
 }
 
@@ -1355,6 +1594,7 @@ function RecruitmentRequestCard({ request, match, lang, canManage, saving, onSta
             <summary className="flex cursor-pointer list-none items-center gap-2 text-xs font-semibold text-navy [&::-webkit-details-marker]:hidden">
               <ChevronDown size={14} className="shrink-0 text-brand-500 transition-transform group-open:rotate-180" />
               <span className="min-w-0 flex-1 truncate">{l('مسار Odoo', 'Odoo pipeline')} · {match.name}</span>
+              {match.matchType === 'manual' && <span className="shrink-0 rounded-full bg-white/80 px-2 py-0.5 text-[9px] text-brand-600">{l('ربط يدوي', 'Manual')}</span>}
               {match.applicantCount !== null && <span className="hr-num shrink-0 text-brand-600">{integer(match.applicantCount, lang)} {l('مرشح', 'records')}</span>}
             </summary>
             <div className="mt-3 border-t border-brand-500/10 pt-3">

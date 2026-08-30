@@ -44,6 +44,10 @@ export const COLLECTIONS = [
   'hrDatasets',
   'hrImportRuns',
   'hrEmployeeLinks',
+  // Explicit links between one imported recruitment request and one Odoo job.
+  // They live outside the workbook snapshot so a new import cannot overwrite a
+  // choice HR has already reviewed and approved in the dashboard.
+  'hrRecruitmentLinks',
   // One KPI scorecard per person, per template, per month. The measured numbers
   // are stored; the grade is derived on read, so a corrected band never leaves
   // stale scores behind.

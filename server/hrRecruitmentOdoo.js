@@ -78,11 +78,11 @@ function relationId(value) {
   return Array.isArray(value) ? Number(value[0]) : null;
 }
 
-async function readOdooState() {
+async function readOdooState(forceRefresh = false) {
   if (!odooConfigured()) {
     return { configured: false, jobs: [], applicantByJob: new Map(), stagesByJob: new Map(), applicantsAvailable: false };
   }
-  if (cached && Date.now() - cached.at < CACHE_MS) return cached.value;
+  if (!forceRefresh && cached && Date.now() - cached.at < CACHE_MS) return cached.value;
 
   const jobs = await searchRead(
     'hr.job',
@@ -138,9 +138,43 @@ async function readOdooState() {
   return value;
 }
 
-export async function odooRecruitmentMatches(requests) {
+function jobOption(job, state) {
+  return {
+    jobId: job.id,
+    name: String(job.name || ''),
+    active: Boolean(job.active),
+    department: Array.isArray(job.department_id) ? String(job.department_id[1]) : '',
+    applicantCount: state.applicantsAvailable ? (state.applicantByJob.get(job.id) ?? 0) : null,
+  };
+}
+
+function suggestedJobs(role, jobs, state) {
+  return jobs
+    .map((job) => ({ job, suggestionScore: similarity(role, job.name) }))
+    .filter((item) => item.suggestionScore >= 0.2)
+    .sort((left, right) => right.suggestionScore - left.suggestionScore || Number(right.job.active) - Number(left.job.active) || right.job.id - left.job.id)
+    .slice(0, 6)
+    .map(({ job, suggestionScore }) => ({ ...jobOption(job, state), suggestionScore: Number(suggestionScore.toFixed(2)) }));
+}
+
+function resolvedJob(request, jobs, manualLinks = {}) {
+  const manualJobId = Number(manualLinks[request.id]);
+  if (Number.isInteger(manualJobId) && manualJobId > 0) {
+    const job = jobs.find((candidate) => candidate.id === manualJobId);
+    return job ? { job, score: 1, matchType: 'manual' } : { invalidManual: true };
+  }
+  const automatic = bestJob(request.role, jobs);
+  return automatic ? { ...automatic, matchType: 'automatic' } : null;
+}
+
+export async function odooRecruitmentJob(jobId) {
+  const state = await readOdooState();
+  return state.jobs.find((job) => job.id === Number(jobId)) ?? null;
+}
+
+export async function odooRecruitmentMatches(requests, { manualLinks = {}, includeJobs = false, forceRefresh = false } = {}) {
   try {
-    const state = await readOdooState();
+    const state = await readOdooState(forceRefresh);
     if (!state.configured) {
       return {
         configured: false,
@@ -148,15 +182,24 @@ export async function odooRecruitmentMatches(requests) {
         applicantsAvailable: false,
         summary: emptySummary(requests.length),
         matches: {},
+        jobOptions: [],
+        suggestions: {},
+        manualLinks: {},
       };
     }
 
     const baseUrl = String(process.env.ODOO_URL || '').replace(/\/+$/, '');
     const matches = {};
+    const suggestions = {};
+    let invalidManualLinks = 0;
     for (const request of requests) {
-      const match = bestJob(request.role, state.jobs);
-      if (!match) continue;
-      const { job, score } = match;
+      const match = resolvedJob(request, state.jobs, manualLinks);
+      if (!match || match.invalidManual) {
+        if (match?.invalidManual) invalidManualLinks += 1;
+        if (includeJobs) suggestions[request.id] = suggestedJobs(request.role, state.jobs, state);
+        continue;
+      }
+      const { job, score, matchType } = match;
       const applicantCount = state.applicantsAvailable ? (state.applicantByJob.get(job.id) ?? 0) : null;
       matches[request.id] = {
         jobId: job.id,
@@ -169,8 +212,10 @@ export async function odooRecruitmentMatches(requests) {
         applicantCount,
         stages: state.stagesByJob.get(job.id) ?? [],
         confidence: Number(score.toFixed(2)),
+        matchType,
         url: `${baseUrl}/web#id=${job.id}&model=hr.job&view_type=form`,
       };
+      if (includeJobs) suggestions[request.id] = suggestedJobs(request.role, state.jobs, state);
     }
     const linkedJobIds = new Set(Object.values(matches).map((match) => match.jobId));
     const staleActiveJobIds = new Set(
@@ -190,6 +235,9 @@ export async function odooRecruitmentMatches(requests) {
         matched: Object.keys(matches).length,
         total: requests.length,
         unmatched: requests.length - Object.keys(matches).length,
+        manualMatched: Object.values(matches).filter((match) => match.matchType === 'manual').length,
+        automaticMatched: Object.values(matches).filter((match) => match.matchType === 'automatic').length,
+        invalidManualLinks,
         linkedJobs: linkedJobIds.size,
         staleActive: staleActiveJobIds.size,
         candidateTotal: state.candidateTotal,
@@ -200,6 +248,13 @@ export async function odooRecruitmentMatches(requests) {
         stageTotals: state.stageTotals,
       },
       matches,
+      jobOptions: includeJobs
+        ? state.jobs
+            .map((job) => jobOption(job, state))
+            .sort((left, right) => Number(right.active) - Number(left.active) || left.name.localeCompare(right.name, 'en') || right.jobId - left.jobId)
+        : [],
+      suggestions,
+      manualLinks: includeJobs ? manualLinks : {},
     };
   } catch (error) {
     console.warn('[hr] Odoo recruitment unavailable:', error?.message ?? error);
@@ -209,6 +264,9 @@ export async function odooRecruitmentMatches(requests) {
       applicantsAvailable: false,
       summary: emptySummary(requests.length),
       matches: {},
+      jobOptions: [],
+      suggestions: {},
+      manualLinks: {},
     };
   }
 }
@@ -218,6 +276,9 @@ function emptySummary(total) {
     matched: 0,
     total,
     unmatched: total,
+    manualMatched: 0,
+    automaticMatched: 0,
+    invalidManualLinks: 0,
     linkedJobs: 0,
     staleActive: 0,
     candidateTotal: null,
@@ -229,4 +290,4 @@ function emptySummary(total) {
   };
 }
 
-export const __test = { clean, similarity, confidentMatchScore, bestJob };
+export const __test = { clean, similarity, confidentMatchScore, bestJob, resolvedJob, suggestedJobs };

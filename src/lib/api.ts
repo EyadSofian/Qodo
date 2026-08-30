@@ -112,6 +112,8 @@ const ERRORS: Record<string, { ar: string; en: string }> = {
   hr_dataset_missing: { ar: 'ارفع شيت المصدر أولاً قبل التعديل.', en: 'Upload this source workbook before editing it.' },
   hr_employee_not_found: { ar: 'لم يتم العثور على كود الموظف.', en: 'The employee code was not found.' },
   hr_recruitment_not_found: { ar: 'طلب التوظيف غير موجود.', en: 'The recruitment request was not found.' },
+  hr_odoo_job_invalid: { ar: 'اختيار وظيفة Odoo غير صالح.', en: 'The selected Odoo job is invalid.' },
+  hr_odoo_job_not_found: { ar: 'وظيفة Odoo المختارة لم تعد موجودة.', en: 'The selected Odoo job no longer exists.' },
   hr_patch_empty: { ar: 'لا توجد حقول صالحة للحفظ.', en: 'There are no valid fields to save.' },
   invalid_hr_plans: { ar: 'إعدادات تشغيل HR غير صحيحة.', en: 'The HR automation settings are invalid.' },
   unknown_hr_template: { ar: 'قالب مهمة HR غير معروف أو تم تغييره.', en: 'That HR task template is unknown or has changed.' },

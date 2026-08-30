@@ -43,3 +43,37 @@ test('normalisation still joins equivalent role names', () => {
     { id: 2, name: 'CAMA' },
   ])?.score, 1);
 });
+
+test('an HR-reviewed manual link overrides conservative automatic matching', () => {
+  const request = { id: 'req-ksa', role: 'Telesales (KSA)' };
+  const jobs = [
+    { id: 20, name: 'Telesales' },
+    { id: 21, name: 'Sales Team Leader' },
+  ];
+  assert.equal(__test.resolvedJob(request, jobs), null);
+  assert.deepEqual(__test.resolvedJob(request, jobs, { 'req-ksa': 20 }), {
+    job: jobs[0],
+    score: 1,
+    matchType: 'manual',
+  });
+});
+
+test('a removed Odoo job leaves a visible stale manual link instead of guessing a replacement', () => {
+  assert.deepEqual(__test.resolvedJob(
+    { id: 'req-old', role: 'Instructor' },
+    [{ id: 2, name: 'Instructor' }],
+    { 'req-old': 999 }
+  ), { invalidManual: true });
+});
+
+test('manual review suggestions rank similar titles but never create a link themselves', () => {
+  const jobs = [
+    { id: 1, name: 'Telesales', active: true, department_id: [7, 'Sales'] },
+    { id: 2, name: 'HR Manager', active: true, department_id: [8, 'HR'] },
+  ];
+  const state = { applicantsAvailable: true, applicantByJob: new Map([[1, 12], [2, 3]]) };
+  const suggestions = __test.suggestedJobs('Telesales (KSA)', jobs, state);
+  assert.equal(suggestions[0].jobId, 1);
+  assert.equal(suggestions[0].applicantCount, 12);
+  assert.ok(suggestions[0].suggestionScore > 0.5);
+});

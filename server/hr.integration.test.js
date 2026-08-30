@@ -232,6 +232,23 @@ test('recruitment imports expose cycle analytics and auto-close filled requests'
   assert.equal(before.data.recruitment[0].role, 'Video LMS Team Leader');
   assert.equal(before.data.recruitment[0].receivedCandidates, 'wait');
 
+  const observerCannotMap = await request(`/hr/recruitment/${encodeURIComponent(before.data.recruitment[0].id)}/odoo-link`, {
+    method: 'PUT', cookie: observerCookie, body: { jobId: null },
+  });
+  assert.equal(observerCannotMap.status, 403);
+
+  const clearedManualLink = await request(`/hr/recruitment/${encodeURIComponent(before.data.recruitment[0].id)}/odoo-link`, {
+    method: 'PUT', cookie: payrollCookie, body: { jobId: null },
+  });
+  assert.equal(clearedManualLink.status, 200, JSON.stringify(clearedManualLink.data));
+  assert.equal(clearedManualLink.data.link.linksCount, 0);
+
+  const missingOdooJob = await request(`/hr/recruitment/${encodeURIComponent(before.data.recruitment[0].id)}/odoo-link`, {
+    method: 'PUT', cookie: payrollCookie, body: { jobId: 999_999_999 },
+  });
+  assert.equal(missingOdooJob.status, 404);
+  assert.equal(missingOdooJob.data.error, 'hr_odoo_job_not_found');
+
   const filled = await request(`/hr/recruitment/${encodeURIComponent(before.data.recruitment[0].id)}`, {
     method: 'PATCH', cookie: payrollCookie, body: { accepted: 1 },
   });

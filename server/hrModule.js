@@ -3,10 +3,11 @@ import { can, PERMISSIONS } from '../shared/permissions.js';
 import { organizationOf } from '../shared/organization.js';
 import { HR_IMPORT_SOURCES, HRWorkbookError, parseHRWorkbook } from './hrWorkbook.js';
 import { usdEgpRate } from './hrFx.js';
-import { odooRecruitmentMatches } from './hrRecruitmentOdoo.js';
+import { odooRecruitmentJob, odooRecruitmentMatches } from './hrRecruitmentOdoo.js';
 
 const datasetId = (organizationId, source) => `hr-dataset:${organizationId}:${source}`;
 const linkDocumentId = (organizationId) => `hr-links:${organizationId}`;
+const recruitmentLinkDocumentId = (organizationId) => `hr-recruitment-links:${organizationId}`;
 
 const SOURCE_LABELS = {
   master: { ar: 'قاعدة الموظفين', en: 'Employee database' },
@@ -504,10 +505,40 @@ export async function hrDashboardFor(user) {
   };
 }
 
-export async function hrRecruitmentOdooFor(user) {
+export async function hrRecruitmentOdooFor(user, { forceRefresh = false } = {}) {
   if (!can(user, PERMISSIONS.HR_VIEW)) throw new HRWorkbookError('forbidden', 403);
-  const state = await organizationState(organizationOf(user));
-  return odooRecruitmentMatches(state.bySource.recruitment?.payload?.requests ?? []);
+  const organizationId = organizationOf(user);
+  const [state, linkDocument] = await Promise.all([
+    organizationState(organizationId),
+    findOne('hrRecruitmentLinks', (document) => document.id === recruitmentLinkDocumentId(organizationId)),
+  ]);
+  return odooRecruitmentMatches(state.bySource.recruitment?.payload?.requests ?? [], {
+    manualLinks: linkDocument?.links ?? {},
+    includeJobs: can(user, PERMISSIONS.HR_MANAGE),
+    forceRefresh,
+  });
+}
+
+export async function setRecruitmentOdooLink({ organizationId, requestId, jobId, actorId }) {
+  const state = await organizationState(organizationId);
+  const requests = state.bySource.recruitment?.payload?.requests ?? [];
+  if (!requests.some((request) => request.id === requestId)) {
+    throw new HRWorkbookError('hr_recruitment_not_found', 404);
+  }
+  if (jobId !== null) {
+    if (!Number.isInteger(jobId) || jobId <= 0) throw new HRWorkbookError('hr_odoo_job_invalid');
+    if (!await odooRecruitmentJob(jobId)) throw new HRWorkbookError('hr_odoo_job_not_found', 404);
+  }
+
+  const id = recruitmentLinkDocumentId(organizationId);
+  const current = await findOne('hrRecruitmentLinks', (document) => document.id === id);
+  const links = { ...(current?.links ?? {}) };
+  if (jobId === null) delete links[requestId];
+  else links[requestId] = jobId;
+  const patch = { organizationId, links, updatedBy: actorId };
+  if (current) await (await getStore()).update('hrRecruitmentLinks', id, patch);
+  else await create('hrRecruitmentLinks', { id, ...patch });
+  return { requestId, jobId, linksCount: Object.keys(links).length };
 }
 
 function stripSensitive(profile, includeSensitive, includePayroll) {

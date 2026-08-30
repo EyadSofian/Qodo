@@ -11,6 +11,7 @@ import {
   hrRecruitmentOdooFor,
   importHRDataset,
   linkHREmployee,
+  setRecruitmentOdooLink,
   updateHREmployee,
   updateRecruitmentRequest,
 } from '../hrModule.js';
@@ -167,7 +168,32 @@ router.get('/employees/:employeeCode', async (req, res) => {
 
 router.get('/recruitment/odoo', requirePermission(PERMISSIONS.HR_VIEW), async (req, res) => {
   try {
-    res.json(await hrRecruitmentOdooFor(req.user));
+    res.json(await hrRecruitmentOdooFor(req.user, {
+      forceRefresh: req.query.refresh === '1' && can(req.user, PERMISSIONS.HR_MANAGE),
+    }));
+  } catch (error) {
+    fail(res, error);
+  }
+});
+
+router.put('/recruitment/:requestId/odoo-link', requirePermission(PERMISSIONS.HR_MANAGE), async (req, res) => {
+  try {
+    const rawJobId = req.body?.jobId;
+    const jobId = rawJobId === null ? null : Number(rawJobId);
+    const link = await setRecruitmentOdooLink({
+      organizationId: organizationOf(req.user),
+      requestId: req.params.requestId,
+      jobId,
+      actorId: req.user.id,
+    });
+    await logActivity({
+      actorId: req.user.id,
+      action: jobId === null ? 'hr.recruitment.odoo.unlink' : 'hr.recruitment.odoo.link',
+      subject: 'hrRecruitment',
+      subjectId: req.params.requestId,
+      meta: { jobId },
+    });
+    res.json({ link });
   } catch (error) {
     fail(res, error);
   }

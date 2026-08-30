@@ -131,7 +131,17 @@ export interface HROdooRecruitmentMatch {
   applicantCount: number | null;
   stages: Array<{ stage: string; count: number }>;
   confidence: number;
+  matchType: 'automatic' | 'manual';
   url: string;
+}
+
+export interface HROdooRecruitmentJobOption {
+  jobId: number;
+  name: string;
+  active: boolean;
+  department: string;
+  applicantCount: number | null;
+  suggestionScore?: number;
 }
 
 export interface HROdooRecruitmentData {
@@ -142,6 +152,9 @@ export interface HROdooRecruitmentData {
     matched: number;
     total: number;
     unmatched: number;
+    manualMatched: number;
+    automaticMatched: number;
+    invalidManualLinks: number;
     linkedJobs: number;
     staleActive: number;
     candidateTotal: number | null;
@@ -152,6 +165,9 @@ export interface HROdooRecruitmentData {
     stageTotals: Array<{ stage: string; count: number }>;
   };
   matches: Record<string, HROdooRecruitmentMatch>;
+  jobOptions: HROdooRecruitmentJobOption[];
+  suggestions: Record<string, HROdooRecruitmentJobOption[]>;
+  manualLinks: Record<string, number>;
 }
 
 export interface HRDashboardData {
