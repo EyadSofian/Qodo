@@ -242,6 +242,23 @@ export function Prices() {
     });
   }, [advice, band, ar, lang]);
 
+  /**
+   * Two instruments publishing the same number are one offer to a seller.
+   *
+   * Tabby and Tamara each carry their own row at the same price, and rendering
+   * both puts the identical line on screen twice, which reads as a bug. Folded
+   * here rather than in the rule, because the two rows are genuinely two rules
+   * and the API is right to say so.
+   */
+  const offers = useMemo(() => {
+    const seen = new Map<string, Offer>();
+    for (const offer of advice?.offers ?? []) {
+      const key = `${offer.exact}|${offer.minimum}|${offer.maximum}|${offer.validTo}|${offer.note}`;
+      if (!seen.has(key)) seen.set(key, offer);
+    }
+    return [...seen.values()];
+  }, [advice]);
+
   const copyPrice = async () => {
     if (advice?.priceInQuestion == null) return;
     try {
@@ -426,7 +443,7 @@ export function Prices() {
                   : 'Search by name or code and pick the course; the right price for the case appears here.'
               }
             />
-          ) : !advice || !band ? (
+          ) : !advice || (!band && offers.length === 0) ? (
             <EmptyState
               icon={<CircleAlert size={30} />}
               title={ar ? 'لا يوجد سعر منشور لهذه الطريقة' : 'No price is published for this route'}
@@ -461,122 +478,135 @@ export function Prices() {
                 </p>
               </div>
 
-              {/* the number */}
-              <div className="rounded-2xl bg-surface-sunken p-4">
-                <p className="text-[11.5px] font-semibold text-ink-muted">
-                  {advice.asked !== null
-                    ? ar
-                      ? 'السعر الذي طلبه العميل'
-                      : 'The price the customer named'
-                    : ar
-                      ? 'ابدأ من'
-                      : 'Open at'}
-                </p>
-                <div className="mt-1 flex items-center gap-3">
-                  <span className="num text-3xl font-bold text-ink">
-                    {money(advice.priceInQuestion, advice.currency, lang)}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={copyPrice}
-                    className="btn-quiet btn-sm !min-h-9"
-                    title={ar ? 'نسخ الرقم' : 'Copy the figure'}
-                  >
-                    {copied ? <Check size={15} /> : <Copy size={15} />}
-                  </button>
+              {band && (
+                <>
+                {/* the number */}
+                <div className="rounded-2xl bg-surface-sunken p-4">
+                  <p className="text-[11.5px] font-semibold text-ink-muted">
+                    {advice.asked !== null
+                      ? ar
+                        ? 'السعر الذي طلبه العميل'
+                        : 'The price the customer named'
+                      : ar
+                        ? 'ابدأ من'
+                        : 'Open at'}
+                  </p>
+                  <div className="mt-1 flex items-center gap-3">
+                    <span className="num text-3xl font-bold text-ink">
+                      {money(advice.priceInQuestion, advice.currency, lang)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={copyPrice}
+                      className="btn-quiet btn-sm !min-h-9"
+                      title={ar ? 'نسخ الرقم' : 'Copy the figure'}
+                    >
+                      {copied ? <Check size={15} /> : <Copy size={15} />}
+                    </button>
+                  </div>
+                  {advice.asked !== null && advice.suggested !== null && (
+                    <p className="mt-1 text-[12px] text-ink-muted">
+                      {ar ? 'الاقتراح لهذه الحالة' : 'The suggestion for this case'}:{' '}
+                      <bdi className="num font-semibold">
+                        {money(advice.suggested, advice.currency, lang)}
+                      </bdi>
+                    </p>
+                  )}
                 </div>
-                {advice.asked !== null && advice.suggested !== null && (
-                  <p className="mt-1 text-[12px] text-ink-muted">
-                    {ar ? 'الاقتراح لهذه الحالة' : 'The suggestion for this case'}:{' '}
-                    <bdi className="num font-semibold">
-                      {money(advice.suggested, advice.currency, lang)}
+
+                {/* the room around it */}
+                <div className="flex items-center justify-between gap-3 rounded-xl border border-surface-line px-3.5 py-2.5">
+                  <div>
+                    <p className="text-[11px] text-ink-faint">{ar ? 'الحد الأدنى' : 'Floor'}</p>
+                    <p className="num text-[14px] font-bold text-ink">
+                      {money(band.floor, advice.currency, lang)}
+                    </p>
+                  </div>
+                  <div className="h-px flex-1 bg-surface-line" />
+                  <div className="text-end">
+                    <p className="text-[11px] text-ink-faint">{ar ? 'السعر الرسمي' : 'List price'}</p>
+                    <p className="num text-[14px] font-bold text-ink">
+                      {money(band.ceiling, advice.currency, lang)}
+                    </p>
+                  </div>
+                </div>
+
+                {/* the verdict */}
+                {advice.verdict && (
+                  <div
+                    className={cx(
+                      'flex items-start gap-2.5 rounded-xl px-3.5 py-3',
+                      VERDICTS[advice.verdict].tone
+                    )}
+                  >
+                    {(() => {
+                      const Icon = VERDICTS[advice.verdict].Icon;
+                      return <Icon size={18} className="mt-0.5 shrink-0" />;
+                    })()}
+                    <div>
+                      <p className="text-[13px] font-bold">{VERDICTS[advice.verdict][lang]}</p>
+                      {advice.verdict === 'not_allowed' &&
+                        band.floor !== null &&
+                        advice.priceInQuestion !== null && (
+                          <p className="mt-0.5 text-[12px] leading-relaxed opacity-90">
+                            {ar
+                              ? `أقل من الحد الأدنى بـ ${money(band.floor - advice.priceInQuestion, advice.currency, lang)}، وسيظهر في تقرير الالتزام كمخالفة.`
+                              : `That is ${money(band.floor - advice.priceInQuestion, advice.currency, lang)} under the floor and will appear in compliance reporting as a breach.`}
+                          </p>
+                        )}
+                    </div>
+                  </div>
+                )}
+
+                {/* why */}
+                {reasonText.length > 0 && (
+                  <ul className="space-y-1.5 border-t border-surface-line pt-3">
+                    {reasonText.map((reason) => (
+                      <li key={reason} className="text-[12.5px] leading-relaxed text-ink-muted">
+                        {reason}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                {/* the route not taken */}
+                {advice.alternate && (
+                  <p className="text-[12px] leading-relaxed text-ink-muted">
+                    {ar ? 'الطريقة الأخرى' : 'The other route'} (
+                    {advice.alternate.payment === 'cash'
+                      ? ar
+                        ? 'كاش'
+                        : 'cash'
+                      : ar
+                        ? 'تقسيط'
+                        : 'instalment'}
+                    ):{' '}
+                    <bdi className="num font-semibold text-ink">
+                      {money(advice.alternate.band.floor, advice.currency, lang)} –{' '}
+                      {money(advice.alternate.band.ceiling, advice.currency, lang)}
                     </bdi>
                   </p>
                 )}
-              </div>
-
-              {/* the room around it */}
-              <div className="flex items-center justify-between gap-3 rounded-xl border border-surface-line px-3.5 py-2.5">
-                <div>
-                  <p className="text-[11px] text-ink-faint">{ar ? 'الحد الأدنى' : 'Floor'}</p>
-                  <p className="num text-[14px] font-bold text-ink">
-                    {money(band.floor, advice.currency, lang)}
-                  </p>
-                </div>
-                <div className="h-px flex-1 bg-surface-line" />
-                <div className="text-end">
-                  <p className="text-[11px] text-ink-faint">{ar ? 'السعر الرسمي' : 'List price'}</p>
-                  <p className="num text-[14px] font-bold text-ink">
-                    {money(band.ceiling, advice.currency, lang)}
-                  </p>
-                </div>
-              </div>
-
-              {/* the verdict */}
-              {advice.verdict && (
-                <div
-                  className={cx(
-                    'flex items-start gap-2.5 rounded-xl px-3.5 py-3',
-                    VERDICTS[advice.verdict].tone
-                  )}
-                >
-                  {(() => {
-                    const Icon = VERDICTS[advice.verdict].Icon;
-                    return <Icon size={18} className="mt-0.5 shrink-0" />;
-                  })()}
-                  <div>
-                    <p className="text-[13px] font-bold">{VERDICTS[advice.verdict][lang]}</p>
-                    {advice.verdict === 'not_allowed' &&
-                      band.floor !== null &&
-                      advice.priceInQuestion !== null && (
-                        <p className="mt-0.5 text-[12px] leading-relaxed opacity-90">
-                          {ar
-                            ? `أقل من الحد الأدنى بـ ${money(band.floor - advice.priceInQuestion, advice.currency, lang)}، وسيظهر في تقرير الالتزام كمخالفة.`
-                            : `That is ${money(band.floor - advice.priceInQuestion, advice.currency, lang)} under the floor and will appear in compliance reporting as a breach.`}
-                        </p>
-                      )}
-                  </div>
-                </div>
+                </>
               )}
 
-              {/* why */}
-              {reasonText.length > 0 && (
-                <ul className="space-y-1.5 border-t border-surface-line pt-3">
-                  {reasonText.map((reason) => (
-                    <li key={reason} className="text-[12.5px] leading-relaxed text-ink-muted">
-                      {reason}
-                    </li>
-                  ))}
-                </ul>
-              )}
-
-              {/* the route not taken */}
-              {advice.alternate && (
-                <p className="text-[12px] leading-relaxed text-ink-muted">
-                  {ar ? 'الطريقة الأخرى' : 'The other route'} (
-                  {advice.alternate.payment === 'cash'
-                    ? ar
-                      ? 'كاش'
-                      : 'cash'
-                    : ar
-                      ? 'تقسيط'
-                      : 'instalment'}
-                  ):{' '}
-                  <bdi className="num font-semibold text-ink">
-                    {money(advice.alternate.band.floor, advice.currency, lang)} –{' '}
-                    {money(advice.alternate.band.ceiling, advice.currency, lang)}
-                  </bdi>
+              {/* priced only by a live offer: real, and not a band */}
+              {!band && (
+                <p className="rounded-xl bg-status-infoBg px-3.5 py-3 text-[12.5px] leading-relaxed text-status-info">
+                  {ar
+                    ? 'هذه الدورة ليس لها سعر أساسي منشور على هذه الطريقة — تُباع بالعرض الساري أدناه، ولا توجد مساحة تفاوض حوله.'
+                    : 'This course publishes no base price on this route — it is sold at the live offer below, and there is no band to negotiate inside.'}
                 </p>
               )}
 
               {/* live offers */}
-              {advice.offers.length > 0 && (
+              {offers.length > 0 && (
                 <div className="rounded-xl bg-accent-50 px-3.5 py-3">
                   <p className="text-[12px] font-bold text-accent-600">
                     {ar ? 'عرض ساري' : 'Live offer'}
                   </p>
                   <ul className="mt-1 space-y-1">
-                    {advice.offers.map((offer) => (
+                    {offers.map((offer) => (
                       <li key={offer.id} className="text-[12.5px] leading-relaxed text-ink">
                         <bdi className="num font-bold">
                           {money(
