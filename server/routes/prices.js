@@ -59,16 +59,32 @@ router.get('/status', (req, res) => {
   res.json({ configured: Boolean(secret()), hub: hubUrl() });
 });
 
-const FORWARDED = ['q', 'key', 'code', 'market', 'payment', 'state', 'asked', 'mode'];
+const ADVICE_PARAMS = ['q', 'key', 'code', 'market', 'payment', 'state', 'asked', 'mode'];
+const CATALOG_PARAMS = [
+  'q',
+  'specialization',
+  'deliveryType',
+  'negotiable',
+  'offers',
+  'unpriced',
+  'hideOnHold',
+  'limit',
+  'offset',
+];
+
+function forward(query, names) {
+  const out = new URLSearchParams();
+  for (const name of names) {
+    const value = query[name];
+    if (typeof value === 'string' && value.trim()) out.set(name, value.trim().slice(0, 320));
+  }
+  return out;
+}
 
 router.get('/advice', async (req, res) => {
   if (!secret()) return res.status(503).json({ error: 'prices_not_configured' });
 
-  const query = new URLSearchParams();
-  for (const name of FORWARDED) {
-    const value = req.query[name];
-    if (typeof value === 'string' && value.trim()) query.set(name, value.trim().slice(0, 320));
-  }
+  const query = forward(req.query, ADVICE_PARAMS);
   if (!query.has('q') && !query.has('key') && !query.has('code')) {
     return res.status(400).json({ error: 'course_required' });
   }
@@ -77,7 +93,7 @@ router.get('/advice', async (req, res) => {
   // A typed figure is a deliberate act, not a keystroke storm, and caching per
   // number would fill the map with one entry per digit somebody typed. The
   // search-as-you-type path is the one that benefits, and it is the one cached.
-  const load = () => fetchAdvice(url);
+  const load = () => fetchHub(url);
 
   try {
     res.json(query.has('asked') ? await load() : await cache.get(url, load));
@@ -88,7 +104,21 @@ router.get('/advice', async (req, res) => {
   }
 });
 
-async function fetchAdvice(url) {
+/** The whole list, for reading down rather than searching. Always cached. */
+router.get('/catalog', async (req, res) => {
+  if (!secret()) return res.status(503).json({ error: 'prices_not_configured' });
+
+  const url = `${hubUrl()}/api/prices/catalog?${forward(req.query, CATALOG_PARAMS)}`;
+  try {
+    res.json(await cache.get(url, () => fetchHub(url)));
+  } catch (error) {
+    if (error.status === 400) return res.status(400).json({ error: 'invalid_price_query' });
+    console.error('[prices]', error.message);
+    res.status(502).json({ error: 'prices_upstream' });
+  }
+});
+
+async function fetchHub(url) {
   const response = await fetch(url, {
     headers: { Accept: 'application/json', 'x-service-secret': secret() },
     signal: AbortSignal.timeout(12_000),
