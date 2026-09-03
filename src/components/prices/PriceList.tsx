@@ -5,13 +5,25 @@
  * question: what do we charge for everything, on every route, at a glance. A
  * seller scans it before a campaign; a manager reads it to find what is missing.
  *
- * Every band on screen is computed by the hub from the same module the advisor
- * uses, so a row here and the advice for that course cannot disagree. Nothing
- * about a price is decided in this file.
+ * Every band and every offer on screen is computed by the hub from the same
+ * module the advisor uses, so a row here and the advice for that course cannot
+ * disagree. Nothing about a price is decided in this file.
+ *
+ * A row is a starting point, not a destination: picking one hands the course to
+ * the advisor, because "what do we charge" is usually asked on the way to "what
+ * do I quote this person".
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, BadgePercent, Pause, Search, SlidersHorizontal } from 'lucide-react';
+import {
+  AlertTriangle,
+  BadgePercent,
+  ChevronLeft,
+  ChevronRight,
+  Pause,
+  Search,
+  SlidersHorizontal,
+} from 'lucide-react';
 import { api, errorMessage } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { EmptyState, Segmented, Spinner } from '@/components/ui';
@@ -29,6 +41,7 @@ interface Band {
 interface Offer {
   id: string;
   currency: string;
+  paymentMethod: string;
   exact: number | null;
   minimum: number | null;
   maximum: number | null;
@@ -36,7 +49,9 @@ interface Offer {
   note: string;
 }
 
-interface Row {
+type RouteKey = 'sa_instalment' | 'sa_cash' | 'eg';
+
+export interface Row {
   key: string;
   code: string;
   rawCode: string;
@@ -48,8 +63,9 @@ interface Row {
   requiresReview: boolean;
   negotiable: boolean;
   mode: 'course' | 'package';
-  routes: { sa_cash: Band | null; sa_instalment: Band | null; eg: Band | null };
+  routes: Record<RouteKey, Band | null>;
   offers: Offer[];
+  offersByRoute: Record<RouteKey, Offer[]>;
   unpriced: boolean;
 }
 
@@ -73,6 +89,12 @@ const DELIVERY: Record<string, { ar: string; en: string }> = {
   exam: { ar: 'اختبار', en: 'Exam' },
 };
 
+const ROUTES: Array<{ key: RouteKey; ar: string; en: string }> = [
+  { key: 'sa_instalment', ar: 'تقسيط (SAR)', en: 'Instalment (SAR)' },
+  { key: 'sa_cash', ar: 'كاش (SAR)', en: 'Cash (SAR)' },
+  { key: 'eg', ar: 'مصر (EGP)', en: 'Egypt (EGP)' },
+];
+
 const money = (value: number | null, currency: string, lang: 'ar' | 'en') =>
   value === null || !Number.isFinite(value)
     ? null
@@ -82,25 +104,94 @@ const money = (value: number | null, currency: string, lang: 'ar' | 'en') =>
         maximumFractionDigits: 0,
       }).format(value);
 
-/** A band as one cell: a single figure when fixed, a range when there is room. */
-function BandCell({ band, lang }: { band: Band | null; lang: 'ar' | 'en' }) {
-  if (!band) return <span className="text-ink-faint">—</span>;
+const offerFigure = (offer: Offer) => offer.exact ?? offer.minimum ?? offer.maximum;
+
+/**
+ * One route's price.
+ *
+ * The band when there is one, the live offer beneath it, and the offer *instead*
+ * of a dash when the course publishes no base price on this route at all — which
+ * is a real, sellable number and not the absence of one.
+ */
+function RoutePrice({
+  band,
+  offers,
+  lang,
+  ar,
+}: {
+  band: Band | null;
+  offers: Offer[];
+  lang: 'ar' | 'en';
+  ar: boolean;
+}) {
+  const offer = offers[0];
+  const offerText = offer ? money(offerFigure(offer), offer.currency, lang) : null;
+
+  if (!band) {
+    if (!offerText) return <span className="text-ink-faint">—</span>;
+    return (
+      <span className="inline-flex items-center gap-1 whitespace-nowrap">
+        <BadgePercent size={12} className="shrink-0 text-accent-600" />
+        <bdi className="num font-semibold text-accent-600">{offerText}</bdi>
+        <span className="text-[10.5px] text-ink-faint">{ar ? 'عرض' : 'offer'}</span>
+      </span>
+    );
+  }
+
   const floor = money(band.floor, band.currency, lang);
   const ceiling = money(band.ceiling, band.currency, lang);
-  if (band.fixed || floor === ceiling) {
-    return <bdi className="num font-semibold text-ink">{ceiling}</bdi>;
-  }
   return (
-    <bdi className="num whitespace-nowrap text-ink">
-      <span className="font-semibold">{ceiling}</span>
-      <span className="text-ink-faint"> ← </span>
-      <span className="text-ink-muted">{floor}</span>
-    </bdi>
+    <span className="block">
+      <bdi className="num whitespace-nowrap text-ink">
+        <span className="font-semibold">{ceiling}</span>
+        {!band.fixed && floor !== ceiling && (
+          <>
+            <span className="text-ink-faint"> ← </span>
+            <span className="text-ink-muted">{floor}</span>
+          </>
+        )}
+      </bdi>
+      {offerText && (
+        <span className="mt-0.5 flex items-center gap-1 whitespace-nowrap">
+          <BadgePercent size={11} className="shrink-0 text-accent-600" />
+          <bdi className="num text-[11.5px] font-semibold text-accent-600">{offerText}</bdi>
+          <span className="text-[10.5px] text-ink-faint">{ar ? 'عرض' : 'offer'}</span>
+        </span>
+      )}
+    </span>
   );
 }
 
-export function PriceList({ onBook }: { onBook?: (book: Book | null) => void }) {
-  const { lang } = useI18n();
+function Chips({ row, ar }: { row: Row; ar: boolean }) {
+  return (
+    <>
+      {row.mode === 'package' && (
+        <span className="chip bg-brand-50 text-brand-600">{ar ? 'باقة' : 'Package'}</span>
+      )}
+      {row.onHold && (
+        <span className="chip gap-1 bg-surface-sunken text-ink-muted">
+          <Pause size={12} />
+          {ar ? 'موقوفة' : 'On hold'}
+        </span>
+      )}
+      {row.unpriced && (
+        <span className="chip gap-1 bg-status-warnBg text-status-warn">
+          <AlertTriangle size={12} />
+          {ar ? 'بلا سعر منشور' : 'No published price'}
+        </span>
+      )}
+    </>
+  );
+}
+
+export function PriceList({
+  onBook,
+  onPick,
+}: {
+  onBook?: (book: Book | null) => void;
+  onPick?: (row: Row) => void;
+}) {
+  const { lang, dir } = useI18n();
   const ar = lang === 'ar';
 
   const [query, setQuery] = useState('');
@@ -159,21 +250,27 @@ export function PriceList({ onBook }: { onBook?: (book: Book | null) => void }) 
     [ar, counts]
   );
 
+  // Forward is left in Arabic and right in English, so the glyph changes rather
+  // than being flipped — a mirrored chevron is the same arrow pointing back.
+  const Forward = dir === 'rtl' ? ChevronLeft : ChevronRight;
+
   return (
     <div className="space-y-3.5">
-      {/* ── finding your way down the list ───────────────────────────── */}
       <div className="card p-3">
         <div className="flex flex-wrap items-center gap-2">
-          <div className="relative min-w-[12rem] flex-1">
+          <div className="relative min-w-[10rem] flex-1">
             <Search
               size={16}
-              className="pointer-events-none absolute top-1/2 -translate-y-1/2 text-ink-faint ltr:left-3 rtl:right-3"
+              className={cx(
+                'pointer-events-none absolute top-1/2 -translate-y-1/2 text-ink-faint',
+                dir === 'rtl' ? 'right-3' : 'left-3'
+              )}
             />
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder={ar ? 'ابحث بالاسم أو الكود…' : 'Search by name or code…'}
-              className="field ltr:pl-9 rtl:pr-9"
+              className={cx('field', dir === 'rtl' ? 'pr-9' : 'pl-9')}
               autoComplete="off"
             />
           </div>
@@ -213,7 +310,7 @@ export function PriceList({ onBook }: { onBook?: (book: Book | null) => void }) 
               onChange={(event) => setDelivery(event.target.value)}
               className="field"
             >
-              <option value="">{ar ? 'كل طرق التقديم' : 'Every delivery type' }</option>
+              <option value="">{ar ? 'كل طرق التقديم' : 'Every delivery type'}</option>
               {(data?.facets.deliveryTypes ?? []).map((value) => (
                 <option key={value} value={value}>
                   {deliveryLabel(value)}
@@ -224,7 +321,6 @@ export function PriceList({ onBook }: { onBook?: (book: Book | null) => void }) 
         )}
       </div>
 
-      {/* ── the list ─────────────────────────────────────────────────── */}
       {loading && !data ? (
         <div className="card grid place-items-center py-16">
           <Spinner size={26} className="text-brand-500" />
@@ -263,79 +359,103 @@ export function PriceList({ onBook }: { onBook?: (book: Book | null) => void }) 
             <p className="text-[12.5px] font-semibold text-ink-muted">
               {ar ? `${data?.total} دورة` : `${data?.total} courses`}
             </p>
-            <p className="text-[11.5px] text-ink-faint">
+            <p className="hidden text-[11.5px] text-ink-faint sm:block">
               {ar ? 'السعر الرسمي ← الحد الأدنى' : 'List price ← floor'}
             </p>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[46rem] text-start">
+          {/* A phone gets cards. A table with three price columns on a 375px
+              screen is a horizontal scrollbar, and a seller mid-call will not
+              scroll sideways to find the floor. */}
+          <ul className="divide-y divide-surface-line sm:hidden">
+            {rows.map((row) => (
+              <li key={row.key}>
+                <button
+                  type="button"
+                  onClick={() => onPick?.(row)}
+                  className={cx(
+                    'w-full px-3.5 py-3 text-start active:bg-surface-sunken',
+                    row.unpriced && 'bg-status-warnBg/40'
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-[13.5px] font-semibold text-ink">
+                          {row.courseName}
+                        </span>
+                        <Chips row={row} ar={ar} />
+                      </div>
+                      <p className="ltr mt-0.5 text-[11px] text-ink-faint">
+                        {row.rawCode || row.code || '—'} · {deliveryLabel(row.deliveryType)}
+                      </p>
+                    </div>
+                    <Forward size={16} className="mt-1 shrink-0 text-ink-faint" />
+                  </div>
+                  <dl className="mt-2 space-y-1">
+                    {ROUTES.map((route) => (
+                      <div key={route.key} className="flex items-baseline justify-between gap-3">
+                        <dt className="text-[11.5px] text-ink-muted">{route[lang]}</dt>
+                        <dd className="text-[12.5px]">
+                          <RoutePrice
+                            band={row.routes[route.key]}
+                            offers={row.offersByRoute?.[route.key] ?? []}
+                            lang={lang}
+                            ar={ar}
+                          />
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+                </button>
+              </li>
+            ))}
+          </ul>
+
+          <div className="hidden overflow-x-auto sm:block">
+            <table className="w-full min-w-[44rem] text-start">
               <thead>
                 <tr className="border-b border-surface-line bg-surface-sunken/60 text-[11.5px] text-ink-muted">
                   <th className="px-3.5 py-2 text-start font-semibold">
                     {ar ? 'الدورة' : 'Course'}
                   </th>
-                  <th className="px-3 py-2 text-start font-semibold">
-                    {ar ? 'تقسيط (SAR)' : 'Instalment (SAR)'}
-                  </th>
-                  <th className="px-3 py-2 text-start font-semibold">
-                    {ar ? 'كاش (SAR)' : 'Cash (SAR)'}
-                  </th>
-                  <th className="px-3 py-2 text-start font-semibold">
-                    {ar ? 'مصر (EGP)' : 'Egypt (EGP)'}
-                  </th>
+                  {ROUTES.map((route) => (
+                    <th key={route.key} className="px-3 py-2 text-start font-semibold">
+                      {route[lang]}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
                 {rows.map((row) => (
                   <tr
                     key={row.key}
+                    onClick={() => onPick?.(row)}
                     className={cx(
-                      'border-b border-surface-line last:border-b-0',
+                      'cursor-pointer border-b border-surface-line last:border-b-0 hover:bg-surface-sunken/70',
                       row.unpriced && 'bg-status-warnBg/40'
                     )}
                   >
                     <td className="px-3.5 py-2.5 align-top">
                       <div className="flex flex-wrap items-center gap-1.5">
                         <span className="text-[13px] font-semibold text-ink">{row.courseName}</span>
-                        {row.mode === 'package' && (
-                          <span className="chip bg-brand-50 text-brand-600">
-                            {ar ? 'باقة' : 'Package'}
-                          </span>
-                        )}
-                        {row.offers.length > 0 && (
-                          <span className="chip gap-1 bg-accent-50 text-accent-600">
-                            <BadgePercent size={12} />
-                            {ar ? 'عرض' : 'Offer'}
-                          </span>
-                        )}
-                        {row.onHold && (
-                          <span className="chip gap-1 bg-surface-sunken text-ink-muted">
-                            <Pause size={12} />
-                            {ar ? 'موقوفة' : 'On hold'}
-                          </span>
-                        )}
-                        {row.unpriced && (
-                          <span className="chip gap-1 bg-status-warnBg text-status-warn">
-                            <AlertTriangle size={12} />
-                            {ar ? 'بلا سعر منشور' : 'No published price'}
-                          </span>
-                        )}
+                        <Chips row={row} ar={ar} />
                       </div>
                       <p className="ltr mt-0.5 text-[11px] text-ink-faint">
                         {row.rawCode || row.code || '—'} · {deliveryLabel(row.deliveryType)}
                         {row.specialization && ` · ${row.specialization}`}
                       </p>
                     </td>
-                    <td className="px-3 py-2.5 align-top text-[12.5px]">
-                      <BandCell band={row.routes.sa_instalment} lang={lang} />
-                    </td>
-                    <td className="px-3 py-2.5 align-top text-[12.5px]">
-                      <BandCell band={row.routes.sa_cash} lang={lang} />
-                    </td>
-                    <td className="px-3 py-2.5 align-top text-[12.5px]">
-                      <BandCell band={row.routes.eg} lang={lang} />
-                    </td>
+                    {ROUTES.map((route) => (
+                      <td key={route.key} className="px-3 py-2.5 align-top text-[12.5px]">
+                        <RoutePrice
+                          band={row.routes[route.key]}
+                          offers={row.offersByRoute?.[route.key] ?? []}
+                          lang={lang}
+                          ar={ar}
+                        />
+                      </td>
+                    ))}
                   </tr>
                 ))}
               </tbody>

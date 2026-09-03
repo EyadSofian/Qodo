@@ -143,7 +143,19 @@ const DELIVERY: Record<string, { ar: string; en: string }> = {
   exam: { ar: 'اختبار', en: 'Exam' },
 };
 
-export function PriceAdvisor({ onBook }: { onBook?: (book: Book | null) => void }) {
+export interface Handoff {
+  key: string;
+  courseName: string;
+}
+
+export function PriceAdvisor({
+  onBook,
+  handoff,
+}: {
+  onBook?: (book: Book | null) => void;
+  /** A course picked in the list; adopting it is what makes the tabs one tool. */
+  handoff?: Handoff | null;
+}) {
   const { lang, dir } = useI18n();
   const ar = lang === 'ar';
 
@@ -202,6 +214,23 @@ export function PriceAdvisor({ onBook }: { onBook?: (book: Book | null) => void 
     const timer = setTimeout(() => void load({ q: term, market, payment, state: customerState }), 350);
     return () => clearTimeout(timer);
   }, [query, selected, market, payment, customerState, load]);
+
+  useEffect(() => {
+    if (!handoff) return;
+    // Only the key is used to fetch; the rest of the row would be replaced by
+    // the response anyway, so the list does not have to hand over a whole match.
+    setSelected({
+      key: handoff.key,
+      code: '',
+      courseName: handoff.courseName,
+      specialization: '',
+      deliveryType: '',
+      level: '',
+      onHold: false,
+    });
+    setQuery(handoff.courseName);
+    setAsked('');
+  }, [handoff]);
 
   useEffect(() => {
     if (!selected) return;

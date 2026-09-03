@@ -18,8 +18,8 @@ import { useCallback, useState } from 'react';
 import { Compass, ListChecks } from 'lucide-react';
 import { useI18n } from '../lib/i18n';
 import { Segmented } from '../components/ui';
-import { PriceAdvisor, type Book } from '../components/prices/PriceAdvisor';
-import { PriceList } from '../components/prices/PriceList';
+import { PriceAdvisor, type Book, type Handoff } from '../components/prices/PriceAdvisor';
+import { PriceList, type Row } from '../components/prices/PriceList';
 
 type Tab = 'list' | 'advisor';
 
@@ -28,9 +28,17 @@ export function Prices() {
   const ar = lang === 'ar';
   const [tab, setTab] = useState<Tab>('list');
   const [book, setBook] = useState<Book | null>(null);
+  const [handoff, setHandoff] = useState<Handoff | null>(null);
 
   // Both tabs read the same published book; whichever loads first names it.
   const onBook = useCallback((next: Book | null) => setBook((current) => next ?? current), []);
+
+  // Picking a row in the list is the start of pricing a call, not the end of
+  // reading one. Hand the course over and follow it.
+  const onPick = useCallback((row: Row) => {
+    setHandoff({ key: row.key, courseName: row.courseName });
+    setTab('advisor');
+  }, []);
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-5 sm:px-6">
@@ -70,11 +78,11 @@ export function Prices() {
       {/* Both stay mounted: switching back to a search you already ran should
           not throw the result away and fetch it again. */}
       <div hidden={tab !== 'list'}>
-        <PriceList onBook={onBook} />
+        <PriceList onBook={onBook} onPick={onPick} />
       </div>
       <div hidden={tab !== 'advisor'}>
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)]">
-          <PriceAdvisor onBook={onBook} />
+          <PriceAdvisor onBook={onBook} handoff={handoff} />
         </div>
       </div>
     </div>
