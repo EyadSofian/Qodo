@@ -36,6 +36,7 @@ import calendarRoutes from './routes/calendar.js';
 import officeRoutes from './routes/offices.js';
 import bookingRoutes from './routes/booking.js';
 import publicBookingRoutes from './routes/publicBooking.js';
+import priceRoutes from './routes/prices.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DIST = path.join(__dirname, '..', 'dist');
@@ -89,6 +90,8 @@ app.use('/api/booking', bookingRoutes);
 // throttled per address and answers with nothing that identifies an employee
 // beyond the name they chose to publish — see routes/publicBooking.js.
 app.use('/api/book', publicBookingRoutes);
+// The price a seller may quote, proxied from the Insights Hub — see routes/prices.js.
+app.use('/api/prices', priceRoutes);
 
 app.get('/api/health', async (_req, res) => {
   const store = await getStore();

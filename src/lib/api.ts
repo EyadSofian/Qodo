@@ -409,6 +409,22 @@ const ERRORS: Record<string, { ar: string; en: string }> = {
   mail_ai_quota: { ar: 'تم تجاوز حد أو رصيد مزود الـAI.', en: 'The AI provider quota has been reached.' },
   mail_ai_failed: { ar: 'تعذّر تشغيل AI على المحادثة. حاول مرة أخرى.', en: 'AI could not process this conversation. Try again.' },
   invalid_task_date: { ar: 'تاريخ المهمة غير صالح.', en: 'The task date is not valid.' },
+  course_required: {
+    ar: 'اختر دورة أولاً.',
+    en: 'Pick a course first.',
+  },
+  prices_not_configured: {
+    ar: 'وحدة الأسعار غير مهيأة على الخادم. أضف INSIGHTS_INTERNAL_SECRET.',
+    en: 'The price module is not configured on the server. Add INSIGHTS_INTERNAL_SECRET.',
+  },
+  invalid_price_query: {
+    ar: 'الرقم المكتوب غير صالح. اكتب رقمًا مثل 1200.',
+    en: 'That is not a number. Enter a figure such as 1200.',
+  },
+  prices_upstream: {
+    ar: 'تعذّر الوصول إلى لوحة الإنسايتس. أعد المحاولة بعد قليل.',
+    en: 'The Insights Hub could not be reached. Try again shortly.',
+  },
   forbidden: { ar: 'ليست لديك صلاحية على هذا الإجراء.', en: 'You do not have permission for that.' },
 
   /* Seating plan. */
