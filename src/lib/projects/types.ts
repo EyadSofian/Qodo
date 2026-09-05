@@ -653,3 +653,74 @@ export type EarnedValue =
         progressPercent: number | null;
       };
     };
+
+/* ------------------------------------------------------------------ */
+/* Collaboration and documents                                          */
+/* ------------------------------------------------------------------ */
+
+export interface ProjectComment {
+  id: string;
+  entityType: string;
+  entityId: string;
+  authorId: string;
+  body: string;
+  parentId: string | null;
+  /** Internal by default. A client is never sent one of these. */
+  isInternal: boolean;
+  mentionIds: string[];
+  reactions: Array<{ emoji: string; userId: string }>;
+  editedAt: string | null;
+  createdAt: string;
+}
+
+export interface DocumentFolder {
+  id: string;
+  parentId: string | null;
+  name: string;
+  isExternal: boolean;
+}
+
+export interface DocumentVersion {
+  versionNo: number;
+  sizeBytes: number;
+  mimeType: string;
+  uploadedBy: string | null;
+  uploadedAt: string;
+  notes: string;
+}
+
+export interface ProjectDocument {
+  id: string;
+  folderId: string | null;
+  folderName: string | null;
+  name: string;
+  description: string;
+  isExternal: boolean;
+  currentVersion: number;
+  sizeBytes: number | null;
+  mimeType: string | null;
+  uploadedAt: string;
+  uploadedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  versions?: DocumentVersion[];
+}
+
+/**
+ * A wiki page.
+ *
+ * Named `WikiPage` rather than `ProjectPage` because that name already means
+ * "a page of projects" in this file, and one word meaning two things is how
+ * the checklist bug happened.
+ */
+export interface WikiPage {
+  id: string;
+  parentId: string | null;
+  title: string;
+  body?: string;
+  isExternal: boolean;
+  orderIndex: number;
+  revisionNo: number;
+  updatedAt: string;
+  updatedBy: string | null;
+}

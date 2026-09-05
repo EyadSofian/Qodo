@@ -19,6 +19,8 @@ import issueRoutes from './issues.js';
 import settingsRoutes from './settings.js';
 import timeRoutes from './time.js';
 import budgetRoutes from './budget.js';
+import { commentRoutes, forumRoutes, pageRoutes } from './collaboration.js';
+import documentRoutes from './documents.js';
 
 const router = Router();
 
@@ -52,6 +54,14 @@ router.use('/:projectId/schedule', scheduleRoutes);
 router.use('/:projectId/issues', issueRoutes);
 router.use('/:projectId/time', timeRoutes);
 router.use('/:projectId/budget', budgetRoutes);
+router.use('/:projectId/documents', documentRoutes);
+// Comments, forums and pages share one router — they share a project, a client
+// boundary and a mention parser. Mounted on their three specific prefixes
+// rather than on the project root, so an ordinary project request does not
+// resolve its authorization context twice on the way past.
+router.use('/:projectId/comments', commentRoutes);
+router.use('/:projectId/forum', forumRoutes);
+router.use('/:projectId/pages', pageRoutes);
 router.use('/', projectRoutes);
 
 export default router;

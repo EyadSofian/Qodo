@@ -21,6 +21,7 @@ import path from 'node:path';
 import { after, before, describe, test } from 'node:test';
 
 import { startTestDatabase } from './projects/testDatabase.js';
+import { getStore } from './store.js';
 
 /* ------------------------------------------------------------------ */
 /* Bootstrap                                                            */
@@ -51,6 +52,8 @@ let slaService;
 let metadata;
 let timeService;
 let budgetService;
+let collaboration;
+let documents;
 
 /** Two organizations, so every read can be tried from the wrong one. */
 const ORG_A = 'test-org-a';
@@ -78,6 +81,8 @@ before(async () => {
   metadata = await import('./projects/metadataService.js');
   timeService = await import('./projects/timeService.js');
   budgetService = await import('./projects/budgetService.js');
+  collaboration = await import('./projects/collaborationService.js');
+  documents = await import('./projects/documentService.js');
 
   // A clean schema per run, dropped rather than truncated so a migration added
   // since the last run is actually applied — the migration runner is itself one
@@ -95,12 +100,28 @@ before(async () => {
 });
 
 after(async () => {
-  // Let anything still in flight settle before the pool goes. Without this the
-  // last test's final query can be cut off mid-connection, and node:test
-  // reports "asynchronous activity after the test ended" — noise that would
-  // hide a real late error the next time one happens.
-  await new Promise((resolve) => setTimeout(resolve, 250));
-  if (db) await db.close();
+  // Every pool closes before the cluster does. A connection still attached
+  // when PostgreSQL shuts down produces "terminating connection due to
+  // administrator command" on a client nothing is listening to, which Node
+  // reports as an uncaught exception and node:test blames on whichever test ran
+  // last — a line that fails nothing and hides the next real one.
+  if (db) {
+    const stats = db.poolStats();
+    if (stats && stats.total !== stats.idle) {
+      console.error('[projects:test] connections still checked out at teardown:', stats);
+    }
+    await db.close();
+  }
+  // The workspace store has a pool of its own, and it is open because these
+  // tests set DATABASE_URL — which switches `server/store.js` to PostgreSQL
+  // too, so document blobs land in the same database. That is worth having:
+  // the blob half is exercised for real. But the pool it opens is not ours to
+  // forget, and leaving it attached is what made stopping the cluster produce
+  // "terminating connection due to administrator command" on a client with no
+  // handler of ours.
+  const workspaceStore = await getStore();
+  await workspaceStore.pool?.end().catch(() => {});
+
   await database.stop?.();
   await fs.rm(documentDirectory, { recursive: true, force: true }).catch(() => {});
 });
@@ -1334,6 +1355,249 @@ describe('budget', { skip: SKIP }, () => {
       !second.some((row) => row.projectId === watched.id),
       'the same budget warning went out twice'
     );
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Collaboration                                                        */
+/* ------------------------------------------------------------------ */
+
+describe('comments', { skip: SKIP }, () => {
+  let context;
+  let clientContext;
+  let task;
+
+  before(async () => {
+    if (SKIP) return;
+    const project = await projects.create(alice, { name: 'Comment Test' });
+    context = await contextFor(alice, project.id);
+    await projects.addMember(context, { userId: customer.id, role: 'client' });
+    clientContext = await contextFor(customer, project.id);
+    task = await tasks.create(context, { title: 'Discussed work' });
+  });
+
+  test('a comment is internal unless somebody deliberately shares it', async () => {
+    const internal = await collaboration.addComment(context, 'task', task.id, { body: 'Pad the estimate' });
+    assert.equal(internal.isInternal, true, 'a comment defaulted to client-visible');
+  });
+
+  test('a client never sees an internal comment', async () => {
+    await collaboration.addComment(context, 'task', task.id, {
+      body: 'Shared with the client',
+      isInternal: false,
+    });
+
+    const staffSees = await collaboration.comments(context, 'task', task.id);
+    const clientSees = await collaboration.comments(clientContext, 'task', task.id);
+
+    assert.ok(staffSees.length >= 2);
+    assert.ok(clientSees.every((comment) => comment.isInternal === false));
+    assert.ok(
+      !clientSees.some((comment) => comment.body.includes('Pad the estimate')),
+      'an internal comment reached the client'
+    );
+  });
+
+  test('a client’s own comment is always client-visible', async () => {
+    // Otherwise a customer writes something and it disappears.
+    const posted = await collaboration.addComment(clientContext, 'task', task.id, {
+      body: 'When is this due?',
+      isInternal: true,
+    });
+    assert.equal(posted.isInternal, false);
+  });
+
+  test('somebody without comment.internal cannot write an internal comment', async () => {
+    const contractorContext = {
+      ...context,
+      permissionSet: { id: 'contractor' },
+      membership: { role: 'member', isClient: false },
+    };
+    const posted = await collaboration.addComment(contractorContext, 'task', task.id, {
+      body: 'From a contractor',
+      isInternal: true,
+    });
+    assert.equal(posted.isInternal, false);
+  });
+
+  test('a mention is read out of the body, not taken beside it', async () => {
+    // The roster is empty in this test database, so nothing resolves — the
+    // point is that the field is derived rather than accepted from the caller.
+    const posted = await collaboration.addComment(context, 'task', task.id, {
+      body: 'ping @Nobody Here',
+      mentionIds: ['u-injected'],
+    });
+    assert.ok(!posted.mentionIds.includes('u-injected'), 'a caller-supplied mention was trusted');
+  });
+
+  test('only the author may edit, and visibility is not editable afterwards', async () => {
+    const posted = await collaboration.addComment(context, 'task', task.id, { body: 'Mine' });
+
+    const byOther = await collaboration.editComment(
+      { ...context, user: bob },
+      posted.id,
+      'Not mine to change'
+    );
+    assert.equal(byOther, null);
+
+    const edited = await collaboration.editComment(context, posted.id, 'Mine, corrected');
+    assert.equal(edited.body, 'Mine, corrected');
+    assert.ok(edited.editedAt);
+    assert.equal(edited.isInternal, posted.isInternal, 'editing changed who can see it');
+  });
+
+  test('a reaction toggles rather than stacking', async () => {
+    const posted = await collaboration.addComment(context, 'task', task.id, { body: 'Agreed?' });
+    assert.deepEqual(await collaboration.react(context, posted.id, '👍'), { added: true });
+    assert.deepEqual(await collaboration.react(context, posted.id, '👍'), { added: false });
+  });
+});
+
+describe('pages', { skip: SKIP }, () => {
+  let context;
+
+  before(async () => {
+    if (SKIP) return;
+    const project = await projects.create(alice, { name: 'Wiki Test' });
+    context = await contextFor(alice, project.id);
+  });
+
+  test('every save keeps what the page said before', async () => {
+    const page = await collaboration.createPage(context, { title: 'Method statement', body: 'First draft' });
+    assert.equal(page.revisionNo, 1);
+
+    const second = await collaboration.updatePage(context, page.id, { body: 'Second draft' });
+    assert.equal(second.revisionNo, 2);
+
+    const revisions = await collaboration.pageRevisions(context, page.id);
+    assert.equal(revisions.length, 2);
+  });
+
+  test('restoring writes a new revision rather than deleting the bad one', async () => {
+    const page = await collaboration.createPage(context, { title: 'Spec', body: 'Good' });
+    await collaboration.updatePage(context, page.id, { body: 'Accidentally wrong' });
+
+    const restored = await collaboration.restorePageRevision(context, page.id, 1);
+    assert.equal(restored.revisionNo, 3, 'restoring truncated the history');
+
+    const current = await collaboration.page(context, page.id);
+    assert.equal(current.body, 'Good');
+
+    // And the mistake is still in the record, because it happened.
+    const revisions = await collaboration.pageRevisions(context, page.id);
+    assert.equal(revisions.length, 3);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Documents                                                            */
+/* ------------------------------------------------------------------ */
+
+describe('documents', { skip: SKIP }, () => {
+  let context;
+  let clientContext;
+
+  before(async () => {
+    if (SKIP) return;
+    const project = await projects.create(alice, { name: 'Document Test' });
+    context = await contextFor(alice, project.id);
+    await projects.addMember(context, { userId: customer.id, role: 'client' });
+    clientContext = await contextFor(customer, project.id);
+  });
+
+  test('a filename cannot escape the store', () => {
+    assert.equal(documents.safeName('../../etc/passwd'), '_.._etc_passwd');
+    assert.equal(documents.safeName(''), 'file');
+    assert.ok(!documents.safeName('a/b/c').includes('/'));
+  });
+
+  test('the media allowlist refuses what a browser would execute', () => {
+    assert.equal(documents.isAllowedMime('application/pdf'), true);
+    assert.equal(documents.isAllowedMime('text/html'), false);
+    // SVG is markup that can carry script; it is not on the list on purpose.
+    assert.equal(documents.isAllowedMime('image/svg+xml'), false);
+  });
+
+  test('a download token is bound to the person it was minted for', () => {
+    const token = documents.signDownload('u-alice', 'file-1', 1);
+    assert.deepEqual(documents.verifyDownload(token, 'u-alice'), { fileId: 'file-1', versionNo: 1 });
+    assert.equal(documents.verifyDownload(token, 'u-mallory'), null, 'a token worked in another hand');
+    assert.equal(documents.verifyDownload(`${token.slice(0, -2)}xy`, 'u-alice'), null);
+    assert.equal(documents.verifyDownload('nonsense', 'u-alice'), null);
+  });
+
+  test('an upload becomes version one and a second upload becomes version two', async () => {
+    const first = await documents.upload(context, {
+      name: 'plan.pdf',
+      mimeType: 'application/pdf',
+      bytes: Buffer.from('%PDF-1.4 first'),
+    });
+    assert.equal(first.versionNo, 1);
+
+    const second = await documents.upload(context, {
+      fileId: first.id,
+      name: 'plan.pdf',
+      mimeType: 'application/pdf',
+      bytes: Buffer.from('%PDF-1.4 second'),
+    });
+    assert.equal(second.versionNo, 2);
+
+    const file = await documents.get(context, first.id);
+    assert.equal(file.currentVersion, 2);
+    assert.equal(file.versions.length, 2);
+  });
+
+  test('an empty or disallowed upload is refused before anything is stored', async () => {
+    await assert.rejects(
+      () => documents.upload(context, { name: 'x', mimeType: 'application/pdf', bytes: Buffer.alloc(0) }),
+      (error) => error.body?.error === 'document_empty'
+    );
+    await assert.rejects(
+      () => documents.upload(context, { name: 'x.html', mimeType: 'text/html', bytes: Buffer.from('<b>') }),
+      (error) => error.body?.error === 'file_type_not_allowed'
+    );
+  });
+
+  test('restoring an old version puts its bytes back at the front', async () => {
+    const file = await documents.upload(context, {
+      name: 'spec.txt',
+      mimeType: 'text/plain',
+      bytes: Buffer.from('original'),
+    });
+    await documents.upload(context, {
+      fileId: file.id,
+      name: 'spec.txt',
+      mimeType: 'text/plain',
+      bytes: Buffer.from('mistake'),
+    });
+
+    const restored = await documents.restoreVersion(context, file.id, 1);
+    assert.equal(restored.versionNo, 3, 'restoring truncated the history');
+
+    const bytes = await documents.download(context, file.id, 3);
+    assert.equal(bytes.bytes.toString(), 'original');
+  });
+
+  test('a client cannot see an internal document, by listing or by id', async () => {
+    const internal = await documents.upload(context, {
+      name: 'costs.csv',
+      mimeType: 'text/csv',
+      bytes: Buffer.from('rate,amount'),
+      isExternal: false,
+    });
+    const shared = await documents.upload(context, {
+      name: 'drawing.pdf',
+      mimeType: 'application/pdf',
+      bytes: Buffer.from('%PDF-1.4'),
+      isExternal: true,
+    });
+
+    const visible = await documents.list(clientContext);
+    assert.ok(visible.every((file) => file.isExternal));
+    assert.ok(visible.some((file) => file.id === shared.id));
+
+    assert.equal(await documents.get(clientContext, internal.id), null);
+    assert.equal(await documents.download(clientContext, internal.id, 1), null);
   });
 });
 

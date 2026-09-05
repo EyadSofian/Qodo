@@ -95,7 +95,31 @@ export async function startTestDatabase() {
     url: `postgres://qodo:qodo@127.0.0.1:${port}/qodo_projects_test`,
     kind: 'embedded',
     stop: async () => {
-      await server.stop().catch(() => {});
+      // Shutting the cluster down makes PostgreSQL send "terminating connection
+      // due to administrator command" down every socket still attached to it,
+      // including one the embedded-postgres package keeps for itself. It
+      // arrives on a bare client with no handler of ours, so Node reports it as
+      // an uncaught exception and node:test blames whichever test happened to
+      // be last — a line that fails nothing and hides the next real one.
+      //
+      // So it is swallowed here, by exact message, only while the server is
+      // being stopped, and only in the test harness. Anything else still
+      // crashes the process, which is what an uncaught exception should do.
+      const swallowShutdownNoise = (error) => {
+        if (!String(error?.message ?? '').includes('terminating connection due to administrator command')) {
+          throw error;
+        }
+      };
+      process.on('uncaughtException', swallowShutdownNoise);
+
+      try {
+        await server.stop().catch(() => {});
+        // Let the sockets finish erroring before the guard comes off.
+        await new Promise((resolve) => setTimeout(resolve, 150));
+      } finally {
+        process.off('uncaughtException', swallowShutdownNoise);
+      }
+
       await fs.rm(directory, { recursive: true, force: true }).catch(() => {});
     },
   };

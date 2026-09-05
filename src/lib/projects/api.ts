@@ -7,7 +7,7 @@
  * a client is logic the server is not enforcing.
  */
 
-import { api } from '../api';
+import { ApiError, api } from '../api';
 import type {
   BaselineVariance,
   ChecklistItem,
@@ -27,8 +27,12 @@ import type {
   ProjectMember,
   ProjectMemberRole,
   MemberCandidate,
+  DocumentFolder,
   ProjectBaseline,
+  ProjectComment,
+  ProjectDocument,
   ProjectPage,
+  WikiPage,
   ProjectSchedule,
   ProjectTask,
   RescheduleResult,
@@ -324,4 +328,107 @@ export const budgetApi = {
     api.put<{ budget: Budget }>(`/projects/${projectId}/budget`, input),
   earnedValue: (projectId: string) =>
     api.get<EarnedValue>(`/projects/${projectId}/budget/earned-value`),
+};
+
+/* ------------------------------------------------------------------ */
+/* Collaboration                                                        */
+/* ------------------------------------------------------------------ */
+
+export const commentsApi = {
+  list: (projectId: string, entityType: string, entityId: string) =>
+    api.get<{ comments: ProjectComment[] }>(`/projects/${projectId}/comments/${entityType}/${entityId}`),
+  add: (projectId: string, entityType: string, entityId: string, body: string, isInternal = true) =>
+    api.post<{ comment: ProjectComment }>(`/projects/${projectId}/comments/${entityType}/${entityId}`, {
+      body,
+      isInternal,
+    }),
+  edit: (projectId: string, commentId: string, body: string) =>
+    api.patch<{ comment: ProjectComment }>(`/projects/${projectId}/comments/${commentId}`, { body }),
+  remove: (projectId: string, commentId: string) =>
+    api.delete<void>(`/projects/${projectId}/comments/${commentId}`),
+  react: (projectId: string, commentId: string, emoji: string) =>
+    api.put<{ added: boolean }>(`/projects/${projectId}/comments/${commentId}/reactions`, { emoji }),
+};
+
+export const pagesApi = {
+  list: (projectId: string) => api.get<{ pages: WikiPage[] }>(`/projects/${projectId}/pages`),
+  get: (projectId: string, pageId: string) =>
+    api.get<{ page: WikiPage }>(`/projects/${projectId}/pages/${pageId}`),
+  create: (projectId: string, input: { title: string; body?: string; isExternal?: boolean }) =>
+    api.post<{ page: WikiPage }>(`/projects/${projectId}/pages`, input),
+  update: (projectId: string, pageId: string, input: { title?: string; body?: string; isExternal?: boolean }) =>
+    api.patch<{ page: WikiPage }>(`/projects/${projectId}/pages/${pageId}`, input),
+};
+
+/* ------------------------------------------------------------------ */
+/* Documents                                                            */
+/* ------------------------------------------------------------------ */
+
+export const documentsApi = {
+  list: (projectId: string, folderId?: string | null) =>
+    api.get<{ files: ProjectDocument[] }>(
+      `/projects/${projectId}/documents${queryString({ folderId: folderId === null ? 'none' : folderId })}`
+    ),
+  get: (projectId: string, fileId: string) =>
+    api.get<{ file: ProjectDocument }>(`/projects/${projectId}/documents/${fileId}`),
+  folders: (projectId: string) =>
+    api.get<{ folders: DocumentFolder[] }>(`/projects/${projectId}/documents/folders`),
+  createFolder: (projectId: string, name: string, isExternal = false) =>
+    api.post<{ folder: DocumentFolder }>(`/projects/${projectId}/documents/folders`, { name, isExternal }),
+
+  /**
+   * Upload raw bytes with the metadata in headers.
+   *
+   * Not multipart, and not JSON: a `.json` document sent as a JSON body would
+   * be eaten by the server's own body parser on the way in. Same shape the
+   * workspace's existing `api.upload` uses.
+   */
+  upload: async (
+    projectId: string,
+    file: File,
+    options: { fileId?: string; folderId?: string | null; isExternal?: boolean; notes?: string } = {}
+  ) => {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/octet-stream',
+      'X-File-Name': encodeURIComponent(file.name),
+      'X-File-Type': file.type || 'application/octet-stream',
+    };
+    if (options.fileId) headers['X-File-Id'] = options.fileId;
+    if (options.folderId) headers['X-Folder-Id'] = options.folderId;
+    if (options.isExternal) headers['X-File-External'] = '1';
+    if (options.notes) headers['X-File-Notes'] = options.notes;
+
+    const response = await fetch(`/api/projects/${projectId}/documents`, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers,
+      body: file,
+    });
+
+    let payload: Record<string, unknown> = {};
+    try {
+      payload = await response.json();
+    } catch {
+      payload = {};
+    }
+    if (!response.ok) throw new ApiError(response.status, payload);
+    return payload as { file: { id: string; name: string; versionNo: number } };
+  },
+
+  /**
+   * Two steps on purpose: authorize once and get a token that expires, then
+   * follow it. A link that leaks stops working (ADR-5).
+   */
+  downloadUrl: (projectId: string, fileId: string, versionNo?: number) =>
+    api.post<{ url: string; expiresInSeconds: number }>(
+      `/projects/${projectId}/documents/${fileId}/link`,
+      { versionNo }
+    ),
+
+  restoreVersion: (projectId: string, fileId: string, versionNo: number) =>
+    api.post<{ file: { versionNo: number } }>(
+      `/projects/${projectId}/documents/${fileId}/versions/${versionNo}/restore`
+    ),
+  remove: (projectId: string, fileId: string) =>
+    api.delete<void>(`/projects/${projectId}/documents/${fileId}`),
 };

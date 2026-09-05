@@ -436,4 +436,47 @@ export const PROJECT_STRINGS = {
   'evm.ahead': { ar: 'متقدّم على الجدول', en: 'Ahead of schedule' },
   'evm.overCost': { ar: 'فوق التكلفة', en: 'Over cost' },
   'evm.underCost': { ar: 'تحت التكلفة', en: 'Under cost' },
+
+  /* ── documents ───────────────────────────────────────────── */
+  'documents.title': { ar: 'المستندات', en: 'Documents' },
+  'documents.upload': { ar: 'رفع ملف', en: 'Upload' },
+  'documents.newVersion': { ar: 'نسخة جديدة', en: 'New version' },
+  'documents.empty': { ar: 'لا توجد مستندات', en: 'No documents' },
+  'documents.emptyHint': {
+    ar: 'ارفع المخططات والعقود والتقارير هنا — كل رفعة بتبقى نسخة، والقديم بيفضل موجود.',
+    en: 'Drawings, contracts and reports live here. Each upload is a version, and the old ones stay.',
+  },
+  'documents.versions': { ar: '{n} نسخة', en: '{n} versions' },
+  'documents.version': { ar: 'نسخة {n}', en: 'Version {n}' },
+  'documents.restore': { ar: 'استرجاع هذه النسخة', en: 'Restore this version' },
+  'documents.restored': { ar: 'تم استرجاع النسخة.', en: 'That version is now current.' },
+  'documents.download': { ar: 'تنزيل', en: 'Download' },
+  'documents.size': { ar: 'الحجم', en: 'Size' },
+  'documents.uploaded': { ar: 'رُفع', en: 'Uploaded' },
+  'documents.visibility': { ar: 'الظهور للعميل', en: 'Client visibility' },
+  'documents.internal': { ar: 'داخلي', en: 'Internal' },
+  'documents.external': { ar: 'مرئي للعميل', en: 'Visible to the client' },
+  'documents.uploading': { ar: 'جارٍ الرفع…', en: 'Uploading…' },
+  'documents.tooLarge': { ar: 'الملف أكبر من الحد المسموح (25MB).', en: 'That file is larger than 25MB.' },
+  'documents.typeNotAllowed': {
+    ar: 'نوع الملف ده مش مسموح — للأمان، الملفات اللي المتصفح ممكن ينفّذها مرفوضة.',
+    en: 'That file type is not allowed — anything a browser could execute is refused.',
+  },
+
+  /* ── comments ────────────────────────────────────────────── */
+  'comments.title': { ar: 'التعليقات', en: 'Comments' },
+  'comments.placeholder': { ar: 'اكتب تعليقًا… استخدم @ لمناداة زميل', en: 'Write a comment… use @ to mention someone' },
+  'comments.post': { ar: 'إرسال', en: 'Post' },
+  'comments.empty': { ar: 'لا توجد تعليقات بعد', en: 'No comments yet' },
+  'comments.internal': { ar: 'داخلي', en: 'Internal' },
+  'comments.internalHint': {
+    ar: 'الفريق فقط — العميل مش هيشوف التعليق ده.',
+    en: 'Staff only — the client will not see this.',
+  },
+  'comments.shared': { ar: 'مرئي للعميل', en: 'Visible to the client' },
+  'comments.sharedHint': {
+    ar: 'العميل هيقرأ التعليق ده. اتأكد قبل ما تبعت.',
+    en: 'The client will read this. Be sure before you post.',
+  },
+  'comments.edited': { ar: 'مُعدّل', en: 'edited' },
 } satisfies Record<string, { ar: string; en: string }>;

@@ -99,6 +99,20 @@ export async function init() {
       idleTimeoutMillis: 30_000,
     });
 
+    /**
+     * A pool with no `error` listener turns any idle-client failure into an
+     * uncaught exception, which in Node means the process dies.
+     *
+     * That is not a test detail: a database restart, a failover, or a network
+     * blip all error idle clients, and the API going down because PostgreSQL
+     * blinked is a worse outcome than the request that was never made. The pool
+     * discards the broken client and opens a new one on the next query, so the
+     * right response is to say so and carry on.
+     */
+    pool.on('error', (error) => {
+      console.error('[projects] idle database client errored —', error.message);
+    });
+
     await pool.query(`CREATE SCHEMA IF NOT EXISTS ${SCHEMA}`);
     await pool.query(`
       CREATE TABLE IF NOT EXISTS ${SCHEMA}.schema_migrations (
@@ -257,6 +271,12 @@ export function paginate(input = {}) {
   const limit = Math.min(MAX_PAGE, Math.max(1, Number(input.limit) || 50));
   const offset = Math.max(0, Number(input.offset) || 0);
   return { limit, offset };
+}
+
+/** Pool health, for tests that want to assert nothing leaked. */
+export function poolStats() {
+  if (!pool) return null;
+  return { total: pool.totalCount, idle: pool.idleCount, waiting: pool.waitingCount };
 }
 
 /** Closes the pool. Tests need this; the server never calls it. */

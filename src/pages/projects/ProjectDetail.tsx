@@ -23,6 +23,7 @@ import {
   Bug,
   Building2,
   Clock,
+  FileText,
   FolderKanban,
   GanttChartSquare,
   Layers,
@@ -45,6 +46,7 @@ const TABS = [
   { to: 'issues', end: false, labelKey: 'projects.nav.issues', icon: Bug },
   { to: 'timesheet', end: false, labelKey: 'projects.nav.timesheet', icon: Clock },
   { to: 'budget', end: false, labelKey: 'projects.nav.budget', icon: Banknote },
+  { to: 'documents', end: false, labelKey: 'projects.nav.documents', icon: FileText },
   { to: 'members', end: false, labelKey: 'projects.nav.members', icon: Users },
   { to: 'activity', end: false, labelKey: 'projects.nav.activity', icon: Activity },
 ] as const;
