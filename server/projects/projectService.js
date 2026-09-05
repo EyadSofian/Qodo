@@ -583,8 +583,16 @@ export async function purge(user, projectId) {
 /* Membership                                                           */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Who is on this project.
+ *
+ * Shaped into camelCase like every other reader in this module. Returning the
+ * raw row was a real bug: the browser reads `userId`, the row says `user_id`,
+ * and the members list rendered a row per person with no name on it — which
+ * React then also complained about, because every key was undefined.
+ */
 export async function members(context) {
-  return rows(
+  const found = await rows(
     `SELECT user_id, role, project_role_id, is_client, allocation_percent, added_at, added_by
        FROM qodo_projects.project_members
       WHERE project_id = $1 AND organization_id = $2
@@ -593,6 +601,31 @@ export async function members(context) {
                added_at`,
     [context.project.id, context.organizationId]
   );
+
+  // The membership row knows an id; a person reading the screen needs a name.
+  // Resolved here rather than in the browser, because the browser would need
+  // `users.view` to look one up — and being able to see who is on your own
+  // project should not require permission to read the staff directory.
+  const people = await find('users', (person) => found.some((member) => member.user_id === person.id));
+  const byId = new Map(people.map((person) => [person.id, person]));
+
+  return found.map((member) => {
+    const person = byId.get(member.user_id);
+    return {
+      userId: member.user_id,
+      // A member whose account was deleted keeps their row — the history of who
+      // was on the project is not rewritten by somebody leaving.
+      name: person?.name ?? null,
+      title: person?.title ?? null,
+      avatarColor: person?.avatarColor ?? null,
+      role: member.role,
+      projectRoleId: member.project_role_id,
+      isClient: member.is_client,
+      allocationPercent: member.allocation_percent,
+      addedAt: member.added_at,
+      addedBy: member.added_by,
+    };
+  });
 }
 
 const MEMBER_ROLES = new Set(['owner', 'manager', 'member', 'viewer', 'client']);

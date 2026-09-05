@@ -268,6 +268,9 @@ const CORE_STRINGS = {
   'search.typeUser': { ar: 'موظف', en: 'Person' },
   'search.typeOffice': { ar: 'مكتب', en: 'Room' },
   'search.typeSeat': { ar: 'وحدة', en: 'Desk' },
+  'search.typeProject': { ar: 'مشروع', en: 'Project' },
+  'search.typeIssue': { ar: 'مشكلة', en: 'Issue' },
+  'search.typeDocument': { ar: 'مستند', en: 'Document' },
 
   /* ── launcher ────────────────────────────────────────────── */
   'launcher.goodMorning': { ar: 'صباح الخير', en: 'Good morning' },

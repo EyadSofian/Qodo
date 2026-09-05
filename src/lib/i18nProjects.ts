@@ -544,4 +544,83 @@ export const PROJECT_STRINGS = {
     en: 'Measured in hours, not task count — ten small tickets are not a fortnight of work.',
   },
   'workload.empty': { ar: 'لا يوجد عمل مسند حاليًا', en: 'Nothing is assigned right now' },
+
+  /* ── settings ────────────────────────────────────────────── */
+  'projectSettings.title': { ar: 'إعدادات المشاريع', en: 'Projects settings' },
+  'projectSettings.subtitle': {
+    ar: 'الحالات والأتمتة والإخطارات والربط بالأنظمة الخارجية.',
+    en: 'Statuses, automation, webhooks and the connections to other systems.',
+  },
+  'projectSettings.tab.statuses': { ar: 'الحالات', en: 'Statuses' },
+  'projectSettings.tab.automation': { ar: 'الأتمتة', en: 'Automation' },
+  'projectSettings.tab.webhooks': { ar: 'الإخطارات', en: 'Webhooks' },
+  'projectSettings.tab.integrations': { ar: 'الربط', en: 'Integrations' },
+
+  'statuses.title': { ar: 'الحالات', en: 'Statuses' },
+  'statuses.hint': {
+    ar: 'الحالة اللي بتتشال بتفضل على السجلات القديمة — بنوقّفها، مش بنمسحها.',
+    en: 'A retired status stays on the records that already point at it — it is deactivated, never deleted.',
+  },
+  'statuses.retire': { ar: 'إيقاف', en: 'Retire' },
+  'statuses.restore': { ar: 'تفعيل', en: 'Reactivate' },
+  'statuses.retired': { ar: 'موقوفة', en: 'Retired' },
+  'statuses.category': { ar: 'التصنيف', en: 'Category' },
+  'statuses.category.open': { ar: 'مفتوحة', en: 'Open' },
+  'statuses.category.active': { ar: 'جارية', en: 'Active' },
+  'statuses.category.review': { ar: 'مراجعة', en: 'Review' },
+  'statuses.category.done': { ar: 'منتهية', en: 'Done' },
+  'statuses.category.cancelled': { ar: 'ملغاة', en: 'Cancelled' },
+  'statuses.categoryHint': {
+    ar: 'التصنيف هو اللي التقارير بتفهمه — الاسم للناس، والتصنيف للنظام.',
+    en: 'The category is what the product branches on. The label is for people; the category is for the system.',
+  },
+
+  'automation.title': { ar: 'قواعد الأتمتة', en: 'Automation rules' },
+  'automation.empty': { ar: 'لا توجد قواعد', en: 'No rules yet' },
+  'automation.emptyHint': {
+    ar: 'القاعدة بتتكوّن من مُشغِّل وشرط وإجراء — ومفيش حاجة منها بتشغّل كود.',
+    en: 'A rule is a trigger, a condition and an action — and none of it runs code.',
+  },
+  'automation.trigger': { ar: 'المُشغِّل', en: 'Trigger' },
+  'automation.actions': { ar: '{n} إجراء', en: '{n} actions' },
+  'automation.enabled': { ar: 'مفعّلة', en: 'Enabled' },
+  'automation.disabled': { ar: 'موقوفة', en: 'Disabled' },
+  'automation.runs': { ar: 'سجل التشغيل', en: 'Run history' },
+  'automation.runsEmpty': { ar: 'لم تُشغَّل أي قاعدة بعد', en: 'No rule has run yet' },
+  'automation.status.applied': { ar: 'نُفّذت', en: 'Applied' },
+  'automation.status.skipped': { ar: 'تُخطّيت', en: 'Skipped' },
+  'automation.status.failed': { ar: 'فشلت', en: 'Failed' },
+
+  'webhooks.title': { ar: 'الإخطارات عبر الإنترنت', en: 'Webhooks' },
+  'webhooks.new': { ar: 'إخطار جديد', en: 'New webhook' },
+  'webhooks.empty': { ar: 'لا توجد إخطارات', en: 'No webhooks' },
+  'webhooks.emptyHint': {
+    ar: 'الإخطار بيبعت حدث لعنوان خارجي، موقّع بمفتاح سري، مع إعادة محاولة وسجل تسليم.',
+    en: 'A webhook posts an event to an external URL, signed with a secret, with retries and a delivery log.',
+  },
+  'webhooks.url': { ar: 'العنوان', en: 'URL' },
+  'webhooks.secretOnce': {
+    ar: 'المفتاح السري ده هيظهر مرة واحدة بس. انسخه دلوقتي — مفيش طريقة تقراه تاني.',
+    en: 'This secret is shown once. Copy it now — there is no way to read it again.',
+  },
+  'webhooks.disabledFor': { ar: 'موقوف: {reason}', en: 'Disabled: {reason}' },
+
+  'integrations.title': { ar: 'الربط بالأنظمة', en: 'Integrations' },
+  'integrations.firstParty': { ar: 'داخل المساحة', en: 'Inside the workspace' },
+  'integrations.adapters': { ar: 'أنظمة خارجية', en: 'External systems' },
+  'integrations.status.connected': { ar: 'مربوط', en: 'Connected' },
+  'integrations.status.not_configured': { ar: 'غير مهيّأ', en: 'Not configured' },
+  'integrations.status.error': { ar: 'خطأ', en: 'Error' },
+  'integrations.status.disabled': { ar: 'موقوف', en: 'Disabled' },
+  'integrations.notConfiguredHint': {
+    ar: 'الواجهة موجودة وشغّالة، بس محتاجة بيانات اعتماد. من غيرها بترد ٤٠٩ بدل ما تدّعي إنها شغّالة.',
+    en: 'The adapter is real and working, but it has no credentials. Without them it answers 409 rather than claiming to work.',
+  },
+  'integrations.connect': { ar: 'ربط', en: 'Connect' },
+  'integrations.disconnect': { ar: 'فصل', en: 'Disconnect' },
+  'integrations.credentials': { ar: 'بيانات الاعتماد', en: 'Credentials' },
+  'integrations.credentialsHint': {
+    ar: 'بتتخزّن مشفّرة، ومفيش أي مسار في النظام بيرجّعها.',
+    en: 'Stored encrypted. No route in the system returns it.',
+  },
 } satisfies Record<string, { ar: string; en: string }>;

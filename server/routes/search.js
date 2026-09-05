@@ -6,6 +6,8 @@ import { DEFAULT_DEPARTMENT, stageLabel } from '../../shared/departments.js';
 import { livePredicate, visiblePeople } from '../taskAccess.js';
 import { officesOf, seatsOf } from '../offices.js';
 import { organizationOf } from '../../shared/organization.js';
+import { isAvailable as projectsAvailable } from '../projects/db.js';
+import { searchProjects } from '../projects/searchService.js';
 import { seatState } from '../../shared/offices.js';
 
 const router = Router();
@@ -42,6 +44,23 @@ router.get('/', async (req, res) => {
       color: app.color,
       route: app.kind === 'internal' ? app.url : `/app/${app.id}`,
     });
+  }
+
+  /**
+   * Qodo Projects.
+   *
+   * Permission-filtered inside the service, exactly like the task block below —
+   * a search box that returns the name of a project you cannot open has already
+   * told you it exists.
+   */
+  if (projectsAvailable()) {
+    try {
+      results.push(...(await searchProjects(req.user, query, lang)));
+    } catch (error) {
+      // A search that half-works is better than one that errors: the other
+      // sources still answer, and the failure is visible in the log.
+      console.error('[search] projects source failed:', error.message);
+    }
   }
 
   if (can(req.user, PERMISSIONS.TASKS_VIEW)) {

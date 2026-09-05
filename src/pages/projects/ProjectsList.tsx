@@ -31,6 +31,7 @@ import {
   Plus,
   RotateCcw,
   Search,
+  Settings2,
   Star,
   Table2,
   Trash2,
@@ -223,6 +224,12 @@ export function ProjectsList() {
             <LayoutDashboard size={16} />
             {t('portfolio.title')}
           </Link>
+          {can('customization.manage') && (
+            <Link to="/projects/settings" className="btn-ghost btn-sm">
+              <Settings2 size={16} />
+              {t('projectSettings.title')}
+            </Link>
+          )}
           {canCreate && (
             <button type="button" className="btn-primary btn-sm" onClick={() => setCreating(true)}>
               <Plus size={16} />

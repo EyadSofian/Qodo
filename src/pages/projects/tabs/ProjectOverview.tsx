@@ -108,7 +108,7 @@ export function ProjectOverview() {
           <ul className="flex flex-wrap gap-2">
             {members.map((member) => (
               <li key={member.userId} className="chip bg-surface-sunken text-ink-muted">
-                {member.userId}
+                {member.name ?? t('common.unknown')}
                 <span className="text-ink-faint">· {member.role}</span>
               </li>
             ))}

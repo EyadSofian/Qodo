@@ -42,14 +42,18 @@ import type {
   ProjectTask,
   RescheduleResult,
   DependencyType,
+  AutomationRule,
+  AutomationRun,
   Budget,
   BudgetType,
   Consumption,
   EarnedValue,
   RunningTimer,
+  IntegrationEntry,
   StatusDefinition,
   TimeEntry,
   Timesheet,
+  WebhookEndpoint,
   TaskDependency,
   TaskInput,
   TaskList,
@@ -474,4 +478,47 @@ export const reportsApi = {
     definition: ReportDefinition;
     visibility?: string;
   }) => api.post<{ report: { id: string; name: string } }>('/projects/reports/saved', input),
+};
+
+/* ------------------------------------------------------------------ */
+/* Administration                                                       */
+/* ------------------------------------------------------------------ */
+
+export const projectAdminApi = {
+  statuses: (moduleKey?: string) =>
+    api.get<{ statuses: StatusDefinition[] }>(
+      `/projects/settings/statuses${queryString({ module: moduleKey })}`
+    ),
+  createStatus: (input: {
+    module: string;
+    key: string;
+    labelAr: string;
+    labelEn: string;
+    color: string;
+    category: string;
+  }) => api.post<{ status: unknown }>('/projects/settings/statuses', input),
+  updateStatus: (statusId: string, input: { labelAr?: string; labelEn?: string; color?: string; isActive?: boolean }) =>
+    api.patch<{ status: unknown }>(`/projects/settings/statuses/${statusId}`, input),
+
+  rules: (moduleKey = 'task') =>
+    api.get<{ rules: AutomationRule[] }>(`/projects/settings/automation/rules${queryString({ module: moduleKey })}`),
+  setRuleActive: (ruleId: string, isActive: boolean) =>
+    api.put<{ rule: AutomationRule }>(`/projects/settings/automation/rules/${ruleId}/active`, { isActive }),
+  runs: (limit = 50) =>
+    api.get<{ runs: AutomationRun[] }>(`/projects/settings/automation/runs${queryString({ limit })}`),
+
+  webhooks: () => api.get<{ endpoints: WebhookEndpoint[] }>('/projects/settings/webhooks'),
+  createWebhook: (input: { name: string; url: string; events?: string[] }) =>
+    // The one moment the secret is visible. It is never readable again.
+    api.post<{ endpoint: { id: string; name: string; url: string; secret: string } }>(
+      '/projects/settings/webhooks',
+      input
+    ),
+  setWebhookActive: (endpointId: string, isActive: boolean) =>
+    api.put<{ isActive: boolean }>(`/projects/settings/webhooks/${endpointId}/active`, { isActive }),
+
+  integrations: () => api.get<{ integrations: IntegrationEntry[] }>('/projects/integrations'),
+  connect: (input: { provider: string; credentials?: string; name?: string }) =>
+    api.post<{ connection: { provider: string; status: string } }>('/projects/integrations', input),
+  disconnect: (provider: string) => api.delete<void>(`/projects/integrations/${provider}`),
 };

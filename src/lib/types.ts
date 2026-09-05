@@ -437,7 +437,7 @@ export interface ActivityEntry {
 }
 
 export interface SearchResult {
-  type: 'app' | 'task' | 'user' | 'office' | 'seat';
+  type: 'app' | 'task' | 'user' | 'office' | 'seat' | 'project' | 'issue' | 'document';
   id: string;
   title: string;
   subtitle?: string;

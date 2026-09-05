@@ -165,7 +165,55 @@ credentials reports **Not connected** and returns
 
 ---
 
-## 11. Differences still to be decided
+## 11. The Gantt time axis runs left-to-right in both languages
+
+Every control around the chart mirrors with the document. The time axis does
+not.
+
+**Why.** Gantt convention and date order are left-to-right everywhere the chart
+is read, including on the printed programme pinned to the wall of a site office.
+Mirroring the axis for Arabic produces a chart that no engineer can lay beside
+the contract programme and compare. The label column still sits on the reader's
+start edge, and the chart is the only element pinned.
+
+Recorded here because it is a deliberate exception to an otherwise absolute rule
+in this codebase.
+
+---
+
+## 12. Client visibility is opt-in everywhere, and stated on the form
+
+Zoho marks task lists internal or external and asks once. Qodo asks on phases,
+task lists, issues, documents, comments and forum topics — and each form spells
+out the consequence rather than showing a checkbox labelled "internal".
+
+**Why.** A drawing shared by accident cannot be un-shared, and "let's pad the
+estimate" written under a client-visible deliverable is exactly the sentence
+nobody thinks to hide. The default is always the private one.
+
+This is stricter than Zoho, deliberately.
+
+---
+
+## 13. Numbers nobody measured are shown as "not measured"
+
+Where Zoho shows `0`, Qodo shows **لم يُقَس / Not measured** for a figure that
+has no inputs: a project with no budget, a task with no estimate, a portfolio
+with no logged time.
+
+Earned value goes further — when its inputs are missing it names them rather
+than computing around the gap:
+
+> Missing: an amount budget, project start and end dates, logged actual cost.
+> We will not guess — a guessed index is worse than none, because somebody acts
+> on it.
+
+**Why.** §51 forbids inventing a metric, and "0% over budget" on a project with
+no budget is a claim nobody made that a manager will act on.
+
+---
+
+## 14. Differences still to be decided
 
 Recorded now so they are decisions later rather than accidents:
 

@@ -34,6 +34,12 @@ import { HR, HREmployee } from './pages/HR';
 const ProjectsList = lazy(() =>
   import('./pages/projects/ProjectsList').then((module) => ({ default: module.ProjectsList }))
 );
+const ProjectsPortfolio = lazy(() =>
+  import('./pages/projects/ProjectsPortfolio').then((module) => ({ default: module.ProjectsPortfolio }))
+);
+const ProjectsSettings = lazy(() =>
+  import('./pages/projects/ProjectsSettings').then((module) => ({ default: module.ProjectsSettings }))
+);
 const ProjectDetail = lazy(() =>
   import('./pages/projects/ProjectDetail').then((module) => ({ default: module.ProjectDetail }))
 );
@@ -57,6 +63,12 @@ const ProjectTimesheet = lazy(() =>
 );
 const ProjectBudget = lazy(() =>
   import('./pages/projects/tabs/ProjectBudget').then((module) => ({ default: module.ProjectBudget }))
+);
+const ProjectDocuments = lazy(() =>
+  import('./pages/projects/tabs/ProjectDocuments').then((module) => ({ default: module.ProjectDocuments }))
+);
+const ProjectReports = lazy(() =>
+  import('./pages/projects/tabs/ProjectReports').then((module) => ({ default: module.ProjectReports }))
 );
 const ProjectMembers = lazy(() =>
   import('./pages/projects/tabs/ProjectMembers').then((module) => ({ default: module.ProjectMembers }))
@@ -133,6 +145,22 @@ function Gate() {
             </Suspense>
           }
         />
+        <Route
+          path="/projects/portfolio"
+          element={
+            <Suspense fallback={<Splash />}>
+              <ProjectsPortfolio />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/projects/settings"
+          element={
+            <Suspense fallback={<Splash />}>
+              <ProjectsSettings />
+            </Suspense>
+          }
+        />
         {/* One project. The shell loads it once and the tabs render into it,
             so moving between Tasks and Phases is a route change rather than a
             reload of who you are and what you may do here. */}
@@ -151,6 +179,8 @@ function Gate() {
           <Route path="issues" element={<Suspended><ProjectIssues /></Suspended>} />
           <Route path="timesheet" element={<Suspended><ProjectTimesheet /></Suspended>} />
           <Route path="budget" element={<Suspended><ProjectBudget /></Suspended>} />
+          <Route path="documents" element={<Suspended><ProjectDocuments /></Suspended>} />
+          <Route path="reports" element={<Suspended><ProjectReports /></Suspended>} />
           <Route path="members" element={<Suspended><ProjectMembers /></Suspended>} />
           <Route path="activity" element={<Suspended><ProjectActivity /></Suspended>} />
         </Route>

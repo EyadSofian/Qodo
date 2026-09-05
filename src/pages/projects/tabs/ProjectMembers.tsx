@@ -87,9 +87,15 @@ export function ProjectMembers() {
           {members.map((member) => (
             <li key={member.userId} className="group flex flex-wrap items-center gap-3 px-4 py-3">
               <div className="min-w-0 flex-1">
-                <p className="truncate text-[13.5px] font-semibold text-ink">{member.userId}</p>
+                <p className="truncate text-[13.5px] font-semibold text-ink">
+                  {/* An id is not a name. A member whose account was removed
+                      keeps their row, and shows as unknown rather than as a
+                      UUID nobody can read. */}
+                  {member.name ?? t('common.removedUser')}
+                </p>
                 <p className="mt-0.5 text-[12px] text-ink-muted">
                   {t(`projectMembers.role.${member.role}` as Parameters<typeof t>[0])}
+                  {member.title && ` · ${member.title}`}
                 </p>
               </div>
 
@@ -107,7 +113,7 @@ export function ProjectMembers() {
                 <button
                   type="button"
                   onClick={() => void remove(member)}
-                  aria-label={`${t('common.delete')} — ${member.userId}`}
+                  aria-label={`${t('common.delete')} — ${member.name ?? member.userId}`}
                   className="btn-danger !min-h-8 rounded-lg px-2 opacity-0 transition-opacity focus:opacity-100 group-hover:opacity-100"
                 >
                   <UserMinus size={15} />

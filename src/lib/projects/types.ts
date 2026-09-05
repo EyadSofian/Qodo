@@ -48,6 +48,10 @@ export interface Project {
 
 export interface ProjectMember {
   userId: string;
+  /** Resolved by the server. `null` for an account that has since been removed. */
+  name: string | null;
+  title: string | null;
+  avatarColor: string | null;
   role: ProjectMemberRole;
   projectRoleId: string | null;
   isClient: boolean;
@@ -796,4 +800,62 @@ export interface WorkloadRow {
   assignedHours: number | null;
   loggedHours: number;
   overdueTasks: number;
+}
+
+/* ------------------------------------------------------------------ */
+/* Administration                                                       */
+/* ------------------------------------------------------------------ */
+
+export interface AutomationRule {
+  id: string;
+  moduleKey: string;
+  projectId: string | null;
+  name: string;
+  description: string;
+  trigger: string;
+  triggerField: string | null;
+  criteria: Array<{ field: string; operator: string; value?: unknown }>;
+  match: 'all' | 'any';
+  actions: Array<{ type: string; [key: string]: unknown }>;
+  isActive: boolean;
+  orderIndex: number;
+}
+
+export interface AutomationRun {
+  id: string;
+  rule_type: string;
+  rule_id: string | null;
+  entity_type: string;
+  entity_id: string;
+  trigger: string | null;
+  status: 'applied' | 'skipped' | 'failed';
+  error: string | null;
+  depth: number;
+  ran_at: string;
+}
+
+export interface WebhookEndpoint {
+  id: string;
+  name: string;
+  url: string;
+  method: string;
+  events: string[];
+  isActive: boolean;
+  disabledAt: string | null;
+  disabledReason: string | null;
+  /** Always the mask. There is no route that returns the value. */
+  secret: string;
+}
+
+export interface IntegrationEntry {
+  provider: string;
+  label: string;
+  kind: 'first_party' | 'adapter';
+  capabilities: string[];
+  needsCredentials: boolean;
+  /** `not_configured` is the honest default for an adapter nobody has set up. */
+  status: 'not_configured' | 'connected' | 'error' | 'disabled';
+  lastSyncAt: string | null;
+  lastError: string | null;
+  credential: string | null;
 }

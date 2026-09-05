@@ -292,6 +292,15 @@ describe('tenant isolation', { skip: SKIP }, () => {
     assert.equal(bobContext.isClient, false);
   });
 
+  test('the member list is shaped for the browser, not raw rows', async () => {
+    // Returning the raw row was a real bug: the UI reads `userId`, the row says
+    // `user_id`, and the members list rendered a row per person with no name.
+    const [member] = await projects.members(await contextFor(alice, projectA.id));
+    assert.ok(member.userId, 'a member came back without a userId');
+    assert.ok(!('user_id' in member), 'a raw column escaped the service');
+    assert.equal(typeof member.isClient, 'boolean');
+  });
+
   test('removing the member takes the access away again', async () => {
     await projects.removeMember(await contextFor(alice, projectA.id), bob.id);
     assert.equal(await contextFor(bob, projectA.id), null);

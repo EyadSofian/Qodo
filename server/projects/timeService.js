@@ -16,6 +16,7 @@
 
 import { paginate, query, rows, row, transaction } from './db.js';
 import * as audit from './auditService.js';
+import * as notifications from './notificationService.js';
 import { may } from './projectAccess.js';
 
 /* ------------------------------------------------------------------ */

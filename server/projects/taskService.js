@@ -26,6 +26,7 @@
 import { create as createDocument, find, findOne, getStore } from '../store.js';
 import { paginate, query, rows, row, transaction } from './db.js';
 import * as audit from './auditService.js';
+import * as notifications from './notificationService.js';
 import {
   assignmentLifecycle,
   blankLifecycle,
@@ -750,7 +751,25 @@ export async function setAssignees(context, taskId, userIds, kind = 'assignee') 
     after: { [kind]: owners },
   });
 
-  return get(context, taskId);
+  const reread = await get(context, taskId);
+
+  // Only the people who were not already on it, and never the person doing the
+  // assigning. Telling somebody they have been assigned work they already had
+  // is how a notification centre stops being read.
+  if (kind === 'assignee') {
+    const previous = new Set(
+      current.contributors.filter((c) => c.kind === 'assignee').map((c) => c.userId)
+    );
+    const added = owners.filter((userId) => !previous.has(userId));
+    if (added.length > 0) {
+      await notifications.events.taskAssigned(context, reread, added).catch((error) => {
+        // A notification failing must not fail the assignment.
+        console.error('[projects] could not announce the assignment:', error.message);
+      });
+    }
+  }
+
+  return reread;
 }
 
 /* ------------------------------------------------------------------ */

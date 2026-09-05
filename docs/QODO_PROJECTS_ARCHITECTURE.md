@@ -169,7 +169,11 @@ a documented UI difference.
 ### ADR-7 — Projects strings live in their own i18n namespace
 
 **Decision.** `src/lib/i18n.tsx` keeps its flat `STRINGS` map and its API.
-Projects strings live in `src/lib/i18n/projects.ts` and are merged in.
+Projects strings live in `src/lib/i18nProjects.ts` and are merged in.
+
+(A sibling file rather than `src/lib/i18n/projects.ts`, which the first draft of
+this ADR proposed: a directory named `i18n` beside a file named `i18n.tsx` is a
+module-resolution trap for anyone writing `./i18n`.)
 
 **Why.** `i18n.tsx` is 1288 lines for the current workspace. Projects will add
 more strings than the rest of the app has. One file would become unreviewable,
@@ -379,6 +383,11 @@ Progress is tracked only in `QODO_PROJECTS_PARITY_MATRIX.md`, edited in place.
 A row reaching **Verified** requires working UI, server-enforced authorization,
 real persistence, Arabic and English, RTL and LTR, and an automated test that
 would fail if the feature regressed.
+
+**As built, Phases 0–11 are done and Phase 12 is this pass.** What is not built
+is named individually in §7 of the matrix rather than left to be inferred — the
+sandboxed script runner, MCP, Global Add, templates, and the external adapters
+that are working code awaiting credentials.
 
 A navigation item, an opening dialog, a static chart or a `200` from a stub is
 not a feature (§82). Where an external dependency genuinely blocks a row, the

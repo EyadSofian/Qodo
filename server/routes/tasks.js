@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { create, find, findOne, getStore } from '../store.js';
 import { logActivity, requireAuth, requirePermission } from '../auth.js';
 import { PERMISSIONS, can, isActiveUser } from '../../shared/permissions.js';
+import { notify } from '../notify.js';
 import {
   assignmentLifecycle,
   blankLifecycle,
@@ -1593,28 +1594,6 @@ async function finalApprovalAudience(task, actorId) {
   return (appointed.length > 0 ? appointed : eligible).map((person) => person.id);
 }
 
-/**
- * Bilingual notification titles: the workspace runs in two languages and the
- * recipient's choice isn't known at write time, so both are stored and the UI
- * picks. Push delivery does the same at send time.
- */
-async function notify(userId, actorId, { type, title, body, link }) {
-  if (!userId) return;
-  const target = await findOne('users', (user) => user.id === userId);
-  if (!target || !isActiveUser(target)) return;
-  const notification = await create('notifications', {
-    organizationId: organizationOf(target),
-    userId,
-    actorId,
-    type,
-    title,
-    body,
-    link,
-    read: false,
-  });
-  publishNotification(userId, notification.id);
-  await notifyUser(userId, { title, body, link });
-}
 
 /**
  * Tell everybody who owes this work, except whoever caused it.

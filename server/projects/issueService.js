@@ -14,6 +14,7 @@
 import { query, paginate, rows, row, transaction } from './db.js';
 import * as audit from './auditService.js';
 import * as sla from './slaService.js';
+import * as notifications from './notificationService.js';
 
 /* ------------------------------------------------------------------ */
 /* Reading                                                              */
@@ -322,7 +323,12 @@ export async function update(context, issueId, input) {
 
   // Assigning somebody is the response; closing is the resolution. Both stop
   // the clock they belong to, and only the first of each ever counts.
-  if (changed.assigneeId) await sla.markResponded(issueId).catch(() => {});
+  if (changed.assigneeId) {
+    await sla.markResponded(issueId).catch(() => {});
+    await notifications.events
+      .issueAssigned(context, { ...current, assigneeId: changed.assigneeId }, [changed.assigneeId])
+      .catch((error) => console.error('[projects] could not announce the issue:', error.message));
+  }
   if (updated.closed_at) await sla.markResolved(issueId).catch(() => {});
 
   await audit.record({
