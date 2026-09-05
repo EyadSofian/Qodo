@@ -8,6 +8,8 @@ import {
   type ReactNode,
 } from 'react';
 
+import { PROJECT_STRINGS } from './i18nProjects';
+
 export type Lang = 'ar' | 'en';
 
 /**
@@ -15,7 +17,7 @@ export type Lang = 'ar' | 'en';
  * not stiff officialese. One deliberate exception: «الإيميل», which is what
  * people at Engosoft actually write, rather than «البريد الإلكتروني».
  */
-const STRINGS = {
+const CORE_STRINGS = {
   /* ── generic ─────────────────────────────────────────────── */
   'common.save': { ar: 'حفظ', en: 'Save' },
   'common.cancel': { ar: 'إلغاء', en: 'Cancel' },
@@ -266,6 +268,9 @@ const STRINGS = {
   'search.typeUser': { ar: 'موظف', en: 'Person' },
   'search.typeOffice': { ar: 'مكتب', en: 'Room' },
   'search.typeSeat': { ar: 'وحدة', en: 'Desk' },
+  'search.typeProject': { ar: 'مشروع', en: 'Project' },
+  'search.typeIssue': { ar: 'مشكلة', en: 'Issue' },
+  'search.typeDocument': { ar: 'مستند', en: 'Document' },
 
   /* ── launcher ────────────────────────────────────────────── */
   'launcher.goodMorning': { ar: 'صباح الخير', en: 'Good morning' },
@@ -1216,6 +1221,15 @@ const STRINGS = {
   'time.tomorrow': { ar: 'بكرة', en: 'tomorrow' },
   'time.inDays': { ar: 'خلال {n} يوم', en: 'in {n} days' },
 } as const;
+
+/**
+ * The workspace's own strings plus every module namespace.
+ *
+ * Projects lives in its own file because it will outgrow this one — see ADR-7
+ * in docs/QODO_PROJECTS_ARCHITECTURE.md. Merging here rather than at each call
+ * site is what keeps `t('projects.title')` reading exactly like `t('common.save')`.
+ */
+const STRINGS = { ...CORE_STRINGS, ...PROJECT_STRINGS };
 
 export type StringKey = keyof typeof STRINGS;
 

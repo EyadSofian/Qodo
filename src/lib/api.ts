@@ -119,6 +119,85 @@ const ERRORS: Record<string, { ar: string; en: string }> = {
   unknown_hr_template: { ar: 'قالب مهمة HR غير معروف أو تم تغييره.', en: 'That HR task template is unknown or has changed.' },
   hr_event_triggered: { ar: 'هذه المهمة تبدأ بحدث فعلي ولا يمكن تشغيلها بالتاريخ وحده.', en: 'This task starts from a real event and cannot be scheduled by date alone.' },
   hr_owner_required: { ar: 'اختر مسؤولاً قبل تفعيل المهمة الدورية.', en: 'Choose an owner before enabling the recurring task.' },
+  /* ── Qodo Projects ───────────────────────────────────────────── */
+  projects_storage_unavailable: {
+    ar: 'وحدة المشاريع محتاجة قاعدة بيانات PostgreSQL. اضبط DATABASE_URL ثم أعد التشغيل.',
+    en: 'Projects needs a PostgreSQL database. Set DATABASE_URL and restart the server.',
+  },
+  end_before_start: {
+    ar: 'تاريخ الانتهاء لا يصح أن يسبق تاريخ البدء.',
+    en: 'The end date cannot be before the start date.',
+  },
+  owner_cannot_be_removed: {
+    ar: 'لا يمكن إزالة مالك المشروع. غيّر المالك أولاً.',
+    en: 'The project owner cannot be removed. Change the owner first.',
+  },
+  key_exhausted: {
+    ar: 'رمز المشروع مستخدم بالكامل. اختر رمزًا مختلفًا.',
+    en: 'That project key is taken. Choose a different one.',
+  },
+  user_required: { ar: 'اختر المستخدم أولاً.', en: 'Choose a user first.' },
+  document_empty: { ar: 'الملف فارغ.', en: 'That file is empty.' },
+  document_too_large: {
+    ar: 'مستند المشروع أكبر من ٢٥ ميجابايت.',
+    en: 'A project document may be up to 25 MB.',
+  },
+  file_type_not_allowed: {
+    ar: 'نوع الملف ده مش مسموح — للأمان، الملفات اللي المتصفح ممكن ينفّذها مرفوضة.',
+    en: 'That file type is not allowed — anything a browser could execute is refused.',
+  },
+  link_expired: {
+    ar: 'رابط التنزيل انتهت صلاحيته. اطلب واحدًا جديدًا.',
+    en: 'That download link has expired. Ask for a new one.',
+  },
+  timesheet_empty: { ar: 'مفيش وقت مسجّل في الأسبوع ده.', en: 'No time was logged this week.' },
+  timesheet_approved: { ar: 'الأسبوع ده معتمَد بالفعل.', en: 'That week is already approved.' },
+  timesheet_locked: { ar: 'الأسبوع ده مقفول.', en: 'That week is locked.' },
+  timesheet_not_submitted: { ar: 'الأسبوع ده لسه مش مُرسَل.', en: 'That week has not been submitted.' },
+  cannot_approve_own_timesheet: {
+    ar: 'لا يمكنك اعتماد أسبوعك — الاعتماد معناه إن حد تاني راجعه.',
+    en: 'You cannot approve your own week — an approval means somebody else looked at it.',
+  },
+  rejection_reason_required: {
+    ar: 'اكتب سبب الرفض. رفض من غير سبب بيكلّف الشخص محادثة عشان يفهم.',
+    en: 'Give a reason. A rejection with no explanation costs the person a conversation to decode.',
+  },
+  time_entry_approved: {
+    ar: 'الوقت المعتمَد لا يمكن تعديله.',
+    en: 'Approved time cannot be edited.',
+  },
+  time_entry_invoiced: {
+    ar: 'الوقت ده اتفوتر بالفعل ولا يمكن تعديله.',
+    en: 'That time has been invoiced and cannot be edited.',
+  },
+  hours_invalid: { ar: 'عدد الساعات غير صحيح.', en: 'That number of hours is not valid.' },
+  budget_value_required: { ar: 'حدّد قيمة للميزانية.', en: 'Give the budget a value.' },
+  budget_type_invalid: { ar: 'نوع الميزانية غير معروف.', en: 'That budget type is not recognised.' },
+  sla_target_required: {
+    ar: 'اتفاقية بدون هدف زمني مش اتفاقية.',
+    en: 'An agreement with no target is not an agreement.',
+  },
+  linked_not_found: { ar: 'العنصر المرتبط غير موجود في هذا المشروع.', en: 'That record is not in this project.' },
+  task_not_found: { ar: 'المهمة غير موجودة في هذا المشروع.', en: 'That task is not in this project.' },
+  issue_not_found: { ar: 'المشكلة غير موجودة في هذا المشروع.', en: 'That issue is not in this project.' },
+  entity_type_invalid: { ar: 'نوع العنصر غير مدعوم.', en: 'That record type is not supported.' },
+  topic_locked: { ar: 'الموضوع مقفول للردود.', en: 'That topic is locked.' },
+  field_validation_failed: { ar: 'فيه حقول قيمها غير صحيحة.', en: 'Some fields have invalid values.' },
+  title_required_project: { ar: 'عنوان المهمة مطلوب.', en: 'A task title is required.' },
+  checklist_incomplete: {
+    ar: 'فيه بنود مطلوبة في قائمة التحقق لسه غير مكتملة.',
+    en: 'Required checklist items are still open.',
+  },
+  would_create_cycle: {
+    ar: 'ده هيعمل حلقة مقفولة في تبعية المهام.',
+    en: 'That would create a loop in the task hierarchy.',
+  },
+  max_depth_exceeded: {
+    ar: 'وصلت لأقصى عمق مسموح للمهام الفرعية.',
+    en: 'That is as deep as subtasks can nest.',
+  },
+  parent_not_found: { ar: 'المهمة الأصلية غير موجودة.', en: 'The parent task no longer exists.' },
+  cannot_be_own_parent: { ar: 'المهمة لا يمكن أن تكون أصل نفسها.', en: 'A task cannot be its own parent.' },
   invalid_credentials: {
     ar: 'الإيميل أو كلمة المرور غير صحيحة.',
     en: 'That email or password is not correct.',

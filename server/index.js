@@ -22,6 +22,10 @@ import userRoutes from './routes/users.js';
 import inviteRoutes from './routes/invites.js';
 import appRoutes from './routes/apps.js';
 import taskRoutes from './routes/tasks.js';
+import projectRoutes from './routes/projects/index.js';
+import * as projectsStorage from './projects/db.js';
+import { ensureDefaults as ensureProjectDefaults } from './projects/metadataService.js';
+import { DEFAULT_ORGANIZATION_ID } from '../shared/organization.js';
 import hrOperationsRoutes from './routes/hrOperations.js';
 import hrRoutes from './routes/hr.js';
 import kpiRoutes from './routes/kpi.js';
@@ -64,6 +68,11 @@ app.use('/api/users', userRoutes);
 app.use('/api/invites', inviteRoutes);
 app.use('/api/apps', appRoutes);
 app.use('/api/tasks', taskRoutes);
+// Qodo Projects. The only module in this app that needs a real database — it
+// answers 503 with the one-line docker command when DATABASE_URL is unset,
+// rather than carrying a second implementation of every query against the JSON
+// store. See docs/QODO_PROJECTS_ARCHITECTURE.md, ADR-2.
+app.use('/api/projects', projectRoutes);
 app.use('/api/hr-operations', hrOperationsRoutes);
 app.use('/api/hr', hrRoutes);
 app.use('/api/kpi', kpiRoutes);
@@ -130,6 +139,29 @@ if (fs.existsSync(DIST)) {
 }
 
 const store = await seed();
+
+/**
+ * Give Projects its modules and statuses.
+ *
+ * Only when a database is configured — the workspace itself runs happily
+ * without one and Projects says so with a 503. Idempotent, so a Railway restart
+ * on every deploy is safe, and `ON CONFLICT DO NOTHING` means a status an
+ * administrator has renamed or retired is never resurrected by a reboot.
+ *
+ * A failure here must not stop the workspace booting: every other module works
+ * without Projects, and taking the whole hub down because one module could not
+ * seed would be a bad trade.
+ */
+if (projectsStorage.isAvailable()) {
+  try {
+    await projectsStorage.init();
+    await ensureProjectDefaults(DEFAULT_ORGANIZATION_ID);
+    console.log('[projects] schema ready');
+  } catch (error) {
+    console.error('[projects] storage unavailable —', error.message);
+  }
+}
+
 await initPush();
 startScheduler();
 app.listen(PORT, () => {

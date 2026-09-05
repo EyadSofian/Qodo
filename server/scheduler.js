@@ -13,6 +13,14 @@
  */
 
 import { create, find, findOne, getStore } from './store.js';
+import { isAvailable as projectsAvailable } from './projects/db.js';
+import {
+  dueEscalations as dueSlaEscalations,
+  recordEscalation as recordSlaEscalation,
+  sweepBreaches as sweepSlaBreaches,
+} from './projects/slaService.js';
+import { budgetsCrossingThreshold } from './projects/budgetService.js';
+import * as projectNotifications from './projects/notificationService.js';
 import { notifyUser, pushConfigured } from './push.js';
 import { publishNotification } from './notificationStream.js';
 import { mailConfigured, renderEmail, sendMail } from './mail.js';
@@ -418,6 +426,50 @@ async function emailOverdue(user, tasks) {
 
 let started = false;
 
+/**
+ * The Qodo Projects clocks: SLA breaches, escalations and budget thresholds.
+ *
+ * Every one of these marks its own state before announcing anything — a breach
+ * records that it breached, a budget records that it warned — so running this
+ * once a minute can never send the same alert twice. That is the same
+ * discipline the HR generator follows above, and for the same reason: a
+ * scheduler that repeats itself teaches people to ignore it.
+ *
+ * Never throws. Projects being unconfigured, or its database being briefly
+ * unreachable, must not stop the digest, the HR clock or the calendar
+ * reminders.
+ */
+async function runProjectClocks(organizationId) {
+  if (!projectsAvailable()) return;
+
+  try {
+    const breaches = await sweepSlaBreaches(organizationId);
+    const total = breaches.response.length + breaches.resolution.length;
+    if (total) console.log(`[scheduler] ${total} SLA breach(es) recorded`);
+
+    for (const escalation of await dueSlaEscalations(organizationId)) {
+      await projectNotifications.events.slaBreached(organizationId, {
+        issueId: escalation.issueId,
+        issueKey: escalation.issueKey,
+        title: escalation.title,
+        projectId: escalation.projectId,
+        level: escalation.level,
+        notify: escalation.notify,
+      });
+      await recordSlaEscalation(escalation.issueId, escalation.level);
+    }
+
+    for (const crossing of await budgetsCrossingThreshold(organizationId)) {
+      await projectNotifications.events.budgetThreshold(organizationId, crossing);
+      console.log(
+        `[scheduler] budget ${crossing.state} on ${crossing.projectName} (${crossing.percent}%)`
+      );
+    }
+  } catch (error) {
+    console.error('[scheduler:projects]', error.message);
+  }
+}
+
 export function startScheduler() {
   if (started) return;
   started = true;
@@ -489,6 +541,8 @@ export function startScheduler() {
         // warn its people yet, and records that it did.
         const called = await remindUpcomingEvents(organization.id);
         if (called) console.log(`[scheduler] ${called} calendar reminder(s) sent`);
+
+        await runProjectClocks(organization.id);
       }
     } catch (err) {
       console.error('[scheduler]', err);

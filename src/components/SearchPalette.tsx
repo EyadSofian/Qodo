@@ -106,6 +106,9 @@ export function SearchPalette({ open, onClose }: { open: boolean; onClose: () =>
     user: t('search.typeUser'),
     office: t('search.typeOffice'),
     seat: t('search.typeSeat'),
+    project: t('search.typeProject'),
+    issue: t('search.typeIssue'),
+    document: t('search.typeDocument'),
   };
 
   return createPortal(

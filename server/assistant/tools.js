@@ -12,6 +12,12 @@
  */
 
 import { create, find, findOne } from '../store.js';
+import {
+  PROJECT_TOOL_DEFINITIONS,
+  PROJECT_TOOL_LABELS,
+  PROJECT_TOOL_SOURCES,
+  runProjectTool,
+} from './projectTools.js';
 import { PERMISSIONS, can, canOpenApp, isActiveUser } from '../../shared/permissions.js';
 import {
   DEFAULT_DEPARTMENT,
@@ -104,6 +110,9 @@ async function shapeTask(task, lang) {
 /* ------------------------------------------------------------------ */
 
 export const TOOL_DEFINITIONS = [
+  // Qodo Projects. Defined in their own module so the Projects surface can grow
+  // without this file becoming the thing §72 warns about.
+  ...PROJECT_TOOL_DEFINITIONS,
   {
     name: 'list_apps',
     description:
@@ -691,6 +700,17 @@ const EXECUTORS = {
 
 /** Runs one tool call. Never throws — the model gets the error as a result. */
 export async function runTool(name, input, user, lang = 'ar') {
+  // Projects tools resolve what this person may see before reading anything,
+  // exactly as the HTTP routes do — the assistant is not a wider door.
+  if (PROJECT_TOOL_LABELS[name]) {
+    try {
+      return await runProjectTool(name, input, user);
+    } catch (err) {
+      console.error(`[assistant] project tool ${name} failed:`, err);
+      return { error: 'That tool failed. Try a different phrasing of the question.' };
+    }
+  }
+
   const executor = EXECUTORS[name] ?? APP_DATA_EXECUTORS[name];
   if (!executor) return { error: `Unknown tool: ${name}` };
   try {
@@ -703,6 +723,7 @@ export async function runTool(name, input, user, lang = 'ar') {
 
 /** Shown in the UI while each tool runs. */
 export const TOOL_LABELS = {
+  ...PROJECT_TOOL_LABELS,
   list_apps: { ar: 'يراجع تطبيقات المساحة', en: 'Checking the app registry' },
   list_departments: { ar: 'يراجع الأقسام ومراحلها', en: 'Checking departments and stages' },
   search_tasks: { ar: 'يبحث في المهام', en: 'Searching tasks' },
@@ -718,6 +739,9 @@ export const TOOL_LABELS = {
 export function toolSources(name, output, lang = 'ar') {
   if (output?.error) return [];
   if (name === 'decision_brief') return Array.isArray(output?.sources) ? output.sources : [];
+  const projectSource = PROJECT_TOOL_SOURCES[name];
+  if (projectSource) return [projectSource[lang === 'en' ? 'en' : 'ar']];
+
   const sources = {
     list_apps: lang === 'en' ? 'App registry' : 'سجل التطبيقات',
     list_departments: lang === 'en' ? 'Departments' : 'هيكل الأقسام',

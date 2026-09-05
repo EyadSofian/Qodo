@@ -2,6 +2,12 @@ import { Router } from 'express';
 import { create, find, findOne, getStore } from '../store.js';
 import { logActivity, requireAuth, requirePermission } from '../auth.js';
 import { PERMISSIONS, can, isActiveUser } from '../../shared/permissions.js';
+import { notify } from '../notify.js';
+import {
+  assignmentLifecycle,
+  blankLifecycle,
+  taskReference,
+} from '../../shared/taskDocument.js';
 import {
   DEFAULT_DEPARTMENT,
   DEPARTMENT_IDS,
@@ -1373,33 +1379,6 @@ function changesPlan(patch, task) {
 }
 
 /** The lifecycle fields a brand-new task starts with — nothing has happened yet. */
-function blankLifecycle() {
-  return {
-    archivedAt: null,
-    archivedBy: null,
-    archiveReason: '',
-    startedAt: null,
-    startedAtInferred: false,
-    submittedAt: null,
-    firstSubmittedAt: null,
-    submittedBy: null,
-    submissionNote: '',
-    reviewedAt: null,
-    reviewedBy: null,
-    reviewNote: '',
-    reviewDecision: null,
-    publishedAt: null,
-    publishedBy: null,
-    reworkCount: 0,
-    reworkAcknowledgedBy: {},
-    attachmentCount: 0,
-    score: null,
-    scoreBeforeReworkPenalty: null,
-    scorePenaltyPercent: 0,
-    scoreBy: null,
-    scoredAt: null,
-  };
-}
 
 /**
  * The bookkeeping a forced move has to do.
@@ -1545,40 +1524,6 @@ function overrideStamps(
   }
 }
 
-/**
- * Assigning work to somebody opens a question they have to answer, which is why
- * a new assignment starts `pending`. Taking a task yourself answers it in the
- * same breath — there is no second party to wait for — so it is recorded as
- * accepted rather than leaving a pending response you would then grant
- * yourself.
- */
-function assignmentLifecycle(assigneeIds, actorId, previous = []) {
-  const owners = [...new Set(assigneeIds ?? [])];
-  const stamp = new Date().toISOString();
-  const keep = new Map(previous.map((row) => [row.userId, row]));
-
-  return {
-    assigneeIds: owners,
-    // A partner who was already on the task keeps the answer they gave. Adding
-    // a second person to a task the first already accepted must not silently
-    // put the first back to pending.
-    assignments: owners.map(
-      (userId) =>
-        keep.get(userId) ?? {
-          userId,
-          // Assigning yourself is the request and the answer in the same
-          // breath — there is no second party to wait for.
-          status: userId === actorId ? 'accepted' : 'pending',
-          note: '',
-          acceptedAt: userId === actorId ? stamp : null,
-          declinedAt: null,
-          proposedDueDate: null,
-        }
-    ),
-    assignedAt: owners.length ? stamp : null,
-    assignedBy: owners.length ? actorId : null,
-  };
-}
 
 async function recordAssignment(task, actor, action, meta = {}) {
   return create('taskAssignments', {
@@ -1649,28 +1594,6 @@ async function finalApprovalAudience(task, actorId) {
   return (appointed.length > 0 ? appointed : eligible).map((person) => person.id);
 }
 
-/**
- * Bilingual notification titles: the workspace runs in two languages and the
- * recipient's choice isn't known at write time, so both are stored and the UI
- * picks. Push delivery does the same at send time.
- */
-async function notify(userId, actorId, { type, title, body, link }) {
-  if (!userId) return;
-  const target = await findOne('users', (user) => user.id === userId);
-  if (!target || !isActiveUser(target)) return;
-  const notification = await create('notifications', {
-    organizationId: organizationOf(target),
-    userId,
-    actorId,
-    type,
-    title,
-    body,
-    link,
-    read: false,
-  });
-  publishNotification(userId, notification.id);
-  await notifyUser(userId, { title, body, link });
-}
 
 /**
  * Tell everybody who owes this work, except whoever caused it.
@@ -1857,11 +1780,6 @@ function parseDate(input) {
   return text;
 }
 
-function taskReference() {
-  const time = Date.now().toString(36).toUpperCase();
-  const random = Math.random().toString(36).slice(2, 6).toUpperCase();
-  return `TSK-${time}-${random}`;
-}
 
 async function validAssignee(actor, assigneeId, department) {
   const assignee = await findOne('users', (user) => user.id === assigneeId);
