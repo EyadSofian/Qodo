@@ -26,6 +26,7 @@ import {
   Building2,
   CalendarRange,
   FolderKanban,
+  LayoutDashboard,
   LayoutGrid,
   Plus,
   RotateCcw,
@@ -217,12 +218,18 @@ export function ProjectsList() {
             {t('projects.subtitle')}
           </p>
         </div>
-        {canCreate && (
-          <button type="button" className="btn-primary btn-sm" onClick={() => setCreating(true)}>
-            <Plus size={16} />
-            {t('projects.new')}
-          </button>
-        )}
+        <div className="flex gap-2">
+          <Link to="/projects/portfolio" className="btn-ghost btn-sm">
+            <LayoutDashboard size={16} />
+            {t('portfolio.title')}
+          </Link>
+          {canCreate && (
+            <button type="button" className="btn-primary btn-sm" onClick={() => setCreating(true)}>
+              <Plus size={16} />
+              {t('projects.new')}
+            </button>
+          )}
+        </div>
       </header>
 
       {/* Toolbar. Tabs on one side, the tools that act on them on the other —

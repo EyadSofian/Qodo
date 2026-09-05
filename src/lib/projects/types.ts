@@ -724,3 +724,76 @@ export interface WikiPage {
   updatedAt: string;
   updatedBy: string | null;
 }
+
+/* ------------------------------------------------------------------ */
+/* Reports                                                              */
+/* ------------------------------------------------------------------ */
+
+export interface ReportDefinition {
+  module: 'task' | 'issue' | 'time_log';
+  groupBy: string;
+  measure: string;
+  dateField?: string;
+  dateRange?: string | [string | null, string | null];
+  includeArchived?: boolean;
+}
+
+export interface ReportResult {
+  groupBy: string;
+  measure: string;
+  rows: Array<{ bucket: string; value: number }>;
+  total: number;
+}
+
+export interface SavedReport {
+  id: string;
+  name: string;
+  description: string;
+  moduleKey: string;
+  folderId: string | null;
+  folderName: string | null;
+  definition: ReportDefinition;
+  visibility: 'private' | 'shared' | 'project' | 'organization';
+  ownerId: string;
+  isMine: boolean;
+}
+
+/** One project as the portfolio sees it. Nulls mean "not measured". */
+export interface PortfolioProject {
+  id: string;
+  key: string;
+  name: string;
+  ownerId: string;
+  customerName: string | null;
+  status: string | null;
+  statusCategory: string | null;
+  statusColor: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  taskCount: number;
+  doneCount: number;
+  overdueTasks: number;
+  progress: number;
+  actualHours: number;
+  budgetHours: number | null;
+  actualCost: number | null;
+  budgetAmount: number | null;
+  /** Past its end date and not finished — a fact about the calendar. */
+  delayed: boolean;
+  /** Delayed, over budget, or carrying overdue work — a judgement. */
+  atRisk: boolean;
+}
+
+export interface Portfolio {
+  projects: PortfolioProject[];
+  summary: { total: number; atRisk: number; delayed: number; overdueTasks: number };
+}
+
+export interface WorkloadRow {
+  userId: string;
+  taskCount: number;
+  /** Hours, not a count of tasks — a task count is not capacity. */
+  assignedHours: number | null;
+  loggedHours: number;
+  overdueTasks: number;
+}

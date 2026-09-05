@@ -56,6 +56,8 @@ let collaboration;
 let documents;
 let automation;
 let blueprint;
+let reportService;
+let dashboardService;
 
 /** Two organizations, so every read can be tried from the wrong one. */
 const ORG_A = 'test-org-a';
@@ -87,6 +89,8 @@ before(async () => {
   documents = await import('./projects/documentService.js');
   automation = await import('./projects/automationService.js');
   blueprint = await import('./projects/blueprintService.js');
+  reportService = await import('./projects/reportService.js');
+  dashboardService = await import('./projects/dashboardService.js');
 
   // A clean schema per run, dropped rather than truncated so a migration added
   // since the last run is actually applied — the migration runner is itself one
@@ -2099,6 +2103,279 @@ describe('blueprint', { skip: SKIP }, () => {
     });
     assert.equal(verdict.allowed, true);
     assert.equal(verdict.reason, 'no_blueprint');
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Reports                                                              */
+/* ------------------------------------------------------------------ */
+
+describe('reports', { skip: SKIP }, () => {
+  let context;
+  let project;
+
+  before(async () => {
+    if (SKIP) return;
+    project = await projects.create(alice, { name: 'Report Test' });
+    context = await contextFor(alice, project.id);
+
+    const statuses = await metadata.statusesFor(ORG_A, 'task');
+    const open = statuses.find((status) => status.category === 'open');
+    const done = statuses.find((status) => status.category === 'done');
+
+    await tasks.create(context, { title: 'One', statusId: open.id, estimatedHours: 8 });
+    await tasks.create(context, { title: 'Two', statusId: open.id, estimatedHours: 4 });
+    await tasks.create(context, { title: 'Three', statusId: done.id, estimatedHours: 2 });
+  });
+
+  test('a report groups and measures what it was asked for', async () => {
+    const result = await reportService.run(alice, context, {
+      module: 'task',
+      groupBy: 'status',
+      measure: 'count',
+    });
+
+    assert.equal(result.total, 3);
+    const byBucket = Object.fromEntries(result.rows.map((row) => [row.bucket, row.value]));
+    assert.equal(byBucket.Open, 2);
+    assert.equal(byBucket.Done, 1);
+  });
+
+  test('a measure other than count aggregates the right column', async () => {
+    const result = await reportService.run(alice, context, {
+      module: 'task',
+      groupBy: 'status',
+      measure: 'estimated_hours',
+    });
+    assert.equal(result.total, 14);
+  });
+
+  test('a group-by outside the allowlist is refused rather than interpolated', async () => {
+    for (const groupBy of ['id', 'title; DROP TABLE projects', 't.organization_id', '']) {
+      await assert.rejects(
+        () => reportService.run(alice, context, { module: 'task', groupBy, measure: 'count' }),
+        (error) => error.body?.error === 'group_by_not_allowed',
+        `groupBy=${groupBy} was accepted`
+      );
+    }
+  });
+
+  test('a measure outside the allowlist is refused', async () => {
+    await assert.rejects(
+      () => reportService.run(alice, context, { module: 'task', groupBy: 'status', measure: 'count(*) FROM users' }),
+      (error) => error.body?.error === 'measure_not_allowed'
+    );
+  });
+
+  test('a module that is not reportable is refused', async () => {
+    await assert.rejects(
+      () => reportService.run(alice, context, { module: 'users', groupBy: 'status', measure: 'count' }),
+      (error) => error.body?.error === 'module_not_reportable'
+    );
+  });
+
+  test('a money measure needs rate.view', async () => {
+    const employeeContext = {
+      ...context,
+      permissionSet: { id: 'employee' },
+      membership: { role: 'member', isClient: false },
+    };
+    await assert.rejects(
+      () => reportService.run(alice, employeeContext, { module: 'time_log', groupBy: 'user', measure: 'cost' }),
+      (error) => error.body?.missing === 'rate.view'
+    );
+
+    // And the builder does not offer what the engine would refuse.
+    assert.ok(!reportService.availableMeasures(employeeContext, 'time_log').includes('cost'));
+
+    // A *project manager* is refused too, and that is deliberate: knowing the
+    // project is over budget is a project-management question, and knowing what
+    // a colleague earns is not. Only a set carrying `rate.view` sees it.
+    const managerContext = {
+      ...context,
+      permissionSet: { id: 'manager' },
+      membership: { role: 'manager', isClient: false },
+    };
+    assert.ok(!reportService.availableMeasures(managerContext, 'time_log').includes('cost'));
+
+    const withRates = {
+      ...context,
+      permissionSet: { id: 'admin' },
+      membership: { role: 'owner', isClient: false },
+    };
+    assert.ok(reportService.availableMeasures(withRates, 'time_log').includes('cost'));
+  });
+
+  test('a report is scoped by membership, not by what was asked for', async () => {
+    // Bob is not a member, so a portfolio report of his sees nothing of this
+    // project — the same rule that governs opening it.
+    const mine = await reportService.run(alice, null, {
+      module: 'task',
+      groupBy: 'project',
+      measure: 'count',
+    });
+    const theirs = await reportService.run(bob, null, {
+      module: 'task',
+      groupBy: 'project',
+      measure: 'count',
+    });
+
+    assert.ok(mine.rows.some((row) => row.bucket === 'Report Test'));
+    assert.ok(!theirs.rows.some((row) => row.bucket === 'Report Test'));
+  });
+
+  test('a saved report stores its definition, not its rows', async () => {
+    const saved = await reportService.save(alice, ORG_A, {
+      name: 'Tasks by status',
+      module: 'task',
+      definition: { groupBy: 'status', measure: 'count' },
+    });
+
+    const reread = await reportService.getSaved(alice, ORG_A, saved.id);
+    assert.equal(reread.definition.groupBy, 'status');
+    assert.ok(!('rows' in reread.definition), 'a saved report froze its results');
+  });
+
+  test('a broken definition is refused when it is saved', async () => {
+    await assert.rejects(
+      () =>
+        reportService.save(alice, ORG_A, {
+          name: 'Broken',
+          module: 'task',
+          definition: { groupBy: 'nonsense', measure: 'count' },
+        }),
+      (error) => error.body?.error === 'group_by_not_allowed'
+    );
+  });
+
+  test('a private report is not visible to anybody else', async () => {
+    const saved = await reportService.save(alice, ORG_A, {
+      name: 'Mine only',
+      module: 'task',
+      definition: { groupBy: 'status', measure: 'count' },
+      visibility: 'private',
+    });
+    assert.equal(await reportService.getSaved(bob, ORG_A, saved.id), null);
+    assert.ok(await reportService.getSaved(alice, ORG_A, saved.id));
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Portfolio and workload                                               */
+/* ------------------------------------------------------------------ */
+
+describe('portfolio', { skip: SKIP }, () => {
+  test('the portfolio only contains projects the reader may see', async () => {
+    const mine = await reportService.portfolio(alice);
+    const theirs = await reportService.portfolio(mallory);
+
+    assert.ok(mine.projects.length > 0);
+    assert.equal(theirs.projects.length, 0, 'another organization saw the portfolio');
+  });
+
+  test('at risk and delayed mean different things and both are stated', async () => {
+    const late = await projects.create(alice, {
+      name: 'Already Late',
+      startDate: '2020-01-01',
+      endDate: '2020-06-30',
+    });
+    const context = await contextFor(alice, late.id);
+    await tasks.create(context, { title: 'Never finished', endDate: '2020-05-01' });
+
+    const result = await reportService.portfolio(alice);
+    const row = result.projects.find((project) => project.id === late.id);
+
+    assert.equal(row.delayed, true, 'a project past its end date did not read as delayed');
+    assert.equal(row.atRisk, true);
+    assert.ok(row.overdueTasks >= 1);
+    assert.ok(result.summary.delayed >= 1);
+  });
+
+  test('a project with nothing measured reports null rather than zero', async () => {
+    const bare = await projects.create(alice, { name: 'Nothing Yet' });
+    const result = await reportService.portfolio(alice);
+    const row = result.projects.find((project) => project.id === bare.id);
+
+    assert.equal(row.budgetHours, null);
+    assert.equal(row.actualCost, null);
+    assert.equal(row.taskCount, 0);
+  });
+
+  test('workload measures hours, not a count of tasks', async () => {
+    const project = await projects.create(alice, { name: 'Workload Test' });
+    const context = await contextFor(alice, project.id);
+    const task = await tasks.create(context, { title: 'Heavy', estimatedHours: 40 });
+    await tasks.setAssignees(context, task.id, [bob.id]);
+
+    const result = await reportService.workload(alice, {});
+    const row = result.people.find((person) => person.userId === bob.id);
+
+    assert.ok(row, 'the assignee did not appear in the workload');
+    // §53: a task count is not capacity. The hours are what is measured.
+    assert.equal(row.assignedHours, 40);
+    assert.equal(row.taskCount, 1);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Dashboards                                                           */
+/* ------------------------------------------------------------------ */
+
+describe('dashboards', { skip: SKIP }, () => {
+  let dashboard;
+
+  before(async () => {
+    if (SKIP) return;
+    dashboard = await dashboardService.create(alice, ORG_A, { name: 'Delivery board' });
+  });
+
+  test('a widget type outside the closed set is refused', async () => {
+    await assert.rejects(
+      () => dashboardService.addWidget(alice, ORG_A, dashboard.id, { type: 'iframe_anything' }),
+      (error) => error.body?.error === 'widget_type_unknown'
+    );
+  });
+
+  test('somebody else cannot add a widget to your dashboard', async () => {
+    const result = await dashboardService.addWidget(bob, ORG_A, dashboard.id, {
+      type: 'stat',
+      title: 'Not yours',
+    });
+    assert.equal(result, null);
+  });
+
+  test('a dashboard renders its widgets through the report engine', async () => {
+    const report = await reportService.save(alice, ORG_A, {
+      name: 'Widget source',
+      module: 'task',
+      definition: { groupBy: 'status', measure: 'count' },
+    });
+    await dashboardService.addWidget(alice, ORG_A, dashboard.id, {
+      type: 'report',
+      reportId: report.id,
+    });
+
+    const rendered = await dashboardService.render(alice, null, ORG_A, dashboard.id);
+    assert.equal(rendered.widgets.length, 1);
+    assert.ok(rendered.widgets[0].data, 'the widget resolved no data');
+    assert.equal(rendered.widgets[0].error, null);
+  });
+
+  test('one broken widget does not take the board down', async () => {
+    await dashboardService.addWidget(alice, ORG_A, dashboard.id, {
+      type: 'report',
+      title: 'Broken',
+      config: { definition: { module: 'task', groupBy: 'nonsense', measure: 'count' } },
+    });
+
+    const rendered = await dashboardService.render(alice, null, ORG_A, dashboard.id);
+    assert.equal(rendered.widgets.length, 2);
+    assert.ok(rendered.widgets.some((widget) => widget.error === 'group_by_not_allowed'));
+    assert.ok(rendered.widgets.some((widget) => widget.data !== null), 'the good widget stopped rendering');
+  });
+
+  test('a private dashboard is not visible to anybody else', async () => {
+    assert.equal(await dashboardService.render(bob, null, ORG_A, dashboard.id), null);
   });
 });
 

@@ -33,7 +33,12 @@ import type {
   ProjectDocument,
   ProjectPage,
   WikiPage,
+  Portfolio,
   ProjectSchedule,
+  ReportDefinition,
+  ReportResult,
+  SavedReport,
+  WorkloadRow,
   ProjectTask,
   RescheduleResult,
   DependencyType,
@@ -431,4 +436,42 @@ export const documentsApi = {
     ),
   remove: (projectId: string, fileId: string) =>
     api.delete<void>(`/projects/${projectId}/documents/${fileId}`),
+};
+
+/* ------------------------------------------------------------------ */
+/* Reports                                                              */
+/* ------------------------------------------------------------------ */
+
+export const reportsApi = {
+  portfolio: (includeArchived = false) =>
+    api.get<Portfolio>(`/projects/reports/portfolio${queryString({ includeArchived })}`),
+
+  workload: (from?: string, to?: string) =>
+    api.get<{ people: WorkloadRow[]; from: string | null; to: string | null }>(
+      `/projects/reports/workload${queryString({ from, to })}`
+    ),
+
+  /** What the builder may offer — derived from the engine's own allowlists. */
+  fields: (moduleKey: string, projectId?: string) =>
+    api.get<{ groupings: string[]; measures: string[] }>(
+      projectId
+        ? `/projects/${projectId}/reports/fields${queryString({ module: moduleKey })}`
+        : `/projects/reports/fields${queryString({ module: moduleKey })}`
+    ),
+
+  run: (definition: ReportDefinition, projectId?: string) =>
+    api.post<ReportResult>(
+      projectId ? `/projects/${projectId}/reports/run` : '/projects/reports/run',
+      definition
+    ),
+
+  saved: (moduleKey?: string) =>
+    api.get<{ reports: SavedReport[] }>(`/projects/reports/saved${queryString({ module: moduleKey })}`),
+
+  save: (input: {
+    name: string;
+    module: string;
+    definition: ReportDefinition;
+    visibility?: string;
+  }) => api.post<{ report: { id: string; name: string } }>('/projects/reports/saved', input),
 };

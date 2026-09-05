@@ -20,6 +20,7 @@ import {
   ArrowRight,
   CalendarRange,
   Banknote,
+  BarChart3,
   Bug,
   Building2,
   Clock,
@@ -47,6 +48,7 @@ const TABS = [
   { to: 'timesheet', end: false, labelKey: 'projects.nav.timesheet', icon: Clock },
   { to: 'budget', end: false, labelKey: 'projects.nav.budget', icon: Banknote },
   { to: 'documents', end: false, labelKey: 'projects.nav.documents', icon: FileText },
+  { to: 'reports', end: false, labelKey: 'projects.nav.reports', icon: BarChart3 },
   { to: 'members', end: false, labelKey: 'projects.nav.members', icon: Users },
   { to: 'activity', end: false, labelKey: 'projects.nav.activity', icon: Activity },
 ] as const;

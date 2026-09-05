@@ -21,6 +21,11 @@ import timeRoutes from './time.js';
 import budgetRoutes from './budget.js';
 import { commentRoutes, forumRoutes, pageRoutes } from './collaboration.js';
 import documentRoutes from './documents.js';
+import {
+  dashboardRoutes,
+  portfolioReportRoutes,
+  projectReportRoutes,
+} from './reports.js';
 
 const router = Router();
 
@@ -44,6 +49,10 @@ router.use((_req, res, next) => {
 // Organization-level configuration, before anything that could read
 // "settings" as a project id.
 router.use('/settings', settingsRoutes);
+// Portfolio-wide reporting and dashboards, before anything could read
+// "reports" or "dashboards" as a project id.
+router.use('/reports', portfolioReportRoutes);
+router.use('/dashboards', dashboardRoutes);
 
 // The nested routers are mounted first. `/:projectId/phases` has to win the
 // match before `/:projectId` in projects.js treats "phases" as a project id.
@@ -55,6 +64,7 @@ router.use('/:projectId/issues', issueRoutes);
 router.use('/:projectId/time', timeRoutes);
 router.use('/:projectId/budget', budgetRoutes);
 router.use('/:projectId/documents', documentRoutes);
+router.use('/:projectId/reports', projectReportRoutes);
 // Comments, forums and pages share one router — they share a project, a client
 // boundary and a mention parser. Mounted on their three specific prefixes
 // rather than on the project root, so an ordinary project request does not
