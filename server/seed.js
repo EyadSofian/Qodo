@@ -178,6 +178,21 @@ export const DEFAULT_APPS = [
     order: 56,
   },
   {
+    id: 'projects',
+    kind: 'internal',
+    nameAr: 'المشاريع',
+    nameEn: 'Qodo Projects',
+    descAr: 'المشاريع والمراحل والجداول والميزانيات — التخطيط والتنفيذ في مكان واحد.',
+    url: '/projects',
+    icon: 'kanban',
+    color: '#1D6FB8',
+    group: 'workspace',
+    embed: 'internal',
+    // Between Tasks (5) and Calendar (6): a project is where a task comes
+    // from, so it reads left-to-right in the order the work actually happens.
+    order: 5.5,
+  },
+  {
     id: 'tasks',
     kind: 'internal',
     nameAr: 'المهام',

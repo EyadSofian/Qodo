@@ -1,3 +1,4 @@
+import { Suspense, lazy, type ReactNode } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './lib/auth';
 import { I18nProvider } from './lib/i18n';
@@ -21,6 +22,48 @@ import { Calendar } from './pages/Calendar';
 import { Offices } from './pages/Offices';
 import { Book } from './pages/Book';
 import { HR, HREmployee } from './pages/HR';
+
+/**
+ * Qodo Projects loads on demand.
+ *
+ * It is the largest module in the workspace and most people open the launcher,
+ * their mail or their tasks without ever touching it — so it has no business in
+ * the bundle everybody downloads at sign-in. The Gantt in particular must never
+ * reach the main chunk. See §73 and ADR-6.
+ */
+const ProjectsList = lazy(() =>
+  import('./pages/projects/ProjectsList').then((module) => ({ default: module.ProjectsList }))
+);
+const ProjectDetail = lazy(() =>
+  import('./pages/projects/ProjectDetail').then((module) => ({ default: module.ProjectDetail }))
+);
+const ProjectOverview = lazy(() =>
+  import('./pages/projects/tabs/ProjectOverview').then((module) => ({ default: module.ProjectOverview }))
+);
+const ProjectPhases = lazy(() =>
+  import('./pages/projects/tabs/ProjectPhases').then((module) => ({ default: module.ProjectPhases }))
+);
+const ProjectTasks = lazy(() =>
+  import('./pages/projects/tabs/ProjectTasks').then((module) => ({ default: module.ProjectTasks }))
+);
+const ProjectGantt = lazy(() =>
+  import('./pages/projects/tabs/ProjectGantt').then((module) => ({ default: module.ProjectGantt }))
+);
+const ProjectIssues = lazy(() =>
+  import('./pages/projects/tabs/ProjectIssues').then((module) => ({ default: module.ProjectIssues }))
+);
+const ProjectTimesheet = lazy(() =>
+  import('./pages/projects/tabs/ProjectTimesheet').then((module) => ({ default: module.ProjectTimesheet }))
+);
+const ProjectBudget = lazy(() =>
+  import('./pages/projects/tabs/ProjectBudget').then((module) => ({ default: module.ProjectBudget }))
+);
+const ProjectMembers = lazy(() =>
+  import('./pages/projects/tabs/ProjectMembers').then((module) => ({ default: module.ProjectMembers }))
+);
+const ProjectActivity = lazy(() =>
+  import('./pages/projects/tabs/ProjectActivity').then((module) => ({ default: module.ProjectActivity }))
+);
 
 export default function App() {
   return (
@@ -78,6 +121,39 @@ function Gate() {
         <Route path="/" element={<Launcher />} />
         <Route path="/app/:appId" element={<AppFrame />} />
         <Route path="/tasks" element={<Tasks />} />
+        {/* Qodo Projects. The route exists for everybody and the API is what
+            refuses — the same choice the management desk makes below, and for
+            the same reason: a bookmarked link that lands on the launcher with
+            no explanation is worse than one that lands on a refusal. */}
+        <Route
+          path="/projects"
+          element={
+            <Suspense fallback={<Splash />}>
+              <ProjectsList />
+            </Suspense>
+          }
+        />
+        {/* One project. The shell loads it once and the tabs render into it,
+            so moving between Tasks and Phases is a route change rather than a
+            reload of who you are and what you may do here. */}
+        <Route
+          path="/projects/:projectId"
+          element={
+            <Suspense fallback={<Splash />}>
+              <ProjectDetail />
+            </Suspense>
+          }
+        >
+          <Route index element={<Suspended><ProjectOverview /></Suspended>} />
+          <Route path="phases" element={<Suspended><ProjectPhases /></Suspended>} />
+          <Route path="tasks" element={<Suspended><ProjectTasks /></Suspended>} />
+          <Route path="gantt" element={<Suspended><ProjectGantt /></Suspended>} />
+          <Route path="issues" element={<Suspended><ProjectIssues /></Suspended>} />
+          <Route path="timesheet" element={<Suspended><ProjectTimesheet /></Suspended>} />
+          <Route path="budget" element={<Suspended><ProjectBudget /></Suspended>} />
+          <Route path="members" element={<Suspended><ProjectMembers /></Suspended>} />
+          <Route path="activity" element={<Suspended><ProjectActivity /></Suspended>} />
+        </Route>
         <Route path="/mail" element={<Mail />} />
         <Route path="/calendar" element={<Calendar />} />
         <Route path="/offices" element={<Offices />} />
@@ -97,6 +173,27 @@ function Gate() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Shell>
+  );
+}
+
+/**
+ * A tab's loading frame.
+ *
+ * Deliberately not `<Splash />` — that is the full-screen navy sign-in splash,
+ * and showing it while a tab chunk arrives would make switching tabs look like
+ * signing out and back in.
+ */
+function Suspended({ children }: { children: ReactNode }) {
+  return (
+    <Suspense
+      fallback={
+        <div className="card grid place-items-center py-16">
+          <span className="h-5 w-5 animate-spin rounded-full border-2 border-surface-line border-t-brand-500" />
+        </div>
+      }
+    >
+      {children}
+    </Suspense>
   );
 }
 

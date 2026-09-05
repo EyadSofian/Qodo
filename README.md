@@ -42,6 +42,7 @@ _One hub that launches, embeds and links every Engosoft app._
 | التسويق والمبيعات · Insights Hub | [engosoft-insights-hub-production.up.railway.app](https://engosoft-insights-hub-production.up.railway.app/) | [Engosoft-Insights-Hub](https://github.com/EyadSofian/Engosoft-Insights-Hub) |
 | الموارد البشرية · HR Suite | وحدة داخلية على `/hr` | هذا المستودع · [التفاصيل](docs/HR_MODULE.md) |
 | تحليلات خدمة العملاء | [chatwootdashpoard-production.up.railway.app](https://chatwootdashpoard-production.up.railway.app/) | [chatwoot_dashpoard](https://github.com/EyadSofian/chatwoot_dashpoard) |
+| المشاريع · Qodo Projects | وحدة داخلية على `/projects` | هذا المستودع · [مصفوفة التكافؤ](docs/QODO_PROJECTS_PARITY_MATRIX.md) |
 | شات وت | [chat.engosoft.com](https://chat.engosoft.com) | — |
 
 **Qodo Mail** و**Qodo Calendar** و**المكاتب** و**المهام** و**المستخدمون** و**الإعدادات** وحدات داخل المساحة نفسها.
@@ -197,6 +198,20 @@ npm run dev
 npm run build
 npm start          # http://localhost:3000
 ```
+
+### Qodo Projects محتاجة PostgreSQL
+
+باقي المساحة تشتغل من غير أي إعداد على ملف JSON، وده مش هيتغيّر. لكن وحدة
+المشاريع وحدها محتاجة قاعدة بيانات حقيقية — الأسباب في
+[ADR-2](docs/QODO_PROJECTS_ARCHITECTURE.md). من غير `DATABASE_URL` كل مسارات
+`/api/projects` بترد `503` وبتقول الأمر المطلوب، وباقي المساحة بتشتغل عادي.
+
+```bash
+docker run -d -e POSTGRES_PASSWORD=qodo -p 5432:5432 postgres:16
+```
+
+بعدها ضِف `DATABASE_URL=postgres://postgres:qodo@localhost:5432/postgres` في
+`.env.local` وأعد التشغيل. الهجرات بتتطبّق لوحدها عند الإقلاع.
 
 ---
 

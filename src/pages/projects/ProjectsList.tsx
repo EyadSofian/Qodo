@@ -1,0 +1,647 @@
+/**
+ * Qodo Projects — the projects list.
+ *
+ * The first screen of the module, and the one everything else is reached from.
+ * Its job is to answer "what is running, what is mine, and what needs me"
+ * without a click, which is why the density is closer to a spreadsheet than to
+ * a marketing grid: an operations manager at Engosoft opens this with forty
+ * projects on it, not four.
+ *
+ * The scope tabs are the information architecture. Active / Mine / Favorites
+ * are three questions about the same set, and Archived and Recycle bin are the
+ * two places work goes when it stops — kept as tabs rather than hidden in a
+ * menu because "where did that project go" is a question people actually ask,
+ * and a tab answers it before it is asked.
+ *
+ * Everything here is a request to the server. Filtering, sorting and paging
+ * happen in SQL — this component never receives a list it then narrows, which
+ * is the whole reason Projects has a relational schema (ADR-2).
+ */
+
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import {
+  Archive,
+  ArchiveRestore,
+  Building2,
+  CalendarRange,
+  FolderKanban,
+  LayoutGrid,
+  Plus,
+  RotateCcw,
+  Search,
+  Star,
+  Table2,
+  Trash2,
+  Users,
+} from 'lucide-react';
+import { useI18n } from '../../lib/i18n';
+import { errorMessage } from '../../lib/api';
+import { projectsApi } from '../../lib/projects/api';
+import type { Project, ProjectScope } from '../../lib/projects/types';
+import { EmptyState, Segmented, Spinner, useToast } from '../../components/ui';
+import { ProjectCreateDialog } from '../../components/projects/ProjectCreateDialog';
+import { useProjectPermissions } from '../../lib/projects/useProjectPermissions';
+
+/**
+ * The tabs, and what each one asks the server for.
+ *
+ * `mine` and `favorites` are the *active* scope with an extra filter rather
+ * than scopes of their own — a favourite that has been archived should not
+ * reappear in the favourites tab, and modelling them as filters is what makes
+ * that true without a special case.
+ */
+type Tab = 'active' | 'mine' | 'favorites' | 'archived' | 'trashed';
+
+const TAB_QUERY: Record<Tab, { scope: ProjectScope; mine?: boolean; favorites?: boolean }> = {
+  active: { scope: 'active' },
+  mine: { scope: 'active', mine: true },
+  favorites: { scope: 'active', favorites: true },
+  archived: { scope: 'archived' },
+  trashed: { scope: 'trashed' },
+};
+
+const PAGE_SIZE = 24;
+
+export function ProjectsList() {
+  const { t, lang } = useI18n();
+  const toast = useToast();
+  const [params, setParams] = useSearchParams();
+
+  const tab = (params.get('tab') as Tab) || 'active';
+  const layout = params.get('layout') === 'table' ? 'table' : 'grid';
+
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [total, setTotal] = useState(0);
+  const [offset, setOffset] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  // Favourites are optimistic: the star is the fastest interaction on the page
+  // and waiting a round trip for it feels broken. The set is reconciled from
+  // the server on the next load.
+  const [starred, setStarred] = useState<Set<string>>(new Set());
+
+  const [searchInput, setSearchInput] = useState(params.get('q') ?? '');
+  const [search, setSearch] = useState(params.get('q') ?? '');
+
+  // Debounced, because the alternative is a query per keystroke against a
+  // table this product is designed to fill with hundreds of thousands of rows.
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSearch(searchInput.trim()), 300);
+    return () => window.clearTimeout(timer);
+  }, [searchInput]);
+
+  // What this person may do in Projects is a permission-set question, and only
+  // the server can answer it — a workspace role does not imply a Projects one.
+  // This hides the button; the endpoint is still what refuses.
+  const { can } = useProjectPermissions();
+  const canCreate = can('project.create');
+
+  /**
+   * One loader for every tab.
+   *
+   * `requestId` guards against the out-of-order response: typing quickly fires
+   * three searches, and without this the slowest one wins and the list shows
+   * results for a query the box no longer contains.
+   */
+  const requestId = useRef(0);
+
+  const load = useCallback(
+    async (nextOffset = 0) => {
+      const id = ++requestId.current;
+      setLoading(true);
+      setError(null);
+      try {
+        const result = await projectsApi.list({
+          ...TAB_QUERY[tab],
+          q: search || undefined,
+          limit: PAGE_SIZE,
+          offset: nextOffset,
+        });
+        if (id !== requestId.current) return;
+        setProjects(result.projects);
+        setTotal(result.total);
+        setOffset(result.offset);
+      } catch (caught) {
+        if (id !== requestId.current) return;
+        setError(errorMessage(caught, lang));
+        setProjects([]);
+        setTotal(0);
+      } finally {
+        if (id === requestId.current) setLoading(false);
+      }
+    },
+    [tab, search, lang]
+  );
+
+  useEffect(() => {
+    void load(0);
+  }, [load]);
+
+  const setTab = (next: Tab) => {
+    const updated = new URLSearchParams(params);
+    updated.set('tab', next);
+    setParams(updated, { replace: true });
+  };
+
+  const setLayout = (next: 'grid' | 'table') => {
+    const updated = new URLSearchParams(params);
+    updated.set('layout', next);
+    setParams(updated, { replace: true });
+  };
+
+  /**
+   * Every row action runs the same way: call, report, reload.
+   *
+   * Written once rather than five times because the part that matters is the
+   * error branch — an archive that the server refused must not leave the card
+   * looking archived, and the reload is what guarantees the screen agrees with
+   * the database rather than with what the click hoped for.
+   */
+  const act = async (action: () => Promise<unknown>, successKey?: Parameters<typeof t>[0]) => {
+    try {
+      await action();
+      if (successKey) toast.push(t(successKey), 'ok');
+      await load(offset);
+    } catch (caught) {
+      toast.push(errorMessage(caught, lang), 'bad');
+    }
+  };
+
+  const toggleFavorite = async (project: Project) => {
+    const next = !starred.has(project.id);
+    setStarred((current) => {
+      const updated = new Set(current);
+      if (next) updated.add(project.id);
+      else updated.delete(project.id);
+      return updated;
+    });
+    try {
+      await projectsApi.favorite(project.id, next);
+      if (tab === 'favorites') await load(offset);
+    } catch (caught) {
+      // Put the star back where it was — an optimistic update that silently
+      // stays wrong is worse than one that never happened.
+      setStarred((current) => {
+        const updated = new Set(current);
+        if (next) updated.delete(project.id);
+        else updated.add(project.id);
+        return updated;
+      });
+      toast.push(errorMessage(caught, lang), 'bad');
+    }
+  };
+
+  const tabs = useMemo(
+    () =>
+      [
+        { value: 'active' as Tab, label: t('projects.scope.active') },
+        { value: 'mine' as Tab, label: t('projects.scope.mine') },
+        { value: 'favorites' as Tab, label: t('projects.scope.favorites') },
+        { value: 'archived' as Tab, label: t('projects.scope.archived') },
+        { value: 'trashed' as Tab, label: t('projects.scope.trashed') },
+      ],
+    [t]
+  );
+
+  return (
+    <div className="mx-auto w-full max-w-[1400px] px-4 py-5 sm:px-6">
+      <header className="mb-5 flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="flex items-center gap-2 text-xl font-bold text-ink">
+            <FolderKanban size={22} className="text-brand-500" />
+            {t('projects.title')}
+          </h1>
+          <p className="mt-1 max-w-2xl text-sm leading-relaxed text-ink-muted">
+            {t('projects.subtitle')}
+          </p>
+        </div>
+        {canCreate && (
+          <button type="button" className="btn-primary btn-sm" onClick={() => setCreating(true)}>
+            <Plus size={16} />
+            {t('projects.new')}
+          </button>
+        )}
+      </header>
+
+      {/* Toolbar. Tabs on one side, the tools that act on them on the other —
+          the arrangement flips with the document direction on its own because
+          nothing here is positioned left or right explicitly. */}
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <Segmented value={tab} onChange={setTab} options={tabs} className="flex-1 min-w-[280px]" />
+
+        <div className="relative">
+          <Search
+            size={16}
+            className="pointer-events-none absolute inset-y-0 start-3 my-auto text-ink-faint"
+            aria-hidden="true"
+          />
+          <input
+            type="search"
+            value={searchInput}
+            onChange={(event) => setSearchInput(event.target.value)}
+            placeholder={t('projects.search')}
+            aria-label={t('projects.search')}
+            className="field !w-[240px] ps-9"
+          />
+        </div>
+
+        <div
+          role="group"
+          aria-label={t('projects.view.grid')}
+          className="flex rounded-xl border border-surface-line bg-white p-1"
+        >
+          <button
+            type="button"
+            onClick={() => setLayout('grid')}
+            aria-pressed={layout === 'grid'}
+            title={t('projects.view.grid')}
+            className={`btn-quiet !min-h-9 rounded-lg px-2.5 ${
+              layout === 'grid' ? 'bg-navy text-white hover:bg-navy hover:text-white' : ''
+            }`}
+          >
+            <LayoutGrid size={16} />
+          </button>
+          <button
+            type="button"
+            onClick={() => setLayout('table')}
+            aria-pressed={layout === 'table'}
+            title={t('projects.view.table')}
+            className={`btn-quiet !min-h-9 rounded-lg px-2.5 ${
+              layout === 'table' ? 'bg-navy text-white hover:bg-navy hover:text-white' : ''
+            }`}
+          >
+            <Table2 size={16} />
+          </button>
+        </div>
+      </div>
+
+      {loading && projects.length === 0 ? (
+        <div className="card grid place-items-center py-20">
+          <Spinner size={24} className="text-brand-500" />
+        </div>
+      ) : error ? (
+        <div className="card">
+          <EmptyState
+            icon={<FolderKanban size={34} />}
+            title={t('projects.error.load')}
+            body={error}
+            action={
+              <button type="button" className="btn-ghost btn-sm" onClick={() => void load(0)}>
+                <RotateCcw size={15} />
+                {t('projects.error.retry')}
+              </button>
+            }
+          />
+        </div>
+      ) : projects.length === 0 ? (
+        <div className="card">
+          <EmptyState
+            icon={<FolderKanban size={34} />}
+            title={search ? t('projects.empty.search') : t(`projects.empty.${tab}` as Parameters<typeof t>[0])}
+            body={
+              search
+                ? t('projects.empty.searchHint')
+                : t(`projects.empty.${tab}Hint` as Parameters<typeof t>[0])
+            }
+            action={
+              canCreate && tab === 'active' && !search ? (
+                <button type="button" className="btn-primary btn-sm" onClick={() => setCreating(true)}>
+                  <Plus size={16} />
+                  {t('projects.new')}
+                </button>
+              ) : undefined
+            }
+          />
+        </div>
+      ) : layout === 'grid' ? (
+        <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {projects.map((project) => (
+            <li key={project.id}>
+              <ProjectCard
+                project={project}
+                tab={tab}
+                starred={starred.has(project.id)}
+                onToggleFavorite={() => void toggleFavorite(project)}
+                onArchive={() => void act(() => projectsApi.archive(project.id))}
+                onUnarchive={() => void act(() => projectsApi.unarchive(project.id))}
+                onDelete={() => void act(() => projectsApi.remove(project.id))}
+                onRestore={() => void act(() => projectsApi.restore(project.id))}
+              />
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <ProjectTable
+          projects={projects}
+          tab={tab}
+          starred={starred}
+          onToggleFavorite={(project) => void toggleFavorite(project)}
+          onArchive={(project) => void act(() => projectsApi.archive(project.id))}
+          onUnarchive={(project) => void act(() => projectsApi.unarchive(project.id))}
+          onDelete={(project) => void act(() => projectsApi.remove(project.id))}
+          onRestore={(project) => void act(() => projectsApi.restore(project.id))}
+        />
+      )}
+
+      {total > PAGE_SIZE && (
+        <nav className="mt-4 flex items-center justify-between gap-3" aria-label={t('projects.title')}>
+          <p className="text-[13px] font-semibold text-ink-muted">
+            {t('projects.count', { n: total })}
+          </p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              className="btn-ghost btn-sm"
+              disabled={offset === 0 || loading}
+              onClick={() => void load(Math.max(0, offset - PAGE_SIZE))}
+            >
+              {lang === 'en' ? 'Previous' : 'السابق'}
+            </button>
+            <button
+              type="button"
+              className="btn-ghost btn-sm"
+              disabled={offset + PAGE_SIZE >= total || loading}
+              onClick={() => void load(offset + PAGE_SIZE)}
+            >
+              {lang === 'en' ? 'Next' : 'التالي'}
+            </button>
+          </div>
+        </nav>
+      )}
+
+      <ProjectCreateDialog
+        open={creating}
+        onClose={() => setCreating(false)}
+        onCreated={() => {
+          setCreating(false);
+          toast.push(t('projects.created'), 'ok');
+          void load(0);
+        }}
+      />
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* One project, two ways                                                */
+/* ------------------------------------------------------------------ */
+
+interface RowActions {
+  onToggleFavorite: () => void;
+  onArchive: () => void;
+  onUnarchive: () => void;
+  onDelete: () => void;
+  onRestore: () => void;
+}
+
+function ProjectCard({
+  project,
+  tab,
+  starred,
+  ...actions
+}: { project: Project; tab: Tab; starred: boolean } & RowActions) {
+  const { t } = useI18n();
+
+  return (
+    <article className="card group relative flex h-full flex-col gap-3 p-4 transition-shadow hover:shadow-lift">
+      <div className="flex items-start gap-3">
+        {/* The colour bar carries the project's identity at a glance. It is a
+            4px rail rather than a filled card because forty saturated cards on
+            one screen is noise, not information. */}
+        <span
+          aria-hidden="true"
+          className="mt-0.5 h-9 w-1 shrink-0 rounded-full"
+          style={{ backgroundColor: project.color }}
+        />
+        <div className="min-w-0 flex-1">
+          <Link
+            to={`/projects/${project.id}`}
+            className="block truncate text-[15px] font-bold text-ink hover:text-brand-600"
+          >
+            {project.name}
+          </Link>
+          <p className="mt-0.5 flex items-center gap-1.5 text-[12px] font-semibold text-ink-faint">
+            <span className="chip bg-surface-sunken text-ink-muted">{project.key}</span>
+            {project.customerName && (
+              <span className="inline-flex min-w-0 items-center gap-1 truncate">
+                <Building2 size={12} aria-hidden="true" />
+                <span className="truncate">{project.customerName}</span>
+              </span>
+            )}
+          </p>
+        </div>
+        <FavoriteButton starred={starred} onToggle={actions.onToggleFavorite} />
+      </div>
+
+      {project.description && (
+        <p className="line-clamp-2 text-[13px] leading-relaxed text-ink-muted">{project.description}</p>
+      )}
+
+      <dl className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[12px] text-ink-muted">
+        <div className="flex items-center gap-1.5">
+          <dt className="sr-only">{t('projects.field.members')}</dt>
+          <Users size={13} aria-hidden="true" />
+          <dd>{t('projects.memberCount', { n: project.memberCount })}</dd>
+        </div>
+        {(project.startDate || project.endDate) && (
+          <div className="flex items-center gap-1.5">
+            <dt className="sr-only">{t('projects.field.endDate')}</dt>
+            <CalendarRange size={13} aria-hidden="true" />
+            <dd>
+              {formatRange(project.startDate, project.endDate)}
+            </dd>
+          </div>
+        )}
+      </dl>
+
+      <RowMenu project={project} tab={tab} {...actions} />
+    </article>
+  );
+}
+
+function ProjectTable({
+  projects,
+  tab,
+  starred,
+  onToggleFavorite,
+  onArchive,
+  onUnarchive,
+  onDelete,
+  onRestore,
+}: {
+  projects: Project[];
+  tab: Tab;
+  starred: Set<string>;
+  onToggleFavorite: (project: Project) => void;
+  onArchive: (project: Project) => void;
+  onUnarchive: (project: Project) => void;
+  onDelete: (project: Project) => void;
+  onRestore: (project: Project) => void;
+}) {
+  const { t } = useI18n();
+
+  return (
+    // The wrapper scrolls, not the page — §75 and §73 both land here: a wide
+    // table on a phone must never make the whole document scroll sideways.
+    <div className="card overflow-x-auto">
+      <table className="w-full min-w-[720px] text-start text-sm">
+        <thead>
+          <tr className="border-b border-surface-line text-[12px] uppercase tracking-wide text-ink-faint">
+            <th scope="col" className="w-10 px-3 py-2.5" />
+            <th scope="col" className="px-3 py-2.5 text-start font-semibold">
+              {t('projects.field.name')}
+            </th>
+            <th scope="col" className="px-3 py-2.5 text-start font-semibold">
+              {t('projects.field.key')}
+            </th>
+            <th scope="col" className="px-3 py-2.5 text-start font-semibold">
+              {t('projects.field.customer')}
+            </th>
+            <th scope="col" className="px-3 py-2.5 text-start font-semibold">
+              {t('projects.field.members')}
+            </th>
+            <th scope="col" className="px-3 py-2.5 text-start font-semibold">
+              {t('projects.field.endDate')}
+            </th>
+            <th scope="col" className="w-12 px-3 py-2.5" />
+          </tr>
+        </thead>
+        <tbody>
+          {projects.map((project) => (
+            <tr key={project.id} className="border-b border-surface-line last:border-0 hover:bg-surface-sunken/60">
+              <td className="px-3 py-2.5">
+                <FavoriteButton
+                  starred={starred.has(project.id)}
+                  onToggle={() => onToggleFavorite(project)}
+                />
+              </td>
+              <td className="px-3 py-2.5">
+                <Link
+                  to={`/projects/${project.id}`}
+                  className="flex items-center gap-2 font-semibold text-ink hover:text-brand-600"
+                >
+                  <span
+                    aria-hidden="true"
+                    className="h-4 w-1 shrink-0 rounded-full"
+                    style={{ backgroundColor: project.color }}
+                  />
+                  {project.name}
+                </Link>
+              </td>
+              <td className="px-3 py-2.5">
+                <span className="chip bg-surface-sunken text-ink-muted">{project.key}</span>
+              </td>
+              <td className="px-3 py-2.5 text-ink-muted">{project.customerName ?? '—'}</td>
+              <td className="px-3 py-2.5 text-ink-muted">{project.memberCount}</td>
+              <td className="px-3 py-2.5 text-ink-muted">{project.endDate ?? '—'}</td>
+              <td className="px-3 py-2.5">
+                <RowMenu
+                  project={project}
+                  tab={tab}
+                  onArchive={() => onArchive(project)}
+                  onUnarchive={() => onUnarchive(project)}
+                  onDelete={() => onDelete(project)}
+                  onRestore={() => onRestore(project)}
+                  compact
+                />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function FavoriteButton({ starred, onToggle }: { starred: boolean; onToggle: () => void }) {
+  const { t } = useI18n();
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-pressed={starred}
+      aria-label={starred ? t('projects.action.unfavorite') : t('projects.action.favorite')}
+      title={starred ? t('projects.action.unfavorite') : t('projects.action.favorite')}
+      className="btn-quiet !min-h-8 shrink-0 rounded-lg p-1.5"
+    >
+      <Star
+        size={16}
+        className={starred ? 'fill-accent-500 text-accent-500' : 'text-ink-faint'}
+        aria-hidden="true"
+      />
+    </button>
+  );
+}
+
+/**
+ * The row's actions.
+ *
+ * Rendered as plain buttons rather than a dropdown: there are at most three,
+ * and a menu that hides three items behind a click costs more than it saves.
+ * Which three depends on where the project already is — an archived project
+ * offers "unarchive", a trashed one offers "restore", and neither offers both.
+ */
+function RowMenu({
+  project,
+  tab,
+  onArchive,
+  onUnarchive,
+  onDelete,
+  onRestore,
+  compact,
+}: { project: Project; tab: Tab; compact?: boolean } & Omit<RowActions, 'onToggleFavorite'>) {
+  const { t } = useI18n();
+
+  const button = (
+    label: string,
+    icon: JSX.Element,
+    onClick: () => void,
+    tone: 'quiet' | 'danger' = 'quiet'
+  ) => (
+    <button
+      type="button"
+      onClick={onClick}
+      title={label}
+      aria-label={`${label} — ${project.name}`}
+      className={`${tone === 'danger' ? 'btn-danger' : 'btn-quiet'} !min-h-8 rounded-lg px-2`}
+    >
+      {icon}
+      {!compact && <span className="text-[12px]">{label}</span>}
+    </button>
+  );
+
+  return (
+    <div
+      className={
+        compact
+          ? 'flex justify-end gap-1'
+          : 'flex flex-wrap gap-1 border-t border-surface-line pt-2 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100'
+      }
+    >
+      {tab === 'trashed'
+        ? button(t('projects.action.restore'), <ArchiveRestore size={15} />, onRestore)
+        : tab === 'archived'
+          ? button(t('projects.action.unarchive'), <ArchiveRestore size={15} />, onUnarchive)
+          : (
+            <>
+              {button(t('projects.action.archive'), <Archive size={15} />, onArchive)}
+              {button(t('projects.action.delete'), <Trash2 size={15} />, onDelete, 'danger')}
+            </>
+          )}
+    </div>
+  );
+}
+
+/**
+ * A date range, or whichever half of it exists.
+ *
+ * Deliberately not localised into Arabic-Indic digits: the rest of the
+ * workspace shows ISO dates in tables, and one screen inventing its own
+ * convention is worse than a plain one everywhere.
+ */
+function formatRange(start: string | null, end: string | null): string {
+  if (start && end) return `${start} → ${end}`;
+  return start ?? end ?? '—';
+}

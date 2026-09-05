@@ -119,6 +119,39 @@ const ERRORS: Record<string, { ar: string; en: string }> = {
   unknown_hr_template: { ar: 'قالب مهمة HR غير معروف أو تم تغييره.', en: 'That HR task template is unknown or has changed.' },
   hr_event_triggered: { ar: 'هذه المهمة تبدأ بحدث فعلي ولا يمكن تشغيلها بالتاريخ وحده.', en: 'This task starts from a real event and cannot be scheduled by date alone.' },
   hr_owner_required: { ar: 'اختر مسؤولاً قبل تفعيل المهمة الدورية.', en: 'Choose an owner before enabling the recurring task.' },
+  /* ── Qodo Projects ───────────────────────────────────────────── */
+  projects_storage_unavailable: {
+    ar: 'وحدة المشاريع محتاجة قاعدة بيانات PostgreSQL. اضبط DATABASE_URL ثم أعد التشغيل.',
+    en: 'Projects needs a PostgreSQL database. Set DATABASE_URL and restart the server.',
+  },
+  end_before_start: {
+    ar: 'تاريخ الانتهاء لا يصح أن يسبق تاريخ البدء.',
+    en: 'The end date cannot be before the start date.',
+  },
+  owner_cannot_be_removed: {
+    ar: 'لا يمكن إزالة مالك المشروع. غيّر المالك أولاً.',
+    en: 'The project owner cannot be removed. Change the owner first.',
+  },
+  key_exhausted: {
+    ar: 'رمز المشروع مستخدم بالكامل. اختر رمزًا مختلفًا.',
+    en: 'That project key is taken. Choose a different one.',
+  },
+  user_required: { ar: 'اختر المستخدم أولاً.', en: 'Choose a user first.' },
+  title_required_project: { ar: 'عنوان المهمة مطلوب.', en: 'A task title is required.' },
+  checklist_incomplete: {
+    ar: 'فيه بنود مطلوبة في قائمة التحقق لسه غير مكتملة.',
+    en: 'Required checklist items are still open.',
+  },
+  would_create_cycle: {
+    ar: 'ده هيعمل حلقة مقفولة في تبعية المهام.',
+    en: 'That would create a loop in the task hierarchy.',
+  },
+  max_depth_exceeded: {
+    ar: 'وصلت لأقصى عمق مسموح للمهام الفرعية.',
+    en: 'That is as deep as subtasks can nest.',
+  },
+  parent_not_found: { ar: 'المهمة الأصلية غير موجودة.', en: 'The parent task no longer exists.' },
+  cannot_be_own_parent: { ar: 'المهمة لا يمكن أن تكون أصل نفسها.', en: 'A task cannot be its own parent.' },
   invalid_credentials: {
     ar: 'الإيميل أو كلمة المرور غير صحيحة.',
     en: 'That email or password is not correct.',
