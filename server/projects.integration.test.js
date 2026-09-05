@@ -54,6 +54,8 @@ let timeService;
 let budgetService;
 let collaboration;
 let documents;
+let automation;
+let blueprint;
 
 /** Two organizations, so every read can be tried from the wrong one. */
 const ORG_A = 'test-org-a';
@@ -83,6 +85,8 @@ before(async () => {
   budgetService = await import('./projects/budgetService.js');
   collaboration = await import('./projects/collaborationService.js');
   documents = await import('./projects/documentService.js');
+  automation = await import('./projects/automationService.js');
+  blueprint = await import('./projects/blueprintService.js');
 
   // A clean schema per run, dropped rather than truncated so a migration added
   // since the last run is actually applied — the migration runner is itself one
@@ -1598,6 +1602,503 @@ describe('documents', { skip: SKIP }, () => {
 
     assert.equal(await documents.get(clientContext, internal.id), null);
     assert.equal(await documents.download(clientContext, internal.id, 1), null);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Automation                                                           */
+/* ------------------------------------------------------------------ */
+
+describe('automation', { skip: SKIP }, () => {
+  let context;
+  let project;
+
+  before(async () => {
+    if (SKIP) return;
+    project = await projects.create(alice, { name: 'Automation Test' });
+    context = await contextFor(alice, project.id);
+  });
+
+  test('a rule with an unknown action is refused when it is saved', async () => {
+    await assert.rejects(
+      () =>
+        automation.createRule(alice, ORG_A, {
+          name: 'Run arbitrary code',
+          moduleKey: 'task',
+          trigger: 'create',
+          actions: [{ type: 'eval', code: 'process.exit(1)' }],
+        }),
+      (error) => error.body?.error === 'action_unknown'
+    );
+  });
+
+  test('a rule with a broken criterion is refused when it is saved', async () => {
+    await assert.rejects(
+      () =>
+        automation.createRule(alice, ORG_A, {
+          name: 'Typo',
+          moduleKey: 'task',
+          trigger: 'update',
+          criteria: [{ field: 'priority', operator: 'equalz', value: 'high' }],
+          actions: [{ type: 'notify', to: 'owner' }],
+        }),
+      (error) => error.body?.error === 'criteria_invalid'
+    );
+  });
+
+  test('a rule with no actions is refused — it would fire and do nothing', async () => {
+    await assert.rejects(
+      () =>
+        automation.createRule(alice, ORG_A, {
+          name: 'Does nothing',
+          moduleKey: 'task',
+          trigger: 'create',
+          actions: [],
+        }),
+      (error) => error.body?.error === 'actions_required'
+    );
+  });
+
+  test('a matching rule fires once, and firing it again is a no-op', async () => {
+    await automation.createRule(alice, ORG_A, {
+      name: 'Tag urgent work',
+      moduleKey: 'task',
+      trigger: 'update',
+      criteria: [{ field: 'priority', operator: 'eq', value: 'urgent' }],
+      actions: [{ type: 'add_tag', tag: 'escalated' }],
+    });
+
+    const performed = [];
+    const apply = async (action) => {
+      performed.push(action.type);
+      return { ok: true };
+    };
+
+    const record = { id: 'auto-task-1', priority: 'urgent' };
+    const previous = { id: 'auto-task-1', priority: 'normal' };
+
+    const first = await automation.runFor({
+      organizationId: ORG_A,
+      projectId: project.id,
+      moduleKey: 'task',
+      trigger: 'update',
+      record,
+      previous,
+      user: alice,
+      apply,
+    });
+    assert.equal(first.applied.length, 1);
+    assert.deepEqual(performed, ['add_tag']);
+
+    // The same change, delivered twice — a crash-and-retry, or two workers.
+    const second = await automation.runFor({
+      organizationId: ORG_A,
+      projectId: project.id,
+      moduleKey: 'task',
+      trigger: 'update',
+      record,
+      previous,
+      user: alice,
+      apply,
+    });
+    assert.equal(second.applied.length, 0, 'the same event fired the rule twice');
+    assert.deepEqual(performed, ['add_tag'], 'the action ran twice');
+  });
+
+  test('a different change to the same record does fire', async () => {
+    const performed = [];
+    const apply = async (action) => performed.push(action.type);
+
+    await automation.runFor({
+      organizationId: ORG_A,
+      projectId: project.id,
+      moduleKey: 'task',
+      trigger: 'update',
+      record: { id: 'auto-task-1', priority: 'urgent', progress: 50 },
+      previous: { id: 'auto-task-1', priority: 'urgent', progress: 10 },
+      user: alice,
+      apply,
+    });
+    assert.deepEqual(performed, ['add_tag'], 'a genuinely new change was swallowed as a duplicate');
+  });
+
+  test('a rule scoped to one project does not fire on another', async () => {
+    const elsewhere = await projects.create(alice, { name: 'Elsewhere' });
+    await automation.createRule(alice, ORG_A, {
+      name: 'Only here',
+      moduleKey: 'task',
+      trigger: 'create',
+      projectId: elsewhere.id,
+      actions: [{ type: 'notify', to: 'owner' }],
+    });
+
+    const performed = [];
+    await automation.runFor({
+      organizationId: ORG_A,
+      projectId: project.id,
+      moduleKey: 'task',
+      trigger: 'create',
+      record: { id: 'scoped-1' },
+      user: alice,
+      apply: async (action) => performed.push(action.type),
+    });
+    assert.deepEqual(performed, [], 'a project-scoped rule fired on another project');
+  });
+
+  test('a chain past the depth limit is stopped and recorded', async () => {
+    const result = await automation.runFor({
+      organizationId: ORG_A,
+      projectId: project.id,
+      moduleKey: 'task',
+      trigger: 'update',
+      record: { id: 'looping-task', priority: 'urgent' },
+      previous: { id: 'looping-task', priority: 'normal' },
+      user: alice,
+      apply: async () => {},
+      depth: automation.MAX_DEPTH + 1,
+    });
+
+    assert.equal(result.stopped, 'depth_limit');
+
+    // Recorded, not silent: a loop that stops quietly looks like one that
+    // finished, and the difference matters when somebody asks why a field
+    // never updated.
+    const runs = await automation.runHistory(ORG_A, { limit: 20 });
+    assert.ok(runs.some((run) => run.status === 'failed' && /depth limit/.test(run.error ?? '')));
+  });
+
+  test('a dry run reports what would happen and does nothing', async () => {
+    const performed = [];
+    const preview = await automation.runFor({
+      organizationId: ORG_A,
+      projectId: project.id,
+      moduleKey: 'task',
+      trigger: 'update',
+      record: { id: 'dry-1', priority: 'urgent' },
+      previous: { id: 'dry-1', priority: 'low' },
+      user: alice,
+      apply: async (action) => performed.push(action.type),
+      dryRun: true,
+    });
+
+    assert.ok(preview.applied.length >= 1);
+    assert.ok(preview.applied.every((entry) => entry.dryRun));
+    assert.deepEqual(performed, [], 'a dry run executed an action');
+  });
+
+  test('the quota counts and eventually says no', async () => {
+    const first = await automation.consumeQuota(ORG_A, 1);
+    assert.equal(first.exhausted, false);
+    assert.ok(first.used >= 1);
+
+    const blown = await automation.consumeQuota(ORG_A, first.allowed + 1);
+    assert.equal(blown.exhausted, true, 'a runaway loop would have cost nothing');
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Business rules                                                       */
+/* ------------------------------------------------------------------ */
+
+describe('business rules', { skip: SKIP }, () => {
+  test('rules run in order and stop_processing stops the rest', async () => {
+    const first = await automation.createBusinessRule(alice, ORG_B, {
+      name: 'Blockers go to the lead',
+      moduleKey: 'issue',
+      criteria: [{ field: 'severity', operator: 'eq', value: 'blocker' }],
+      actions: [{ type: 'assign', to: 'lead' }],
+      stopProcessing: true,
+      orderIndex: 0,
+    });
+    await automation.createBusinessRule(alice, ORG_B, {
+      name: 'Everything else goes to the queue',
+      moduleKey: 'issue',
+      actions: [{ type: 'assign', to: 'queue' }],
+      orderIndex: 1,
+    });
+
+    const performed = [];
+    const applied = await automation.runBusinessRules({
+      organizationId: ORG_B,
+      moduleKey: 'issue',
+      record: { id: 'i1', severity: 'blocker' },
+      apply: async (action) => performed.push(action.to),
+    });
+
+    assert.equal(applied.length, 1, 'the second rule ran despite stop_processing');
+    assert.deepEqual(performed, ['lead']);
+    assert.equal(applied[0].ruleId, first.id);
+  });
+
+  test('without a stop, every matching rule runs', async () => {
+    const performed = [];
+    await automation.runBusinessRules({
+      organizationId: ORG_B,
+      moduleKey: 'issue',
+      record: { id: 'i2', severity: 'minor' },
+      apply: async (action) => performed.push(action.to),
+    });
+    assert.deepEqual(performed, ['queue']);
+  });
+
+  test('reordering changes which rule wins', async () => {
+    const rules = await automation.businessRules(ORG_B, 'issue');
+    await automation.reorderBusinessRules(ORG_B, [rules[1].id, rules[0].id]);
+
+    const performed = [];
+    await automation.runBusinessRules({
+      organizationId: ORG_B,
+      moduleKey: 'issue',
+      record: { id: 'i3', severity: 'blocker' },
+      apply: async (action) => performed.push(action.to),
+    });
+    // The catch-all is first now, and it does not stop, so both run.
+    assert.deepEqual(performed, ['queue', 'lead']);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Blueprint                                                            */
+/* ------------------------------------------------------------------ */
+
+describe('blueprint', { skip: SKIP }, () => {
+  let context;
+  let created;
+
+  before(async () => {
+    if (SKIP) return;
+    const project = await projects.create(alice, { name: 'Blueprint Test' });
+    context = await contextFor(alice, project.id);
+
+    created = await blueprint.createBlueprint(alice, ORG_A, {
+      name: 'Task lifecycle',
+      moduleKey: 'task',
+    });
+
+    const draft = await blueprint.saveDraft(alice, ORG_A, created.id, {
+      transitions: [
+        { name: 'Start', from: 'open', to: 'in_progress' },
+        {
+          name: 'Finish',
+          from: 'in_progress',
+          to: 'done',
+          requiredFields: ['definitionOfDone'],
+          requiresComment: true,
+          allowedRoles: ['owner', 'manager'],
+        },
+      ],
+    });
+    await blueprint.publish(alice, ORG_A, draft.id);
+  });
+
+  test('a defined transition is allowed', async () => {
+    const verdict = await blueprint.checkTransition({
+      organizationId: ORG_A,
+      moduleKey: 'task',
+      entityType: 'task',
+      entityId: 'bp-task-1',
+      record: { id: 'bp-task-1' },
+      fromStatusKey: 'open',
+      toStatusKey: 'in_progress',
+      context: { membership: { role: 'owner' }, permissions: [] },
+    });
+    assert.equal(verdict.allowed, true);
+  });
+
+  test('an undefined transition is refused, and the refusal says what is possible', async () => {
+    const verdict = await blueprint.checkTransition({
+      organizationId: ORG_A,
+      moduleKey: 'task',
+      entityType: 'task',
+      entityId: 'bp-task-2',
+      record: { id: 'bp-task-2' },
+      fromStatusKey: 'open',
+      toStatusKey: 'done',
+      context: { membership: { role: 'owner' }, permissions: [] },
+    });
+    assert.equal(verdict.allowed, false);
+    assert.equal(verdict.reason, 'transition_not_defined');
+    assert.deepEqual(verdict.available.map((t) => t.to), ['in_progress']);
+  });
+
+  test('a required field blocks the move and names what is missing', async () => {
+    const verdict = await blueprint.checkTransition({
+      organizationId: ORG_A,
+      moduleKey: 'task',
+      entityType: 'task',
+      entityId: 'bp-task-3',
+      record: { id: 'bp-task-3', definitionOfDone: '' },
+      fromStatusKey: 'in_progress',
+      toStatusKey: 'done',
+      context: { membership: { role: 'owner' }, permissions: [] },
+      comment: 'done',
+    });
+    assert.equal(verdict.allowed, false);
+    assert.deepEqual(verdict.reason.detail, ['definitionOfDone']);
+  });
+
+  test('a required comment blocks the move', async () => {
+    const verdict = await blueprint.checkTransition({
+      organizationId: ORG_A,
+      moduleKey: 'task',
+      entityType: 'task',
+      entityId: 'bp-task-4',
+      record: { id: 'bp-task-4', definitionOfDone: 'Signed off' },
+      fromStatusKey: 'in_progress',
+      toStatusKey: 'done',
+      context: { membership: { role: 'owner' }, permissions: [] },
+      comment: '   ',
+    });
+    assert.equal(verdict.allowed, false);
+    assert.equal(verdict.reason, 'comment_required');
+  });
+
+  test('a role that is not permitted cannot make the move', async () => {
+    const verdict = await blueprint.checkTransition({
+      organizationId: ORG_A,
+      moduleKey: 'task',
+      entityType: 'task',
+      entityId: 'bp-task-5',
+      record: { id: 'bp-task-5', definitionOfDone: 'Signed off' },
+      fromStatusKey: 'in_progress',
+      toStatusKey: 'done',
+      context: { membership: { role: 'member' }, permissions: [] },
+      comment: 'finished',
+    });
+    assert.equal(verdict.allowed, false);
+    assert.equal(verdict.reason, 'role_not_permitted');
+  });
+
+  test('everything satisfied lets it through', async () => {
+    const verdict = await blueprint.checkTransition({
+      organizationId: ORG_A,
+      moduleKey: 'task',
+      entityType: 'task',
+      entityId: 'bp-task-6',
+      record: { id: 'bp-task-6', definitionOfDone: 'Signed off' },
+      fromStatusKey: 'in_progress',
+      toStatusKey: 'done',
+      context: { membership: { role: 'manager' }, permissions: [] },
+      comment: 'client accepted',
+    });
+    assert.equal(verdict.allowed, true);
+  });
+
+  test('enforceTransition refuses in the shape a route turns into HTTP', async () => {
+    await assert.rejects(
+      () =>
+        blueprint.enforceTransition({
+          organizationId: ORG_A,
+          moduleKey: 'task',
+          entityType: 'task',
+          entityId: 'bp-task-7',
+          record: { id: 'bp-task-7' },
+          fromStatusKey: 'open',
+          toStatusKey: 'done',
+          context: { membership: { role: 'owner' }, permissions: [] },
+        }),
+      (error) => error.status === 409 && error.body.error === 'blueprint_transition_refused'
+    );
+  });
+
+  test('a published version cannot be edited, only replaced', async () => {
+    const version = await db.row(
+      `SELECT id FROM qodo_projects.blueprint_versions
+        WHERE blueprint_id = $1 AND state = 'published'`,
+      [created.id]
+    );
+    await assert.rejects(
+      () =>
+        db.query('UPDATE qodo_projects.blueprint_versions SET definition = $2 WHERE id = $1', [
+          version.id,
+          JSON.stringify({ transitions: [] }),
+        ]),
+      /immutable/
+    );
+  });
+
+  /**
+   * The test the whole feature rests on.
+   *
+   * A record pinned to a version keeps obeying that version. Publishing a
+   * stricter blueprint must not retroactively make a task somebody closed last
+   * month illegal.
+   */
+  test('a record keeps the version it was attached to when a new one is published', async () => {
+    // Pin the record to the current version by asking about it once.
+    await blueprint.checkTransition({
+      organizationId: ORG_A,
+      moduleKey: 'task',
+      entityType: 'task',
+      entityId: 'bp-pinned',
+      record: { id: 'bp-pinned' },
+      fromStatusKey: 'open',
+      toStatusKey: 'in_progress',
+      context: { membership: { role: 'owner' }, permissions: [] },
+    });
+
+    // Publish a version that removes that transition entirely.
+    const stricter = await blueprint.saveDraft(alice, ORG_A, created.id, {
+      transitions: [{ name: 'Only cancel', from: 'open', to: 'cancelled' }],
+    });
+    await blueprint.publish(alice, ORG_A, stricter.id);
+
+    const pinned = await blueprint.checkTransition({
+      organizationId: ORG_A,
+      moduleKey: 'task',
+      entityType: 'task',
+      entityId: 'bp-pinned',
+      record: { id: 'bp-pinned' },
+      fromStatusKey: 'open',
+      toStatusKey: 'in_progress',
+      context: { membership: { role: 'owner' }, permissions: [] },
+    });
+    assert.equal(pinned.allowed, true, 'publishing retroactively broke an existing record');
+
+    // A record that has never been seen gets the new, stricter version.
+    const fresh = await blueprint.checkTransition({
+      organizationId: ORG_A,
+      moduleKey: 'task',
+      entityType: 'task',
+      entityId: 'bp-fresh',
+      record: { id: 'bp-fresh' },
+      fromStatusKey: 'open',
+      toStatusKey: 'in_progress',
+      context: { membership: { role: 'owner' }, permissions: [] },
+    });
+    assert.equal(fresh.allowed, false, 'a new record was not governed by the published version');
+  });
+
+  test('migrating moves existing records onto the published version, deliberately', async () => {
+    const result = await blueprint.migrateRecords(alice, ORG_A, created.id);
+    assert.ok(result.migrated >= 1);
+
+    const migrated = await blueprint.checkTransition({
+      organizationId: ORG_A,
+      moduleKey: 'task',
+      entityType: 'task',
+      entityId: 'bp-pinned',
+      record: { id: 'bp-pinned' },
+      fromStatusKey: 'open',
+      toStatusKey: 'in_progress',
+      context: { membership: { role: 'owner' }, permissions: [] },
+    });
+    assert.equal(migrated.allowed, false, 'migration did not move the record onto the new rules');
+  });
+
+  test('no blueprint at all means no restriction', async () => {
+    const verdict = await blueprint.checkTransition({
+      organizationId: ORG_B,
+      moduleKey: 'task',
+      entityType: 'task',
+      entityId: 'unrestricted',
+      record: { id: 'unrestricted' },
+      fromStatusKey: 'anything',
+      toStatusKey: 'anything_else',
+      context: { membership: { role: 'viewer' }, permissions: [] },
+    });
+    assert.equal(verdict.allowed, true);
+    assert.equal(verdict.reason, 'no_blueprint');
   });
 });
 
