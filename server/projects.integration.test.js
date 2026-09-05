@@ -58,6 +58,7 @@ let automation;
 let blueprint;
 let reportService;
 let dashboardService;
+let aiService;
 
 /** Two organizations, so every read can be tried from the wrong one. */
 const ORG_A = 'test-org-a';
@@ -91,6 +92,7 @@ before(async () => {
   blueprint = await import('./projects/blueprintService.js');
   reportService = await import('./projects/reportService.js');
   dashboardService = await import('./projects/dashboardService.js');
+  aiService = await import('./projects/aiService.js');
 
   // A clean schema per run, dropped rather than truncated so a migration added
   // since the last run is actually applied — the migration runner is itself one
@@ -2376,6 +2378,113 @@ describe('dashboards', { skip: SKIP }, () => {
 
   test('a private dashboard is not visible to anybody else', async () => {
     assert.equal(await dashboardService.render(bob, null, ORG_A, dashboard.id), null);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* AI                                                                   */
+/* ------------------------------------------------------------------ */
+
+describe('ai', { skip: SKIP }, () => {
+  let context;
+  let clientContext;
+  let internalTask;
+  let sharedTask;
+
+  before(async () => {
+    if (SKIP) return;
+    const project = await projects.create(alice, { name: 'AI Boundary Test' });
+    context = await contextFor(alice, project.id);
+    await projects.addMember(context, { userId: customer.id, role: 'client' });
+    clientContext = await contextFor(customer, project.id);
+
+    const internalList = await taskLists.create(context, { name: 'Internal', isExternal: false });
+    const sharedList = await taskLists.create(context, { name: 'Shared', isExternal: true });
+
+    internalTask = await tasks.create(context, { title: 'Internal costing', taskListId: internalList.id });
+    sharedTask = await tasks.create(context, { title: 'Shared drawing', taskListId: sharedList.id });
+
+    await collaboration.addComment(context, 'task', sharedTask.id, {
+      body: 'Internally: pad the estimate by 20%',
+      isInternal: true,
+    });
+    await collaboration.addComment(context, 'task', sharedTask.id, {
+      body: 'Drawing issued for review',
+      isInternal: false,
+    });
+  });
+
+  /**
+   * The most important AI test in the module.
+   *
+   * An AI layer that queries the database directly "because it needs context"
+   * is a permission bypass with a friendly interface. This asserts the
+   * retrieval path *is* the authorization path: a client cannot get a summary
+   * of a task they cannot open, and the refusal happens before any model is
+   * involved.
+   */
+  test('a client cannot get a summary of a task they cannot see', async () => {
+    assert.equal(await aiService.summariseTask(clientContext, internalTask.id), null);
+  });
+
+  test('duplicate detection finds a reworded title and ignores an unrelated one', async () => {
+    await tasks.create(context, { title: 'Pour the B2 slab' });
+
+    const similar = await aiService.findSimilarTasks(context, 'Pour slab B2');
+    assert.ok(
+      similar.some((candidate) => candidate.title === 'Pour the B2 slab'),
+      'a reworded duplicate was not spotted'
+    );
+    assert.ok(similar.every((candidate) => candidate.score >= 0.5));
+
+    const unrelated = await aiService.findSimilarTasks(context, 'Install curtain wall glazing');
+    assert.ok(!unrelated.some((candidate) => candidate.title === 'Pour the B2 slab'));
+  });
+
+  test('duplicate detection is scoped to the project', async () => {
+    const elsewhere = await projects.create(alice, { name: 'Different Site' });
+    const elsewhereContext = await contextFor(alice, elsewhere.id);
+    await tasks.create(elsewhereContext, { title: 'Pour the B2 slab' });
+
+    // Two projects now have that title. Searching one must not return the
+    // other's — a similarity check that crosses projects is a disclosure.
+    const similar = await aiService.findSimilarTasks(elsewhereContext, 'Pour slab B2');
+    assert.equal(similar.length, 1);
+  });
+
+  test('a title too short to be meaningful returns nothing rather than everything', async () => {
+    assert.deepEqual(await aiService.findSimilarTasks(context, 'fix'), []);
+    assert.deepEqual(await aiService.findSimilarTasks(context, ''), []);
+  });
+
+  test('a capability refuses cleanly when no provider is configured', async () => {
+    // The workspace's provider is unset in tests, and the honest answer is a
+    // 503 that says so — not an empty summary the caller would render as one.
+    if (aiService.available()) return;
+    await assert.rejects(
+      () => aiService.generate('description', 'Build a wall'),
+      (error) => error.body?.error === 'ai_not_configured'
+    );
+  });
+
+  test('an unknown generation kind is refused', async () => {
+    await assert.rejects(
+      () => aiService.generate('write_me_sql', 'anything'),
+      (error) => error.body?.error === 'generation_kind_unknown'
+    );
+  });
+
+  test('insights over an empty portfolio say so rather than inventing one', async () => {
+    const result = await aiService.portfolioInsights(mallory);
+    assert.deepEqual(result.insights, []);
+    assert.equal(result.reason, 'no_projects_visible');
+  });
+
+  test('a question from somebody with no visible projects is answered honestly', async () => {
+    const result = await aiService.askAboutProjects(mallory, 'What is late?');
+    assert.equal(result.answer, null);
+    assert.equal(result.reason, 'no_projects_visible');
+    assert.deepEqual(result.sources, []);
   });
 });
 

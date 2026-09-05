@@ -26,6 +26,12 @@ import {
   portfolioReportRoutes,
   projectReportRoutes,
 } from './reports.js';
+import { portfolioAiRoutes, projectAiRoutes } from './ai.js';
+import {
+  integrationRoutes,
+  portfolioDataRoutes,
+  projectDataRoutes,
+} from './data.js';
 
 const router = Router();
 
@@ -53,6 +59,9 @@ router.use('/settings', settingsRoutes);
 // "reports" or "dashboards" as a project id.
 router.use('/reports', portfolioReportRoutes);
 router.use('/dashboards', dashboardRoutes);
+router.use('/ai', portfolioAiRoutes);
+router.use('/data', portfolioDataRoutes);
+router.use('/integrations', integrationRoutes);
 
 // The nested routers are mounted first. `/:projectId/phases` has to win the
 // match before `/:projectId` in projects.js treats "phases" as a project id.
@@ -65,6 +74,8 @@ router.use('/:projectId/time', timeRoutes);
 router.use('/:projectId/budget', budgetRoutes);
 router.use('/:projectId/documents', documentRoutes);
 router.use('/:projectId/reports', projectReportRoutes);
+router.use('/:projectId/ai', projectAiRoutes);
+router.use('/:projectId/data', projectDataRoutes);
 // Comments, forums and pages share one router — they share a project, a client
 // boundary and a mention parser. Mounted on their three specific prefixes
 // rather than on the project root, so an ordinary project request does not
