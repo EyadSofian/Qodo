@@ -32,6 +32,7 @@ import {
   portfolioDataRoutes,
   projectDataRoutes,
 } from './data.js';
+import demoRoutes from './demo.js';
 
 const router = Router();
 
@@ -62,6 +63,9 @@ router.use('/dashboards', dashboardRoutes);
 router.use('/ai', portfolioAiRoutes);
 router.use('/data', portfolioDataRoutes);
 router.use('/integrations', integrationRoutes);
+// Demo data. Before `/:projectId`, like every other organization-level router,
+// so "demo" is never read as a project id.
+router.use('/demo', demoRoutes);
 
 // The nested routers are mounted first. `/:projectId/phases` has to win the
 // match before `/:projectId` in projects.js treats "phases" as a project id.

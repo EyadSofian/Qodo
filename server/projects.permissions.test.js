@@ -27,6 +27,7 @@ import {
   visibleToClient,
 } from '../shared/projects/permissions.js';
 import { diff, REDACTED_FIELDS } from './projects/auditService.js';
+import { mayManageDemoData } from './projects/demoDataService.js';
 import { deriveKey } from './projects/projectService.js';
 import { RESTRICTED_RATE_FIELDS } from './projects/projectAccess.js';
 
@@ -74,6 +75,45 @@ test('three keys belong to no set except administrator', () => {
       assert.ok(!set.permissions.includes(key), `${id} must not carry ${key}`);
     }
   }
+});
+
+/* ── the demo-data gate ───────────────────────────────────────────── */
+
+/**
+ * The demo endpoint is the only one in the module that creates workspace user
+ * accounts, so it asks for two separate grants rather than one. These check
+ * that neither half is sufficient alone — which is the whole of the rule.
+ */
+test('loading demo data needs the Projects administrator set', () => {
+  for (const id of ['manager', 'employee', 'client']) {
+    assert.equal(
+      mayManageDemoData({ role: 'admin' }, PERMISSION_SETS[id]),
+      false,
+      `${id} could load demo data with only a workspace admin role`
+    );
+  }
+});
+
+test('loading demo data needs the workspace administrator role as well', () => {
+  // Holding every Projects permission is authority over projects. Creating
+  // logins for the company is a different decision, and this is where the two
+  // are kept apart.
+  for (const role of ['manager', 'member', 'viewer', undefined]) {
+    assert.equal(
+      mayManageDemoData({ role }, PERMISSION_SETS.admin),
+      false,
+      `a ${role ?? 'role-less'} user could load demo data with the admin permission set`
+    );
+  }
+});
+
+test('both keys together are what opens it', () => {
+  assert.equal(mayManageDemoData({ role: 'admin' }, PERMISSION_SETS.admin), true);
+});
+
+test('an absent user is refused rather than crashing the guard', () => {
+  assert.equal(mayManageDemoData(null, PERMISSION_SETS.admin), false);
+  assert.equal(mayManageDemoData(undefined, undefined), false);
 });
 
 /* ── deny by default ──────────────────────────────────────────────── */

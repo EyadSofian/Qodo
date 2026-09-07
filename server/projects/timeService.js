@@ -595,6 +595,52 @@ export async function submitTimesheet(context, anyDateInWeek) {
 }
 
 /**
+ * Stamp each entry with the rates that were in force on its own log date.
+ *
+ * This is what makes a cost report stable: once frozen, a raise granted next
+ * month cannot restate last month's figures, because the number is on the row
+ * rather than looked up on read. `COALESCE` on the way in means an entry that
+ * already carries a rate keeps it — re-running this is a no-op, never a
+ * re-price.
+ *
+ * The lookup order is the precedence rule, and it is the reason this is one
+ * function rather than a query repeated at each call site: a project-specific
+ * rate beats an organization-wide one, a person-specific billing rate beats the
+ * project's default, and a later `effective_from` beats an earlier one. Written
+ * twice, those three `ORDER BY` clauses drift, and the two callers start
+ * costing the same hour differently.
+ *
+ * Scoped by `timesheetId` when a week is approved, and by `projectId` for a
+ * caller that has approved entries with no timesheet behind them.
+ */
+export async function freezeRates(tx, { timesheetId = null, projectId = null }) {
+  if (!timesheetId && !projectId) throw new Error('freezeRates needs a timesheet or a project');
+
+  return tx.query(
+    `UPDATE qodo_projects.time_entries e
+        SET cost_rate = COALESCE(e.cost_rate, (
+              SELECT r.rate FROM qodo_projects.cost_rates r
+               WHERE r.organization_id = e.organization_id
+                 AND r.user_id = e.user_id
+                 AND (r.project_id = e.project_id OR r.project_id IS NULL)
+                 AND r.effective_from <= e.log_date
+               ORDER BY r.project_id NULLS LAST, r.effective_from DESC
+               LIMIT 1)),
+            bill_rate = COALESCE(e.bill_rate, (
+              SELECT b.rate FROM qodo_projects.billing_rates b
+               WHERE b.organization_id = e.organization_id
+                 AND (b.user_id = e.user_id OR b.user_id IS NULL)
+                 AND (b.project_id = e.project_id OR b.project_id IS NULL)
+                 AND b.effective_from <= e.log_date
+               ORDER BY b.project_id NULLS LAST, b.user_id NULLS LAST, b.effective_from DESC
+               LIMIT 1))
+      WHERE ($1::uuid IS NULL OR e.timesheet_id = $1)
+        AND ($2::uuid IS NULL OR e.project_id = $2)`,
+    [timesheetId, projectId]
+  );
+}
+
+/**
  * Approve or reject a submitted week.
  *
  * Rejection carries a reason, always. "Rejected" with no explanation is a
@@ -634,27 +680,7 @@ export async function reviewTimesheet(context, timesheetId, decision, reason = '
     // Approving freezes the rates in force on each entry's own date, so a raise
     // next month cannot restate this month's cost report.
     if (decision === 'approved') {
-      await tx.query(
-        `UPDATE qodo_projects.time_entries e
-            SET cost_rate = COALESCE(e.cost_rate, (
-                  SELECT r.rate FROM qodo_projects.cost_rates r
-                   WHERE r.organization_id = e.organization_id
-                     AND r.user_id = e.user_id
-                     AND (r.project_id = e.project_id OR r.project_id IS NULL)
-                     AND r.effective_from <= e.log_date
-                   ORDER BY r.project_id NULLS LAST, r.effective_from DESC
-                   LIMIT 1)),
-                bill_rate = COALESCE(e.bill_rate, (
-                  SELECT b.rate FROM qodo_projects.billing_rates b
-                   WHERE b.organization_id = e.organization_id
-                     AND (b.user_id = e.user_id OR b.user_id IS NULL)
-                     AND (b.project_id = e.project_id OR b.project_id IS NULL)
-                     AND b.effective_from <= e.log_date
-                   ORDER BY b.project_id NULLS LAST, b.user_id NULLS LAST, b.effective_from DESC
-                   LIMIT 1))
-          WHERE e.timesheet_id = $1`,
-        [timesheetId]
-      );
+      await freezeRates(tx, { timesheetId });
     }
 
     await audit.record({
