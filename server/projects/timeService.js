@@ -16,6 +16,7 @@
 
 import { paginate, query, rows, row, transaction } from './db.js';
 import * as audit from './auditService.js';
+import { find } from '../store.js';
 import * as notifications from './notificationService.js';
 import { may } from './projectAccess.js';
 
@@ -717,17 +718,35 @@ export async function recallTimesheet(context, timesheetId) {
 }
 
 export async function pendingTimesheets(context) {
-  return (
-    await rows(
-      `SELECT t.*, COALESCE(sum(e.hours), 0) AS hours, count(e.id)::int AS entries
-         FROM qodo_projects.timesheets t
-         LEFT JOIN qodo_projects.time_entries e ON e.timesheet_id = t.id
-        WHERE t.organization_id = $1 AND t.status = 'submitted' AND t.user_id <> $2
-        GROUP BY t.id
-        ORDER BY t.submitted_at`,
-      [context.organizationId, context.user.id]
-    )
-  ).map((record) => ({ ...toTimesheet(record), hours: Number(record.hours), entries: record.entries }));
+  const found = await rows(
+    `SELECT t.*, COALESCE(sum(e.hours), 0) AS hours, count(e.id)::int AS entries
+       FROM qodo_projects.timesheets t
+       LEFT JOIN qodo_projects.time_entries e ON e.timesheet_id = t.id
+      WHERE t.organization_id = $1 AND t.status = 'submitted' AND t.user_id <> $2
+      GROUP BY t.id
+      ORDER BY t.submitted_at`,
+    [context.organizationId, context.user.id]
+  );
+
+  /**
+   * Whose week this is.
+   *
+   * An approval queue listing user ids is a queue nobody can approve from: the
+   * one thing a reviewer needs to know before pressing "approve" is which
+   * person's hours they are approving, and a uuid does not say. Resolved here
+   * rather than in the browser, like the members list and the workload report,
+   * because reading a name should not require `users.view`.
+   */
+  const people = await find('users', (person) => found.some((sheet) => sheet.user_id === person.id));
+  const byId = new Map(people.map((person) => [person.id, person]));
+
+  return found.map((record) => ({
+    ...toTimesheet(record),
+    userName: byId.get(record.user_id)?.name ?? null,
+    userTitle: byId.get(record.user_id)?.title ?? null,
+    hours: Number(record.hours),
+    entries: record.entries,
+  }));
 }
 
 function badRequest(code) {

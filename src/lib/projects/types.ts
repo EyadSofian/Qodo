@@ -44,6 +44,32 @@ export interface Project {
   deletedAt: string | null;
   createdAt: string;
   updatedAt: string;
+
+  /**
+   * How the project is *doing*, joined by the listing endpoint.
+   *
+   * Null on every one of these means "this shape did not come from a listing"
+   * — `contextFor` reads a narrower row for authorization and joins none of
+   * it. Screens treat null as unknown and show nothing, never as zero: a
+   * project with no tasks has no progress, which is not the same statement as
+   * 0% progress.
+   */
+  status?: WorkStatus | null;
+  taskCount?: number | null;
+  doneCount?: number | null;
+  overdueTasks?: number | null;
+  openIssues?: number | null;
+  progress?: number | null;
+
+  /**
+   * True when this project was created by the demo loader.
+   *
+   * Only ever used to badge it. The badge matters because demo projects live in
+   * the same tables and the same lists as real work — somebody who finds "إطلاق
+   * متجر إلكتروني" in their workspace is entitled to know at a glance that
+   * nobody on their team created it.
+   */
+  isDemo?: boolean;
 }
 
 export interface ProjectMember {
@@ -581,6 +607,14 @@ export interface Timesheet {
   lockedAt: string | null;
   hours?: number;
   entries?: number;
+  /**
+   * Resolved by the server on the approval queue only.
+   *
+   * A reviewer needs to know whose week they are approving before they press
+   * the button, and a uuid does not tell them.
+   */
+  userName?: string | null;
+  userTitle?: string | null;
 }
 
 export type BudgetType =
@@ -764,6 +798,12 @@ export interface SavedReport {
 
 /** One project as the portfolio sees it. Nulls mean "not measured". */
 export interface PortfolioProject {
+  /**
+   * The status in both languages. `status` beside it is the English string the
+   * endpoint has always returned; this is the one to render, because the
+   * portfolio is read in Arabic and the other one is not.
+   */
+  statusLabel?: { ar: string; en: string } | null;
   id: string;
   key: string;
   name: string;
@@ -795,6 +835,10 @@ export interface Portfolio {
 
 export interface WorkloadRow {
   userId: string;
+  /** Resolved by the server. Null for an account that has since been removed. */
+  name: string | null;
+  title: string | null;
+  avatarColor: string | null;
   taskCount: number;
   /** Hours, not a count of tasks — a task count is not capacity. */
   assignedHours: number | null;

@@ -150,11 +150,15 @@ export function ProjectDetail() {
               )}
             </h1>
             <dl className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-ink-muted">
-              {project.customerId && (
+              {/* The client's name. It used to render `customerId`, which is a
+                  uuid — so every project with a client printed 36 characters of
+                  hexadecimal in its header. A project with a client whose name
+                  the server did not resolve shows nothing rather than an id. */}
+              {project.customerName && (
                 <div className="flex items-center gap-1.5">
                   <dt className="sr-only">{t('projects.field.customer')}</dt>
                   <Building2 size={13} aria-hidden="true" />
-                  <dd>{project.customerId}</dd>
+                  <dd>{project.customerName}</dd>
                 </div>
               )}
               {(project.startDate || project.endDate) && (

@@ -268,7 +268,9 @@ export function ProjectTimesheet() {
             {pending.map((row) => (
               <li key={row.id} className="flex flex-wrap items-center gap-3 py-2.5">
                 <span className="flex-1 text-[13px] text-ink">
-                  {row.userId} · {row.periodStart} → {row.periodEnd}
+                  {/* The reviewer needs a person, not an id — this printed
+                      `userId`, so the approval queue was a list of uuids. */}
+                  {row.userName ?? t('common.unknown')} · {row.periodStart} → {row.periodEnd}
                 </span>
                 <span className="chip bg-surface-sunken tabular-nums text-ink-muted">
                   {row.hours ?? 0} {t('time.hours')}

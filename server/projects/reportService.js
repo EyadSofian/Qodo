@@ -16,6 +16,7 @@
 import { rows, row } from './db.js';
 import { resolveRange } from './criteria.js';
 import { may, visibleProjectIds } from './projectAccess.js';
+import { find } from '../store.js';
 
 /* ------------------------------------------------------------------ */
 /* The allowlists                                                       */
@@ -254,7 +255,8 @@ export async function portfolio(user, options = {}) {
 
   const found = await rows(
     `SELECT p.id, p.key, p.name, p.owner_id, p.start_date, p.end_date, p.currency,
-            s.label_en AS status, s.category AS status_category, s.color AS status_color,
+            s.label_en AS status, s.label_ar AS status_label_ar, s.label_en AS status_label_en,
+            s.category AS status_category, s.color AS status_color,
             c.name AS customer_name,
             work.task_count, work.done_count, work.overdue_count, work.progress,
             spend.actual_hours, spend.actual_cost,
@@ -308,7 +310,15 @@ export async function portfolio(user, options = {}) {
       name: record.name,
       ownerId: record.owner_id,
       customerName: record.customer_name,
+      // `status` stays the English string it has always been so nothing that
+      // reads this endpoint breaks. `statusLabel` is the pair the interface
+      // should render: the portfolio table was printing `label_en` into an
+      // Arabic-first screen, so every row said "On hold" and "Completed" in the
+      // middle of Arabic text.
       status: record.status,
+      statusLabel: record.status_label_ar
+        ? { ar: record.status_label_ar, en: record.status_label_en }
+        : null,
       statusCategory: record.status_category,
       statusColor: record.status_color,
       startDate: record.start_date,
@@ -383,16 +393,39 @@ export async function workload(user, { from, to }) {
 
   const loggedBy = new Map(logged.map((record) => [record.user_id, Number(record.logged_hours)]));
 
+  /**
+   * A workload chart needs names.
+   *
+   * It used to return `userId` alone and the browser rendered it, so the chart
+   * was five bars labelled with truncated uuids — technically a workload
+   * report, practically unreadable. Resolved here rather than in the browser
+   * for the same reason the members list is: looking a person up from the
+   * client would need `users.view`, and seeing who is busy on your own projects
+   * should not require permission to read the staff directory.
+   */
+  const people = await find('users', (person) =>
+    assigned.some((record) => record.user_id === person.id)
+  );
+  const byId = new Map(people.map((person) => [person.id, person]));
+
   return {
     from: from ?? null,
     to: to ?? null,
-    people: assigned.map((record) => ({
-      userId: record.user_id,
-      taskCount: record.task_count,
-      assignedHours: Number(record.assigned_hours) || null,
-      loggedHours: loggedBy.get(record.user_id) ?? 0,
-      overdueTasks: record.overdue_count,
-    })),
+    people: assigned.map((record) => {
+      const person = byId.get(record.user_id);
+      return {
+        userId: record.user_id,
+        // Null for somebody whose account has since been removed — their hours
+        // are still part of the history even when they are not.
+        name: person?.name ?? null,
+        title: person?.title ?? null,
+        avatarColor: person?.avatarColor ?? null,
+        taskCount: record.task_count,
+        assignedHours: Number(record.assigned_hours) || null,
+        loggedHours: loggedBy.get(record.user_id) ?? 0,
+        overdueTasks: record.overdue_count,
+      };
+    }),
   };
 }
 

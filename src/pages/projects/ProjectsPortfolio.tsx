@@ -20,7 +20,7 @@ import type { Portfolio, WorkloadRow } from '../../lib/projects/types';
 import { EmptyState, Spinner } from '../../components/ui';
 
 export function ProjectsPortfolio() {
-  const { t, lang, dir } = useI18n();
+  const { t, lang, dir, pick } = useI18n();
   const navigate = useNavigate();
 
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
@@ -163,7 +163,7 @@ export function ProjectsPortfolio() {
                               color: project.statusColor ?? '#64748B',
                             }}
                           >
-                            {project.status}
+                            {project.statusLabel ? pick(project.statusLabel) : project.status}
                           </span>
                         ) : (
                           <span className="text-ink-faint">—</span>
@@ -212,7 +212,11 @@ export function ProjectsPortfolio() {
               <ul className="grid gap-2">
                 {workload.map((person) => (
                   <li key={person.userId} className="grid grid-cols-[minmax(100px,180px)_1fr_auto] items-center gap-3">
-                    <span className="truncate text-[12.5px] font-semibold text-ink">{person.userId}</span>
+                    {/* The person's name. This rendered `userId`, so the chart
+                        was five bars labelled with uuids. */}
+                    <span className="truncate text-[12.5px] font-semibold text-ink">
+                      {person.name ?? t('common.unknown')}
+                    </span>
                     <span className="h-3 overflow-hidden rounded bg-surface-sunken">
                       <span
                         className="block h-full rounded bg-brand-500"

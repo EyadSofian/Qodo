@@ -92,9 +92,13 @@ export async function contextFor(user, projectId) {
     `SELECT p.id, p.organization_id, p.key, p.name, p.owner_id, p.access,
             p.status_id, p.customer_id, p.group_id, p.calendar_id, p.currency,
             p.start_date, p.end_date, p.archived_at, p.color,
+            -- The client's *name*, not just their id. Without it the project
+            -- header had nothing to render but the raw uuid, and printed it.
+            c.name AS customer_name,
             m.role AS member_role, m.is_client AS member_is_client,
             m.allocation_percent
        FROM qodo_projects.projects p
+       LEFT JOIN qodo_projects.customers c ON c.id = p.customer_id
        LEFT JOIN qodo_projects.project_members m
               ON m.project_id = p.id AND m.user_id = $3
       WHERE p.id = $1
@@ -141,6 +145,7 @@ export async function contextFor(user, projectId) {
       access: found.access,
       statusId: found.status_id,
       customerId: found.customer_id,
+      customerName: found.customer_name ?? null,
       groupId: found.group_id,
       calendarId: found.calendar_id,
       currency: found.currency,
