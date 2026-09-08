@@ -232,7 +232,8 @@ function Automation({ canManage }: { canManage: boolean }) {
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[13.5px] font-semibold text-ink">{rule.name}</p>
                 <p className="mt-0.5 text-[11.5px] text-ink-muted">
-                  {t('automation.trigger')}: {rule.trigger} · {t('automation.actions', { n: rule.actions.length })}
+                  {t('automation.trigger')}: {t(`automation.trigger.${rule.trigger}` as Parameters<typeof t>[0])} ·{' '}
+                  {t('automation.actions', { n: rule.actions.length })}
                 </p>
               </div>
               <span
@@ -281,9 +282,27 @@ function Automation({ canManage }: { canManage: boolean }) {
                   {t(`automation.status.${run.status}` as Parameters<typeof t>[0])}
                 </span>
                 <span className="flex-1 truncate text-[12px] text-ink-muted">
-                  {run.entity_type} · {run.trigger ?? '—'}
-                  {/* A failure that says nothing is a failure nobody can fix. */}
-                  {run.error && <span className="ms-2 text-status-bad">{run.error}</span>}
+                  {t(`reports.module.${run.entity_type}` as Parameters<typeof t>[0])} ·{' '}
+                  {run.trigger
+                    ? t(`automation.trigger.${run.trigger}` as Parameters<typeof t>[0])
+                    : '—'}
+                  {/*
+                    A failure that says nothing is a failure nobody can fix — but
+                    the reason is a machine string, and it was being emitted as a
+                    bare inline span next to another Latin word inside an Arabic,
+                    right-to-left line. Bidi reordering put the two Latin runs
+                    against each other and the margin on the far side of both, so
+                    the trigger and the reason rendered as one welded token:
+                    "createno_user_matched_role". Isolating it in its own
+                    left-to-right box keeps the reason a separate thing to read.
+                  */}
+                  {run.error && (
+                    // `mx-2` rather than `ms-2`: `.ltr` sets `direction: ltr` on
+                    // this element, so a margin-inline-start on it resolves
+                    // against *its* direction and lands on the far side from
+                    // the Arabic it needs separating from.
+                    <span className="ltr mx-2 inline-block text-status-bad">{run.error}</span>
+                  )}
                 </span>
                 <time dateTime={run.ran_at} className="shrink-0 text-[11px] tabular-nums text-ink-faint">
                   {new Date(run.ran_at).toLocaleString(lang === 'ar' ? 'ar-EG' : 'en-GB')}
@@ -827,6 +846,15 @@ function DemoData() {
             <p className="text-[13px] font-bold text-ink">
               {status?.loaded ? t('demo.isLoaded') : t('demo.notLoaded')}
             </p>
+            {/* Whose data this is. The demo is a company with staff, customers
+                and rates, and naming it is what makes the projects that appear
+                after a load recognisable as one set rather than seven
+                unrelated rows that showed up. */}
+            {status?.workspace && (
+              <p className="mt-0.5 text-[12px] font-semibold text-brand-700">
+                {lang === 'ar' ? status.workspace.name : status.workspace.nameEn}
+              </p>
+            )}
             {status?.loaded && status.batch && (
               <p className="mt-1 text-[12px] text-ink-muted">
                 {t('demo.loadedSummary', {

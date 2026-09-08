@@ -109,7 +109,13 @@ export function ProjectOverview() {
             {members.map((member) => (
               <li key={member.userId} className="chip bg-surface-sunken text-ink-muted">
                 {member.name ?? t('common.unknown')}
-                <span className="text-ink-faint">· {member.role}</span>
+                {/* The role in words. This printed the raw column value —
+                    `owner`, `manager`, `member` — in English, on an otherwise
+                    Arabic card. The Members tab has always translated it
+                    through these same keys; only this chip did not. */}
+                <span className="text-ink-faint">
+                  · {t(`projectMembers.role.${member.role}` as Parameters<typeof t>[0])}
+                </span>
               </li>
             ))}
           </ul>

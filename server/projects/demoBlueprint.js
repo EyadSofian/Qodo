@@ -28,6 +28,45 @@
  */
 
 /* ------------------------------------------------------------------ */
+/* The demo space                                                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The name the demo answers to.
+ *
+ * The demo is a company — it has staff, customers, rates and a working week —
+ * and until now that company had no name anywhere a person could see. It was
+ * referred to in passing inside a task description ("فريق النور الرقمية") and
+ * nowhere else, so the Settings panel could say how many rows would be created
+ * but not *whose* they were.
+ *
+ * ── Why this is a label and not an `organizations` row ───────────────
+ *
+ * The obvious reading of "an isolated demo organization" is a second row in
+ * `organizations` with its own id, and it is the wrong build here. Every
+ * Projects query is scoped by `organizationOf(user)` — the *viewer's* own
+ * organization — and a person belongs to exactly one, with no switcher anywhere
+ * in the workspace. Demo data written under a second organization id would be
+ * unreachable by the administrator who just pressed the button: every Projects
+ * screen would stay exactly as empty as before, and the only way to see it would
+ * be to edit a user row in the database.
+ *
+ * The isolation that actually protects real work is already stronger than an
+ * organization boundary would be, and it is not name-based: every row the loader
+ * writes is recorded in `demo_seeds`, and the unloader deletes that list and
+ * nothing else. A real project that happens to share a name with a demo one is
+ * untouched, which is the property an organization id was being asked to
+ * provide.
+ *
+ * So this is the demo's name, shown where the demo is administered and on the
+ * rows it created — not a tenant boundary pretending to be one.
+ */
+export const DEMO_WORKSPACE = {
+  name: 'شركة النور الرقمية — مشاريع تجريبية',
+  nameEn: 'Al-Nour Digital — demo projects',
+};
+
+/* ------------------------------------------------------------------ */
 /* People                                                               */
 /* ------------------------------------------------------------------ */
 
@@ -272,6 +311,22 @@ export const PROJECTS = [
     ref: 'shop',
     key: 'MTGR',
     name: 'إطلاق متجر إلكتروني',
+    /**
+     * One of the two projects the person loading the demo is left on.
+     *
+     * `projectService.create` adds whoever created a project as a manager, and
+     * the demo creates all seven under one administrator — so that
+     * administrator came out a member of everything, and the "My projects" tab
+     * was a copy of "Active". A tab that is identical to the one beside it
+     * teaches nothing about what it filters.
+     *
+     * So the loader keeps that membership on exactly the projects that say so
+     * here and drops it everywhere else. Two, not one: a single row makes the
+     * tab look like a rounding error rather than a filter. Visibility is
+     * unaffected — an administrator can already see every project in the
+     * organization whether or not they are a member of it.
+     */
+    loaderIsMember: true,
     description:
       'بناء متجر إلكتروني متكامل لشركة الأفق للتجارة: كتالوج المنتجات، سلة الشراء، بوابة الدفع، ولوحة تحكم للطلبات. الهدف هو الإطلاق قبل موسم الشتاء.',
     color: '#1D6FB8',
@@ -1201,6 +1256,9 @@ export const PROJECTS = [
     ref: 'website',
     key: 'MWQE',
     name: 'إعادة تصميم موقع الشركة',
+    // The company's own site, with no external customer — the one project where
+    // the workspace administrator being a member reads as obvious.
+    loaderIsMember: true,
     description:
       'إعادة تصميم موقع الشركة نفسها: هوية بصرية محدّثة، سرعة أعلى، ودعم كامل للعربية من اليمين إلى اليسار. لم يبدأ التنفيذ بعد — المشروع في مرحلة التخطيط والجدول الزمني موضوع مسبقًا.',
     color: '#7C3AED',
@@ -1325,9 +1383,82 @@ export const PROJECTS = [
       { from: 'web-audit-task', to: 'web-content-plan', type: 'FS', lagDays: 0 },
       { from: 'web-content-plan', to: 'web-rebuild', type: 'FS', lagDays: 0 },
     ],
-    issues: [],
-    documents: [],
-    baselines: [],
+    /**
+     * A project that has not started still has paperwork, and these three lists
+     * were empty for the wrong reason.
+     *
+     * "Nothing has been worked on yet" is true of the *tasks* — no logged hours,
+     * no progress, no closed anything — and that emptiness is the point of this
+     * project. It is not true of the planning artefacts. A redesign that is
+     * waiting on a start date has, in real life, a brief that somebody wrote, a
+     * decision that is blocking it, and a schedule that was agreed before the
+     * work was slotted in. Leaving these empty made three tabs read as broken
+     * rather than as early.
+     *
+     * So each one is filled with the thing that genuinely exists *before*
+     * kickoff, and nothing that would not: an open question rather than a
+     * defect, a brief rather than a delivery note, and the agreed plan rather
+     * than a revision of it.
+     */
+    issues: [
+      {
+        ref: 'web-issue-1',
+        /**
+         * Not a bug — a blocker, logged before anyone has written a line.
+         * The issue tracker is where a project this early keeps the things it
+         * is waiting on, and a demo that only ever shows defects teaches that
+         * the module is a bug list.
+         */
+        title: 'الهوية البصرية الجديدة لم تُعتمد بعد',
+        description:
+          'التصميم متوقّف على اعتماد الهوية البصرية من الإدارة. كل شغل الواجهات مرتبط بها، ولو تأخر الاعتماد بعد تاريخ البدء يتزحزح الجدول كله بنفس المدة.',
+        severity: 'major',
+        priority: 'high',
+        statusKey: 'open',
+        assigneeRef: 'salma',
+        dueDay: 5,
+        moduleAffected: 'التصميم',
+        // Null rather than one of the defect values: the column only accepts
+        // always/sometimes/rarely/unable/not_tried, and none of them mean
+        // anything about a pending approval. "Not tried" would read as though
+        // somebody had failed to check.
+        reproducibility: null,
+        classification: 'اعتماد مطلوب',
+        affectedPhaseRef: 'web-audit',
+        comments: [
+          {
+            ref: 'laila',
+            day: -3,
+            body: 'اتبعت الملف للإدارة يوم الأحد. لو مافيش رد قبل تاريخ البدء هنأجّل مرحلة التصميم أسبوع.',
+          },
+        ],
+      },
+    ],
+    documents: [
+      {
+        folder: 'التخطيط',
+        name: 'موجز إعادة التصميم.md',
+        description: 'المستند اللي اتوافق عليه قبل جدولة المشروع.',
+        body:
+          '# موجز إعادة تصميم موقع الشركة\n\nملف تجريبي أُنشئ مع البيانات التجريبية.\n\n## لماذا الآن\n- الموقع الحالي بطيء على الجوال\n- الهوية البصرية اتغيّرت ولم تنعكس على الموقع\n- دعم العربية من اليمين لليسار ناقص في صفحات الخدمات\n\n## ما الذي يعتبر نجاحًا\n- زمن تحميل أقل من ثانيتين على الجوال\n- كل الصفحات الأساسية بالعربية والإنجليزية\n\n## خارج النطاق\n- المدوّنة\n- بوابة العملاء\n',
+      },
+    ],
+    /**
+     * One baseline, captured before the work starts.
+     *
+     * This is the only project here whose baseline should show *zero* variance,
+     * and that is worth showing on purpose: it is what the comparison view looks
+     * like on a plan nothing has happened to yet, so a reader learns to read the
+     * variance columns from the case where the answer is "none".
+     */
+    baselines: [
+      {
+        ref: 'web-baseline',
+        name: 'الجدول المعتمد قبل البدء',
+        notes: 'اللقطة وقت اعتماد الخطة. لم يبدأ التنفيذ بعد، فالمقارنة مع الوضع الحالي بدون انحراف — وهذا هو المتوقّع.',
+        capturedDay: -4,
+      },
+    ],
   },
 
   /* ── 5. Paused, and saying why ────────────────────────────────── */
@@ -1529,6 +1660,274 @@ export const PROJECTS = [
         capturedDay: -90,
       },
     ],
+  },
+
+  /* ── 6. Archived — finished, closed, and out of the way ───────── */
+  {
+    /**
+     * The projects list has five tabs, and two of them were empty.
+     *
+     * Active, Mine and Favorites all had rows. Archived and Recycle bin showed
+     * their empty states — which is a fair rendering of an empty tab and a poor
+     * demonstration of the product, because the question a reader has at that
+     * point is "does archiving work", and an empty state answers "there is
+     * nothing here" rather than "here is what it looks like".
+     *
+     * This one is deliberately last year's work: delivered, paid, closed, and
+     * archived four months ago. Short, because an archived project is read as a
+     * record rather than worked in — two phases, three tasks, all closed, and
+     * the paperwork that proves it finished.
+     */
+    ref: 'booking',
+    key: 'HJZE',
+    name: 'بوابة الحجز الإلكتروني',
+    description:
+      'بوابة حجز مواعيد أونلاين لعيادات الحياة، سُلّمت واستُلمت رسميًا. المشروع مؤرشف بعد إغلاق الحساب — محفوظ للرجوع إليه، وخارج قائمة المشاريع النشطة.',
+    color: '#0E7490',
+    customerRef: 'hayat',
+    groupRef: 'delivery',
+    ownerRef: 'laila',
+    statusKey: 'completed',
+    startDay: -330,
+    endDay: -210,
+    currency: 'EGP',
+    billingMethod: 'fixed_cost',
+    access: 'private',
+    // Archived, not deleted: it keeps its place in reports and its rows stay
+    // readable — it simply leaves the active list. The loader reads this.
+    lifecycle: { state: 'archived', day: -120 },
+    members: [
+      { ref: 'laila', role: 'owner', allocation: 20 },
+      { ref: 'tarek', role: 'member', allocation: 60 },
+      { ref: 'omar', role: 'member', allocation: 30 },
+    ],
+    tagRefs: ['web'],
+    budgets: [
+      { type: 'project_amount', amount: 180_000, thresholdPercent: 80 },
+      { type: 'project_hours', hours: 300, thresholdPercent: 80 },
+    ],
+    expenses: [
+      { description: 'رسوم بوابة الرسائل القصيرة', category: 'اشتراكات', amount: 7_400, day: -300, billable: true },
+    ],
+    phases: [
+      {
+        ref: 'booking-build',
+        name: 'البناء والتسليم',
+        description: 'بناء شاشة الحجز وربطها بجدول العيادات، ثم التسليم.',
+        statusKey: 'completed',
+        startDay: -330,
+        endDay: -240,
+        color: '#16A34A',
+        ownerRef: 'tarek',
+        lists: [
+          {
+            ref: 'booking-build-list',
+            name: 'التنفيذ',
+            description: '',
+            tasks: [
+              {
+                ref: 'booking-slots',
+                title: 'شاشة اختيار الموعد',
+                description: 'عرض المواعيد المتاحة لكل طبيب وحجزها مباشرة، مع تأكيد برسالة قصيرة.',
+                statusKey: 'done',
+                priority: 'high',
+                startDay: -330,
+                endDay: -290,
+                estimatedHours: 90,
+                progress: 100,
+                assigneeRefs: ['tarek'],
+                billable: true,
+                time: [
+                  { ref: 'tarek', day: -325, hours: 7, notes: 'بناء شاشة المواعيد.' },
+                  { ref: 'tarek', day: -318, hours: 6.5, notes: 'ربط الحجز بجدول الأطباء.' },
+                  { ref: 'tarek', day: -300, hours: 6, notes: 'تأكيد الحجز برسالة قصيرة.' },
+                ],
+                comments: [
+                  { ref: 'laila', day: -295, body: 'اتراجعت مع العيادة والشاشة معتمدة. باقي الاختبار النهائي.' },
+                ],
+                checklist: [
+                  { text: 'عرض المواعيد المتاحة', done: true, required: true },
+                  { text: 'رسالة تأكيد الحجز', done: true, required: true },
+                ],
+              },
+              {
+                ref: 'booking-qa',
+                title: 'اختبار القبول مع العيادة',
+                description: 'جلسة اختبار قبول مع فريق الاستقبال قبل التشغيل الفعلي.',
+                statusKey: 'done',
+                priority: 'normal',
+                startDay: -285,
+                endDay: -260,
+                estimatedHours: 45,
+                progress: 100,
+                assigneeRefs: ['omar'],
+                billable: true,
+                time: [
+                  { ref: 'omar', day: -280, hours: 5, notes: 'سيناريوهات الاختبار مع فريق الاستقبال.' },
+                  { ref: 'omar', day: -268, hours: 4.5, notes: 'إعادة اختبار بعد إصلاح الملاحظات.' },
+                ],
+                comments: [],
+                checklist: [{ text: 'توقيع محضر القبول', done: true, required: true }],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        ref: 'booking-handover',
+        name: 'التسليم والإغلاق',
+        description: 'تسليم المصادر، تدريب الفريق، وإغلاق الحساب.',
+        statusKey: 'completed',
+        startDay: -259,
+        endDay: -210,
+        color: '#16A34A',
+        ownerRef: 'laila',
+        lists: [
+          {
+            ref: 'booking-handover-list',
+            name: 'الإغلاق',
+            description: '',
+            tasks: [
+              {
+                ref: 'booking-training',
+                title: 'تدريب فريق العيادة وتسليم المصادر',
+                description: 'جلسة تدريب لفريق الاستقبال، وتسليم كود المشروع ووثائق التشغيل.',
+                statusKey: 'done',
+                priority: 'normal',
+                startDay: -259,
+                endDay: -215,
+                estimatedHours: 30,
+                progress: 100,
+                assigneeRefs: ['laila'],
+                billable: true,
+                time: [{ ref: 'laila', day: -240, hours: 5, notes: 'جلسة التدريب وتسليم الوثائق.' }],
+                comments: [],
+                checklist: [],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+    dependencies: [
+      { from: 'booking-slots', to: 'booking-qa', type: 'FS', lagDays: 0 },
+      { from: 'booking-qa', to: 'booking-training', type: 'FS', lagDays: 0 },
+    ],
+    issues: [
+      {
+        ref: 'booking-issue-1',
+        title: 'رسالة التأكيد تصل بتوقيت غير محلي',
+        description: 'وقت الموعد في رسالة التأكيد كان بتوقيت الخادم بدل توقيت القاهرة. أُصلح قبل التسليم.',
+        severity: 'minor',
+        priority: 'normal',
+        statusKey: 'closed',
+        assigneeRef: 'tarek',
+        dueDay: -270,
+        moduleAffected: 'الإشعارات',
+        reproducibility: 'always',
+        classification: 'خطأ برمجي',
+        affectedPhaseRef: 'booking-build',
+        comments: [],
+      },
+    ],
+    documents: [
+      {
+        folder: 'الإغلاق',
+        name: 'محضر التسليم النهائي.md',
+        description: 'محضر الاستلام الموقّع من العيادة.',
+        body:
+          '# محضر التسليم النهائي — بوابة الحجز الإلكتروني\n\nملف تجريبي أُنشئ مع البيانات التجريبية.\n\n## ما تم تسليمه\n- بوابة حجز المواعيد\n- لوحة إدارة جدول الأطباء\n- وثائق التشغيل وتدريب الفريق\n\n## الحالة\nمستلَم ومغلق. المشروع مؤرشف.\n',
+      },
+    ],
+    baselines: [
+      {
+        ref: 'booking-baseline',
+        name: 'الخطة المعتمدة',
+        notes: 'اللقطة وقت التوقيع. سُلّم المشروع قريبًا منها.',
+        capturedDay: -328,
+      },
+    ],
+  },
+
+  /* ── 7. In the recycle bin — cancelled, recoverable ───────────── */
+  {
+    /**
+     * Deleted is not archived, and the difference is the whole reason both tabs
+     * exist: an archived project is finished, a trashed one was a mistake or a
+     * cancellation, and only the second one can be restored or purged.
+     *
+     * Cancelled before any work started, which is the honest shape for a
+     * trashed project — one that had logged hours and closed tasks in it would
+     * raise the question of where that work went. There is a plan here and
+     * nothing else, and the reason it was cancelled is in the description where
+     * somebody looking through the bin can read it.
+     */
+    ref: 'loyalty',
+    key: 'WLAA',
+    name: 'برنامج نقاط الولاء',
+    description:
+      'برنامج نقاط ولاء لعملاء شركة الأفق. أُلغي قبل بدء التنفيذ بعد قرار تأجيل التوسّع، ونُقل لسلة المحذوفات — يمكن استرجاعه لو أُعيد اعتماده.',
+    color: '#94A3B8',
+    customerRef: 'ufuq',
+    groupRef: 'delivery',
+    ownerRef: 'laila',
+    statusKey: 'cancelled',
+    startDay: -45,
+    endDay: 40,
+    currency: 'EGP',
+    billingMethod: 'based_on_project_hours',
+    access: 'private',
+    // Soft-deleted, and therefore restorable. Everything below still exists in
+    // the database; the recycle bin is a filter, not an eraser.
+    lifecycle: { state: 'trashed', day: -18 },
+    members: [
+      { ref: 'laila', role: 'owner', allocation: 10 },
+      { ref: 'nora', role: 'member', allocation: 20 },
+    ],
+    tagRefs: ['internal'],
+    budgets: [{ type: 'project_amount', amount: 95_000, thresholdPercent: 80 }],
+    expenses: [],
+    phases: [
+      {
+        ref: 'loyalty-scope',
+        name: 'دراسة الجدوى',
+        description: 'تقدير التكلفة والعائد قبل اعتماد التنفيذ.',
+        statusKey: 'not_started',
+        startDay: -45,
+        endDay: -20,
+        color: '#94A3B8',
+        ownerRef: 'nora',
+        lists: [
+          {
+            ref: 'loyalty-scope-list',
+            name: 'الدراسة',
+            description: '',
+            tasks: [
+              {
+                ref: 'loyalty-study',
+                title: 'دراسة جدوى برنامج النقاط',
+                description: 'تقدير تكلفة التنفيذ والعائد المتوقّع، ومقارنة بثلاثة برامج مشابهة في السوق.',
+                statusKey: 'open',
+                priority: 'low',
+                startDay: -45,
+                endDay: -20,
+                estimatedHours: 25,
+                progress: 0,
+                assigneeRefs: ['nora'],
+                billable: false,
+                time: [],
+                comments: [],
+                checklist: [],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+    dependencies: [],
+    issues: [],
+    documents: [],
+    baselines: [],
   },
 ];
 

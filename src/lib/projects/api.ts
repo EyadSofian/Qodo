@@ -536,6 +536,8 @@ export const projectAdminApi = {
 export interface DemoStatus {
   enabled: boolean;
   loaded: boolean;
+  /** The name the demo space answers to, shown wherever it is administered. */
+  workspace: { name: string; nameEn: string };
   batch: {
     id: string;
     loadedAt: string;

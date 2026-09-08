@@ -1674,6 +1674,45 @@ describe('automation', { skip: SKIP }, () => {
     );
   });
 
+  /**
+   * Deactivating a rule must not put it out of reach.
+   *
+   * `rules()` answers two different questions — "which rules should fire" for
+   * the engine, and "which rules exist" for the settings screen — and it used
+   * to answer both with the active ones only. That made the screen's own
+   * activate/deactivate toggle a one-way door: switching a rule off removed the
+   * row carrying the switch, and nothing short of a database session could turn
+   * it back on.
+   */
+  test('a deactivated rule stays visible to the screen that can re-enable it', async () => {
+    const rule = await automation.createRule(alice, ORG_A, {
+      name: 'Rule that gets switched off',
+      moduleKey: 'task',
+      trigger: 'update',
+      criteria: [{ field: 'priority', operator: 'eq', value: 'low' }],
+      actions: [{ type: 'add_tag', tag: 'later' }],
+    });
+
+    await automation.setRuleActive(alice, ORG_A, rule.id, false);
+
+    const listed = await automation.rules(ORG_A, 'task', null, { includeInactive: true });
+    const found = listed.find((candidate) => candidate.id === rule.id);
+    assert.ok(found, 'a deactivated rule vanished from the administrator’s list');
+    assert.equal(found.isActive, false);
+
+    // The engine still refuses to fire it — the default has not moved.
+    const forEngine = await automation.rules(ORG_A, 'task', null);
+    assert.ok(
+      !forEngine.some((candidate) => candidate.id === rule.id),
+      'a deactivated rule is still being offered to the execution path'
+    );
+
+    // And it can be switched back on, which was the whole point.
+    await automation.setRuleActive(alice, ORG_A, rule.id, true);
+    const reenabled = await automation.rules(ORG_A, 'task', null);
+    assert.ok(reenabled.some((candidate) => candidate.id === rule.id));
+  });
+
   test('a matching rule fires once, and firing it again is a no-op', async () => {
     await automation.createRule(alice, ORG_A, {
       name: 'Tag urgent work',

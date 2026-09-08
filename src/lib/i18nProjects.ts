@@ -486,6 +486,13 @@ export const PROJECT_STRINGS = {
   'reports.title': { ar: 'التقارير', en: 'Reports' },
   'reports.build': { ar: 'بناء تقرير', en: 'Build a report' },
   'reports.module': { ar: 'الوحدة', en: 'Module' },
+  // `project` and `phase` are not reportable units — the report builder's unit
+  // list is a fixed three (task, issue, time_log). They are here because the
+  // status editor groups its sections by module key through this same
+  // vocabulary, and without them it printed the bare keys "project" and
+  // "phase", in English, down an otherwise Arabic screen.
+  'reports.module.project': { ar: 'المشاريع', en: 'Projects' },
+  'reports.module.phase': { ar: 'المراحل', en: 'Phases' },
   'reports.module.task': { ar: 'المهام', en: 'Tasks' },
   'reports.module.issue': { ar: 'المشاكل', en: 'Issues' },
   'reports.module.time_log': { ar: 'تسجيلات الوقت', en: 'Time logs' },
@@ -588,6 +595,24 @@ export const PROJECT_STRINGS = {
   'automation.disabled': { ar: 'موقوفة', en: 'Disabled' },
   'automation.runs': { ar: 'سجل التشغيل', en: 'Run history' },
   'automation.runsEmpty': { ar: 'لم تُشغَّل أي قاعدة بعد', en: 'No rule has run yet' },
+  /**
+   * The trigger vocabulary, in words.
+   *
+   * The rule list and the run log both printed the raw column value —
+   * `time_based`, `status_change` — which is the schema's vocabulary, not a
+   * reader's, and it arrived in English in the middle of an Arabic sentence.
+   * The set is closed by a CHECK constraint in `007_automation.sql`, so this
+   * covers all of it.
+   */
+  'automation.trigger.create': { ar: 'عند الإنشاء', en: 'On create' },
+  'automation.trigger.update': { ar: 'عند التعديل', en: 'On update' },
+  'automation.trigger.field_change': { ar: 'عند تغيّر حقل', en: 'On field change' },
+  'automation.trigger.status_change': { ar: 'عند تغيّر الحالة', en: 'On status change' },
+  'automation.trigger.assignment': { ar: 'عند الإسناد', en: 'On assignment' },
+  'automation.trigger.completion': { ar: 'عند الاكتمال', en: 'On completion' },
+  'automation.trigger.delete': { ar: 'عند الحذف', en: 'On delete' },
+  'automation.trigger.time_based': { ar: 'حسب الوقت', en: 'Time based' },
+
   'automation.status.applied': { ar: 'نُفّذت', en: 'Applied' },
   'automation.status.skipped': { ar: 'تُخطّيت', en: 'Skipped' },
   'automation.status.failed': { ar: 'فشلت', en: 'Failed' },
@@ -738,7 +763,11 @@ export const PROJECT_STRINGS = {
     ar: 'مشاريع وفرق ومهام جاهزة تشتغل عليها من غير ما تدخل بيانات حقيقية. تقدر تحمّلها وتمسحها في أي وقت.',
     en: 'Ready-made projects, teams and tasks to explore, without entering anything real. Load it and remove it whenever you like.',
   },
-  'demo.load': { ar: 'تحميل بيانات تجريبية', en: 'Load demo data' },
+  // The buttons name the module. This panel already sits inside Projects
+  // settings, so the context is there — but an administrator who has loaded
+  // demo data into one module and is looking at another wants the button to
+  // say which set it is about, not to infer it from the breadcrumb.
+  'demo.load': { ar: 'تحميل بيانات Qodo Projects التجريبية', en: 'Load Qodo Projects demo data' },
   'demo.remove': { ar: 'حذف البيانات التجريبية', en: 'Remove demo data' },
   'demo.loading': { ar: 'جارٍ التحميل…', en: 'Loading…' },
   'demo.removing': { ar: 'جارٍ الحذف…', en: 'Removing…' },
@@ -776,7 +805,10 @@ export const PROJECT_STRINGS = {
     en: 'Demo data is switched off on this deployment.',
   },
   'demo.badge': { ar: 'تجريبي', en: 'Demo' },
-  'demo.reset': { ar: 'إعادة ضبط البيانات التجريبية', en: 'Reset demo data' },
+  'demo.reset': {
+    ar: 'إعادة ضبط بيانات Qodo Projects التجريبية',
+    en: 'Reset Qodo Projects demo data',
+  },
   'demo.resetting': { ar: 'جارٍ إعادة الضبط…', en: 'Resetting…' },
   'demo.wasReset': { ar: 'تمت إعادة ضبط البيانات التجريبية على تواريخ اليوم.', en: 'Demo data rebuilt against today’s dates.' },
   'demo.alreadyLoaded': {

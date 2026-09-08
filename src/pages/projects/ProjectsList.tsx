@@ -464,12 +464,23 @@ function ProjectCard({
           style={{ backgroundColor: project.color }}
         />
         <div className="min-w-0 flex-1">
-          <Link
-            to={`/projects/${project.id}`}
-            className="block truncate text-[15px] font-bold text-ink hover:text-brand-600"
-          >
-            {project.name}
-          </Link>
+          {/* A project in the recycle bin is not openable — every project route
+              refuses a deleted row, which is correct — so its name is not a
+              link. It was one, and the only thing that hid it was that nothing
+              was ever in the bin to click: following it landed on "this item
+              was not found", which reads as a broken page rather than as the
+              recycle bin working. Restore is the action here, and it is already
+              on the card. */}
+          {tab === 'trashed' ? (
+            <span className="block truncate text-[15px] font-bold text-ink">{project.name}</span>
+          ) : (
+            <Link
+              to={`/projects/${project.id}`}
+              className="block truncate text-[15px] font-bold text-ink hover:text-brand-600"
+            >
+              {project.name}
+            </Link>
+          )}
           <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[12px] font-semibold text-ink-faint">
             <span className="chip bg-surface-sunken font-mono text-ink-muted">{project.key}</span>
             {/* Demo projects sit in the same list as real work, so they say so.
@@ -628,25 +639,38 @@ function ProjectTable({
                   />
                 </td>
                 <td className="px-3 py-2.5">
-                  <Link
-                    to={`/projects/${project.id}`}
-                    className="flex items-center gap-2 font-semibold text-ink hover:text-brand-600"
-                  >
-                    <span
-                      aria-hidden="true"
-                      className="h-4 w-1 shrink-0 rounded-full"
-                      style={{ backgroundColor: project.color }}
-                    />
-                    <span className="min-w-0">
-                      <span className="block truncate">{project.name}</span>
-                      <span className="block font-mono text-[11px] font-normal text-ink-faint">
-                        {project.key}
-                        {project.isDemo && (
-                          <span className="ms-1.5 font-sans text-accent-700">· {t('demo.badge')}</span>
-                        )}
-                      </span>
-                    </span>
-                  </Link>
+                  {/* Same rule as the card: a deleted project has no page to
+                      open, so in the recycle bin the name is text. */}
+                  {(() => {
+                    const identity = (
+                      <>
+                        <span
+                          aria-hidden="true"
+                          className="h-4 w-1 shrink-0 rounded-full"
+                          style={{ backgroundColor: project.color }}
+                        />
+                        <span className="min-w-0">
+                          <span className="block truncate">{project.name}</span>
+                          <span className="block font-mono text-[11px] font-normal text-ink-faint">
+                            {project.key}
+                            {project.isDemo && (
+                              <span className="ms-1.5 font-sans text-accent-700">· {t('demo.badge')}</span>
+                            )}
+                          </span>
+                        </span>
+                      </>
+                    );
+                    return tab === 'trashed' ? (
+                      <span className="flex items-center gap-2 font-semibold text-ink">{identity}</span>
+                    ) : (
+                      <Link
+                        to={`/projects/${project.id}`}
+                        className="flex items-center gap-2 font-semibold text-ink hover:text-brand-600"
+                      >
+                        {identity}
+                      </Link>
+                    );
+                  })()}
                 </td>
                 <td className="px-3 py-2.5">
                   <StatusPill status={project.status ?? null} />

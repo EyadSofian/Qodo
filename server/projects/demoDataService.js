@@ -62,7 +62,16 @@ import * as taskListService from './taskListService.js';
 import * as taskService from './taskService.js';
 import * as timeService from './timeService.js';
 
-import { CUSTOMERS, GROUPS, PEOPLE, PROJECTS, TAGS, WORK_CALENDAR, blueprintTotals } from './demoBlueprint.js';
+import {
+  CUSTOMERS,
+  DEMO_WORKSPACE,
+  GROUPS,
+  PEOPLE,
+  PROJECTS,
+  TAGS,
+  WORK_CALENDAR,
+  blueprintTotals,
+} from './demoBlueprint.js';
 import {
   AUTOMATION_RUNS,
   BUSINESS_RULES,
@@ -200,8 +209,17 @@ export async function status(user) {
     [organizationId]
   );
 
-  // How much of the most recent batch is still really there. A demo whose
-  // projects were deleted one by one should not report itself as fully loaded.
+  /**
+   * How much of the most recent batch is still really there. A demo whose
+   * projects were deleted one by one should not report itself as fully loaded.
+   *
+   * "Still there" means the row exists, not that it is out of the recycle bin.
+   * The demo ships a project in the bin on purpose — that is what fills the
+   * Recycle bin tab — and excluding it here made the panel report one project
+   * fewer than it had just said it would create, which reads as a failed load
+   * rather than as the feature working. A project that is genuinely gone has no
+   * row at all, and the join still catches that.
+   */
   let live = null;
   if (batches.length > 0) {
     live = await row(
@@ -209,7 +227,7 @@ export async function status(user) {
          FROM qodo_projects.demo_seeds s
          JOIN qodo_projects.projects p ON p.id = s.entity_id::uuid
         WHERE s.organization_id = $1 AND s.batch_id = $2
-          AND s.entity_type = 'project' AND p.deleted_at IS NULL`,
+          AND s.entity_type = 'project'`,
       [organizationId, batches[0].batch_id]
     );
   }
@@ -217,6 +235,9 @@ export async function status(user) {
   return {
     enabled: isEnabled(),
     loaded: batches.length > 0,
+    // The name of the space this data belongs to, so the panel that administers
+    // it can say whose it is rather than only how much of it there is.
+    workspace: DEMO_WORKSPACE,
     batch: batches[0]
       ? {
           id: batches[0].batch_id,
@@ -710,6 +731,58 @@ export async function load(user) {
        something to compare today's plan against */
     for (const baseline of blueprint.baselines ?? []) {
       await captureBaseline(user, organizationId, project.id, baseline, taskIds);
+    }
+
+    /**
+     * The loader's own membership, kept only where the blueprint asks for it.
+     *
+     * `projectService.create` adds the creator as a manager — correct for a
+     * person creating a project, wrong for one pressing "load demo data", who
+     * did not do any of this work. Left alone it put the administrator on all
+     * seven projects and made "My projects" a duplicate of "Active".
+     *
+     * Removed here rather than prevented above, because going through `create`
+     * unchanged is what keeps the demo on the same authorized path a real
+     * request takes. The owner's membership is never touched — it is the
+     * authorization join, and an owner outside it cannot open their own
+     * project.
+     */
+    if (!blueprint.loaderIsMember && user.id !== project.ownerId) {
+      await query(
+        `DELETE FROM qodo_projects.project_members
+          WHERE project_id = $1 AND organization_id = $2 AND user_id = $3
+            AND user_id <> $4`,
+        [project.id, organizationId, user.id, project.ownerId]
+      );
+    }
+
+    /**
+     * Archived and trashed, last of all.
+     *
+     * It happens here rather than at creation because everything above — tasks,
+     * hours, timesheets, the baseline — is written through the same authorized
+     * services a request would use, and several of them refuse to touch a
+     * project that is archived or in the bin. That refusal is correct, so the
+     * demo obeys it: the project is built while it is live, and then closed.
+     *
+     * Both go through the service rather than an UPDATE, so the audit log
+     * records who archived it and when, exactly as it would for a person. Only
+     * the timestamp is rewritten afterwards, because "archived four months ago"
+     * is the part of the story that makes the Archived tab worth looking at,
+     * and `setArchived` can only ever write `now()`.
+     */
+    if (blueprint.lifecycle) {
+      const { state, day } = blueprint.lifecycle;
+      const column = state === 'archived' ? 'archived_at' : 'deleted_at';
+
+      if (state === 'archived') await projectService.setArchived(context, true);
+      else if (state === 'trashed') await projectService.softDelete(context);
+
+      await query(
+        `UPDATE qodo_projects.projects SET ${column} = $3::date + time '11:30'
+          WHERE id = $1 AND organization_id = $2`,
+        [project.id, organizationId, dayFromToday(day)]
+      );
     }
 
     summary.created.push({ id: project.id, key: project.key, name: project.name });

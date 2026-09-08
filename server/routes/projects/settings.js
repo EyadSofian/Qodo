@@ -112,7 +112,12 @@ router.get(
   permitPortal(P.AUTOMATION_MANAGE),
   handler(async (req, res) => {
     res.json({
-      rules: await automation.rules(organizationOf(req.user), req.query.module ?? 'task', req.query.trigger),
+      // The administrator's list, so it includes the rules that are switched
+      // off — they are exactly the ones whose toggle this screen exists to
+      // turn back on.
+      rules: await automation.rules(organizationOf(req.user), req.query.module ?? 'task', req.query.trigger, {
+        includeInactive: true,
+      }),
     });
   })
 );

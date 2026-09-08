@@ -23,6 +23,11 @@ import path from 'node:path';
 import { after, before, describe, test } from 'node:test';
 
 import { startTestDatabase } from './projects/testDatabase.js';
+// The expected project count comes from the blueprint rather than from a
+// literal in this file. It was a literal, and adding two projects to the demo
+// failed four assertions that had no opinion about those projects — the number
+// is a property of the content, and only the content should get to change it.
+import { PROJECTS } from './projects/demoBlueprint.js';
 
 /**
  * Task documents live in the workspace store, so a demo load would otherwise
@@ -113,14 +118,15 @@ describe('loading the demo data', { skip: SKIP }, () => {
     const result = await demo.load(admin);
 
     assert.ok(result.batchId, 'a load with no batch id cannot be unloaded');
-    assert.equal(result.created.length, 5);
+    assert.equal(result.created.length, PROJECTS.length);
 
+    // Every project the blueprint describes, by name. Named rather than
+    // counted, because a load that created the right *number* of projects out
+    // of the wrong halves of the blueprint would pass a count.
     const names = result.created.map((project) => project.name);
-    assert.ok(names.includes('إطلاق متجر إلكتروني'));
-    assert.ok(names.includes('تطبيق عيادات الحياة'));
-    assert.ok(names.includes('حملة تسويق الخريف'));
-    assert.ok(names.includes('إعادة تصميم موقع الشركة'));
-    assert.ok(names.includes('نظام إدارة المخزون'));
+    for (const blueprint of PROJECTS) {
+      assert.ok(names.includes(blueprint.name), `the load did not create ${blueprint.name}`);
+    }
 
     // Every project that exists is claimed. An unclaimed project is one the
     // unloader would leave behind forever.
@@ -167,6 +173,105 @@ describe('loading the demo data', { skip: SKIP }, () => {
     assert.ok(dependencies.n >= 10, 'too few dependencies for a critical path to be visible');
 
     assert.ok(byName.has('إطلاق متجر إلكتروني'));
+  });
+
+  /**
+   * The projects list has five tabs and the demo has to answer all five.
+   *
+   * Active, Mine and Favorites were always populated because every demo project
+   * was live. Archived and Recycle bin were not, and an empty tab is the one
+   * outcome this whole feature exists to prevent: a reader who clicks Archived
+   * to find out what archiving looks like learns nothing from an empty state.
+   *
+   * Asserted through `projectService.list` with the scopes the interface
+   * actually sends, rather than by reading `archived_at` directly — the columns
+   * being set is not the claim; the tab having rows in it is.
+   */
+  test('every scope tab in the projects list has something in it', async () => {
+    const scopes = ['active', 'archived', 'trashed'];
+    for (const scope of scopes) {
+      const { projects } = await projectService.list(admin, { scope, limit: 50 });
+      assert.ok(projects.length > 0, `the "${scope}" tab of the projects list is empty`);
+    }
+
+    // Archived and trashed are different states, not two names for one. A
+    // project in the bin must not also be counted as archived, or "restore"
+    // and "unarchive" become the same button.
+    const { projects: archived } = await projectService.list(admin, { scope: 'archived', limit: 50 });
+    const { projects: trashed } = await projectService.list(admin, { scope: 'trashed', limit: 50 });
+    const archivedIds = new Set(archived.map((project) => project.id));
+    for (const project of trashed) {
+      assert.ok(!archivedIds.has(project.id), 'a trashed project is also being listed as archived');
+    }
+
+    // And neither of them leaks into the active list, which is the tab
+    // everybody lands on.
+    const { projects: active } = await projectService.list(admin, { scope: 'active', limit: 50 });
+    const activeIds = new Set(active.map((project) => project.id));
+    for (const project of [...archived, ...trashed]) {
+      assert.ok(!activeIds.has(project.id), `${project.name} is closed but still on the active list`);
+    }
+  });
+
+  /**
+   * "My projects" has to be a filter, not a second copy of "Active".
+   *
+   * The loader creates every project under one administrator, and creating a
+   * project makes you a manager of it — so without intervention that
+   * administrator is on all of them and the tab filters nothing. It also must
+   * not swing the other way into an empty tab, which is the failure this whole
+   * feature exists to prevent.
+   */
+  test('the loading administrator is on some demo projects, not all and not none', async () => {
+    const { projects: active } = await projectService.list(admin, { scope: 'active', limit: 50 });
+    const { projects: mine } = await projectService.list(admin, {
+      scope: 'active',
+      memberOf: admin.id,
+      limit: 50,
+    });
+
+    assert.ok(mine.length > 0, 'the "My projects" tab is empty for the person who loaded the demo');
+    assert.ok(
+      mine.length < active.length,
+      '"My projects" returned every active project — the tab is a duplicate of "Active"'
+    );
+
+    // And the projects they are not on are still visible to them, because an
+    // administrator sees the whole organization. Dropping the membership must
+    // not have hidden anything.
+    assert.equal(active.length, PROJECTS.filter((p) => !p.lifecycle).length);
+  });
+
+  /**
+   * The project that has not started is the one most likely to render as
+   * broken, because "nothing has happened yet" and "this screen is empty" look
+   * identical. Its tasks are legitimately untouched; its planning artefacts are
+   * not, and those are what keep the Documents, Issues and Gantt tabs legible.
+   */
+  test('the not-started project still has its planning artefacts', async () => {
+    const { projects } = await projectService.list(admin, { scope: 'active', limit: 50 });
+    const website = projects.find((project) => project.name === 'إعادة تصميم موقع الشركة');
+    assert.ok(website, 'the not-started project is missing from the demo');
+
+    for (const [table, label] of [
+      ['document_files', 'Documents'],
+      ['issues', 'Issues'],
+      ['project_baselines', 'the Gantt baseline overlay'],
+    ]) {
+      const found = await db.row(
+        `SELECT count(*)::int AS n FROM qodo_projects.${table} WHERE project_id = $1`,
+        [website.id]
+      );
+      assert.ok(found.n > 0, `${label} is empty on the project that has not started yet`);
+    }
+
+    // But it genuinely has no logged time — that emptiness is the point of
+    // this project, and filling it would be a lie about work nobody has done.
+    const hours = await db.row(
+      'SELECT count(*)::int AS n FROM qodo_projects.time_entries WHERE project_id = $1',
+      [website.id]
+    );
+    assert.equal(hours.n, 0, 'the not-started project has hours logged against it');
   });
 
   test('earned value computes rather than reporting itself unavailable', async () => {
@@ -381,7 +486,7 @@ describe('demo data is confined to the organization that loaded it', { skip: SKI
     // And organization A still has everything.
     const mine = await demo.status(admin);
     assert.equal(mine.loaded, true, 'organization B’s unload removed organization A’s data');
-    assert.equal(mine.batch.liveProjects, 5);
+    assert.equal(mine.batch.liveProjects, PROJECTS.length);
   });
 });
 
@@ -532,8 +637,8 @@ describe('resetting the demo data', { skip: SKIP }, () => {
 
     assert.ok(result.batchId, 'reset produced no new batch');
     assert.notEqual(result.batchId, first.batch.id, 'reset reused the old batch id');
-    assert.equal(result.created.length, 5, 'reset did not rebuild every project');
-    assert.ok(result.removed.projects >= 5, 'reset removed nothing');
+    assert.equal(result.created.length, PROJECTS.length, 'reset did not rebuild every project');
+    assert.ok(result.removed.projects >= PROJECTS.length, 'reset removed nothing');
 
     // The real work is still there, by id, not by count.
     const survivor = await db.row(
@@ -557,7 +662,7 @@ describe('resetting the demo data', { skip: SKIP }, () => {
   test('reset is safe to run when nothing is loaded', async () => {
     await demo.unload(admin);
     const result = await demo.reset(admin);
-    assert.equal(result.created.length, 5);
+    assert.equal(result.created.length, PROJECTS.length);
     assert.equal(result.removed.projects, 0, 'reset reported removing projects that were not there');
 
     // Leave the database clean for anything that runs after this file.

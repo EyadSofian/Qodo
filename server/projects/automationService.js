@@ -57,18 +57,35 @@ export const ACTION_TYPES = [
 /* Rules                                                                */
 /* ------------------------------------------------------------------ */
 
-export async function rules(organizationId, moduleKey, trigger) {
+/**
+ * The rules on a module.
+ *
+ * Two callers want opposite things from this, and for a while they shared one
+ * answer. The engine asks in order to *fire* rules, so a deactivated rule must
+ * not come back. The settings screen asks in order to *list* them, and it draws
+ * an activate/deactivate toggle on each row — so a deactivated rule that
+ * vanishes from the list makes that toggle a one-way door: turn a rule off and
+ * there is no longer a row to turn it back on from, and no way to reach it
+ * short of the database.
+ *
+ * So the filter is now the caller's choice, and it stays off by default. A new
+ * execution path that forgets the argument keeps the safe behaviour and
+ * declines to fire an inactive rule; only a screen that deliberately asks for
+ * them gets them.
+ */
+export async function rules(organizationId, moduleKey, trigger, { includeInactive = false } = {}) {
   const params = [organizationId, moduleKey];
   let triggerFilter = '';
   if (trigger) {
     params.push(trigger);
     triggerFilter = `AND trigger = $${params.length}`;
   }
+  const activeFilter = includeInactive ? '' : 'AND is_active';
 
   return (
     await rows(
       `SELECT * FROM qodo_projects.workflow_rules
-        WHERE organization_id = $1 AND module_key = $2 AND is_active ${triggerFilter}
+        WHERE organization_id = $1 AND module_key = $2 ${activeFilter} ${triggerFilter}
         ORDER BY order_index, created_at`,
       params
     )
