@@ -522,3 +522,70 @@ export const projectAdminApi = {
     api.post<{ connection: { provider: string; status: string } }>('/projects/integrations', input),
   disconnect: (provider: string) => api.delete<void>(`/projects/integrations/${provider}`),
 };
+
+/* ------------------------------------------------------------------ */
+/* Demo data                                                           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * What the server reports about the demo set, and what a load would build.
+ *
+ * `willCreate` is deliberately available *before* anything is written, so the
+ * confirmation can say what is about to happen rather than what just did.
+ */
+export interface DemoStatus {
+  enabled: boolean;
+  loaded: boolean;
+  batch: {
+    id: string;
+    loadedAt: string;
+    loadedBy: string | null;
+    counts: { projects: number; customers: number; people: number; tasks: number };
+    liveProjects: number;
+  } | null;
+  willCreate: {
+    people: number;
+    customers: number;
+    projects: number;
+    phases: number;
+    taskLists: number;
+    tasks: number;
+    issues: number;
+    timeEntries: number;
+    comments: number;
+    documents: number;
+    dependencies: number;
+  };
+}
+
+export interface DemoLoadResult {
+  batchId: string;
+  alreadyLoaded?: boolean;
+  created: Array<{ id: string; key: string; name: string }>;
+}
+
+export interface DemoRemoveResult {
+  removed: {
+    projects: number;
+    customers: number;
+    groups: number;
+    people: number;
+    tasks: number;
+    notifications?: number;
+    configuration?: number;
+  };
+  skipped: Array<{ entityType: string; entityId: string; reason: string }>;
+}
+
+/**
+ * Three verbs, and the 403 is expected rather than exceptional: the endpoints
+ * need both the Projects administrator set and the workspace admin role, so a
+ * manager opening Settings will be refused — the caller treats that as "hide
+ * the panel", not as an error worth a toast.
+ */
+export const demoDataApi = {
+  status: () => api.get<DemoStatus>('/projects/demo'),
+  load: () => api.post<DemoLoadResult>('/projects/demo', {}),
+  reset: () => api.post<DemoLoadResult & DemoRemoveResult>('/projects/demo/reset', {}),
+  remove: () => api.delete<DemoRemoveResult>('/projects/demo'),
+};

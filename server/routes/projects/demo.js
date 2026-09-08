@@ -66,6 +66,22 @@ router.post(
 );
 
 /**
+ * Remove it and build it again.
+ *
+ * Its own verb rather than "call DELETE then POST", because the reason to reset
+ * is that the demo has *drifted*: every date in it is an offset from the day it
+ * was loaded, so a set loaded last quarter shows a finished project that was
+ * supposed to be starting. One button, one audited action, one thing to explain.
+ */
+router.post(
+  '/reset',
+  requireDemoAdmin,
+  handler(async (req, res) => {
+    res.json(await demo.reset(req.user));
+  })
+);
+
+/**
  * Remove it.
  *
  * `batchId` is optional and, when absent, means every batch this organization

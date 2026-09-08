@@ -20,14 +20,18 @@ import {
   Cable,
   CircleDot,
   Copy,
+  Database,
   Plug,
+  RotateCcw,
   Settings2,
+  ShieldCheck,
+  Trash2,
   Webhook,
   Workflow,
 } from 'lucide-react';
 import { useI18n } from '../../lib/i18n';
 import { errorMessage } from '../../lib/api';
-import { projectAdminApi } from '../../lib/projects/api';
+import { demoDataApi, projectAdminApi, type DemoStatus } from '../../lib/projects/api';
 import type {
   AutomationRule,
   AutomationRun,
@@ -37,8 +41,9 @@ import type {
 } from '../../lib/projects/types';
 import { useProjectPermissions } from '../../lib/projects/useProjectPermissions';
 import { EmptyState, Field, Modal, Segmented, Spinner, useToast } from '../../components/ui';
+import { SectionCard } from '../../components/projects/ui';
 
-type Tab = 'statuses' | 'automation' | 'webhooks' | 'integrations';
+type Tab = 'statuses' | 'automation' | 'webhooks' | 'integrations' | 'demo';
 
 export function ProjectsSettings() {
   const { t, dir } = useI18n();
@@ -78,6 +83,7 @@ export function ProjectsSettings() {
           { value: 'automation' as Tab, label: t('projectSettings.tab.automation') },
           { value: 'webhooks' as Tab, label: t('projectSettings.tab.webhooks') },
           { value: 'integrations' as Tab, label: t('projectSettings.tab.integrations') },
+          { value: 'demo' as Tab, label: t('demo.title') },
         ]}
       />
 
@@ -85,6 +91,7 @@ export function ProjectsSettings() {
       {tab === 'automation' && <Automation canManage={can('automation.manage')} />}
       {tab === 'webhooks' && <Webhooks canManage={can('automation.manage')} />}
       {tab === 'integrations' && <Integrations canManage={can('integration.manage')} />}
+      {tab === 'demo' && <DemoData />}
     </div>
   );
 }
@@ -686,6 +693,250 @@ function Loading() {
   return (
     <div className="card grid place-items-center py-16">
       <Spinner size={22} className="text-brand-500" />
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Demo data                                                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Load, refresh or remove the demo set.
+ *
+ * The three buttons are not equivalent and the screen says so rather than
+ * leaving the reader to work it out:
+ *
+ *   • **Load** builds it. Pressing it twice is safe — the server treats the
+ *     second press as a no-op — and the panel says "already loaded" rather
+ *     than claiming to have done the work again.
+ *   • **Reset** removes and rebuilds. It exists because every date in the demo
+ *     is an offset from the day it was loaded, so a set from last quarter shows
+ *     a project that was supposed to be starting as already finished.
+ *   • **Remove** takes it away and leaves the workspace as it was.
+ *
+ * The destructive two ask first. Not a reflex — a confirmation on every button
+ * teaches people to dismiss confirmations — but because both delete rows, and
+ * the dialog is the only place the reader is told *what* is deleted and what
+ * is not.
+ *
+ * The whole panel is hidden when the server says the caller may not manage it:
+ * the endpoints answer 403 for anybody without both the Projects administrator
+ * set and the workspace admin role, and a button that always fails is worse
+ * than no button.
+ */
+function DemoData() {
+  const { t, lang } = useI18n();
+  const toast = useToast();
+
+  const [status, setStatus] = useState<DemoStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [forbidden, setForbidden] = useState(false);
+  const [busy, setBusy] = useState<null | 'load' | 'reset' | 'remove'>(null);
+  const [confirming, setConfirming] = useState<null | 'reset' | 'remove'>(null);
+
+  const load = useCallback(async () => {
+    try {
+      setStatus(await demoDataApi.status());
+      setForbidden(false);
+    } catch (caught) {
+      // A 403 here is the expected answer for a project manager, not a fault.
+      // It hides the panel instead of shouting.
+      if ((caught as { status?: number })?.status === 403) setForbidden(true);
+      else toast.push(errorMessage(caught, lang), 'bad');
+    } finally {
+      setLoading(false);
+    }
+  }, [lang, toast]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const run = async (action: 'load' | 'reset' | 'remove') => {
+    setBusy(action);
+    setConfirming(null);
+    try {
+      if (action === 'load') {
+        const result = await demoDataApi.load();
+        toast.push(result.alreadyLoaded ? t('demo.alreadyLoaded') : t('demo.loaded'), 'ok');
+      } else if (action === 'reset') {
+        await demoDataApi.reset();
+        toast.push(t('demo.wasReset'), 'ok');
+      } else {
+        const result = await demoDataApi.remove();
+        toast.push(t('demo.removed'), 'ok');
+        // A refusal is not a failure, but it is the one outcome somebody has to
+        // act on, so it is said out loud rather than buried in the response.
+        if (result.skipped.length > 0) toast.push(t('demo.someSkipped', { n: result.skipped.length }), 'bad');
+      }
+      await load();
+    } catch (caught) {
+      toast.push(errorMessage(caught, lang), 'bad');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  if (loading) return <Loading />;
+
+  if (forbidden) {
+    return (
+      <div className="card">
+        <EmptyState
+          icon={<ShieldCheck size={34} />}
+          title={t('demo.title')}
+          body={t('demo.forbidden')}
+        />
+      </div>
+    );
+  }
+
+  if (status && !status.enabled) {
+    return (
+      <div className="card">
+        <EmptyState icon={<Database size={34} />} title={t('demo.title')} body={t('demo.disabled')} />
+      </div>
+    );
+  }
+
+  const counts = status?.willCreate;
+
+  return (
+    <div className="grid gap-4">
+      <SectionCard
+        title={
+          <span className="inline-flex items-center gap-2">
+            <Database size={16} className="text-brand-500" aria-hidden="true" />
+            {t('demo.title')}
+          </span>
+        }
+        hint={t('demo.subtitle')}
+      >
+        <div className="grid gap-4">
+          {/* What is there now. A batch that was loaded and then had its
+              projects deleted by hand reports the difference rather than
+              claiming to be intact. */}
+          <div
+            className={`rounded-xl border px-4 py-3 ${
+              status?.loaded
+                ? 'border-status-ok/30 bg-status-okBg/50'
+                : 'border-surface-line bg-surface-sunken'
+            }`}
+          >
+            <p className="text-[13px] font-bold text-ink">
+              {status?.loaded ? t('demo.isLoaded') : t('demo.notLoaded')}
+            </p>
+            {status?.loaded && status.batch && (
+              <p className="mt-1 text-[12px] text-ink-muted">
+                {t('demo.loadedSummary', {
+                  projects: status.batch.liveProjects,
+                  people: status.batch.counts.people,
+                  tasks: status.batch.counts.tasks,
+                })}
+                {' · '}
+                <span className="ltr">{String(status.batch.loadedAt).slice(0, 10)}</span>
+              </p>
+            )}
+            {!status?.loaded && counts && (
+              <p className="mt-1 text-[12px] leading-relaxed text-ink-muted">
+                {t('demo.willCreate', {
+                  projects: counts.projects,
+                  tasks: counts.tasks,
+                  people: counts.people,
+                  issues: counts.issues,
+                  timeEntries: counts.timeEntries,
+                })}
+              </p>
+            )}
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="btn-primary btn-sm"
+              disabled={busy !== null}
+              onClick={() => void run('load')}
+            >
+              {busy === 'load' ? <Spinner size={15} /> : <Database size={15} />}
+              {busy === 'load' ? t('demo.loading') : t('demo.load')}
+            </button>
+
+            <button
+              type="button"
+              className="btn-ghost btn-sm"
+              disabled={busy !== null || !status?.loaded}
+              onClick={() => setConfirming('reset')}
+            >
+              {busy === 'reset' ? <Spinner size={15} /> : <RotateCcw size={15} />}
+              {busy === 'reset' ? t('demo.resetting') : t('demo.reset')}
+            </button>
+
+            <button
+              type="button"
+              className="btn-danger btn-sm"
+              disabled={busy !== null || !status?.loaded}
+              onClick={() => setConfirming('remove')}
+            >
+              {busy === 'remove' ? <Spinner size={15} /> : <Trash2 size={15} />}
+              {busy === 'remove' ? t('demo.removing') : t('demo.remove')}
+            </button>
+          </div>
+
+          {/* Why this is safe to press. Written out rather than assumed,
+              because an administrator sitting in front of production is
+              entitled to know what a button labelled "load demo data" is
+              about to do to their database. */}
+          <div className="rounded-xl border border-surface-line bg-white p-4">
+            <h3 className="mb-2 flex items-center gap-1.5 text-[13px] font-bold text-ink">
+              <ShieldCheck size={15} className="text-status-ok" aria-hidden="true" />
+              {t('demo.safetyTitle')}
+            </h3>
+            <ul className="grid gap-2 text-[12px] leading-relaxed text-ink-muted">
+              <li className="flex gap-2">
+                <span aria-hidden="true" className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-ink-faint" />
+                {t('demo.safetyIsolation')}
+              </li>
+              <li className="flex gap-2">
+                <span aria-hidden="true" className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-ink-faint" />
+                {t('demo.safetyAccounts')}
+              </li>
+              <li className="flex gap-2">
+                <span aria-hidden="true" className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-ink-faint" />
+                {t('demo.safetyTasks')}
+              </li>
+              <li className="flex gap-2">
+                <span aria-hidden="true" className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-ink-faint" />
+                {t('demo.safetyIntegrations')}
+              </li>
+            </ul>
+          </div>
+        </div>
+      </SectionCard>
+
+      <Modal
+        open={confirming !== null}
+        onClose={() => setConfirming(null)}
+        title={confirming === 'reset' ? t('demo.reset') : t('demo.remove')}
+        footer={
+          <>
+            <button type="button" className="btn-ghost btn-sm" onClick={() => setConfirming(null)}>
+              {t('common.cancel')}
+            </button>
+            <button
+              type="button"
+              className={confirming === 'reset' ? 'btn-primary btn-sm' : 'btn-danger btn-sm'}
+              onClick={() => void run(confirming === 'reset' ? 'reset' : 'remove')}
+            >
+              {confirming === 'reset' ? t('demo.reset') : t('demo.remove')}
+            </button>
+          </>
+        }
+      >
+        <p className="text-sm leading-relaxed text-ink-muted">
+          {confirming === 'reset' ? t('demo.confirmReset') : t('demo.confirmRemove')}
+        </p>
+      </Modal>
     </div>
   );
 }

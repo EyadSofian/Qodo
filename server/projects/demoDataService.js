@@ -62,7 +62,18 @@ import * as taskListService from './taskListService.js';
 import * as taskService from './taskService.js';
 import * as timeService from './timeService.js';
 
-import { CUSTOMERS, GROUPS, PEOPLE, PROJECTS, blueprintTotals } from './demoBlueprint.js';
+import { CUSTOMERS, GROUPS, PEOPLE, PROJECTS, TAGS, WORK_CALENDAR, blueprintTotals } from './demoBlueprint.js';
+import {
+  AUTOMATION_RUNS,
+  BUSINESS_RULES,
+  INTEGRATIONS,
+  NOTIFICATIONS,
+  SAVED_REPORTS,
+  SAVED_VIEWS,
+  SLA_POLICIES,
+  WEBHOOK_ENDPOINTS,
+  WORKFLOW_RULES,
+} from './demoOrgBlueprint.js';
 
 /**
  * The domain every demo address sits on.
@@ -246,14 +257,26 @@ export async function load(user) {
 
   const organizationId = organizationOf(user);
 
+  /**
+   * Loading twice does nothing the second time.
+   *
+   * The first version of this threw 409, which is defensible but wrong for the
+   * thing people actually do: click the button, not see the toast, click it
+   * again. An error there teaches nothing and a second batch would double every
+   * user, every client and every project.
+   *
+   * So a load with a batch already present is a *successful no-op* that reports
+   * what is there. The caller can tell the difference — `alreadyLoaded` is true
+   * and `created` is empty — and the screen says "already loaded" rather than
+   * pretending it just did the work. Somebody who wants it built again wants
+   * `reset`, which is its own button and says so.
+   */
   const existing = await row(
     'SELECT batch_id FROM qodo_projects.demo_seeds WHERE organization_id = $1 LIMIT 1',
     [organizationId]
   );
   if (existing) {
-    throw conflict('demo_data_already_loaded', {
-      hint: 'Remove the existing demo data before loading it again.',
-    });
+    return { alreadyLoaded: true, batchId: existing.batch_id, created: [], ...blueprintTotals() };
   }
 
   const batchId = crypto.randomUUID();
@@ -374,6 +397,10 @@ export async function load(user) {
   const ratesFrom = dayFromToday(-400);
   await transaction(async (tx) => {
     for (const person of PEOPLE) {
+      // The client contact has no cost and no billing rate, and must not be
+      // given one: a client is not staff whose hours the company pays for, and
+      // inventing a rate would put them in every cost report.
+      if (person.costRate === null || person.costRate === undefined) continue;
       await tx.query(
         `INSERT INTO qodo_projects.cost_rates
            (organization_id, user_id, project_id, rate, effective_from, created_by)
@@ -389,12 +416,88 @@ export async function load(user) {
     }
   });
 
+  /* ── the working week ─────────────────────────────────────────── */
+
+  /**
+   * Sunday–Thursday, with holidays.
+   *
+   * Every duration, critical path and SLA clock counts this calendar. Creating
+   * it is what stops the demo's schedules from being computed against a
+   * Monday–Friday week nobody here works.
+   */
+  const calendarId = await transaction(async (tx) => {
+    const calendar = await tx.row(
+      `INSERT INTO qodo_projects.work_calendars
+         (organization_id, name, workdays, day_start_minutes, day_end_minutes, timezone, is_default)
+       VALUES ($1,$2,$3,$4,$5,$6,false) RETURNING id`,
+      [
+        organizationId,
+        WORK_CALENDAR.name,
+        WORK_CALENDAR.workdays,
+        WORK_CALENDAR.dayStartMinutes,
+        WORK_CALENDAR.dayEndMinutes,
+        WORK_CALENDAR.timezone,
+      ]
+    );
+    for (const holiday of WORK_CALENDAR.holidays) {
+      await tx.query(
+        `INSERT INTO qodo_projects.calendar_holidays (calendar_id, holiday_on, name)
+         VALUES ($1,$2,$3) ON CONFLICT (calendar_id, holiday_on) DO NOTHING`,
+        [calendar.id, dayFromToday(holiday.day), holiday.name]
+      );
+    }
+    await claim(tx, {
+      organizationId,
+      batchId,
+      actorId: user.id,
+      entityType: 'work_calendar',
+      entityId: calendar.id,
+    });
+    return calendar.id;
+  });
+
+  /* ── tags ─────────────────────────────────────────────────────── */
+
+  const tagIds = new Map();
+  await transaction(async (tx) => {
+    for (const tag of TAGS) {
+      // `ON CONFLICT` on the organization's own unique index: a company that
+      // already has a tag called "عاجل" keeps theirs, and the demo attaches to
+      // it rather than failing or creating a near-duplicate.
+      const created = await tx.row(
+        `INSERT INTO qodo_projects.tags (organization_id, name, color, created_by)
+         VALUES ($1,$2,$3,$4)
+         ON CONFLICT (organization_id, name) DO UPDATE SET name = EXCLUDED.name
+         RETURNING id, (xmax = 0) AS inserted`,
+        [organizationId, tag.name, tag.color, user.id]
+      );
+      tagIds.set(tag.ref, created.id);
+      // Only claim a tag the demo actually created. Claiming one that already
+      // existed would delete a real tag on unload.
+      if (created.inserted) {
+        await claim(tx, {
+          organizationId,
+          batchId,
+          actorId: user.id,
+          entityType: 'tag',
+          entityId: created.id,
+        });
+      }
+    }
+  });
+
   /* ── projects ─────────────────────────────────────────────────── */
 
   // `created` is the list of projects; the spread supplies the row counts. The
   // two are kept apart because `blueprintTotals().projects` is a number and
   // would otherwise overwrite the list on the way in.
   const summary = { ...blueprintTotals(), created: [] };
+
+  // The org-level fixtures below reference tasks and issues by their blueprint
+  // ref, and those refs are unique across the whole demo rather than per
+  // project — so the maps are built here and filled as each project is walked.
+  const allTaskIds = new Map();
+  const allIssueIds = new Map();
 
   for (const blueprint of PROJECTS) {
     const project = await projectService.create(user, {
@@ -404,6 +507,7 @@ export async function load(user) {
       ownerId: userIds.get(blueprint.ownerRef),
       customerId: customerIds.get(blueprint.customerRef) ?? null,
       groupId: groupIds.get(blueprint.groupRef) ?? null,
+      calendarId,
       statusId: statusFor('project', blueprint.statusKey),
       startDate: dayFromToday(blueprint.startDay),
       endDate: dayFromToday(blueprint.endDay),
@@ -419,6 +523,19 @@ export async function load(user) {
     const context = await access.contextFor(user, project.id);
 
     await claimNow(context, batchId, 'project', project.id);
+
+    /* tags — the cross-project axis, which is the only reason tags exist
+       beside phases and lists. The join rows cascade with the project. */
+    for (const tagRef of blueprint.tagRefs ?? []) {
+      const tagId = tagIds.get(tagRef);
+      if (!tagId) continue;
+      await query(
+        `INSERT INTO qodo_projects.entity_tags
+           (tag_id, organization_id, entity_type, entity_id, tagged_by)
+         VALUES ($1,$2,'project',$3,$4) ON CONFLICT DO NOTHING`,
+        [tagId, organizationId, project.id, user.id]
+      );
+    }
 
     /* members */
     for (const member of blueprint.members) {
@@ -492,6 +609,7 @@ export async function load(user) {
             billingType: taskSpec.billable ? 'billable' : 'non_billable',
           });
           taskIds.set(taskSpec.ref, task.id);
+          allTaskIds.set(taskSpec.ref, task.id);
 
           // The task *document* lives in the other storage engine and will not
           // cascade when the project row goes. This is the row that lets the
@@ -561,6 +679,7 @@ export async function load(user) {
         affectedPhaseId: phaseIds.get(issueSpec.affectedPhaseRef) ?? null,
         dueDate: dayFromToday(issueSpec.dueDay),
       });
+      allIssueIds.set(issueSpec.ref, issue.id);
       for (const comment of issueSpec.comments) {
         await postComment(context, 'issue', issue.id, comment, userIds);
       }
@@ -584,21 +703,27 @@ export async function load(user) {
       });
     }
 
-    /* Freeze the rates onto the entries that were logged, the same way an
-       approved timesheet does. Without this every hour costs nothing and the
-       budget and earned-value screens have no actual cost to report. */
-    await transaction(async (tx) => {
-      await tx.query(
-        `UPDATE qodo_projects.time_entries
-            SET approval_status = 'approved'
-          WHERE project_id = $1 AND log_date < CURRENT_DATE`,
-        [project.id]
-      );
-      await timeService.freezeRates(tx, { projectId: project.id });
-    });
+    /* timesheets — the weekly wrapper around the hours that were logged */
+    await buildTimesheets(user, organizationId, project.id);
+
+    /* baselines — a saved snapshot of the schedule, so the variance view has
+       something to compare today's plan against */
+    for (const baseline of blueprint.baselines ?? []) {
+      await captureBaseline(user, organizationId, project.id, baseline, taskIds);
+    }
 
     summary.created.push({ id: project.id, key: project.key, name: project.name });
   }
+
+  /* ── organization-level configuration ─────────────────────────── */
+
+  await seedOrgFixtures(user, organizationId, batchId, {
+    projectIds: new Map(summary.created.map((project, index) => [PROJECTS[index].ref, project.id])),
+    taskIds: allTaskIds,
+    issueIds: allIssueIds,
+    userIds,
+    calendarId,
+  });
 
   await audit.record({
     actor: user,
@@ -610,6 +735,471 @@ export async function load(user) {
   });
 
   return { batchId, ...summary };
+}
+
+/* ------------------------------------------------------------------ */
+/* Organization-level configuration                                     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Fill the Settings tabs, the saved reports and the notification list.
+ *
+ * These are what turn "the feature exists" into "the feature is configured",
+ * and they are the difference between a Settings page that reads as unfinished
+ * and one that reads as a product somebody set up.
+ *
+ * Two constraints run through every insert below, and both are about not
+ * lying:
+ *
+ *   • **Integrations are never `connected`.** They are created
+ *     `not_configured` with no credential column written at all. The adapters
+ *     already answer 409 without a credential, so the product's own honesty
+ *     rule enforces this rather than a convention here.
+ *
+ *   • **Webhooks are created inactive and point at `.invalid`.** Two
+ *     independent reasons no HTTP request can leave: the delivery worker skips
+ *     inactive endpoints, and the host cannot resolve. One would do; two means
+ *     a future change to either alone cannot start sending traffic.
+ */
+async function seedOrgFixtures(user, organizationId, batchId, refs) {
+  const { projectIds, taskIds, issueIds, userIds } = refs;
+  const ruleIds = new Map();
+
+  await transaction(async (tx) => {
+    /* ── workflow rules ─────────────────────────────────────────── */
+    for (const [index, rule] of WORKFLOW_RULES.entries()) {
+      const created = await tx.row(
+        `INSERT INTO qodo_projects.workflow_rules
+           (organization_id, module_key, name, description, trigger, trigger_field,
+            criteria, match, actions, schedule, last_run_at, is_active, order_index, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+         RETURNING id`,
+        [
+          organizationId,
+          rule.moduleKey,
+          rule.name,
+          rule.description,
+          rule.trigger,
+          rule.triggerField ?? null,
+          JSON.stringify(rule.criteria),
+          rule.match,
+          JSON.stringify(rule.actions),
+          rule.schedule ? JSON.stringify(rule.schedule) : null,
+          rule.lastRunDay === undefined ? null : `${dayFromToday(rule.lastRunDay)}T08:00:00Z`,
+          rule.isActive,
+          index,
+          user.id,
+        ]
+      );
+      ruleIds.set(rule.ref, created.id);
+      await claim(tx, { organizationId, batchId, actorId: user.id, entityType: 'workflow_rule', entityId: created.id });
+    }
+
+    /* ── business rules ─────────────────────────────────────────── */
+    for (const rule of BUSINESS_RULES) {
+      const created = await tx.row(
+        `INSERT INTO qodo_projects.business_rules
+           (organization_id, module_key, name, criteria, match, actions, stop_processing, is_active, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+        [
+          organizationId,
+          rule.moduleKey,
+          rule.name,
+          JSON.stringify(rule.criteria),
+          rule.match,
+          JSON.stringify(rule.actions),
+          rule.stopProcessing,
+          rule.isActive,
+          user.id,
+        ]
+      );
+      ruleIds.set(rule.ref, created.id);
+      await claim(tx, { organizationId, batchId, actorId: user.id, entityType: 'business_rule', entityId: created.id });
+    }
+
+    /* ── run history ────────────────────────────────────────────── */
+    for (const [index, run] of AUTOMATION_RUNS.entries()) {
+      const entityId =
+        run.entityType === 'issue' ? issueIds.get(run.entityRef) : taskIds.get(run.entityRef);
+      // A run pointing at an entity the blueprint no longer contains is a
+      // dangling row on a screen, so it is dropped rather than written.
+      if (!entityId) continue;
+
+      await tx.query(
+        `INSERT INTO qodo_projects.automation_runs
+           (organization_id, rule_type, rule_id, entity_type, entity_id, trigger,
+            status, actions_applied, error, idempotency_key, ran_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+         ON CONFLICT (idempotency_key) DO NOTHING`,
+        [
+          organizationId,
+          run.ruleType,
+          ruleIds.get(run.ruleRef) ?? null,
+          run.entityType,
+          entityId,
+          run.trigger,
+          run.status,
+          JSON.stringify(run.actionsApplied ?? []),
+          run.error ?? null,
+          `demo:${batchId}:${index}`,
+          `${dayFromToday(run.day)}T08:05:00Z`,
+        ]
+      );
+    }
+
+    /* ── webhooks ───────────────────────────────────────────────── */
+    for (const endpoint of WEBHOOK_ENDPOINTS) {
+      const created = await tx.row(
+        `INSERT INTO qodo_projects.webhook_endpoints
+           (organization_id, name, url, method, events, secret, is_active,
+            disabled_at, disabled_reason, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,false,now(),$7,$8) RETURNING id`,
+        [
+          organizationId,
+          endpoint.name,
+          endpoint.url,
+          endpoint.method,
+          JSON.stringify(endpoint.events),
+          endpoint.secret,
+          endpoint.disabledReason,
+          user.id,
+        ]
+      );
+      await claim(tx, { organizationId, batchId, actorId: user.id, entityType: 'webhook_endpoint', entityId: created.id });
+
+      for (const delivery of endpoint.deliveries) {
+        await tx.query(
+          `INSERT INTO qodo_projects.webhook_deliveries
+             (endpoint_id, organization_id, event, payload, attempt, response_status,
+              response_body, error, duration_ms, delivered_at, created_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10)`,
+          [
+            created.id,
+            organizationId,
+            delivery.event,
+            JSON.stringify(delivery.payload),
+            delivery.attempt,
+            delivery.responseStatus ?? null,
+            delivery.responseBody ?? null,
+            delivery.error ?? null,
+            delivery.durationMs ?? null,
+            `${dayFromToday(delivery.day)}T10:00:00Z`,
+          ]
+        );
+      }
+    }
+
+    /* ── integrations ───────────────────────────────────────────── */
+    for (const integration of INTEGRATIONS) {
+      // `credentials` is left NULL, deliberately and not by omission: the
+      // status below is only honest because there is nothing behind it.
+      const created = await tx.row(
+        `INSERT INTO qodo_projects.integration_connections
+           (organization_id, provider, name, credentials, status, created_by)
+         VALUES ($1,$2,$3,NULL,'not_configured',$4)
+         ON CONFLICT (organization_id, provider, name) DO NOTHING
+         RETURNING id`,
+        [organizationId, integration.provider, integration.name, user.id]
+      );
+      if (created) {
+        await claim(tx, { organizationId, batchId, actorId: user.id, entityType: 'integration', entityId: created.id });
+      }
+    }
+
+    /* ── SLA ────────────────────────────────────────────────────── */
+    for (const policy of SLA_POLICIES) {
+      const created = await tx.row(
+        `INSERT INTO qodo_projects.sla_policies
+           (organization_id, name, description, criteria, match, response_minutes,
+            resolution_minutes, calendar_id, escalations, is_active, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
+        [
+          organizationId,
+          policy.name,
+          policy.description,
+          JSON.stringify(policy.criteria),
+          policy.match,
+          // The table refuses a policy with neither figure — a service level
+          // that promises nothing is not a service level.
+          policy.responseMinutes,
+          policy.resolutionMinutes,
+          // Attached to the demo's own Sunday–Thursday calendar, so "4 working
+          // hours" counts this company's week rather than wall-clock time and
+          // the clock does not run over the weekend.
+          refs.calendarId ?? null,
+          JSON.stringify(policy.escalations),
+          policy.isActive,
+          user.id,
+        ]
+      );
+      await claim(tx, { organizationId, batchId, actorId: user.id, entityType: 'sla_policy', entityId: created.id });
+    }
+
+    /* ── saved reports ──────────────────────────────────────────── */
+    for (const report of SAVED_REPORTS) {
+      const created = await tx.row(
+        `INSERT INTO qodo_projects.saved_reports
+           (organization_id, name, description, module_key, definition, visibility, owner_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+        [
+          organizationId,
+          report.name,
+          report.description,
+          report.moduleKey,
+          JSON.stringify(report.definition),
+          report.visibility,
+          user.id,
+        ]
+      );
+      await claim(tx, { organizationId, batchId, actorId: user.id, entityType: 'saved_report', entityId: created.id });
+    }
+
+    /* ── saved views ────────────────────────────────────────────── */
+    for (const view of SAVED_VIEWS) {
+      const module = await tx.row(
+        'SELECT id FROM qodo_projects.modules WHERE organization_id = $1 AND key = $2',
+        [organizationId, view.moduleKey]
+      );
+      if (!module) continue;
+
+      const created = await tx.row(
+        `INSERT INTO qodo_projects.custom_views
+           (organization_id, module_id, name, criteria, sort, group_by, columns, visibility, owner_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+        [
+          organizationId,
+          module.id,
+          view.name,
+          JSON.stringify(view.criteria),
+          JSON.stringify(view.sort),
+          view.groupBy,
+          JSON.stringify(view.columns),
+          view.visibility,
+          user.id,
+        ]
+      );
+      await claim(tx, { organizationId, batchId, actorId: user.id, entityType: 'custom_view', entityId: created.id });
+    }
+
+    /* ── favourites and recents ─────────────────────────────────── */
+    /* Pinned for the administrator who loaded the demo, because they are the
+       person about to look at it — a favourites tab that is empty on the first
+       visit does not explain what favourites are for. */
+    for (const [ref, projectId] of projectIds) {
+      if (!projectId) continue;
+      if (ref === 'shop' || ref === 'app') {
+        await tx.query(
+          `INSERT INTO qodo_projects.project_favorites (organization_id, project_id, user_id)
+           VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`,
+          [organizationId, projectId, user.id]
+        );
+      }
+      await tx.query(
+        `INSERT INTO qodo_projects.project_recent_views (organization_id, project_id, user_id, viewed_at)
+         VALUES ($1,$2,$3,now()) ON CONFLICT (project_id, user_id) DO UPDATE SET viewed_at = now()`,
+        [organizationId, projectId, user.id]
+      );
+    }
+  });
+
+  /* ── notifications ──────────────────────────────────────────── */
+
+  /**
+   * Notifications live in the workspace store, not in the Projects schema, so
+   * they are written after the transaction rather than inside it — a
+   * PostgreSQL transaction cannot roll back a JSON document write, and
+   * pretending otherwise would be worse than doing it plainly outside.
+   */
+  for (const notice of NOTIFICATIONS) {
+    const entityId =
+      notice.entityType === 'issue'
+        ? issueIds.get(notice.entityRef)
+        : notice.entityType === 'task'
+          ? taskIds.get(notice.entityRef)
+          : projectIds.get(notice.entityRef ?? '') ?? null;
+
+    const created = await createDocument('notifications', {
+      organizationId,
+      userId: user.id,
+      kind: notice.kind,
+      title: notice.titleAr,
+      body: notice.bodyAr,
+      entityType: notice.entityType,
+      entityId: entityId ?? null,
+      projectId: projectIds.get(notice.projectRef) ?? null,
+      link: projectIds.get(notice.projectRef) ? `/projects/${projectIds.get(notice.projectRef)}` : null,
+      readAt: notice.read ? new Date().toISOString() : null,
+      createdAt: `${dayFromToday(notice.day)}T09:00:00Z`,
+      isDemo: true,
+    });
+
+    await query(
+      `INSERT INTO qodo_projects.demo_seeds
+         (organization_id, batch_id, entity_type, entity_id, created_by)
+       VALUES ($1,$2,'notification',$3,$4)
+       ON CONFLICT (batch_id, entity_type, entity_id) DO NOTHING`,
+      [organizationId, batchId, created.id, user.id]
+    );
+  }
+
+  void userIds;
+}
+
+/* ------------------------------------------------------------------ */
+/* Timesheets                                                           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Wrap the logged hours into weekly timesheets, in all four states.
+ *
+ * A demo where every hour is already approved shows a working product with its
+ * most interesting screen switched off: the approval queue is empty, the
+ * "submitted" filter returns nothing, and nobody can tell that a rejection
+ * carries a reason. So the weeks are aged into the four states the product
+ * actually has, by how long ago they were:
+ *
+ *   older than 21 days → approved   (the settled past)
+ *   8–21 days ago      → one rejected, the rest approved
+ *   the last full week → submitted   (waiting on somebody, which is the point)
+ *   this week          → draft       (still being filled in)
+ *
+ * Rates are frozen only on the approved weeks, because that is what the real
+ * product does — `reviewTimesheet` stamps them on approval and nowhere else.
+ * The consequence is visible and correct: the newest hours have not been costed
+ * yet, exactly as they would not be in a live system mid-month.
+ */
+async function buildTimesheets(user, organizationId, projectId) {
+  const entries = await rows(
+    `SELECT DISTINCT user_id, log_date
+       FROM qodo_projects.time_entries
+      WHERE project_id = $1 AND organization_id = $2`,
+    [projectId, organizationId]
+  );
+  if (entries.length === 0) return;
+
+  // One sheet per person per week. The set is built in JavaScript rather than
+  // grouped in SQL because `weekStart` is the product's own Sunday-based
+  // definition, and re-deriving it in SQL is how the two drift apart.
+  const weeks = new Map();
+  for (const entry of entries) {
+    const start = timeService.weekStart(entry.log_date);
+    weeks.set(`${entry.user_id}:${start}`, { userId: entry.user_id, start });
+  }
+
+  const today = dayFromToday(0);
+  const thisWeek = timeService.weekStart(today);
+  const lastWeek = timeService.weekStart(dayFromToday(-7));
+
+  // One rejected week in the whole demo, picked deterministically so a reload
+  // produces the same story rather than a different one each time.
+  const sorted = [...weeks.values()].sort((a, b) => (a.start < b.start ? -1 : 1));
+  const rejectable = sorted.filter((week) => week.start < lastWeek && week.start >= timeService.weekStart(dayFromToday(-21)));
+  const rejected = rejectable[0] ?? null;
+
+  for (const week of sorted) {
+    let status = 'approved';
+    if (week.start === thisWeek) status = 'draft';
+    else if (week.start === lastWeek) status = 'submitted';
+    else if (rejected && week.userId === rejected.userId && week.start === rejected.start) status = 'rejected';
+
+    const end = timeService.weekEnd(week.start);
+
+    await transaction(async (tx) => {
+      const sheet = await tx.row(
+        `INSERT INTO qodo_projects.timesheets
+           (organization_id, user_id, period_start, period_end, status,
+            submitted_at, reviewed_at, reviewed_by, rejection_reason)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+         ON CONFLICT (organization_id, user_id, period_start) DO UPDATE
+           SET status = EXCLUDED.status
+         RETURNING id`,
+        [
+          organizationId,
+          week.userId,
+          week.start,
+          end,
+          status,
+          status === 'draft' ? null : `${end}T16:00:00Z`,
+          status === 'approved' || status === 'rejected' ? `${end}T18:00:00Z` : null,
+          status === 'approved' || status === 'rejected' ? user.id : null,
+          status === 'rejected'
+            ? 'ساعات يوم الثلاثاء مسجّلة على المشروع الغلط. من فضلك انقلها وأعد الإرسال.'
+            : '',
+        ]
+      );
+
+      // Attach that person's entries for that week to the sheet. Scoped by
+      // project as well, so a person's hours on another project are not swept
+      // into a timesheet this demo created.
+      await tx.query(
+        `UPDATE qodo_projects.time_entries
+            SET timesheet_id = $1, approval_status = $2
+          WHERE project_id = $3 AND user_id = $4
+            AND log_date BETWEEN $5 AND $6
+            AND timesheet_id IS NULL`,
+        [sheet.id, status === 'submitted' ? 'submitted' : status, projectId, week.userId, week.start, end]
+      );
+
+      if (status === 'approved') {
+        await timeService.freezeRates(tx, { timesheetId: sheet.id });
+      }
+    });
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Baselines                                                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Save a snapshot of the schedule as it stands, then age it.
+ *
+ * The snapshot is taken from the tasks' *current* dates, which is what
+ * `scheduleService.captureBaseline` does for real. The dates are then shifted
+ * back by the drift the blueprint describes, so the comparison view has
+ * something to show — a baseline identical to the live plan reports zero
+ * variance on every row and teaches the reader that the feature is broken.
+ *
+ * The shift is applied to the baseline's *copy*, never to the live tasks.
+ */
+async function captureBaseline(user, organizationId, projectId, spec, taskIds) {
+  await transaction(async (tx) => {
+    const baseline = await tx.row(
+      `INSERT INTO qodo_projects.project_baselines
+         (organization_id, project_id, name, notes, captured_at, captured_by)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+      [organizationId, projectId, spec.name, spec.notes, `${dayFromToday(spec.capturedDay)}T09:00:00Z`, user.id]
+    );
+
+    /**
+     * The plan as it was.
+     *
+     * A task that started *after* the baseline was captured was not in that
+     * plan at all, so it is excluded rather than copied — a baseline containing
+     * work nobody had thought of yet is not a baseline.
+     *
+     * The three-day pull-in on tasks that have since moved is what produces a
+     * readable variance: the original plan was tighter than what happened,
+     * which is the normal direction for a project to drift.
+     */
+    await tx.query(
+      `INSERT INTO qodo_projects.task_baselines
+         (baseline_id, task_id, organization_id, start_date, end_date, duration_days, estimated_hours)
+       SELECT $1,
+              t.task_id,
+              $2,
+              t.start_date,
+              CASE WHEN t.end_date > CURRENT_DATE THEN t.end_date - 3 ELSE t.end_date END,
+              t.duration_days,
+              t.estimated_hours
+         FROM qodo_projects.project_task_extensions t
+        WHERE t.project_id = $3 AND t.deleted_at IS NULL
+          AND (t.start_date IS NULL OR t.start_date <= $4::date)
+        ON CONFLICT (baseline_id, task_id) DO NOTHING`,
+      [baseline.id, organizationId, projectId, dayFromToday(spec.capturedDay)]
+    );
+  });
+  void taskIds;
 }
 
 /**
@@ -678,6 +1268,31 @@ export async function unload(user, batchId = null) {
   const groupIds = idsOf('project_group');
   const peopleIds = idsOf('user');
   const taskDocumentIds = idsOf('task_document');
+  const notificationIds = idsOf('notification');
+
+  /**
+   * The organization-level rows, and the table each one lives in.
+   *
+   * A table-driven list rather than ten near-identical DELETE statements: every
+   * one of these is "delete these ids from this table, scoped to this
+   * organization", and writing it ten times is ten chances to forget the
+   * tenant filter on one of them.
+   *
+   * The table names come from this map, never from the manifest — `entity_type`
+   * is data, and data that reaches an SQL identifier is an injection. An
+   * unknown type is skipped rather than interpolated.
+   */
+  const ORG_TABLES = {
+    work_calendar: 'work_calendars',
+    tag: 'tags',
+    workflow_rule: 'workflow_rules',
+    business_rule: 'business_rules',
+    webhook_endpoint: 'webhook_endpoints',
+    integration: 'integration_connections',
+    sla_policy: 'sla_policies',
+    saved_report: 'saved_reports',
+    custom_view: 'custom_views',
+  };
 
   const store = await getStore();
   const skipped = [];
@@ -758,6 +1373,31 @@ export async function unload(user, batchId = null) {
     if (await store.remove('users', personId)) removedPeople += 1;
   }
 
+  /* 6b. Notifications, which live in the workspace store beside the tasks. */
+  let removedNotifications = 0;
+  for (const noticeId of notificationIds) {
+    if (await store.remove('notifications', noticeId)) removedNotifications += 1;
+  }
+
+  /* 6c. The organization-level configuration rows.
+
+     These go *after* the projects, because a saved view or a workflow rule may
+     reference a project — the foreign keys are ON DELETE CASCADE or SET NULL,
+     so either order works, but removing the children first keeps the audit
+     trail's ordering readable. */
+  let removedConfig = 0;
+  for (const [entityType, table] of Object.entries(ORG_TABLES)) {
+    const ids = idsOf(entityType);
+    if (ids.length === 0) continue;
+    // `work_calendars` is the one table here with no organization_id-scoped
+    // delete path worth special-casing — it has the column like every other.
+    const { rowCount } = await query(
+      `DELETE FROM qodo_projects.${table} WHERE id = ANY($1::uuid[]) AND organization_id = $2`,
+      [ids, organizationId]
+    );
+    removedConfig += rowCount;
+  }
+
   /* 7. The manifest itself, last — until this row is gone, a failed unload can
         be retried and will pick up exactly where it stopped. */
   await query(
@@ -782,7 +1422,48 @@ export async function unload(user, batchId = null) {
       groups: removedGroups,
       people: removedPeople,
       tasks: removedTasks,
+      notifications: removedNotifications,
+      configuration: removedConfig,
     },
     skipped,
   };
+}
+
+/* ------------------------------------------------------------------ */
+/* Reset                                                                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Remove the demo and build it again.
+ *
+ * Not sugar for two clicks. The demo's dates are offsets from *today*, so a set
+ * loaded three months ago has drifted into a museum — every "upcoming"
+ * milestone is in the past and the project that had not started has finished.
+ * Reset is how somebody puts it back on today's calendar, and it is also the
+ * repair for a demo that has been half-edited during a walkthrough.
+ *
+ * Sequential and deliberately not wrapped in one transaction: `unload` deletes
+ * from the workspace document store as well as from PostgreSQL, and a
+ * PostgreSQL transaction cannot roll back a JSON file write. A reset that
+ * failed halfway would leave the manifest describing what still exists, and
+ * running it again would finish the job — which is a better property than a
+ * rollback that could not have been honest anyway.
+ */
+export async function reset(user) {
+  if (!isEnabled()) throw conflict('demo_data_disabled');
+
+  const removed = await unload(user);
+  const loaded = await load(user);
+
+  await audit.record({
+    actor: user,
+    organizationId: organizationOf(user),
+    entityType: 'demo_data',
+    entityId: loaded.batchId,
+    action: 'demo.reset',
+    before: { removed: removed.removed },
+    after: { batchId: loaded.batchId, projects: loaded.created.length },
+  });
+
+  return { removed: removed.removed, ...loaded };
 }

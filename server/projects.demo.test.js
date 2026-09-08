@@ -113,13 +113,14 @@ describe('loading the demo data', { skip: SKIP }, () => {
     const result = await demo.load(admin);
 
     assert.ok(result.batchId, 'a load with no batch id cannot be unloaded');
-    assert.equal(result.created.length, 4);
+    assert.equal(result.created.length, 5);
 
     const names = result.created.map((project) => project.name);
     assert.ok(names.includes('إطلاق متجر إلكتروني'));
-    assert.ok(names.includes('تطوير تطبيق موبايل'));
-    assert.ok(names.includes('حملة تسويق خريفية'));
-    assert.ok(names.includes('تحسين موقع الشركة'));
+    assert.ok(names.includes('تطبيق عيادات الحياة'));
+    assert.ok(names.includes('حملة تسويق الخريف'));
+    assert.ok(names.includes('إعادة تصميم موقع الشركة'));
+    assert.ok(names.includes('نظام إدارة المخزون'));
 
     // Every project that exists is claimed. An unclaimed project is one the
     // unloader would leave behind forever.
@@ -184,11 +185,138 @@ describe('loading the demo data', { skip: SKIP }, () => {
     assert.ok(value.progressPercent > 0);
   });
 
-  test('a second load is refused rather than doubling the data', async () => {
-    await assert.rejects(
-      () => demo.load(admin),
-      (error) => error.body?.error === 'demo_data_already_loaded'
+  test('a second load changes nothing', async () => {
+    // Idempotency, and the specific thing it protects: clicking the button
+    // twice because the first toast was missed must not produce twelve demo
+    // staff and ten projects.
+    const before = await db.row(
+      `SELECT (SELECT count(*)::int FROM qodo_projects.projects WHERE organization_id = $1) AS projects,
+              (SELECT count(*)::int FROM qodo_projects.customers WHERE organization_id = $1) AS customers,
+              (SELECT count(*)::int FROM qodo_projects.demo_seeds WHERE organization_id = $1) AS seeds`,
+      [ORG_A]
     );
+
+    const again = await demo.load(admin);
+    assert.equal(again.alreadyLoaded, true);
+    assert.equal(again.created.length, 0, 'a second load created projects');
+
+    const after = await db.row(
+      `SELECT (SELECT count(*)::int FROM qodo_projects.projects WHERE organization_id = $1) AS projects,
+              (SELECT count(*)::int FROM qodo_projects.customers WHERE organization_id = $1) AS customers,
+              (SELECT count(*)::int FROM qodo_projects.demo_seeds WHERE organization_id = $1) AS seeds`,
+      [ORG_A]
+    );
+    assert.deepEqual(after, before, 'a second load changed the row counts');
+
+    // And the demo staff were not duplicated in the workspace store either.
+    const people = (await store.all('users')).filter((person) => person.isDemo === true);
+    assert.equal(people.length, 8);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Coverage — every screen has something on it                          */
+/* ------------------------------------------------------------------ */
+
+describe('the demo fills the screens it is meant to fill', { skip: SKIP }, () => {
+  test('timesheets exist in more than one state', async () => {
+    // A demo where every week is approved shows the approval queue switched
+    // off: the "submitted" filter returns nothing and nobody can tell that a
+    // rejection carries a reason.
+    const states = await db.rows(
+      `SELECT status, count(*)::int AS n FROM qodo_projects.timesheets
+        WHERE organization_id = $1 GROUP BY status ORDER BY status`,
+      [ORG_A]
+    );
+    const byStatus = new Map(states.map((row) => [row.status, row.n]));
+
+    assert.ok((byStatus.get('approved') ?? 0) > 0, 'no approved timesheet');
+    assert.ok((byStatus.get('submitted') ?? 0) > 0, 'nothing waiting for approval');
+    assert.ok(byStatus.size >= 2, `only one timesheet state: ${JSON.stringify(states)}`);
+  });
+
+  test('the settings tabs are configured rather than empty', async () => {
+    const counts = await db.row(
+      `SELECT
+         (SELECT count(*)::int FROM qodo_projects.workflow_rules  WHERE organization_id = $1) AS workflow,
+         (SELECT count(*)::int FROM qodo_projects.business_rules  WHERE organization_id = $1) AS business,
+         (SELECT count(*)::int FROM qodo_projects.automation_runs WHERE organization_id = $1) AS runs,
+         (SELECT count(*)::int FROM qodo_projects.webhook_endpoints WHERE organization_id = $1) AS webhooks,
+         (SELECT count(*)::int FROM qodo_projects.webhook_deliveries WHERE organization_id = $1) AS deliveries,
+         (SELECT count(*)::int FROM qodo_projects.integration_connections WHERE organization_id = $1) AS integrations,
+         (SELECT count(*)::int FROM qodo_projects.saved_reports  WHERE organization_id = $1) AS reports,
+         (SELECT count(*)::int FROM qodo_projects.custom_views    WHERE organization_id = $1) AS views,
+         (SELECT count(*)::int FROM qodo_projects.sla_policies    WHERE organization_id = $1) AS sla,
+         (SELECT count(*)::int FROM qodo_projects.project_baselines WHERE organization_id = $1) AS baselines,
+         (SELECT count(*)::int FROM qodo_projects.tags            WHERE organization_id = $1) AS tags,
+         (SELECT count(*)::int FROM qodo_projects.work_calendars  WHERE organization_id = $1) AS calendars`,
+      [ORG_A]
+    );
+
+    for (const [name, n] of Object.entries(counts)) {
+      assert.ok(Number(n) > 0, `${name} is empty after a demo load — that tab would show nothing`);
+    }
+  });
+
+  test('a run log that contains a failure as well as a success', async () => {
+    // The error column is the one people come to this screen to read, and a
+    // log where everything succeeded hides it.
+    const statuses = await db.rows(
+      `SELECT DISTINCT status FROM qodo_projects.automation_runs WHERE organization_id = $1`,
+      [ORG_A]
+    );
+    const set = new Set(statuses.map((row) => row.status));
+    assert.ok(set.has('applied'));
+    assert.ok(set.has('failed') || set.has('skipped'), 'every automation run succeeded');
+  });
+
+  test('no integration claims to be connected, and none carries a credential', async () => {
+    // §68: an adapter must never be presented as operational without a real
+    // credential. A demo is exactly where that rule is most tempting to break.
+    const rows = await db.rows(
+      `SELECT provider, status, credentials FROM qodo_projects.integration_connections
+        WHERE organization_id = $1`,
+      [ORG_A]
+    );
+    assert.ok(rows.length > 0);
+    for (const row of rows) {
+      assert.equal(row.status, 'not_configured', `${row.provider} claims to be ${row.status}`);
+      assert.equal(row.credentials, null, `${row.provider} carries a stored credential`);
+    }
+  });
+
+  test('no webhook is active, and none points at a resolvable host', async () => {
+    // Two independent reasons no request can leave the building. One would do;
+    // two means a change to either alone cannot start sending traffic.
+    const rows = await db.rows(
+      'SELECT name, url, is_active FROM qodo_projects.webhook_endpoints WHERE organization_id = $1',
+      [ORG_A]
+    );
+    assert.ok(rows.length > 0);
+    for (const row of rows) {
+      assert.equal(row.is_active, false, `${row.name} is active and would be delivered to`);
+      assert.match(row.url, /\.invalid(\/|$)/, `${row.name} points at a host that could resolve`);
+    }
+  });
+
+  test('the client contact is a client, not staff', async () => {
+    // The client boundary is the module's hardest rule, and a demo without a
+    // client cannot show that it exists.
+    const client = await db.row(
+      `SELECT m.user_id, m.is_client FROM qodo_projects.project_members m
+        WHERE m.organization_id = $1 AND m.role = 'client' LIMIT 1`,
+      [ORG_A]
+    );
+    assert.ok(client, 'the demo has no client member');
+    assert.equal(client.is_client, true);
+
+    // And they have no cost rate — a client is not somebody whose hours the
+    // company pays for, and inventing one would put them in every cost report.
+    const rate = await db.row(
+      'SELECT 1 FROM qodo_projects.cost_rates WHERE organization_id = $1 AND user_id = $2',
+      [ORG_A, client.user_id]
+    );
+    assert.equal(rate, null, 'the client contact was given a cost rate');
   });
 });
 
@@ -199,7 +327,7 @@ describe('loading the demo data', { skip: SKIP }, () => {
 describe('the demo accounts', { skip: SKIP }, () => {
   test('cannot be signed into', async () => {
     const people = (await store.all('users')).filter((person) => person.isDemo === true);
-    assert.equal(people.length, 6);
+    assert.equal(people.length, 8);
 
     for (const person of people) {
       assert.equal(isActiveUser(person), false, `${person.name} is active and could sign in`);
@@ -253,7 +381,7 @@ describe('demo data is confined to the organization that loaded it', { skip: SKI
     // And organization A still has everything.
     const mine = await demo.status(admin);
     assert.equal(mine.loaded, true, 'organization B’s unload removed organization A’s data');
-    assert.equal(mine.batch.liveProjects, 4);
+    assert.equal(mine.batch.liveProjects, 5);
   });
 });
 
@@ -295,7 +423,7 @@ describe('removing the demo data', { skip: SKIP }, () => {
     assert.ok(await store.get('users', 'u-impostor'), 'the unloader deleted a real employee’s account');
 
     // The six real demo accounts still went.
-    assert.equal(result.removed.people, 6);
+    assert.equal(result.removed.people, 8);
   });
 
   test('every trace of the demo is gone', async () => {
@@ -368,5 +496,71 @@ describe('the audit trail', { skip: SKIP }, () => {
     // else a person reading the audit log has no business seeing.
     const serialised = JSON.stringify(events);
     assert.ok(!/passwordHash|password|secret|token/i.test(serialised), serialised);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Reset                                                                */
+/* ------------------------------------------------------------------ */
+
+describe('resetting the demo data', { skip: SKIP }, () => {
+  test('reset rebuilds the demo without touching real work', async () => {
+    // The point of the test: a real project and a real user created *alongside*
+    // the demo must survive a reset untouched. Reset is unload-then-load, and
+    // unload is the destructive half — if it ever widened from the manifest to
+    // a pattern, this is the assertion that would catch it.
+    const realProject = await projectService.create(admin, {
+      name: 'مشروع حقيقي لا يجب أن يُمس',
+      key: 'KEEP',
+    });
+    const realUser = await store.insert('users', {
+      id: 'u-real-keep',
+      name: 'موظّفة حقيقية',
+      email: 'keep@engosoft.com',
+      organizationId: ORG_A,
+      status: 'active',
+      role: 'member',
+      department: 'general',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    await demo.load(admin);
+    const first = await demo.status(admin);
+
+    const result = await demo.reset(admin);
+
+    assert.ok(result.batchId, 'reset produced no new batch');
+    assert.notEqual(result.batchId, first.batch.id, 'reset reused the old batch id');
+    assert.equal(result.created.length, 5, 'reset did not rebuild every project');
+    assert.ok(result.removed.projects >= 5, 'reset removed nothing');
+
+    // The real work is still there, by id, not by count.
+    const survivor = await db.row(
+      'SELECT name FROM qodo_projects.projects WHERE id = $1 AND deleted_at IS NULL',
+      [realProject.id]
+    );
+    assert.ok(survivor, 'reset deleted a real project');
+    assert.equal(survivor.name, 'مشروع حقيقي لا يجب أن يُمس');
+
+    assert.ok(await store.get('users', realUser.id), 'reset deleted a real user account');
+
+    // And exactly one batch exists afterwards — a reset that left the old
+    // manifest behind would make the next unload think there is more to remove.
+    const batches = await db.rows(
+      'SELECT DISTINCT batch_id FROM qodo_projects.demo_seeds WHERE organization_id = $1',
+      [ORG_A]
+    );
+    assert.equal(batches.length, 1);
+  });
+
+  test('reset is safe to run when nothing is loaded', async () => {
+    await demo.unload(admin);
+    const result = await demo.reset(admin);
+    assert.equal(result.created.length, 5);
+    assert.equal(result.removed.projects, 0, 'reset reported removing projects that were not there');
+
+    // Leave the database clean for anything that runs after this file.
+    await demo.unload(admin);
   });
 });
