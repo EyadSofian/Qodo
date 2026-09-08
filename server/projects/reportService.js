@@ -28,10 +28,21 @@ import { find } from '../store.js';
  * The map is the allowlist. A `groupBy` that is not a key here is refused
  * rather than passed through, so no definition can name a column, a subquery or
  * anything else.
+ *
+ * `sql` may be a function of the reader's language. Only the entries that group
+ * by a *human-written label* need it — a status is stored in both languages, so
+ * grouping by `label_en` produced a report that said "Done" and "In progress"
+ * down the side of an Arabic screen. Everything else here groups by a name, a
+ * date or an enum key the interface translates for itself, and stays a plain
+ * string.
  */
+const statusLabel = (lang) =>
+  lang === 'en'
+    ? "COALESCE(s.label_en, s.label_ar, 'No status')"
+    : "COALESCE(s.label_ar, s.label_en, 'بدون حالة')";
 const GROUPINGS = {
   task: {
-    status: { sql: "COALESCE(s.label_en, 'No status')", join: 'status' },
+    status: { sql: statusLabel, join: 'status' },
     // Priority is deliberately absent. It lives on the task *document*, not the
     // extension table (ADR-3), so it cannot be grouped in SQL — and offering an
     // option that always fails is worse than not offering it.
@@ -43,7 +54,7 @@ const GROUPINGS = {
     due_month: { sql: "to_char(t.end_date, 'YYYY-MM')" },
   },
   issue: {
-    status: { sql: "COALESCE(s.label_en, 'No status')", join: 'status' },
+    status: { sql: statusLabel, join: 'status' },
     severity: { sql: 'i.severity' },
     priority: { sql: 'i.priority' },
     assignee: { sql: "COALESCE(i.assignee_id, 'Unassigned')" },
@@ -117,8 +128,18 @@ export async function run(user, context, definition) {
   const moduleKey = String(definition?.module ?? 'task');
   if (!GROUPINGS[moduleKey]) throw badRequest('module_not_reportable');
 
-  const grouping = GROUPINGS[moduleKey][definition?.groupBy];
-  if (!grouping) throw badRequest('group_by_not_allowed');
+  const found = GROUPINGS[moduleKey][definition?.groupBy];
+  if (!found) throw badRequest('group_by_not_allowed');
+
+  // Resolve a language-dependent grouping before it reaches the query builder,
+  // so everything downstream still receives a plain `{ sql, join }`.
+  //
+  // English is the default because it is what this endpoint already returned:
+  // a caller that does not ask for a language gets exactly the buckets it got
+  // before. The browser opts in by sending one, which is the right way round —
+  // the server does not know who is reading, and the client does.
+  const lang = definition?.lang === 'ar' ? 'ar' : 'en';
+  const grouping = typeof found.sql === 'function' ? { ...found, sql: found.sql(lang) } : found;
 
   const measureKey = String(definition?.measure ?? 'count');
   const measure = MEASURES[moduleKey]?.[measureKey];

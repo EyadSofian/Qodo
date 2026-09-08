@@ -774,6 +774,12 @@ export interface ReportDefinition {
   dateField?: string;
   dateRange?: string | [string | null, string | null];
   includeArchived?: boolean;
+  /**
+   * The reader's language, for the groupings that bucket by a human-written
+   * label. Only `status` uses it today; everything else groups by a name, a
+   * date or an enum key the interface translates for itself.
+   */
+  lang?: 'ar' | 'en';
 }
 
 export interface ReportResult {

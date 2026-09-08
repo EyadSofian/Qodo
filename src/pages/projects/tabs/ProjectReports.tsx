@@ -67,7 +67,10 @@ export function ProjectReports() {
     setLoading(true);
     setError(null);
     try {
-      setResult(await reportsApi.run({ module: moduleKey, groupBy, measure }, projectId));
+      // The language goes with the request: a report grouped by status has to
+      // come back labelled in the language the reader is reading, and only the
+      // browser knows which that is.
+      setResult(await reportsApi.run({ module: moduleKey, groupBy, measure, lang }, projectId));
     } catch (caught) {
       setError(errorMessage(caught, lang));
       setResult(null);
