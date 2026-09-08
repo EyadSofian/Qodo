@@ -116,6 +116,21 @@ export async function list(user, options = {}) {
 
   params.push(limit, offset);
 
+  /**
+   * The row, plus what it takes to know how the project is *doing*.
+   *
+   * The status label and the progress roll-up are joined here rather than
+   * fetched per card by the browser. The alternative the list started with was
+   * a card that could show a name and a date and nothing else, so every reader
+   * had to open a project to find out whether it was in trouble — which is the
+   * one question a list of forty projects exists to answer.
+   *
+   * `LEFT JOIN LATERAL` rather than four correlated subqueries in the SELECT:
+   * one pass over each project's tasks instead of four, and the aggregate is
+   * computed after `LIMIT` has already narrowed the driving table to a page.
+   * The columns are additive — nothing that read this endpoint before reads
+   * anything different now.
+   */
   const found = await rows(
     `SELECT p.id, p.key, p.name, p.description, p.owner_id, p.customer_id,
             p.group_id, p.status_id, p.start_date, p.end_date, p.access,
@@ -123,10 +138,33 @@ export async function list(user, options = {}) {
             p.created_at, p.updated_at,
             c.name AS customer_name,
             g.name_ar AS group_name_ar, g.name_en AS group_name_en,
-            (SELECT count(*) FROM qodo_projects.project_members m WHERE m.project_id = p.id) AS member_count
+            s.key AS status_key, s.label_ar AS status_label_ar,
+            s.label_en AS status_label_en, s.color AS status_color,
+            s.category AS status_category,
+            (SELECT count(*) FROM qodo_projects.project_members m WHERE m.project_id = p.id) AS member_count,
+            roll.task_count, roll.done_count, roll.overdue_count, roll.progress,
+            EXISTS (SELECT 1 FROM qodo_projects.demo_seeds d
+                     WHERE d.entity_type = 'project' AND d.entity_id = p.id::text) AS is_demo,
+            (SELECT count(*) FROM qodo_projects.issues i
+              WHERE i.project_id = p.id AND i.deleted_at IS NULL
+                AND COALESCE((SELECT s2.category FROM qodo_projects.statuses s2 WHERE s2.id = i.status_id),
+                             'open') NOT IN ('done', 'cancelled')) AS open_issues
        FROM qodo_projects.projects p
        LEFT JOIN qodo_projects.customers c ON c.id = p.customer_id
        LEFT JOIN qodo_projects.project_groups g ON g.id = p.group_id
+       LEFT JOIN qodo_projects.statuses s ON s.id = p.status_id
+       LEFT JOIN LATERAL (
+         SELECT count(*)::int AS task_count,
+                count(*) FILTER (WHERE ts.category = 'done')::int AS done_count,
+                count(*) FILTER (
+                  WHERE t.end_date < CURRENT_DATE
+                    AND COALESCE(ts.category, 'active') NOT IN ('done', 'cancelled')
+                )::int AS overdue_count,
+                avg(t.progress) AS progress
+           FROM qodo_projects.project_task_extensions t
+           LEFT JOIN qodo_projects.statuses ts ON ts.id = t.status_id
+          WHERE t.project_id = p.id AND t.deleted_at IS NULL
+       ) roll ON true
       WHERE ${whereClause}
       ORDER BY ${orderColumn} ${direction} NULLS LAST
       LIMIT $${params.length - 1} OFFSET $${params.length}`,
@@ -171,6 +209,39 @@ function toProject(record) {
     deletedAt: record.deleted_at,
     createdAt: record.created_at,
     updatedAt: record.updated_at,
+
+    /**
+     * The health half. Only present on a listing — `contextFor` reads a
+     * narrower row and does not join any of this, and a shape that sometimes
+     * carries a number and sometimes carries nothing is worse than one that
+     * says `null` on purpose.
+     */
+    status: record.status_key
+      ? {
+          key: record.status_key,
+          label: { ar: record.status_label_ar, en: record.status_label_en },
+          color: record.status_color,
+          category: record.status_category,
+        }
+      : null,
+    taskCount: record.task_count === undefined ? null : Number(record.task_count ?? 0),
+    doneCount: record.done_count === undefined ? null : Number(record.done_count ?? 0),
+    overdueTasks: record.overdue_count === undefined ? null : Number(record.overdue_count ?? 0),
+    openIssues: record.open_issues === undefined ? null : Number(record.open_issues ?? 0),
+    // `avg` over no rows is null, and null is the right answer: a project with
+    // no tasks has no progress, which is a different statement from 0%.
+    progress: record.progress === null || record.progress === undefined ? null : Math.round(Number(record.progress)),
+
+    /**
+     * Whether this project came from the demo loader.
+     *
+     * Read straight from the manifest rather than from a column on `projects`,
+     * so it cannot drift: a project is demo exactly as long as the row that
+     * would delete it still exists. The interface uses it for one thing —
+     * a small badge — and that badge is the honest answer to "why is there a
+     * shop launch project in my workspace".
+     */
+    isDemo: record.is_demo === undefined ? false : Boolean(record.is_demo),
   };
 }
 

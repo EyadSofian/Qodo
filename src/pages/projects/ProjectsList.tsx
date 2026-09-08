@@ -21,15 +21,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
+  AlertTriangle,
   Archive,
   ArchiveRestore,
   Building2,
   CalendarRange,
+  Database,
   FolderKanban,
   LayoutDashboard,
   LayoutGrid,
+  ListChecks,
   Plus,
-  RotateCcw,
   Search,
   Settings2,
   Star,
@@ -41,9 +43,21 @@ import { useI18n } from '../../lib/i18n';
 import { errorMessage } from '../../lib/api';
 import { projectsApi } from '../../lib/projects/api';
 import type { Project, ProjectScope } from '../../lib/projects/types';
-import { EmptyState, Segmented, Spinner, useToast } from '../../components/ui';
+import { EmptyState, Segmented, useToast } from '../../components/ui';
 import { ProjectCreateDialog } from '../../components/projects/ProjectCreateDialog';
 import { useProjectPermissions } from '../../lib/projects/useProjectPermissions';
+import { projectHealth } from '../../lib/projects/health';
+import {
+  DueBadge,
+  ErrorState,
+  HelpTip,
+  PageHeader,
+  ProgressMeter,
+  SkeletonCards,
+  SkeletonRows,
+  StatusPill,
+  TonePill,
+} from '../../components/projects/ui';
 
 /**
  * The tabs, and what each one asks the server for.
@@ -99,6 +113,10 @@ export function ProjectsList() {
   // This hides the button; the endpoint is still what refuses.
   const { can } = useProjectPermissions();
   const canCreate = can('project.create');
+  // The demo endpoints need `permissions.manage` *and* the workspace admin
+  // role. Only the first is knowable here; the server enforces both, and this
+  // is only deciding whether to offer a link.
+  const canManageDemo = can('permissions.manage');
 
   /**
    * One loader for every tab.
@@ -209,35 +227,31 @@ export function ProjectsList() {
 
   return (
     <div className="mx-auto w-full max-w-[1400px] px-4 py-5 sm:px-6">
-      <header className="mb-5 flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="flex items-center gap-2 text-xl font-bold text-ink">
-            <FolderKanban size={22} className="text-brand-500" />
-            {t('projects.title')}
-          </h1>
-          <p className="mt-1 max-w-2xl text-sm leading-relaxed text-ink-muted">
-            {t('projects.subtitle')}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Link to="/projects/portfolio" className="btn-ghost btn-sm">
-            <LayoutDashboard size={16} />
-            {t('portfolio.title')}
-          </Link>
-          {can('customization.manage') && (
-            <Link to="/projects/settings" className="btn-ghost btn-sm">
-              <Settings2 size={16} />
-              {t('projectSettings.title')}
+      <PageHeader
+        icon={<FolderKanban size={22} />}
+        title={t('projects.title')}
+        description={t('projects.subtitle')}
+        actions={
+          <>
+            <Link to="/projects/portfolio" className="btn-ghost btn-sm">
+              <LayoutDashboard size={16} />
+              {t('portfolio.title')}
             </Link>
-          )}
-          {canCreate && (
-            <button type="button" className="btn-primary btn-sm" onClick={() => setCreating(true)}>
-              <Plus size={16} />
-              {t('projects.new')}
-            </button>
-          )}
-        </div>
-      </header>
+            {can('customization.manage') && (
+              <Link to="/projects/settings" className="btn-ghost btn-sm">
+                <Settings2 size={16} />
+                {t('projectSettings.title')}
+              </Link>
+            )}
+            {canCreate && (
+              <button type="button" className="btn-primary btn-sm" onClick={() => setCreating(true)}>
+                <Plus size={16} />
+                {t('projects.new')}
+              </button>
+            )}
+          </>
+        }
+      />
 
       {/* Toolbar. Tabs on one side, the tools that act on them on the other —
           the arrangement flips with the document direction on its own because
@@ -291,24 +305,18 @@ export function ProjectsList() {
         </div>
       </div>
 
+      {/* Loading shows the shape of what is coming rather than a spinner in an
+          empty box, so the page does not jump when the rows land. */}
       {loading && projects.length === 0 ? (
-        <div className="card grid place-items-center py-20">
-          <Spinner size={24} className="text-brand-500" />
-        </div>
+        layout === 'grid' ? (
+          <SkeletonCards cards={6} />
+        ) : (
+          <div className="card p-4">
+            <SkeletonRows rows={8} />
+          </div>
+        )
       ) : error ? (
-        <div className="card">
-          <EmptyState
-            icon={<FolderKanban size={34} />}
-            title={t('projects.error.load')}
-            body={error}
-            action={
-              <button type="button" className="btn-ghost btn-sm" onClick={() => void load(0)}>
-                <RotateCcw size={15} />
-                {t('projects.error.retry')}
-              </button>
-            }
-          />
-        </div>
+        <ErrorState body={error} onRetry={() => void load(0)} />
       ) : projects.length === 0 ? (
         <div className="card">
           <EmptyState
@@ -321,10 +329,25 @@ export function ProjectsList() {
             }
             action={
               canCreate && tab === 'active' && !search ? (
-                <button type="button" className="btn-primary btn-sm" onClick={() => setCreating(true)}>
-                  <Plus size={16} />
-                  {t('projects.new')}
-                </button>
+                <div className="flex flex-col items-center gap-2">
+                  <button type="button" className="btn-primary btn-sm" onClick={() => setCreating(true)}>
+                    <Plus size={16} />
+                    {t('projects.new')}
+                  </button>
+                  {/* The second way out of an empty workspace.
+                      Somebody opening Projects for the first time has nothing
+                      to look at and no idea what a filled screen would even
+                      contain — "create a project" asks them to invent the
+                      example. This offers them one instead. Shown only to
+                      administrators, because they are the only people the
+                      endpoint would accept. */}
+                  {canManageDemo && (
+                    <Link to="/projects/settings?tab=demo" className="btn-ghost btn-sm">
+                      <Database size={15} />
+                      {t('demo.load')}
+                    </Link>
+                  )}
+                </div>
               ) : undefined
             }
           />
@@ -418,6 +441,17 @@ function ProjectCard({
 }: { project: Project; tab: Tab; starred: boolean } & RowActions) {
   const { t } = useI18n();
 
+  // One verdict, computed the same way on every screen in the module. The card
+  // shows the worst true thing about the project rather than a score, because
+  // "behind plan" is actionable and 0.72 is not.
+  const health = projectHealth({
+    progress: project.progress ?? null,
+    startDate: project.startDate,
+    endDate: project.endDate,
+    status: project.status ?? null,
+    overdueTasks: project.overdueTasks ?? 0,
+  });
+
   return (
     <article className="card group relative flex h-full flex-col gap-3 p-4 transition-shadow hover:shadow-lift">
       <div className="flex items-start gap-3">
@@ -436,8 +470,16 @@ function ProjectCard({
           >
             {project.name}
           </Link>
-          <p className="mt-0.5 flex items-center gap-1.5 text-[12px] font-semibold text-ink-faint">
-            <span className="chip bg-surface-sunken text-ink-muted">{project.key}</span>
+          <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[12px] font-semibold text-ink-faint">
+            <span className="chip bg-surface-sunken font-mono text-ink-muted">{project.key}</span>
+            {/* Demo projects sit in the same list as real work, so they say so.
+                Somebody who finds a shop launch in their workspace is entitled
+                to know at a glance that nobody on their team created it. */}
+            {project.isDemo && (
+              <span className="chip bg-accent-50 text-accent-700" title={t('demo.subtitle')}>
+                {t('demo.badge')}
+              </span>
+            )}
             {project.customerName && (
               <span className="inline-flex min-w-0 items-center gap-1 truncate">
                 <Building2 size={12} aria-hidden="true" />
@@ -449,8 +491,36 @@ function ProjectCard({
         <FavoriteButton starred={starred} onToggle={actions.onToggleFavorite} />
       </div>
 
+      {/* Status and health together. The status is what somebody set; the
+          health is what the dates and the progress actually say, and the two
+          disagreeing is exactly the thing worth seeing. */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        {project.status && <StatusPill status={project.status} />}
+        {/* Dropped when it would only repeat the status chip beside it —
+            "Completed · Complete" spends two chips on one fact. */}
+        {!health.redundantWithStatus && (
+          <TonePill tone={health.tone} title={t('health.hint')}>
+            {t(health.labelKey)}
+          </TonePill>
+        )}
+        {(project.overdueTasks ?? 0) > 0 && (
+          <TonePill tone="bad" icon={<AlertTriangle size={12} aria-hidden="true" />}>
+            {t('projectTasks.overdueCount', { n: project.overdueTasks ?? 0 })}
+          </TonePill>
+        )}
+      </div>
+
       {project.description && (
         <p className="line-clamp-2 text-[13px] leading-relaxed text-ink-muted">{project.description}</p>
+      )}
+
+      {project.progress !== null && project.progress !== undefined && (
+        <ProgressMeter
+          value={project.progress}
+          startDate={project.startDate}
+          endDate={project.endDate}
+          tone={health.tone === 'neutral' ? 'info' : health.tone}
+        />
       )}
 
       <dl className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[12px] text-ink-muted">
@@ -459,12 +529,21 @@ function ProjectCard({
           <Users size={13} aria-hidden="true" />
           <dd>{t('projects.memberCount', { n: project.memberCount })}</dd>
         </div>
-        {(project.startDate || project.endDate) && (
+        {(project.taskCount ?? 0) > 0 && (
+          <div className="flex items-center gap-1.5">
+            <dt className="sr-only">{t('projectTasks.title')}</dt>
+            <ListChecks size={13} aria-hidden="true" />
+            <dd className="tabular-nums">
+              {project.doneCount ?? 0}/{project.taskCount}
+            </dd>
+          </div>
+        )}
+        {project.endDate && (
           <div className="flex items-center gap-1.5">
             <dt className="sr-only">{t('projects.field.endDate')}</dt>
             <CalendarRange size={13} aria-hidden="true" />
             <dd>
-              {formatRange(project.startDate, project.endDate)}
+              <DueBadge date={project.endDate} status={project.status ?? null} showDate={false} />
             </dd>
           </div>
         )}
@@ -500,21 +579,29 @@ function ProjectTable({
     // The wrapper scrolls, not the page — §75 and §73 both land here: a wide
     // table on a phone must never make the whole document scroll sideways.
     <div className="card overflow-x-auto">
-      <table className="w-full min-w-[720px] text-start text-sm">
+      <table className="w-full min-w-[900px] text-start text-sm">
         <thead>
-          <tr className="border-b border-surface-line text-[12px] uppercase tracking-wide text-ink-faint">
+          {/* Uppercasing is dropped in Arabic, which has no case and reads
+              worse letter-spaced. The weight carries the header instead. */}
+          <tr className="border-b border-surface-line text-[12px] font-semibold text-ink-faint">
             <th scope="col" className="w-10 px-3 py-2.5" />
             <th scope="col" className="px-3 py-2.5 text-start font-semibold">
               {t('projects.field.name')}
             </th>
             <th scope="col" className="px-3 py-2.5 text-start font-semibold">
-              {t('projects.field.key')}
+              {t('projects.field.status')}
+            </th>
+            <th scope="col" className="px-3 py-2.5 text-start font-semibold">
+              <span className="inline-flex items-center gap-1">
+                {t('health.label')}
+                <HelpTip body="health.hint" />
+              </span>
+            </th>
+            <th scope="col" className="w-40 px-3 py-2.5 text-start font-semibold">
+              {t('progress.label')}
             </th>
             <th scope="col" className="px-3 py-2.5 text-start font-semibold">
               {t('projects.field.customer')}
-            </th>
-            <th scope="col" className="px-3 py-2.5 text-start font-semibold">
-              {t('projects.field.members')}
             </th>
             <th scope="col" className="px-3 py-2.5 text-start font-semibold">
               {t('projects.field.endDate')}
@@ -523,46 +610,86 @@ function ProjectTable({
           </tr>
         </thead>
         <tbody>
-          {projects.map((project) => (
-            <tr key={project.id} className="border-b border-surface-line last:border-0 hover:bg-surface-sunken/60">
-              <td className="px-3 py-2.5">
-                <FavoriteButton
-                  starred={starred.has(project.id)}
-                  onToggle={() => onToggleFavorite(project)}
-                />
-              </td>
-              <td className="px-3 py-2.5">
-                <Link
-                  to={`/projects/${project.id}`}
-                  className="flex items-center gap-2 font-semibold text-ink hover:text-brand-600"
-                >
-                  <span
-                    aria-hidden="true"
-                    className="h-4 w-1 shrink-0 rounded-full"
-                    style={{ backgroundColor: project.color }}
+          {projects.map((project) => {
+            const health = projectHealth({
+              progress: project.progress ?? null,
+              startDate: project.startDate,
+              endDate: project.endDate,
+              status: project.status ?? null,
+              overdueTasks: project.overdueTasks ?? 0,
+            });
+
+            return (
+              <tr key={project.id} className="border-b border-surface-line last:border-0 hover:bg-surface-sunken/60">
+                <td className="px-3 py-2.5">
+                  <FavoriteButton
+                    starred={starred.has(project.id)}
+                    onToggle={() => onToggleFavorite(project)}
                   />
-                  {project.name}
-                </Link>
-              </td>
-              <td className="px-3 py-2.5">
-                <span className="chip bg-surface-sunken text-ink-muted">{project.key}</span>
-              </td>
-              <td className="px-3 py-2.5 text-ink-muted">{project.customerName ?? '—'}</td>
-              <td className="px-3 py-2.5 text-ink-muted">{project.memberCount}</td>
-              <td className="px-3 py-2.5 text-ink-muted">{project.endDate ?? '—'}</td>
-              <td className="px-3 py-2.5">
-                <RowMenu
-                  project={project}
-                  tab={tab}
-                  onArchive={() => onArchive(project)}
-                  onUnarchive={() => onUnarchive(project)}
-                  onDelete={() => onDelete(project)}
-                  onRestore={() => onRestore(project)}
-                  compact
-                />
-              </td>
-            </tr>
-          ))}
+                </td>
+                <td className="px-3 py-2.5">
+                  <Link
+                    to={`/projects/${project.id}`}
+                    className="flex items-center gap-2 font-semibold text-ink hover:text-brand-600"
+                  >
+                    <span
+                      aria-hidden="true"
+                      className="h-4 w-1 shrink-0 rounded-full"
+                      style={{ backgroundColor: project.color }}
+                    />
+                    <span className="min-w-0">
+                      <span className="block truncate">{project.name}</span>
+                      <span className="block font-mono text-[11px] font-normal text-ink-faint">
+                        {project.key}
+                        {project.isDemo && (
+                          <span className="ms-1.5 font-sans text-accent-700">· {t('demo.badge')}</span>
+                        )}
+                      </span>
+                    </span>
+                  </Link>
+                </td>
+                <td className="px-3 py-2.5">
+                  <StatusPill status={project.status ?? null} />
+                </td>
+                <td className="px-3 py-2.5">
+                  {health.redundantWithStatus ? (
+                    <span className="text-[12px] text-ink-faint">—</span>
+                  ) : (
+                    <TonePill tone={health.tone}>{t(health.labelKey)}</TonePill>
+                  )}
+                </td>
+                <td className="px-3 py-2.5">
+                  <ProgressMeter
+                    value={project.progress ?? null}
+                    startDate={project.startDate}
+                    endDate={project.endDate}
+                    tone={health.tone === 'neutral' ? 'info' : health.tone}
+                    showLabel={false}
+                  />
+                  <span className="mt-1 block text-[11px] tabular-nums text-ink-faint">
+                    {project.progress === null || project.progress === undefined
+                      ? '—'
+                      : `${project.progress}%`}
+                  </span>
+                </td>
+                <td className="px-3 py-2.5 text-ink-muted">{project.customerName ?? '—'}</td>
+                <td className="px-3 py-2.5">
+                  <DueBadge date={project.endDate} status={project.status ?? null} />
+                </td>
+                <td className="px-3 py-2.5">
+                  <RowMenu
+                    project={project}
+                    tab={tab}
+                    onArchive={() => onArchive(project)}
+                    onUnarchive={() => onUnarchive(project)}
+                    onDelete={() => onDelete(project)}
+                    onRestore={() => onRestore(project)}
+                    compact
+                  />
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -646,16 +773,4 @@ function RowMenu({
           )}
     </div>
   );
-}
-
-/**
- * A date range, or whichever half of it exists.
- *
- * Deliberately not localised into Arabic-Indic digits: the rest of the
- * workspace shows ISO dates in tables, and one screen inventing its own
- * convention is worse than a plain one everywhere.
- */
-function formatRange(start: string | null, end: string | null): string {
-  if (start && end) return `${start} → ${end}`;
-  return start ?? end ?? '—';
 }

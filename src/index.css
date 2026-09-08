@@ -336,6 +336,52 @@
     background-color: rgb(255 255 255 / 0.78);
   }
 
+  /* ── Projects surfaces ───────────────────────────────────────────
+     Two things the module needs that Tailwind utilities cannot express
+     inline, kept here rather than repeated as arbitrary values across a
+     dozen components. Everything else in Projects is plain utilities —
+     this is not a second design system, it is the two exceptions. */
+
+  /* The progress meter, and the mark showing where the work *should* have
+     reached by today. The mark is an inset box-shadow rather than a child
+     element so it cannot be clipped by the fill's own overflow, and it is
+     positioned with `inset-inline-start` so it lands on the correct side
+     in Arabic without a second rule. */
+  .pj-meter {
+    @apply relative h-2 w-full overflow-hidden rounded-full;
+    background: theme('colors.surface.sunken');
+  }
+  .pj-meter-fill {
+    @apply block h-full rounded-full transition-[width] duration-500 ease-out;
+  }
+  .pj-meter-expected {
+    @apply pointer-events-none absolute inset-y-0 w-px;
+    /* Navy at 45% reads as a deliberate rule on both the sunken track and
+       every fill colour. A lighter mark vanished on the green fill, which
+       is exactly the case where "am I ahead?" is being asked. */
+    background: rgb(11 37 69 / 0.45);
+  }
+
+  /* An inline definition for a term the reader may not know. The panel is
+     always in the DOM so `aria-describedby` can point at it; only its
+     visibility is toggled, and by hover *or* focus so it is reachable from
+     the keyboard. */
+  .pj-tip-panel {
+    @apply invisible absolute z-30 w-64 rounded-xl border border-surface-line bg-white p-3
+           text-[12px] font-normal leading-relaxed text-ink-muted opacity-0 shadow-lift
+           transition-opacity duration-150;
+    inset-inline-start: 50%;
+    transform: translateX(-50%);
+    top: calc(100% + 6px);
+  }
+  html[dir='rtl'] .pj-tip-panel {
+    transform: translateX(50%);
+  }
+  .pj-tip:hover > .pj-tip-panel,
+  .pj-tip:focus-within > .pj-tip-panel {
+    @apply visible opacity-100;
+  }
+
   /* Loading placeholder that doesn't flash — used while the grid resolves. */
   .skeleton {
     @apply relative overflow-hidden rounded-xl bg-slate-200/70;

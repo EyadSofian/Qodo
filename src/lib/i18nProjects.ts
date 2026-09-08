@@ -223,6 +223,7 @@ export const PROJECT_STRINGS = {
     en: 'Required checklist items are still open — the task cannot be completed.',
   },
   'projectTasks.overdue': { ar: 'متأخرة', en: 'Overdue' },
+  'projectTasks.overdueCount': { ar: '{n} متأخرة', en: '{n} overdue' },
   'projectTasks.showSubtasks': { ar: 'عرض المهام الفرعية', en: 'Show subtasks' },
   'projectTasks.hideSubtasks': { ar: 'إخفاء المهام الفرعية', en: 'Hide subtasks' },
 
@@ -622,5 +623,185 @@ export const PROJECT_STRINGS = {
   'integrations.credentialsHint': {
     ar: 'بتتخزّن مشفّرة، ومفيش أي مسار في النظام بيرجّعها.',
     en: 'Stored encrypted. No route in the system returns it.',
+  },
+
+  /* ── health: one vocabulary for "how is this going" ───────── */
+  /* Rendered from src/lib/projects/health.ts, which decides which of these
+     applies. The words are short because they sit inside a chip on a card
+     that already carries a name, a client and two dates. */
+  'health.complete': { ar: 'مكتمل', en: 'Complete' },
+  'health.paused': { ar: 'متوقّف مؤقتًا', en: 'Paused' },
+  'health.late': { ar: 'متأخر', en: 'Late' },
+  'health.behind': { ar: 'متأخر عن الخطة', en: 'Behind plan' },
+  'health.atRisk': { ar: 'يحتاج متابعة', en: 'Needs attention' },
+  'health.onTrack': { ar: 'يسير كما هو مخطط', en: 'On track' },
+  'health.notStarted': { ar: 'لم يبدأ', en: 'Not started' },
+  'health.unknown': { ar: 'غير محدّد', en: 'Not measured' },
+  'health.label': { ar: 'الحالة العامة', en: 'Overall health' },
+  'health.hint': {
+    ar: 'تقدير تلقائي من التواريخ ونسبة الإنجاز والمهام المتأخرة. مش مُدخل يدويًا.',
+    en: 'Worked out from the dates, the progress and the overdue tasks. Nobody types it in.',
+  },
+
+  /* ── schedule ─────────────────────────────────────────────── */
+  'schedule.lateBy': { ar: 'متأخر {n} يوم', en: '{n} days late' },
+  'schedule.dueToday': { ar: 'ينتهي اليوم', en: 'Due today' },
+  'schedule.dueInDays': { ar: 'باقي {n} يوم', en: '{n} days left' },
+  'schedule.noDate': { ar: 'بدون تاريخ', en: 'No date' },
+  'schedule.finished': { ar: 'انتهى', en: 'Finished' },
+  'schedule.range': { ar: 'من {from} إلى {to}', en: '{from} → {to}' },
+
+  /* ── progress ─────────────────────────────────────────────── */
+  'progress.label': { ar: 'نسبة الإنجاز', en: 'Progress' },
+  'progress.expected': { ar: 'المتوقّع اليوم {n}%', en: 'Expected today: {n}%' },
+  'progress.expectedHint': {
+    ar: 'العلامة على الشريط هي النسبة المفروض توصلها دلوقتي حسب تواريخ البداية والنهاية.',
+    en: 'The mark on the bar is where the work should have reached by today, going by the start and end dates.',
+  },
+  'progress.ahead': { ar: 'متقدّم {n}% عن الخطة', en: '{n}% ahead of plan' },
+  'progress.behind': { ar: 'متأخر {n}% عن الخطة', en: '{n}% behind plan' },
+  'progress.onTrack': { ar: 'مطابق للخطة', en: 'On plan' },
+
+  /* ── glossary: the terms a non-specialist will not know ───── */
+  /* Every one of these appears as a small "?" beside the term it explains.
+     They are written for somebody who has never run a project before, which
+     is the whole reason they exist. */
+  'glossary.criticalPath': {
+    ar: 'أطول سلسلة مهام مترابطة في المشروع. أي تأخير في مهمة على المسار الحرج بيأخّر تسليم المشروع كله بنفس المدة.',
+    en: 'The longest chain of linked tasks. A day lost on any of them is a day lost on the whole project.',
+  },
+  'glossary.earnedValue': {
+    ar: 'قيمة الشغل اللي اتعمل فعلًا، محسوبة بالفلوس. بتقارنها بالمخطط وبالمصروف عشان تعرف إنت مكسبان ولا خسران وقت وفلوس.',
+    en: 'The money-value of the work actually finished. Compared against what was planned and what was spent.',
+  },
+  'glossary.plannedValue': {
+    ar: 'قيمة الشغل اللي كان مفروض يخلص لحد النهارده حسب الجدول الزمني.',
+    en: 'The value of the work that should have been finished by today, going by the schedule.',
+  },
+  'glossary.actualCost': {
+    ar: 'اللي اتصرف فعلًا: ساعات الفريق مضروبة في تكلفة الساعة، زائد المصروفات.',
+    en: 'What was actually spent: logged hours at their cost rate, plus expenses.',
+  },
+  'glossary.budgetVariance': {
+    ar: 'الفرق بين الميزانية المعتمدة واللي اتصرف. الرقم السالب معناه تجاوز.',
+    en: 'The gap between the approved budget and what was spent. Negative means overspent.',
+  },
+  'glossary.spi': {
+    ar: 'مؤشر أداء الجدول الزمني. أكبر من ١ يعني قدّام الجدول، وأقل من ١ يعني متأخر.',
+    en: 'Schedule performance index. Above 1 is ahead of schedule, below 1 is behind.',
+  },
+  'glossary.cpi': {
+    ar: 'مؤشر أداء التكلفة. أكبر من ١ يعني بتصرف أقل من المخطط، وأقل من ١ يعني بتصرف أكتر.',
+    en: 'Cost performance index. Above 1 means spending less than planned, below 1 means more.',
+  },
+  'glossary.workload': {
+    ar: 'عدد المهام والساعات المسندة لكل شخص في فترة معيّنة — عشان تشوف مين محمّل زيادة ومين فاضي.',
+    en: 'The tasks and hours assigned to each person in a period — who is overloaded and who is free.',
+  },
+  'glossary.baseline': {
+    ar: 'لقطة محفوظة من الجدول الزمني في لحظة معيّنة، بتقارن بيها بعدين عشان تشوف الجدول اتغيّر قد إيه.',
+    en: 'A saved snapshot of the schedule, kept so you can see how far the plan has since moved.',
+  },
+  'glossary.dependency': {
+    ar: 'ربط بين مهمتين: المهمة التانية ما تبدأش (أو ما تخلصش) غير لما الأولى توصل لمرحلة معيّنة.',
+    en: 'A link between two tasks: the second cannot start (or finish) until the first reaches a point.',
+  },
+  'glossary.billable': {
+    ar: 'ساعة قابلة للفوترة معناها إنها هتتحسب على العميل. غير القابلة للفوترة بتتسجّل بس ما بتتحسبش عليه.',
+    en: 'Billable hours are charged to the client. Non-billable hours are still recorded, just not charged.',
+  },
+  'glossary.phase': {
+    ar: 'مجموعة كبيرة من الشغل داخل المشروع، ليها تاريخ بداية ونهاية ومسؤول — زي «التصميم» أو «الاختبار».',
+    en: 'A large block of work inside a project, with its own dates and owner — like “Design” or “Testing”.',
+  },
+  'glossary.taskList': {
+    ar: 'مجموعة صغيرة من المهام المترابطة جوّه المرحلة. بتساعد في ترتيب الشغل بس مالهاش تواريخ خاصة بيها.',
+    en: 'A small group of related tasks inside a phase. It organises work but carries no dates of its own.',
+  },
+  'glossary.projectKey': {
+    ar: 'الرمز القصير اللي بيظهر قبل رقم كل مهمة ومشكلة، زي MTGR-12. بيتحدّد مرة واحدة وما بيتغيّرش.',
+    en: 'The short prefix on every task and issue reference, like MTGR-12. Set once and never changed.',
+  },
+
+  /* ── generic UI the module reuses ─────────────────────────── */
+  'ui.help': { ar: 'ما معنى هذا؟', en: 'What does this mean?' },
+  'ui.showing': { ar: 'عرض {shown} من {total}', en: 'Showing {shown} of {total}' },
+  'ui.clearFilters': { ar: 'مسح الفلاتر', en: 'Clear filters' },
+  'ui.filtersActive': { ar: '{n} فلتر مفعّل', en: '{n} filters on' },
+  'ui.loading': { ar: 'جارٍ التحميل…', en: 'Loading…' },
+  'ui.retry': { ar: 'إعادة المحاولة', en: 'Try again' },
+  'ui.of': { ar: 'من', en: 'of' },
+
+  /* ── demo data ────────────────────────────────────────────── */
+  'demo.title': { ar: 'البيانات التجريبية', en: 'Demo data' },
+  'demo.subtitle': {
+    ar: 'مشاريع وفرق ومهام جاهزة تشتغل عليها من غير ما تدخل بيانات حقيقية. تقدر تحمّلها وتمسحها في أي وقت.',
+    en: 'Ready-made projects, teams and tasks to explore, without entering anything real. Load it and remove it whenever you like.',
+  },
+  'demo.load': { ar: 'تحميل بيانات تجريبية', en: 'Load demo data' },
+  'demo.remove': { ar: 'حذف البيانات التجريبية', en: 'Remove demo data' },
+  'demo.loading': { ar: 'جارٍ التحميل…', en: 'Loading…' },
+  'demo.removing': { ar: 'جارٍ الحذف…', en: 'Removing…' },
+  'demo.notLoaded': { ar: 'لا توجد بيانات تجريبية محمّلة الآن.', en: 'No demo data is loaded right now.' },
+  'demo.loadedAt': { ar: 'محمّلة منذ {when}', en: 'Loaded {when}' },
+  'demo.willCreate': {
+    ar: 'هيتعمل {projects} مشاريع، و{tasks} مهمة، و{people} أعضاء فريق، و{issues} مشكلة، و{timeEntries} تسجيل وقت.',
+    en: 'Creates {projects} projects, {tasks} tasks, {people} team members, {issues} issues and {timeEntries} time logs.',
+  },
+  'demo.loaded': { ar: 'تم تحميل البيانات التجريبية.', en: 'Demo data loaded.' },
+  'demo.removed': { ar: 'تم حذف البيانات التجريبية.', en: 'Demo data removed.' },
+  'demo.confirmLoad': {
+    ar: 'هتتضاف مشاريع وأعضاء فريق تجريبيين للمساحة دي. الأعضاء التجريبيين ما يقدروش يسجّلوا دخول، وكل حاجة تتمسح بضغطة واحدة.',
+    en: 'This adds demo projects and demo team members to this workspace. The demo members cannot sign in, and everything is removable in one click.',
+  },
+  'demo.confirmRemove': {
+    ar: 'هيتمسح كل اللي اتحمّل مع البيانات التجريبية: المشاريع والمهام والأعضاء التجريبيين. شغلك الحقيقي مش هيتلمس.',
+    en: 'This removes everything the demo created — its projects, tasks and demo members. Your real work is not touched.',
+  },
+  'demo.safetyTitle': { ar: 'إزاي دي آمنة', en: 'Why this is safe' },
+  'demo.safetyIsolation': {
+    ar: 'كل صف بيتسجّل وقت إنشائه، والحذف بيمسح المسجَّل بس — مفيش بحث بالاسم، فمشروع حقيقي اسمه زي التجريبي ما يتأثرش.',
+    en: 'Every created row is recorded when it is made, and removal deletes exactly that list — nothing is found by name, so a real project with a similar name is never touched.',
+  },
+  'demo.safetyAccounts': {
+    ar: 'الأعضاء التجريبيون بيتعملوا موقوفين وبدون كلمة مرور، وعناوين بريدهم على نطاق محجوز ما ينفعش يتسجّل.',
+    en: 'Demo members are created disabled and without a password, on a reserved domain that can never receive mail.',
+  },
+  'demo.safetyTasks': {
+    ar: 'مهام المشاريع التجريبية بتظهر كمان في لوحة المهام العامة، زيها زي أي مهمة مشروع — وبتتمسح معاها.',
+    en: 'Demo project tasks also appear on the general task board, like any project task — and are removed with it.',
+  },
+  'demo.disabled': {
+    ar: 'البيانات التجريبية موقوفة في هذا التثبيت.',
+    en: 'Demo data is switched off on this deployment.',
+  },
+  'demo.badge': { ar: 'تجريبي', en: 'Demo' },
+  'demo.reset': { ar: 'إعادة ضبط البيانات التجريبية', en: 'Reset demo data' },
+  'demo.resetting': { ar: 'جارٍ إعادة الضبط…', en: 'Resetting…' },
+  'demo.wasReset': { ar: 'تمت إعادة ضبط البيانات التجريبية على تواريخ اليوم.', en: 'Demo data rebuilt against today’s dates.' },
+  'demo.alreadyLoaded': {
+    ar: 'البيانات التجريبية محمّلة بالفعل — لم يتغيّر شيء.',
+    en: 'Demo data is already loaded — nothing changed.',
+  },
+  'demo.isLoaded': { ar: 'البيانات التجريبية محمّلة', en: 'Demo data is loaded' },
+  'demo.loadedSummary': {
+    ar: '{projects} مشاريع · {people} أعضاء · {tasks} مهمة',
+    en: '{projects} projects · {people} people · {tasks} tasks',
+  },
+  'demo.someSkipped': {
+    ar: 'تم تخطّي {n} سجل لأنه غير معلَّم كبيانات تجريبية. لم يُحذف.',
+    en: '{n} records were skipped because they are not marked as demo. Nothing was deleted.',
+  },
+  'demo.forbidden': {
+    ar: 'إدارة البيانات التجريبية تحتاج صلاحية مدير المشاريع الكاملة وصلاحية مدير المساحة معًا.',
+    en: 'Managing demo data needs both the Projects administrator set and the workspace administrator role.',
+  },
+  'demo.confirmReset': {
+    ar: 'هيتم حذف البيانات التجريبية الحالية وإنشاؤها من جديد بتواريخ اليوم. شغلك الحقيقي مش هيتلمس.',
+    en: 'The current demo set is removed and rebuilt against today’s dates. Your real work is not touched.',
+  },
+  'demo.safetyIntegrations': {
+    ar: 'التكاملات التجريبية بتتعمل «غير مهيّأة» وبدون أي بيانات اعتماد، والـwebhooks موقوفة وعناوينها على نطاق محجوز — يعني مفيش أي طلب بيخرج بره.',
+    en: 'Demo integrations are created “not configured” with no credentials at all, and the webhooks are inactive on a reserved domain — no request can leave the building.',
   },
 } satisfies Record<string, { ar: string; en: string }>;
