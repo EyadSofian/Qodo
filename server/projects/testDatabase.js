@@ -72,7 +72,17 @@ export async function startTestDatabase() {
   const port = await freePort();
 
   const server = new EmbeddedPostgres({
-    databaseDir: path.join(directory, 'db'),
+    // `database_dir`, in snake_case, is the name the package actually reads —
+    // its options are not camelCased. This was `databaseDir` and therefore
+    // silently ignored, which meant every test run built its cluster in the
+    // default `./data/db` inside the developer's own working copy instead of
+    // the temporary directory created for it two lines above.
+    //
+    // That was harmless while nothing else used that path, and stopped being
+    // harmless the moment a developer ran a local PostgreSQL from the same
+    // directory: `persistent: false` makes `stop()` delete the data directory,
+    // so a test run would have taken their dev database with it.
+    database_dir: path.join(directory, 'db'),
     user: 'qodo',
     password: 'qodo',
     port,
