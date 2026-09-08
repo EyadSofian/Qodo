@@ -58,7 +58,8 @@ const WorkspaceContext = createContext<WorkspaceState | null>(null);
 
 // The live stream is the fast path; this timer is the reliable fallback after
 // a reconnect, a backgrounded tab or a multi-instance deployment.
-const POLL_MS = 20_000;
+const TASK_COUNTS_POLL_MS = 60_000;
+const NOTIFICATIONS_FALLBACK_POLL_MS = 5 * 60_000;
 
 /** How many live alerts may stack before the rest wait in the bell alone. */
 const MAX_LIVE_ALERTS = 3;
@@ -74,6 +75,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [taskCounts, setTaskCounts] = useState<TaskCounts>(NO_TASKS);
   const [loading, setLoading] = useState(true);
   const seenNotificationIds = useRef<Set<string> | null>(null);
+  const notificationStreamConnected = useRef(false);
+  const lastNotificationRefreshAt = useRef(0);
 
   const reloadApps = useCallback(async () => {
     const { apps: list } = await api.get<{ apps: WorkspaceApp[] }>('/apps');
@@ -107,6 +110,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     setNotifications(data.notifications);
     setActors(data.actors);
     setUnread(data.unread);
+    lastNotificationRefreshAt.current = Date.now();
   }, []);
 
   const reloadTaskCounts = useCallback(async () => {
@@ -120,6 +124,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       setNotifications([]);
       setIncomingNotifications([]);
       seenNotificationIds.current = null;
+      notificationStreamConnected.current = false;
+      lastNotificationRefreshAt.current = 0;
       setUnread(0);
       setTaskCounts(NO_TASKS);
       setLoading(false);
@@ -134,18 +140,23 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     ]).finally(() => setLoading(false));
   }, [user, reloadApps, reloadDirectory, reloadNotifications, reloadTaskCounts]);
 
-  // Poll the bell and the badge, but only while the tab is in front — a
-  // workspace left open on a second monitor shouldn't keep hitting the API all
-  // day. Both are cheap counts and stale numbers are the thing being fixed, so
-  // they ride the same timer.
+  // The SSE stream is the notification fast path. Task counts refresh once a
+  // minute; the bell is polled only if the stream is down or as a five-minute
+  // cross-instance safety net. This avoids two live mechanisms hitting the
+  // notifications endpoint together every twenty seconds.
   useEffect(() => {
     if (!user) return;
     const tick = () => {
       if (document.visibilityState !== 'visible') return;
-      reloadNotifications().catch(() => {});
       reloadTaskCounts().catch(() => {});
+      if (
+        !notificationStreamConnected.current ||
+        Date.now() - lastNotificationRefreshAt.current >= NOTIFICATIONS_FALLBACK_POLL_MS
+      ) {
+        reloadNotifications().catch(() => {});
+      }
     };
-    const timer = setInterval(tick, POLL_MS);
+    const timer = setInterval(tick, TASK_COUNTS_POLL_MS);
     document.addEventListener('visibilitychange', tick);
     return () => {
       clearInterval(timer);
@@ -159,12 +170,29 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!user || typeof EventSource === 'undefined') return;
     const stream = new EventSource('/api/notifications/stream');
+    const connected = () => {
+      if (notificationStreamConnected.current) return;
+      notificationStreamConnected.current = true;
+      // Reconcile anything written while the browser was asleep or the stream
+      // was reconnecting. The durable endpoint, not the SSE payload, is truth.
+      reloadNotifications().catch(() => {});
+    };
+    const disconnected = () => {
+      notificationStreamConnected.current = false;
+    };
     const refresh = () => {
       reloadNotifications().catch(() => {});
       reloadTaskCounts().catch(() => {});
     };
+    stream.addEventListener('open', connected);
+    stream.addEventListener('ready', connected);
+    stream.addEventListener('error', disconnected);
     stream.addEventListener('notification', refresh);
     return () => {
+      notificationStreamConnected.current = false;
+      stream.removeEventListener('open', connected);
+      stream.removeEventListener('ready', connected);
+      stream.removeEventListener('error', disconnected);
       stream.removeEventListener('notification', refresh);
       stream.close();
     };

@@ -697,6 +697,7 @@ test('assign → deliver → review → approve, including the rework loop', asy
   const streamReader = stream.body.getReader();
   const decoder = new TextDecoder();
   const readyEvent = decoder.decode((await streamReader.read()).value);
+  assert.match(readyEvent, /retry: 30000/);
   assert.match(readyEvent, /event: ready/);
 
   const submitted = await request(`/tasks/${task.id}/submit`, {

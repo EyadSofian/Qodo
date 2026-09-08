@@ -12,7 +12,7 @@
  * at 9:05 must not send the morning digest twice.
  */
 
-import { create, find, findOne, getStore } from './store.js';
+import { create, createIfAbsent, find, findOne, getStore } from './store.js';
 import { isAvailable as projectsAvailable } from './projects/db.js';
 import {
   dueEscalations as dueSlaEscalations,
@@ -32,11 +32,21 @@ import { organizationOf } from '../shared/organization.js';
 import { remindDueSoon } from './management.js';
 import { remindUpcomingEvents } from './calendar.js';
 import { generateHROperations } from './hrOperations.js';
+import {
+  briefSlotLabel,
+  buildInsightsBrief,
+  fetchInsightsBriefData,
+  latestDueBriefSlot,
+  parseBriefTimes,
+} from './insightsBrief.js';
 
 const TICK_MS = 60 * 1000;
 const DIGEST_HOUR = Number(process.env.DIGEST_HOUR ?? 9);
 const TIMEZONE = process.env.DIGEST_TIMEZONE || 'Africa/Cairo';
 const INSIGHTS_POLL_MINUTES = Number(process.env.INSIGHTS_POLL_MINUTES ?? 30);
+const INSIGHTS_BRIEF_TIMES = parseBriefTimes(
+  process.env.INSIGHTS_BRIEF_TIMES || '11:30,19:00'
+);
 /** How far ahead a management item is warned about. */
 const DESK_REMINDER_MINUTES = Number(process.env.MANAGEMENT_REMINDER_MINUTES ?? 60);
 
@@ -78,10 +88,15 @@ function localParts(date = new Date()) {
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
+    minute: '2-digit',
     hour12: false,
   }).formatToParts(date);
   const get = (type) => parts.find((p) => p.type === type)?.value ?? '';
-  return { day: `${get('year')}-${get('month')}-${get('day')}`, hour: Number(get('hour')) };
+  return {
+    day: `${get('year')}-${get('month')}-${get('day')}`,
+    hour: Number(get('hour')),
+    minute: Number(get('minute')),
+  };
 }
 
 /* ── job 1: the daily digest ─────────────────────────────────────── */
@@ -304,6 +319,53 @@ async function checkInsights() {
   }
 }
 
+/** Current calendar month through today, for the two scheduled summaries. */
+function monthToDateBounds(day) {
+  return { from: `${day.slice(0, 8)}01`, to: day };
+}
+
+/**
+ * The 11:30 and 19:00 summaries are deliberately one notification each. Five
+ * simultaneous cards train people to dismiss the whole stack; one readable
+ * management brief still keeps every requested number together.
+ */
+async function sendManagementInsightsBrief(slot, bounds) {
+  const app = await findOne('apps', (candidate) => candidate.id === 'insights');
+  if (!app?.url || app.enabled === false) return null;
+
+  const data = await fetchInsightsBriefData(app.url, bounds);
+  const brief = buildInsightsBrief({ ...data, ...bounds });
+  if (!brief) return null;
+
+  const users = await find('users', isActiveUser);
+  let sent = 0;
+  for (const user of users) {
+    const allowed =
+      user.role === 'admin' || !Array.isArray(user.appIds) || user.appIds.includes('insights');
+    // Employee rankings and management signals are supervisory data. Ordinary
+    // members keep their existing alerts, but do not receive this new brief.
+    if (!allowed || !can(user, PERMISSIONS.APPS_VIEW) || !can(user, PERMISSIONS.USERS_VIEW)) {
+      continue;
+    }
+
+    const result = await notifyAndRecordOnce(
+      `insights-management-brief:${slot}:${user.id}`,
+      user.id,
+      {
+        type: 'insights.management_brief',
+        title: {
+          ar: `ملخص الإدارة — ${briefSlotLabel(slot)}`,
+          en: `Management summary — ${briefSlotLabel(slot)}`,
+        },
+        body: brief.body,
+        link: '/app/insights',
+      }
+    );
+    if (result) sent += 1;
+  }
+  return sent;
+}
+
 /* ── shared delivery ─────────────────────────────────────────────── */
 
 /** Writes the in-app notification and sends the push, so both stay in step. */
@@ -326,6 +388,26 @@ async function notifyAndRecord(userId, { type, title, body, link }) {
   publishNotification(userId, row.id);
   await notifyUser(userId, { title, body: text, link });
   return row;
+}
+
+/** Same delivery with a deterministic id, safe across two Railway instances. */
+async function notifyAndRecordOnce(id, userId, { type, title, body, link }) {
+  const text = typeof body === 'string' ? body : (body.ar ?? '');
+  const user = await findOne('users', (candidate) => candidate.id === userId);
+  const result = await createIfAbsent('notifications', {
+    id,
+    organizationId: organizationOf(user),
+    userId,
+    type,
+    title,
+    body: text,
+    link,
+    read: false,
+  });
+  if (!result.created) return null;
+  publishNotification(userId, result.doc.id);
+  await notifyUser(userId, { title, body: text, link });
+  return result.doc;
 }
 
 /* ── job 3: work that has gone past its date ─────────────────────── */
@@ -484,6 +566,7 @@ export function startScheduler() {
   console.log(
     `[scheduler] daily digest at ${DIGEST_HOUR}:00 ${TIMEZONE}; ` +
       `Insights checked every ${INSIGHTS_POLL_MINUTES} min; ` +
+      `management brief at ${INSIGHTS_BRIEF_TIMES.map((clock) => `${String(Math.floor(clock / 60)).padStart(2, '0')}:${String(clock % 60).padStart(2, '0')}`).join(', ')}; ` +
       `management reminders ${DESK_REMINDER_MINUTES} min ahead; ` +
       `push ${pushConfigured() ? 'on' : 'off'}, email ${mailConfigured() ? 'on' : 'off'}`
   );
@@ -492,7 +575,7 @@ export function startScheduler() {
 
   const tick = async () => {
     try {
-      const { day, hour } = localParts();
+      const { day, hour, minute } = localParts();
 
       if (hour === DIGEST_HOUR && (await getSetting('digest.lastSentDay')) !== day) {
         // Stamp before sending: a crash mid-send must not cause a second full
@@ -511,6 +594,24 @@ export function startScheduler() {
       if (Date.now() - lastInsightsCheck >= INSIGHTS_POLL_MINUTES * 60 * 1000) {
         lastInsightsCheck = Date.now();
         await checkInsights();
+      }
+
+      const lastBriefSlot = await getSetting('insights.managementBrief.lastSentSlot');
+      const briefSlot = latestDueBriefSlot({
+        day,
+        hour,
+        minute,
+        times: INSIGHTS_BRIEF_TIMES,
+        lastSlot: lastBriefSlot,
+      });
+      if (briefSlot) {
+        const sent = await sendManagementInsightsBrief(briefSlot, monthToDateBounds(day));
+        // A null result means all useful Insights data was unavailable, so the
+        // next minute retries. Zero is a valid result when no manager is active.
+        if (sent !== null) {
+          await setSetting('insights.managementBrief.lastSentSlot', briefSlot);
+          console.log(`[scheduler] management Insights brief ${briefSlot}: ${sent} recipient(s)`);
+        }
       }
 
       // Every tick, because a meeting an hour away is only useful news for the

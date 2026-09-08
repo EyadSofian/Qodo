@@ -19,7 +19,10 @@ router.get('/stream', (req, res) => {
   res.setHeader('Connection', 'keep-alive');
   res.setHeader('X-Accel-Buffering', 'no');
   res.flushHeaders();
-  res.write('event: ready\ndata: {}\n\n');
+  // Native EventSource otherwise retries almost immediately when a proxy or a
+  // deploy closes the stream, which looks like an API request every second in
+  // DevTools. The stream stays live; only a failed reconnect backs off.
+  res.write('retry: 30000\nevent: ready\ndata: {}\n\n');
 
   const unsubscribe = subscribeToNotifications(req.user.id, res);
   const heartbeat = setInterval(() => {

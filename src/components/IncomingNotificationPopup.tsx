@@ -12,6 +12,7 @@ import {
   UserPlus,
   X,
   AlarmClock,
+  BarChart3,
 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
@@ -60,6 +61,7 @@ const TONES: Record<
   'user.join_request': { icon: UserPlus, ring: 'bg-brand-400', bar: 'bg-brand-300', chip: 'text-brand-100' },
   'management.due_soon': { icon: Clock, ring: 'bg-status-warn', bar: 'bg-status-warn', chip: 'text-amber-100' },
   'task.overdue': { icon: AlarmClock, ring: 'bg-status-bad', bar: 'bg-status-bad', chip: 'text-red-100' },
+  'insights.management_brief': { icon: BarChart3, ring: 'bg-accent-500', bar: 'bg-accent-400', chip: 'text-accent-100' },
 };
 
 const DEFAULT_TONE = {
@@ -184,15 +186,16 @@ function LiveAlert({
   // it honest about how long is actually left rather than drifting ahead of
   // the timer that does the dismissing.
   const [cycle, setCycle] = useState(0);
+  const autoDismissMs = notification.type === 'insights.management_brief' ? 20_000 : AUTO_DISMISS_MS;
 
   // The timer is the authority, not the animation: `prefers-reduced-motion`
   // can stop the bar from ever finishing, and an alert that then never leaves
   // is the bug this was meant to fix.
   useEffect(() => {
     if (paused) return;
-    const timer = setTimeout(onDismiss, AUTO_DISMISS_MS);
+    const timer = setTimeout(onDismiss, autoDismissMs);
     return () => clearTimeout(timer);
-  }, [paused, cycle, onDismiss]);
+  }, [paused, cycle, onDismiss, autoDismissMs]);
 
   const tone = TONES[notification.type] ?? DEFAULT_TONE;
   const Icon = tone.icon;
@@ -235,7 +238,7 @@ function LiveAlert({
 
         <div className="min-w-0 flex-1">
           <p className="text-[14px] font-extrabold leading-snug text-white">{title}</p>
-          <p className="mt-1 text-[12.5px] leading-relaxed text-white/65">{body}</p>
+          <p className="mt-1 whitespace-pre-line text-[12.5px] leading-relaxed text-white/65">{body}</p>
           <button
             type="button"
             onClick={onOpen}
