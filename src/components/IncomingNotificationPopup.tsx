@@ -1,81 +1,25 @@
-import { useEffect, useRef, useState } from 'react';
-import {
-  Archive,
-  BellRing,
-  CheckCircle2,
-  ClipboardCheck,
-  ClipboardList,
-  Clock,
-  MessageSquare,
-  RotateCcw,
-  Send,
-  UserPlus,
-  X,
-  AlarmClock,
-  Globe2,
-  Megaphone,
-  TrendingDown,
-  UsersRound,
-} from 'lucide-react';
-import { createPortal } from 'react-dom';
-import { useNavigate } from 'react-router-dom';
-import { useI18n } from '../lib/i18n';
-import { useWorkspace } from '../lib/workspace';
-import { cx } from '../lib/utils';
-import type { LocalisedText, Notification } from '../lib/types';
-import { Avatar } from './ui';
+import { useEffect, useRef, useState } from "react";
+import { ArrowLeft, ArrowRight, X } from "lucide-react";
+import { createPortal } from "react-dom";
+import { useNavigate } from "react-router-dom";
+import { useI18n } from "../lib/i18n";
+import { useWorkspace } from "../lib/workspace";
+import { cx, timeAgo } from "../lib/utils";
+import type { LocalisedText, Notification } from "../lib/types";
+import { Avatar } from "./ui";
+import { notificationPresentation } from "./notification-presentation";
 
 /**
  * Live, actionable alerts. The bell remains the durable inbox; this is the
  * attention layer for something that arrived while the workspace is open.
  *
- * Three things make it readable where the old single white card was not. It is
- * dark, so it reads as an interruption against a light workspace instead of
- * looking like one more panel. It says what *kind* of event this is before the
- * sentence — being assigned work and having work sent back are opposite news
- * and used to look identical. And it leaves on its own: an alert that sits
- * there until dismissed stops being an alert by lunchtime.
+ * The card stays light and compact so Arabic remains readable on a phone. Its
+ * semantic icon and top rule distinguish a report, a returned task and a due
+ * item without turning the whole surface red or navy.
  */
 
 /** Long enough to read two lines of Arabic without racing it. */
 const AUTO_DISMISS_MS = 9000;
-
-/**
- * What each kind of event looks like. Colour carries the verdict — green is
- * something that went well, red is work coming back, amber is a clock running
- * — so the tone is legible before the text is read.
- */
-const TONES: Record<
-  string,
-  { icon: typeof BellRing; ring: string; bar: string; chip: string }
-> = {
-  'task.assigned': { icon: ClipboardList, ring: 'bg-accent-500', bar: 'bg-accent-400', chip: 'text-accent-100' },
-  'task.returned': { icon: RotateCcw, ring: 'bg-status-bad', bar: 'bg-status-bad', chip: 'text-red-100' },
-  'task.reset_pending': { icon: RotateCcw, ring: 'bg-status-warn', bar: 'bg-status-warn', chip: 'text-amber-100' },
-  'task.stage_override': { icon: RotateCcw, ring: 'bg-status-warn', bar: 'bg-status-warn', chip: 'text-amber-100' },
-  'task.submitted': { icon: Send, ring: 'bg-brand-400', bar: 'bg-brand-300', chip: 'text-brand-100' },
-  'task.approved': { icon: CheckCircle2, ring: 'bg-status-ok', bar: 'bg-status-ok', chip: 'text-green-100' },
-  'task.review_passed': { icon: CheckCircle2, ring: 'bg-brand-400', bar: 'bg-brand-300', chip: 'text-brand-100' },
-  'task.awaiting_final_approval': { icon: ClipboardCheck, ring: 'bg-status-warn', bar: 'bg-status-warn', chip: 'text-amber-100' },
-  'task.comment': { icon: MessageSquare, ring: 'bg-brand-400', bar: 'bg-brand-300', chip: 'text-brand-100' },
-  'task.archived': { icon: Archive, ring: 'bg-ink-muted', bar: 'bg-ink-faint', chip: 'text-white/70' },
-  'task.unassigned': { icon: ClipboardList, ring: 'bg-ink-muted', bar: 'bg-ink-faint', chip: 'text-white/70' },
-  'account.approved': { icon: CheckCircle2, ring: 'bg-status-ok', bar: 'bg-status-ok', chip: 'text-green-100' },
-  'user.join_request': { icon: UserPlus, ring: 'bg-brand-400', bar: 'bg-brand-300', chip: 'text-brand-100' },
-  'management.due_soon': { icon: Clock, ring: 'bg-status-warn', bar: 'bg-status-warn', chip: 'text-amber-100' },
-  'task.overdue': { icon: AlarmClock, ring: 'bg-status-bad', bar: 'bg-status-bad', chip: 'text-red-100' },
-  'insights.leads_summary': { icon: UsersRound, ring: 'bg-brand-400', bar: 'bg-brand-300', chip: 'text-brand-100' },
-  'insights.website_summary': { icon: Globe2, ring: 'bg-status-ok', bar: 'bg-status-ok', chip: 'text-green-100' },
-  'insights.campaigns_review': { icon: Megaphone, ring: 'bg-status-warn', bar: 'bg-status-warn', chip: 'text-amber-100' },
-  'insights.employees_attention': { icon: TrendingDown, ring: 'bg-status-bad', bar: 'bg-status-bad', chip: 'text-red-100' },
-};
-
-const DEFAULT_TONE = {
-  icon: BellRing,
-  ring: 'bg-brand-500',
-  bar: 'bg-brand-300',
-  chip: 'text-brand-100',
-};
 
 /**
  * A short two-tone chime, synthesised rather than shipped as a file.
@@ -91,10 +35,13 @@ const DEFAULT_TONE = {
  */
 function chime() {
   try {
-    const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    const Ctor =
+      window.AudioContext ??
+      (window as unknown as { webkitAudioContext?: typeof AudioContext })
+        .webkitAudioContext;
     if (!Ctor) return;
     const context = new Ctor();
-    if (context.state === 'suspended') void context.resume();
+    if (context.state === "suspended") void context.resume();
 
     // Rising, because this is an arrival and not an error.
     [
@@ -103,12 +50,18 @@ function chime() {
     ].forEach(({ at, hz }) => {
       const osc = context.createOscillator();
       const gain = context.createGain();
-      osc.type = 'sine';
+      osc.type = "sine";
       osc.frequency.value = hz;
       // Ramped rather than switched: an abrupt start and stop is heard as a click.
       gain.gain.setValueAtTime(0.0001, context.currentTime + at);
-      gain.gain.exponentialRampToValueAtTime(0.14, context.currentTime + at + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + at + 0.16);
+      gain.gain.exponentialRampToValueAtTime(
+        0.14,
+        context.currentTime + at + 0.02,
+      );
+      gain.gain.exponentialRampToValueAtTime(
+        0.0001,
+        context.currentTime + at + 0.16,
+      );
       osc.connect(gain).connect(context.destination);
       osc.start(context.currentTime + at);
       osc.stop(context.currentTime + at + 0.18);
@@ -121,7 +74,12 @@ function chime() {
 }
 
 export function IncomingNotificationPopup() {
-  const { incomingNotifications, dismissIncomingNotification, actors, markRead } = useWorkspace();
+  const {
+    incomingNotifications,
+    dismissIncomingNotification,
+    actors,
+    markRead,
+  } = useWorkspace();
   const { t, lang } = useI18n();
   const navigate = useNavigate();
 
@@ -141,7 +99,7 @@ export function IncomingNotificationPopup() {
   if (incomingNotifications.length === 0) return null;
 
   const localise = (value: LocalisedText | string) =>
-    typeof value === 'string' ? value : (value[lang] ?? value.ar);
+    typeof value === "string" ? value : (value[lang] ?? value.ar);
 
   const open = (notification: Notification) => {
     markRead(notification.id).catch(() => {});
@@ -154,17 +112,30 @@ export function IncomingNotificationPopup() {
         <LiveAlert
           key={notification.id}
           notification={notification}
-          actor={notification.actorId ? actors[notification.actorId] : undefined}
+          actor={
+            notification.actorId ? actors[notification.actorId] : undefined
+          }
           title={localise(notification.title)}
           body={localise(notification.body)}
-          openLabel={t('shell.openNotification')}
-          closeLabel={t('common.close')}
+          kindLabel={localise(
+            notificationPresentation(notification.type).label,
+          )}
+          timeLabel={timeAgo(notification.createdAt, t)}
+          openLabel={
+            notification.type.startsWith("insights.")
+              ? lang === "ar"
+                ? "فتح التقرير في Nexus"
+                : "Open report in Nexus"
+              : t("shell.openNotification")
+          }
+          closeLabel={t("common.close")}
+          lang={lang === "en" ? "en" : "ar"}
           onOpen={() => open(notification)}
           onDismiss={() => dismissIncomingNotification(notification.id)}
         />
       ))}
     </div>,
-    document.body
+    document.body,
   );
 }
 
@@ -173,8 +144,11 @@ function LiveAlert({
   actor,
   title,
   body,
+  kindLabel,
+  timeLabel,
   openLabel,
   closeLabel,
+  lang,
   onOpen,
   onDismiss,
 }: {
@@ -182,8 +156,11 @@ function LiveAlert({
   actor?: { name: string; avatarColor: string };
   title: string;
   body: string;
+  kindLabel: string;
+  timeLabel: string;
   openLabel: string;
   closeLabel: string;
+  lang: "ar" | "en";
   onOpen: () => void;
   onDismiss: () => void;
 }) {
@@ -192,7 +169,9 @@ function LiveAlert({
   // it honest about how long is actually left rather than drifting ahead of
   // the timer that does the dismissing.
   const [cycle, setCycle] = useState(0);
-  const autoDismissMs = notification.type.startsWith('insights.') ? 12_000 : AUTO_DISMISS_MS;
+  const autoDismissMs = notification.type.startsWith("insights.")
+    ? 12_000
+    : AUTO_DISMISS_MS;
 
   // The timer is the authority, not the animation: `prefers-reduced-motion`
   // can stop the bar from ever finishing, and an alert that then never leaves
@@ -203,8 +182,9 @@ function LiveAlert({
     return () => clearTimeout(timer);
   }, [paused, cycle, onDismiss, autoDismissMs]);
 
-  const tone = TONES[notification.type] ?? DEFAULT_TONE;
-  const Icon = tone.icon;
+  const presentation = notificationPresentation(notification.type);
+  const Icon = presentation.icon;
+  const OpenIcon = lang === "ar" ? ArrowLeft : ArrowRight;
 
   return (
     <div
@@ -220,44 +200,58 @@ function LiveAlert({
         setPaused(false);
         setCycle((n) => n + 1);
       }}
-      className="pointer-events-auto w-full max-w-md overflow-hidden rounded-2xl bg-navy shadow-panel ring-1 ring-white/10 animate-pop-in"
+      dir={lang === "ar" ? "rtl" : "ltr"}
+      className="pointer-events-auto w-full max-w-[420px] overflow-hidden rounded-[22px] border border-surface-line bg-white shadow-lift animate-pop-in"
     >
-      <div className="flex items-start gap-3 p-4">
-        <span className="relative shrink-0">
-          {actor ? (
-            <Avatar name={actor.name} color={actor.avatarColor} size={40} />
-          ) : (
-            <span className="grid h-10 w-10 place-items-center rounded-full bg-white/10 text-white">
-              <BellRing size={20} />
-            </span>
+      <div className={cx("h-1 w-full", presentation.accent)} />
+      <div className="flex items-start gap-3.5 p-4 pb-3.5">
+        <span
+          className={cx(
+            "grid h-11 w-11 shrink-0 place-items-center rounded-[14px]",
+            presentation.iconBox,
           )}
-          {/* The verdict badge — what happened, before you read what it says. */}
-          <span
-            className={cx(
-              'absolute -bottom-1 -end-1 grid h-[19px] w-[19px] place-items-center rounded-full text-white ring-2 ring-navy',
-              tone.ring
-            )}
-          >
-            <Icon size={11} strokeWidth={2.75} />
-          </span>
+        >
+          <Icon size={21} strokeWidth={2.25} />
         </span>
 
         <div className="min-w-0 flex-1">
-          <p className="text-[14px] font-extrabold leading-snug text-white">{title}</p>
-          <p className="mt-1 whitespace-pre-line text-[12.5px] leading-relaxed text-white/65">{body}</p>
+          <div className="flex items-center gap-2 text-[10.5px] font-bold text-ink-muted">
+            <span>{kindLabel}</span>
+            <span
+              aria-hidden
+              className="h-1 w-1 rounded-full bg-ink-faint/70"
+            />
+            <time>{timeLabel}</time>
+          </div>
+          <p className="mt-1 text-[14px] font-extrabold leading-6 text-ink">
+            {title}
+          </p>
+          <p
+            className="mt-1 line-clamp-3 whitespace-pre-line text-[12.5px] leading-6 text-ink-muted"
+            dir="auto"
+          >
+            {body}
+          </p>
+          {actor && (
+            <span className="mt-2 flex items-center gap-1.5 text-[11px] text-ink-faint">
+              <Avatar name={actor.name} color={actor.avatarColor} size={20} />
+              <span>{actor.name}</span>
+            </span>
+          )}
           <button
             type="button"
             onClick={onOpen}
-            className="mt-3 rounded-lg bg-white px-3.5 py-2 text-[12px] font-bold text-navy transition-colors hover:bg-brand-100"
+            className="mt-3 inline-flex min-h-9 items-center gap-2 rounded-xl bg-navy px-3.5 py-2 text-[12px] font-bold text-white shadow-sm transition hover:bg-brand-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
           >
             {openLabel}
+            <OpenIcon size={14} aria-hidden />
           </button>
         </div>
 
         <button
           type="button"
           onClick={onDismiss}
-          className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-white/45 transition-colors hover:bg-white/10 hover:text-white"
+          className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-ink-faint transition-colors hover:bg-surface-sunken hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500"
           aria-label={closeLabel}
         >
           <X size={16} />
@@ -266,11 +260,14 @@ function LiveAlert({
 
       {/* How long is left. Frozen while the alert is hovered or focused, so
           reading it never costs you the chance to act on it. */}
-      <div className="h-1 bg-white/10">
+      <div className="h-0.5 bg-surface-sunken">
         <div
           key={cycle}
-          className={cx('h-full animate-drain', tone.bar)}
-          style={{ animationPlayState: paused ? 'paused' : 'running' }}
+          className={cx("h-full animate-drain", presentation.accent)}
+          style={{
+            animationPlayState: paused ? "paused" : "running",
+            animationDuration: `${autoDismissMs}ms`,
+          }}
         />
       </div>
     </div>

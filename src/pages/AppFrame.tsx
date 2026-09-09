@@ -1,19 +1,28 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useLocation, useParams } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, ExternalLink, Github, RotateCw, ShieldAlert } from 'lucide-react';
-import { api } from '../lib/api';
-import { useI18n } from '../lib/i18n';
-import { useWorkspace } from '../lib/workspace';
-import { ModuleIcon } from '../components/ModuleIcon';
-import { Spinner } from '../components/ui';
-import { cx } from '../lib/utils';
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useLocation, useParams } from "react-router-dom";
 import {
+  ArrowLeft,
+  ArrowRight,
+  ExternalLink,
+  Github,
+  RotateCw,
+  ShieldAlert,
+} from "lucide-react";
+import { api } from "../lib/api";
+import { useI18n } from "../lib/i18n";
+import { useWorkspace } from "../lib/workspace";
+import { ModuleIcon } from "../components/ModuleIcon";
+import { Spinner } from "../components/ui";
+import { cx } from "../lib/utils";
+import {
+  INSIGHTS_NEXUS_ACK,
+  INSIGHTS_NEXUS_READY,
   buildInsightsNexusHandoff,
   findInsightsNotification,
-} from '../lib/insights-notification';
+} from "../lib/insights-notification";
 
 interface EmbedCheck {
-  embeddable: boolean | 'maybe';
+  embeddable: boolean | "maybe";
   reason: string;
 }
 
@@ -41,30 +50,17 @@ export function AppFrame() {
   const postedNoticeRef = useRef<string | null>(null);
 
   const noticeId = useMemo(
-    () => new URLSearchParams(location.search).get('notice'),
-    [location.search]
+    () => new URLSearchParams(location.search).get("notice"),
+    [location.search],
   );
   const notice = useMemo(
     () => findInsightsNotification(notifications, noticeId),
-    [noticeId, notifications]
+    [noticeId, notifications],
   );
   const handoff = useMemo(
-    () => buildInsightsNexusHandoff(notice, lang === 'en' ? 'en' : 'ar'),
-    [notice, lang]
+    () => buildInsightsNexusHandoff(notice, lang === "en" ? "en" : "ar"),
+    [notice, lang],
   );
-
-  const postNoticeToInsights = useCallback(() => {
-    if (!handoff || !app || app.id !== 'insights' || !iframeRef.current?.contentWindow) return;
-    if (postedNoticeRef.current === handoff.notification.id) return;
-    let targetOrigin: string;
-    try {
-      targetOrigin = new URL(app.url).origin;
-    } catch {
-      return;
-    }
-    iframeRef.current.contentWindow.postMessage(handoff, targetOrigin);
-    postedNoticeRef.current = handoff.notification.id;
-  }, [app, handoff]);
 
   useEffect(() => {
     if (!appId) return;
@@ -76,7 +72,7 @@ export function AppFrame() {
       .then(setCheck)
       // A failed probe shouldn't block the user — try the frame and let the
       // "still blank?" hint cover it.
-      .catch(() => setCheck({ embeddable: 'maybe', reason: 'probe_failed' }));
+      .catch(() => setCheck({ embeddable: "maybe", reason: "probe_failed" }));
   }, [appId]);
 
   // Nothing tells us cross-origin that a frame was blocked, so after a few
@@ -87,14 +83,71 @@ export function AppFrame() {
     return () => clearTimeout(timer);
   }, [frameLoaded, check, nonce]);
 
-  // Notifications load asynchronously. Send after both the authenticated row
-  // and the trusted iframe are ready; reloading the iframe intentionally sends
-  // the same context again so the report is not lost on Refresh.
+  // Notifications, the iframe and the Hub's React effects finish in no fixed
+  // order. Deliver until the child explicitly acknowledges the same id. This
+  // closes the race where the old single postMessage landed before Nexus had
+  // installed its listener and the user saw only the dashboard overview.
   useEffect(() => {
-    if (!frameLoaded || !handoff) return;
-    if (postedNoticeRef.current === handoff.notification.id) return;
-    postNoticeToInsights();
-  }, [frameLoaded, handoff, postNoticeToInsights]);
+    if (
+      !frameLoaded ||
+      !handoff ||
+      !app ||
+      app.id !== "insights" ||
+      !iframeRef.current?.contentWindow
+    ) {
+      return;
+    }
+
+    let targetOrigin: string;
+    try {
+      targetOrigin = new URL(app.url).origin;
+    } catch {
+      return;
+    }
+
+    const child = iframeRef.current.contentWindow;
+    let attempts = 0;
+    let timer: number | null = null;
+    const stop = () => {
+      if (timer !== null) window.clearInterval(timer);
+      timer = null;
+    };
+    const deliver = () => {
+      if (postedNoticeRef.current === handoff.notification.id) {
+        stop();
+        return;
+      }
+      child.postMessage(handoff, targetOrigin);
+      attempts += 1;
+      if (attempts >= 20) stop();
+    };
+    const receive = (event: MessageEvent) => {
+      if (event.source !== child || event.origin !== targetOrigin) return;
+      const message = event.data as {
+        type?: unknown;
+        notificationId?: unknown;
+      } | null;
+      if (message?.type === INSIGHTS_NEXUS_READY) {
+        deliver();
+        return;
+      }
+      if (
+        message?.type === INSIGHTS_NEXUS_ACK &&
+        message.notificationId === handoff.notification.id
+      ) {
+        postedNoticeRef.current = handoff.notification.id;
+        stop();
+      }
+    };
+
+    window.addEventListener("message", receive);
+    deliver();
+    timer = window.setInterval(deliver, 500);
+    return () => {
+      stop();
+      window.removeEventListener("message", receive);
+    };
+  }, [app, frameLoaded, handoff]);
 
   useEffect(() => {
     postedNoticeRef.current = null;
@@ -111,30 +164,38 @@ export function AppFrame() {
   if (!app) {
     return (
       <div className="mx-auto w-full max-w-md px-5 py-16 text-center">
-        <h1 className="text-lg font-bold text-ink">{t('frame.notFound')}</h1>
-        <p className="mt-2 text-sm text-ink-muted">{t('frame.notFoundBody')}</p>
+        <h1 className="text-lg font-bold text-ink">{t("frame.notFound")}</h1>
+        <p className="mt-2 text-sm text-ink-muted">{t("frame.notFoundBody")}</p>
         <Link to="/" className="btn-primary mt-5 inline-flex">
-          {t('common.home')}
+          {t("common.home")}
         </Link>
       </div>
     );
   }
 
   const blocked = check?.embeddable === false;
-  const appName = lang === 'en' && app.nameEn ? app.nameEn : app.nameAr;
-  const BackIcon = dir === 'rtl' ? ArrowRight : ArrowLeft;
+  const appName = lang === "en" && app.nameEn ? app.nameEn : app.nameAr;
+  const BackIcon = dir === "rtl" ? ArrowRight : ArrowLeft;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex items-center gap-2 border-b border-surface-line bg-white/85 px-3 py-2 backdrop-blur sm:px-5">
-        <Link to="/" className="btn-quiet !min-h-9 rounded-lg px-2" aria-label={t('common.back')}>
+        <Link
+          to="/"
+          className="btn-quiet !min-h-9 rounded-lg px-2"
+          aria-label={t("common.back")}
+        >
           <BackIcon size={18} />
         </Link>
 
         <ModuleIcon name={app.icon} color={app.color} size={30} />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[13.5px] font-bold leading-tight text-ink">{appName}</p>
-          <p className="ltr truncate text-[11px] leading-tight text-ink-faint">{new URL(app.url).host}</p>
+          <p className="truncate text-[13.5px] font-bold leading-tight text-ink">
+            {appName}
+          </p>
+          <p className="ltr truncate text-[11px] leading-tight text-ink-faint">
+            {new URL(app.url).host}
+          </p>
         </div>
 
         {app.repo && (
@@ -143,8 +204,8 @@ export function AppFrame() {
             target="_blank"
             rel="noopener noreferrer"
             className="btn-quiet !min-h-9 hidden rounded-lg px-2 sm:inline-flex"
-            aria-label={t('frame.repo')}
-            title={t('frame.repo')}
+            aria-label={t("frame.repo")}
+            title={t("frame.repo")}
           >
             <Github size={16} />
           </a>
@@ -158,8 +219,8 @@ export function AppFrame() {
               setNonce((n) => n + 1);
             }}
             className="btn-quiet !min-h-9 rounded-lg px-2"
-            aria-label={t('common.refresh')}
-            title={t('common.refresh')}
+            aria-label={t("common.refresh")}
+            title={t("common.refresh")}
           >
             <RotateCw size={16} />
           </button>
@@ -171,7 +232,7 @@ export function AppFrame() {
           className="btn-ghost btn-sm !min-h-9 gap-1.5"
         >
           <ExternalLink size={15} />
-          <span className="hidden sm:inline">{t('common.openNewTab')}</span>
+          <span className="hidden sm:inline">{t("common.openNewTab")}</span>
         </a>
       </div>
 
@@ -181,9 +242,18 @@ export function AppFrame() {
             <span className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-2xl bg-status-warnBg text-accent-600">
               <ShieldAlert size={24} />
             </span>
-            <h2 className="text-base font-bold text-ink">{t('frame.blockedTitle', { app: appName })}</h2>
-            <p className="mt-2 text-[13.5px] leading-relaxed text-ink-muted">{t('frame.blockedBody')}</p>
-            <a href={app.url} target="_blank" rel="noopener noreferrer" className="btn-primary mt-5 inline-flex">
+            <h2 className="text-base font-bold text-ink">
+              {t("frame.blockedTitle", { app: appName })}
+            </h2>
+            <p className="mt-2 text-[13.5px] leading-relaxed text-ink-muted">
+              {t("frame.blockedBody")}
+            </p>
+            <a
+              href={app.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-primary mt-5 inline-flex"
+            >
               <ExternalLink size={16} />
               {appName}
             </a>
@@ -193,7 +263,7 @@ export function AppFrame() {
               </p>
             )}
             <p className="mt-4 border-t border-surface-line pt-4 text-[12px] leading-relaxed text-ink-muted">
-              {t('frame.blockedFix')}
+              {t("frame.blockedFix")}
             </p>
           </div>
         </div>
@@ -203,11 +273,18 @@ export function AppFrame() {
             <div className="absolute inset-0 grid place-items-center gap-3">
               <div className="flex flex-col items-center gap-3">
                 <Spinner size={26} className="text-brand-500" />
-                <p className="text-[13px] text-ink-muted">{t('frame.opening', { app: appName })}</p>
+                <p className="text-[13px] text-ink-muted">
+                  {t("frame.opening", { app: appName })}
+                </p>
                 {slow && (
-                  <a href={app.url} target="_blank" rel="noopener noreferrer" className="btn-ghost btn-sm mt-1">
+                  <a
+                    href={app.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn-ghost btn-sm mt-1"
+                  >
                     <ExternalLink size={15} />
-                    {t('frame.slow')}
+                    {t("frame.slow")}
                   </a>
                 )}
               </div>
@@ -221,7 +298,6 @@ export function AppFrame() {
             onLoad={() => {
               setFrameLoaded(true);
               postedNoticeRef.current = null;
-              window.setTimeout(postNoticeToInsights, 0);
             }}
             // Positioned, not `h-full`. The wrapper is a flex item, so its
             // height comes from the flex algorithm and its *specified* height
@@ -230,8 +306,8 @@ export function AppFrame() {
             // its 150px default. Absolute inset sizes against the padding box
             // and is unaffected.
             className={cx(
-              'absolute inset-0 h-full w-full border-0 transition-opacity duration-200',
-              frameLoaded ? 'opacity-100' : 'opacity-0'
+              "absolute inset-0 h-full w-full border-0 transition-opacity duration-200",
+              frameLoaded ? "opacity-100" : "opacity-0",
             )}
             // The framed app is trusted (it's ours) but still gets an explicit
             // allowance list rather than free rein over the parent.

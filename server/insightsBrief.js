@@ -1,14 +1,14 @@
-const DEFAULT_BRIEF_TIMES = '11:30,19:00';
+const DEFAULT_BRIEF_TIMES = "11:30,19:00";
 
 const finite = (value) => {
-  if (value === null || value === undefined || value === '') return null;
+  if (value === null || value === undefined || value === "") return null;
   return Number.isFinite(Number(value)) ? Number(value) : null;
 };
 
 /** Parse a comma-separated Cairo clock such as `11:30,19:00`. */
 export function parseBriefTimes(value = DEFAULT_BRIEF_TIMES) {
   const minutes = String(value)
-    .split(',')
+    .split(",")
     .map((item) => item.trim())
     .filter(Boolean)
     .map((item) => {
@@ -33,31 +33,34 @@ export function latestDueBriefSlot({ day, hour, minute, times, lastSlot }) {
   const now = hour * 60 + minute;
   const due = times.filter((clock) => clock <= now).at(-1);
   if (due === undefined) return null;
-  const slot = `${day}T${String(Math.floor(due / 60)).padStart(2, '0')}:${String(due % 60).padStart(2, '0')}`;
+  const slot = `${day}T${String(Math.floor(due / 60)).padStart(2, "0")}:${String(due % 60).padStart(2, "0")}`;
   return slot === lastSlot ? null : slot;
 }
 
 export function briefSlotLabel(slot) {
   const match = /T(\d{2}):(\d{2})$/.exec(String(slot));
-  if (!match) return '';
+  if (!match) return "";
   const hour = Number(match[1]);
   const minute = match[2];
   const twelveHour = hour % 12 || 12;
-  return `${twelveHour}:${minute} ${hour < 12 ? 'ص' : 'م'}`;
+  return `${twelveHour}:${minute} ${hour < 12 ? "ص" : "م"}`;
 }
 
-const integer = (value) => Math.round(value).toLocaleString('en-US');
-const decimal = (value) => value.toLocaleString('en-US', { maximumFractionDigits: 1 });
-const money = (value) => `${Math.round(value).toLocaleString('en-US')} دولار`;
+const integer = (value) => Math.round(value).toLocaleString("en-US");
+const decimal = (value) =>
+  value.toLocaleString("en-US", { maximumFractionDigits: 1 });
+const money = (value) => `${Math.round(value).toLocaleString("en-US")} دولار`;
+const moneyEn = (value) => `$${Math.round(value).toLocaleString("en-US")}`;
 
-function rangeLabel(from, to) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) return '';
+function rangeLabel(from, to, lang = "ar") {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to))
+    return "";
   const start = new Date(`${from}T12:00:00Z`);
   const end = new Date(`${to}T12:00:00Z`);
-  const month = new Intl.DateTimeFormat('ar-EG', {
-    month: 'long',
-    year: 'numeric',
-    timeZone: 'UTC',
+  const month = new Intl.DateTimeFormat(lang === "ar" ? "ar-EG" : "en-GB", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
   }).format(end);
   return start.getUTCMonth() === end.getUTCMonth()
     ? `${start.getUTCDate()}–${end.getUTCDate()} ${month}`
@@ -65,12 +68,19 @@ function rangeLabel(from, to) {
 }
 
 function shortLabel(value, max = 34) {
-  const clean = String(value ?? '').replace(/\s+/g, ' ').trim();
+  const clean = String(value ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
   return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
 }
 
+/** Keep a Latin proper noun together inside an Arabic sentence. */
+const isolate = (value) => `\u2068${value}\u2069`;
+
 function atRiskCampaigns(overview) {
-  const rows = Array.isArray(overview?.activity?.atRisk) ? overview.activity.atRisk : [];
+  const rows = Array.isArray(overview?.activity?.atRisk)
+    ? overview.activity.atRisk
+    : [];
   return rows.filter((row) => row && (row.campaignName || row.name));
 }
 
@@ -80,7 +90,12 @@ function lowestMeasuredEmployees(teams) {
     .filter((agent) => {
       const score = finite(agent?.performanceScore?.overall);
       const coverage = finite(agent?.performanceScore?.dataCoverage);
-      return score !== null && coverage !== null && coverage >= 50 && agent?.target?.complete === true;
+      return (
+        score !== null &&
+        coverage !== null &&
+        coverage >= 50 &&
+        agent?.target?.complete === true
+      );
     })
     .sort((a, b) => a.performanceScore.overall - b.performanceScore.overall)
     .slice(0, 3);
@@ -91,7 +106,14 @@ function lowestMeasuredEmployees(teams) {
  * Missing endpoints omit their own notification; they never turn into a
  * misleading zero or make the remaining summaries disappear.
  */
-export function buildInsightsBriefNotifications({ overview, leads, teams, website, from, to }) {
+export function buildInsightsBriefNotifications({
+  overview,
+  leads,
+  teams,
+  website,
+  from,
+  to,
+}) {
   const totals = leads?.totals ?? overview?.totals ?? {};
   const totalLeads = finite(totals.totalLeads);
   const paidInvoices = finite(totals.orders);
@@ -105,17 +127,23 @@ export function buildInsightsBriefNotifications({ overview, leads, teams, websit
   const employees = lowestMeasuredEmployees(teams);
   const websiteSales = finite(website?.totals?.sales);
   const websiteSpend = finite(website?.totals?.websiteCampaignSpend);
-  const websiteAttributionAvailable = website?.websiteCampaignAttribution?.sourceAvailable === true;
+  const websiteAttributionAvailable =
+    website?.websiteCampaignAttribution?.sourceAvailable === true;
   const linkedWebsiteRevenue = websiteAttributionAvailable
     ? finite(website?.websiteCampaignAttribution?.attributedRevenue)
     : null;
   const websiteRoas =
-    linkedWebsiteRevenue !== null && linkedWebsiteRevenue > 0 && websiteSpend !== null && websiteSpend > 0
+    linkedWebsiteRevenue !== null &&
+    linkedWebsiteRevenue > 0 &&
+    websiteSpend !== null &&
+    websiteSpend > 0
       ? linkedWebsiteRevenue / websiteSpend
       : null;
 
-  const period = rangeLabel(from, to);
-  const periodPrefix = period ? `خلال ${period}: ` : '';
+  const periodAr = rangeLabel(from, to, "ar");
+  const periodEn = rangeLabel(from, to, "en");
+  const periodPrefixAr = periodAr ? `خلال ${periodAr}: ` : "";
+  const periodPrefixEn = periodEn ? `For ${periodEn}: ` : "";
   const notifications = [];
 
   const leadParts = [
@@ -126,11 +154,24 @@ export function buildInsightsBriefNotifications({ overview, leads, teams, websit
     lost !== null ? `${integer(lost)} صفقة خاسرة` : null,
   ].filter(Boolean);
   if (leadParts.length) {
+    const leadPartsEn = [
+      totalLeads !== null ? `${integer(totalLeads)} potential customers` : null,
+      paidInvoices !== null ? `${integer(paidInvoices)} paid invoices` : null,
+      conversion !== null ? `${decimal(conversion)}% actual conversion` : null,
+      followUp !== null ? `${integer(followUp)} follow-up cases` : null,
+      lost !== null ? `${integer(lost)} lost deals` : null,
+    ].filter(Boolean);
     notifications.push({
-      key: 'leads',
-      type: 'insights.leads_summary',
-      title: 'ملخص العملاء المحتملين',
-      body: `${periodPrefix}${leadParts.join('، ')}.`,
+      key: "leads",
+      type: "insights.leads_summary",
+      title: {
+        ar: "ملخص العملاء المحتملين",
+        en: "Potential customers summary",
+      },
+      body: {
+        ar: `${periodPrefixAr}${leadParts.join("، ")}.`,
+        en: `${periodPrefixEn}${leadPartsEn.join(", ")}.`,
+      },
     });
   }
 
@@ -139,44 +180,79 @@ export function buildInsightsBriefNotifications({ overview, leads, teams, websit
       websiteSales !== null ? `${money(websiteSales)} مبيعات` : null,
       websiteSpend !== null ? `${money(websiteSpend)} إنفاق` : null,
     ].filter(Boolean);
-    const result = websiteRoas !== null
-      ? ` كل دولار إنفاق حقق ${decimal(websiteRoas)} دولار مبيعات مرتبطة بالحملات.`
-      : websiteSpend !== null && websiteSpend > 0
-        ? ' لا يوجد إيراد مبيعات مربوط مباشرة بهذه الحملات، لذلك لا يمكن عرض عائد إعلاني موثوق.'
-        : '';
+    const result =
+      websiteRoas !== null
+        ? ` كل دولار إنفاق حقق ${decimal(websiteRoas)} دولار مبيعات مرتبطة بالحملات.`
+        : websiteSpend !== null && websiteSpend > 0
+          ? " لا يوجد إيراد مبيعات مربوط مباشرة بهذه الحملات، لذلك لا يمكن عرض عائد إعلاني موثوق."
+          : "";
+    const partsEn = [
+      websiteSales !== null ? `${moneyEn(websiteSales)} in sales` : null,
+      websiteSpend !== null ? `${moneyEn(websiteSpend)} in ad spend` : null,
+    ].filter(Boolean);
+    const resultEn =
+      websiteRoas !== null
+        ? ` Each dollar of spend generated ${decimal(websiteRoas)} dollars in campaign-attributed sales.`
+        : websiteSpend !== null && websiteSpend > 0
+          ? " No sales revenue is directly attributed to these campaigns, so a reliable advertising return cannot be shown."
+          : "";
     notifications.push({
-      key: 'website',
-      type: 'insights.website_summary',
-      title: websiteRoas !== null ? 'عائد حملات الموقع' : 'مبيعات الموقع وحملاته',
-      body: `${periodPrefix}${parts.join('، ')}.${result}`,
+      key: "website",
+      type: "insights.website_summary",
+      title: {
+        ar:
+          websiteRoas !== null ? "عائد حملات الموقع" : "مبيعات الموقع وحملاته",
+        en:
+          websiteRoas !== null
+            ? "Website campaign return"
+            : "Website sales and campaigns",
+      },
+      body: {
+        ar: `${periodPrefixAr}${parts.join("، ")}.${result}`,
+        en: `${periodPrefixEn}${partsEn.join(", ")}.${resultEn}`,
+      },
     });
   }
 
   if (campaigns.length) {
     const names = campaigns
       .slice(0, 2)
-      .map((campaign) => shortLabel(campaign.campaignName ?? campaign.name))
-      .join('، ');
+      .map((campaign) => shortLabel(campaign.campaignName ?? campaign.name));
+    const namesAr = names.map(isolate).join("، ");
     notifications.push({
-      key: 'campaigns',
-      type: 'insights.campaigns_review',
-      title: 'حملات تحتاج مراجعة',
-      body: `${periodPrefix}${integer(campaigns.length)} حملة تحتاج تدخلًا. أبرزها: ${names}.`,
+      key: "campaigns",
+      type: "insights.campaigns_review",
+      title: { ar: "حملات تحتاج مراجعة", en: "Campaigns need review" },
+      body: {
+        ar: `${periodPrefixAr}${integer(campaigns.length)} حملة تحتاج تدخلًا. أبرزها: ${namesAr}.`,
+        en: `${periodPrefixEn}${integer(campaigns.length)} campaigns need attention. Leading items: ${names.join(", ")}.`,
+      },
     });
   }
 
   if (employees.length) {
-    const names = employees
+    const names = employees.map(
+      (employee) =>
+        `${shortLabel(employee.displayName ?? employee.name, 25)}: ${decimal(employee.performanceScore.overall)} من 100`,
+    );
+    const namesAr = names.map(isolate).join("، ");
+    const namesEn = employees
       .map(
         (employee) =>
-          `${shortLabel(employee.displayName ?? employee.name, 25)}: ${decimal(employee.performanceScore.overall)} من 100`
+          `${shortLabel(employee.displayName ?? employee.name, 25)}: ${decimal(employee.performanceScore.overall)} out of 100`,
       )
-      .join('، ');
+      .join(", ");
     notifications.push({
-      key: 'employees',
-      type: 'insights.employees_attention',
-      title: 'أداء الموظفين يحتاج متابعة',
-      body: `${periodPrefix}أقل 3 نتائج حسب مؤشر الأداء العام: ${names}.`,
+      key: "employees",
+      type: "insights.employees_attention",
+      title: {
+        ar: "أداء الموظفين يحتاج متابعة",
+        en: "Employee performance needs follow-up",
+      },
+      body: {
+        ar: `${periodPrefixAr}أقل 3 نتائج حسب مؤشر الأداء العام: ${namesAr}.`,
+        en: `${periodPrefixEn}the three lowest measured performance scores are ${namesEn}.`,
+      },
     });
   }
 
@@ -189,7 +265,7 @@ async function fetchJson(url, fetchFn) {
   try {
     const response = await fetchFn(url, {
       signal: controller.signal,
-      headers: { Accept: 'application/json' },
+      headers: { Accept: "application/json" },
     });
     if (!response.ok) return null;
     return await response.json();
@@ -200,13 +276,17 @@ async function fetchJson(url, fetchFn) {
   }
 }
 
-export async function fetchInsightsBriefData(baseUrl, { from, to }, fetchFn = fetch) {
-  const base = baseUrl.replace(/\/$/, '');
+export async function fetchInsightsBriefData(
+  baseUrl,
+  { from, to },
+  fetchFn = fetch,
+) {
+  const base = baseUrl.replace(/\/$/, "");
   const query = new URLSearchParams({ from, to }).toString();
   const [overview, leads, teams, website] = await Promise.all(
-    ['overview', 'leads', 'teams', 'website'].map((endpoint) =>
-      fetchJson(`${base}/api/${endpoint}?${query}`, fetchFn)
-    )
+    ["overview", "leads", "teams", "website"].map((endpoint) =>
+      fetchJson(`${base}/api/${endpoint}?${query}`, fetchFn),
+    ),
   );
   return { overview, leads, teams, website };
 }

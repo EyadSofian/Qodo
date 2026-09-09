@@ -7,10 +7,16 @@ import {
   useRef,
   useState,
   type ReactNode,
-} from 'react';
-import { api } from './api';
-import { useAuth } from './auth';
-import type { ActorMap, DirectoryUser, Notification, TaskCounts, WorkspaceApp } from './types';
+} from "react";
+import { api } from "./api";
+import { useAuth } from "./auth";
+import type {
+  ActorMap,
+  DirectoryUser,
+  Notification,
+  TaskCounts,
+  WorkspaceApp,
+} from "./types";
 
 const NO_TASKS: TaskCounts = {
   mine: 0,
@@ -59,7 +65,10 @@ const WorkspaceContext = createContext<WorkspaceState | null>(null);
 // The live stream is the fast path; this timer is the reliable fallback after
 // a reconnect, a backgrounded tab or a multi-instance deployment.
 const TASK_COUNTS_POLL_MS = 60_000;
-const NOTIFICATIONS_FALLBACK_POLL_MS = 5 * 60_000;
+// The stream is the fast path, but it is process-local. A short ordinary poll
+// is the reliable path across reconnects, deploy overlap and multiple servers.
+const NOTIFICATIONS_POLL_MS = 10_000;
+const RECENT_ON_LOAD_MS = 90_000;
 
 /** How many live alerts may stack before the rest wait in the bell alone. */
 const MAX_LIVE_ALERTS = 8;
@@ -69,52 +78,84 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [apps, setApps] = useState<WorkspaceApp[]>([]);
   const [directory, setDirectory] = useState<DirectoryUser[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [incomingNotifications, setIncomingNotifications] = useState<Notification[]>([]);
+  const [incomingNotifications, setIncomingNotifications] = useState<
+    Notification[]
+  >([]);
   const [actors, setActors] = useState<ActorMap>({});
   const [unread, setUnread] = useState(0);
   const [taskCounts, setTaskCounts] = useState<TaskCounts>(NO_TASKS);
   const [loading, setLoading] = useState(true);
   const seenNotificationIds = useRef<Set<string> | null>(null);
   const notificationStreamConnected = useRef(false);
-  const lastNotificationRefreshAt = useRef(0);
+  const notificationReloadPromise = useRef<Promise<void> | null>(null);
 
   const reloadApps = useCallback(async () => {
-    const { apps: list } = await api.get<{ apps: WorkspaceApp[] }>('/apps');
+    const { apps: list } = await api.get<{ apps: WorkspaceApp[] }>("/apps");
     setApps(list);
   }, []);
 
   const reloadDirectory = useCallback(async () => {
-    const { users } = await api.get<{ users: DirectoryUser[] }>('/auth/directory');
+    const { users } = await api.get<{ users: DirectoryUser[] }>(
+      "/auth/directory",
+    );
     setDirectory(users);
   }, []);
 
-  const reloadNotifications = useCallback(async () => {
-    const data = await api.get<{
-      notifications: Notification[];
-      actors: ActorMap;
-      unread: number;
-    }>('/notifications');
-    const currentIds = new Set(data.notifications.map((notification) => notification.id));
-    if (seenNotificationIds.current) {
-      const fresh = data.notifications.filter(
-        (notification) => !notification.read && !seenNotificationIds.current?.has(notification.id)
+  const reloadNotifications = useCallback((): Promise<void> => {
+    if (notificationReloadPromise.current)
+      return notificationReloadPromise.current;
+
+    const request = (async () => {
+      const data = await api.get<{
+        notifications: Notification[];
+        actors: ActorMap;
+        unread: number;
+      }>("/notifications");
+      const currentIds = new Set(
+        data.notifications.map((notification) => notification.id),
       );
+      const firstLoad = seenNotificationIds.current === null;
+      const fresh = data.notifications.filter((notification) => {
+        if (notification.read) return false;
+        if (!firstLoad)
+          return !seenNotificationIds.current?.has(notification.id);
+        // If the page was opened by a push that just arrived, still show its
+        // card. Older unread items stay in the bell without replaying a backlog.
+        const created = Date.parse(notification.createdAt);
+        return (
+          Number.isFinite(created) && Date.now() - created <= RECENT_ON_LOAD_MS
+        );
+      });
+
       // Capped so a backlog arriving at once — a scheduler run, a reconnect
       // after the laptop wakes — announces itself without burying the screen.
       // The bell still holds every one of them.
       if (fresh.length > 0) {
-        setIncomingNotifications((queue) => [...fresh, ...queue].slice(0, MAX_LIVE_ALERTS));
+        const freshIds = new Set(fresh.map((notification) => notification.id));
+        setIncomingNotifications((queue) =>
+          [
+            ...fresh,
+            ...queue.filter((notification) => !freshIds.has(notification.id)),
+          ].slice(0, MAX_LIVE_ALERTS),
+        );
       }
-    }
-    seenNotificationIds.current = currentIds;
-    setNotifications(data.notifications);
-    setActors(data.actors);
-    setUnread(data.unread);
-    lastNotificationRefreshAt.current = Date.now();
+      seenNotificationIds.current = currentIds;
+      setNotifications(data.notifications);
+      setActors(data.actors);
+      setUnread(data.unread);
+    })();
+
+    notificationReloadPromise.current = request;
+    const clear = () => {
+      if (notificationReloadPromise.current === request)
+        notificationReloadPromise.current = null;
+    };
+    void request.then(clear, clear);
+    return request;
   }, []);
 
   const reloadTaskCounts = useCallback(async () => {
-    setTaskCounts(await api.get<TaskCounts>('/tasks/counts'));
+    setTaskCounts(await api.get<TaskCounts>("/tasks/counts"));
   }, []);
 
   useEffect(() => {
@@ -125,7 +166,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       setIncomingNotifications([]);
       seenNotificationIds.current = null;
       notificationStreamConnected.current = false;
-      lastNotificationRefreshAt.current = 0;
+      notificationReloadPromise.current = null;
       setUnread(0);
       setTaskCounts(NO_TASKS);
       setLoading(false);
@@ -138,29 +179,42 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       reloadNotifications(),
       reloadTaskCounts(),
     ]).finally(() => setLoading(false));
-  }, [user, reloadApps, reloadDirectory, reloadNotifications, reloadTaskCounts]);
+  }, [
+    user,
+    reloadApps,
+    reloadDirectory,
+    reloadNotifications,
+    reloadTaskCounts,
+  ]);
 
-  // The SSE stream is the notification fast path. Task counts refresh once a
-  // minute; the bell is polled only if the stream is down or as a five-minute
-  // cross-instance safety net. This avoids two live mechanisms hitting the
-  // notifications endpoint together every twenty seconds.
+  // Task counts and notifications have different freshness needs. The bell is
+  // cheap and user-facing, so it reconciles every ten seconds even while SSE
+  // is healthy; the single-flight loader prevents a burst of stream events and
+  // the timer from duplicating cards.
   useEffect(() => {
     if (!user) return;
-    const tick = () => {
-      if (document.visibilityState !== 'visible') return;
+    const refreshCounts = () => {
+      if (document.visibilityState !== "visible") return;
       reloadTaskCounts().catch(() => {});
-      if (
-        !notificationStreamConnected.current ||
-        Date.now() - lastNotificationRefreshAt.current >= NOTIFICATIONS_FALLBACK_POLL_MS
-      ) {
-        reloadNotifications().catch(() => {});
-      }
     };
-    const timer = setInterval(tick, TASK_COUNTS_POLL_MS);
-    document.addEventListener('visibilitychange', tick);
+    const refreshNotifications = () => {
+      if (document.visibilityState === "visible")
+        reloadNotifications().catch(() => {});
+    };
+    const taskTimer = setInterval(refreshCounts, TASK_COUNTS_POLL_MS);
+    const notificationTimer = setInterval(
+      refreshNotifications,
+      NOTIFICATIONS_POLL_MS,
+    );
+    const onVisible = () => {
+      refreshCounts();
+      refreshNotifications();
+    };
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
-      clearInterval(timer);
-      document.removeEventListener('visibilitychange', tick);
+      clearInterval(taskTimer);
+      clearInterval(notificationTimer);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [user, reloadNotifications, reloadTaskCounts]);
 
@@ -168,8 +222,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   // endpoints remain the source of truth. EventSource reconnects by itself,
   // while the timer above is the cross-instance/offline fallback.
   useEffect(() => {
-    if (!user || typeof EventSource === 'undefined') return;
-    const stream = new EventSource('/api/notifications/stream');
+    if (!user || typeof EventSource === "undefined") return;
+    const stream = new EventSource("/api/notifications/stream");
     const connected = () => {
       if (notificationStreamConnected.current) return;
       notificationStreamConnected.current = true;
@@ -184,16 +238,16 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       reloadNotifications().catch(() => {});
       reloadTaskCounts().catch(() => {});
     };
-    stream.addEventListener('open', connected);
-    stream.addEventListener('ready', connected);
-    stream.addEventListener('error', disconnected);
-    stream.addEventListener('notification', refresh);
+    stream.addEventListener("open", connected);
+    stream.addEventListener("ready", connected);
+    stream.addEventListener("error", disconnected);
+    stream.addEventListener("notification", refresh);
     return () => {
       notificationStreamConnected.current = false;
-      stream.removeEventListener('open', connected);
-      stream.removeEventListener('ready', connected);
-      stream.removeEventListener('error', disconnected);
-      stream.removeEventListener('notification', refresh);
+      stream.removeEventListener("open", connected);
+      stream.removeEventListener("ready", connected);
+      stream.removeEventListener("error", disconnected);
+      stream.removeEventListener("notification", refresh);
       stream.close();
     };
   }, [user, reloadNotifications, reloadTaskCounts]);
@@ -202,7 +256,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   // live alert too. Being told twice about something already dealt with is the
   // other half of "the popup is noisy".
   const markRead = useCallback(async (id: string) => {
-    setNotifications((list) => list.map((n) => (n.id === id ? { ...n, read: true } : n)));
+    setNotifications((list) =>
+      list.map((n) => (n.id === id ? { ...n, read: true } : n)),
+    );
     setIncomingNotifications((queue) => queue.filter((n) => n.id !== id));
     setUnread((count) => Math.max(0, count - 1));
     await api.post(`/notifications/${id}/read`).catch(() => {});
@@ -212,12 +268,13 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     setNotifications((list) => list.map((n) => ({ ...n, read: true })));
     setIncomingNotifications([]);
     setUnread(0);
-    await api.post('/notifications/read-all').catch(() => {});
+    await api.post("/notifications/read-all").catch(() => {});
   }, []);
 
   const dismissIncomingNotification = useCallback(
-    (id: string) => setIncomingNotifications((queue) => queue.filter((n) => n.id !== id)),
-    []
+    (id: string) =>
+      setIncomingNotifications((queue) => queue.filter((n) => n.id !== id)),
+    [],
   );
 
   const value = useMemo<WorkspaceState>(
@@ -256,14 +313,19 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       markRead,
       markAllRead,
       dismissIncomingNotification,
-    ]
+    ],
   );
 
-  return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
+  return (
+    <WorkspaceContext.Provider value={value}>
+      {children}
+    </WorkspaceContext.Provider>
+  );
 }
 
 export function useWorkspace() {
   const context = useContext(WorkspaceContext);
-  if (!context) throw new Error('useWorkspace must be used inside <WorkspaceProvider>');
+  if (!context)
+    throw new Error("useWorkspace must be used inside <WorkspaceProvider>");
   return context;
 }

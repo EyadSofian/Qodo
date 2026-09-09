@@ -2,64 +2,76 @@ import type {
   InsightsNotificationContext,
   LocalisedText,
   Notification,
-} from './types';
+} from "./types";
 
-export const INSIGHTS_NEXUS_MESSAGE = 'engosoft:nexus-notification:v1' as const;
+export const INSIGHTS_NEXUS_MESSAGE = "engosoft:nexus-notification:v1" as const;
+export const INSIGHTS_NEXUS_READY =
+  "engosoft:nexus-notification-ready:v1" as const;
+export const INSIGHTS_NEXUS_ACK = "engosoft:nexus-notification-ack:v1" as const;
 
-const KEYS = new Set<InsightsNotificationContext['key']>([
-  'leads',
-  'website',
-  'campaigns',
-  'employees',
+const KEYS = new Set<InsightsNotificationContext["key"]>([
+  "leads",
+  "website",
+  "campaigns",
+  "employees",
 ]);
 
-const TYPES: Record<InsightsNotificationContext['key'], string> = {
-  leads: 'insights.leads_summary',
-  website: 'insights.website_summary',
-  campaigns: 'insights.campaigns_review',
-  employees: 'insights.employees_attention',
+const TYPES: Record<InsightsNotificationContext["key"], string> = {
+  leads: "insights.leads_summary",
+  website: "insights.website_summary",
+  campaigns: "insights.campaigns_review",
+  employees: "insights.employees_attention",
 };
 
 const LEGACY_NOTICE_KEYS = new Set(Object.keys(TYPES));
 
 const date = (value: unknown): value is string =>
-  typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+  typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
 
 const clean = (value: string, max: number) =>
-  value.replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
+  value
+    .replace(/[\u0000-\u001f\u007f]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, max);
 
-const localise = (value: LocalisedText | string, lang: 'ar' | 'en') =>
-  typeof value === 'string' ? value : (value[lang] ?? value.ar);
+const localise = (value: LocalisedText | string, lang: "ar" | "en") =>
+  typeof value === "string" ? value : (value[lang] ?? value.ar);
 
-function isInsightsContext(value: unknown): value is InsightsNotificationContext {
-  if (!value || typeof value !== 'object') return false;
+function isInsightsContext(
+  value: unknown,
+): value is InsightsNotificationContext {
+  if (!value || typeof value !== "object") return false;
   const context = value as Partial<InsightsNotificationContext>;
   return (
-    context.kind === 'insights_brief' &&
-    typeof context.key === 'string' &&
-    KEYS.has(context.key as InsightsNotificationContext['key']) &&
+    context.kind === "insights_brief" &&
+    typeof context.key === "string" &&
+    KEYS.has(context.key as InsightsNotificationContext["key"]) &&
     date(context.from) &&
     date(context.to) &&
     context.from <= context.to &&
-    typeof context.slot === 'string' &&
+    typeof context.slot === "string" &&
     /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(context.slot)
   );
 }
 
-function contextOf(notification: Notification): InsightsNotificationContext | null {
+function contextOf(
+  notification: Notification,
+): InsightsNotificationContext | null {
   if (isInsightsContext(notification.context)) return notification.context;
 
   // Notifications created before the context field was deployed still carry
   // the slot and topic in their deterministic id. Recover that exact metadata
   // so today's already-delivered cards open correctly; do not parse dates from
   // the human body.
-  const match = /^insights-management-brief:(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}):(leads|website|campaigns|employees):.+$/.exec(
-    notification.id
-  );
+  const match =
+    /^insights-management-brief:(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}):(leads|website|campaigns|employees):.+$/.exec(
+      notification.id,
+    );
   if (!match) return null;
-  const key = match[2] as InsightsNotificationContext['key'];
+  const key = match[2] as InsightsNotificationContext["key"];
   return {
-    kind: 'insights_brief',
+    kind: "insights_brief",
     key,
     from: `${match[1].slice(0, 8)}01`,
     to: match[1].slice(0, 10),
@@ -70,13 +82,15 @@ function contextOf(notification: Notification): InsightsNotificationContext | nu
 /** Resolve both new opaque-id links and the four legacy `?notice=key` links. */
 export function findInsightsNotification(
   notifications: Notification[],
-  noticeToken: string | null
+  noticeToken: string | null,
 ): Notification | undefined {
   if (!noticeToken) return undefined;
-  const exact = notifications.find((notification) => notification.id === noticeToken);
+  const exact = notifications.find(
+    (notification) => notification.id === noticeToken,
+  );
   if (exact) return exact;
   if (!LEGACY_NOTICE_KEYS.has(noticeToken)) return undefined;
-  const type = TYPES[noticeToken as InsightsNotificationContext['key']];
+  const type = TYPES[noticeToken as InsightsNotificationContext["key"]];
   return notifications.find((notification) => notification.type === type);
 }
 
@@ -87,7 +101,7 @@ export function findInsightsNotification(
  */
 export function buildInsightsNexusHandoff(
   notification: Notification | undefined,
-  lang: 'ar' | 'en',
+  lang: "ar" | "en",
 ) {
   if (!notification) return null;
   const context = contextOf(notification);
@@ -97,7 +111,7 @@ export function buildInsightsNexusHandoff(
     type: INSIGHTS_NEXUS_MESSAGE,
     notification: {
       id: clean(notification.id, 180),
-      source: 'qodo' as const,
+      source: "qodo" as const,
       key: context.key,
       type: notification.type,
       title: clean(localise(notification.title, lang), 140),
