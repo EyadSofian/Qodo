@@ -24,6 +24,7 @@ import {
   canStart,
   canSubmit,
   isDoer,
+  stageWriteVerdict,
 } from '../shared/workflow.js';
 import { DEPARTMENTS, getStage, getSubteam, stageType } from '../shared/departments.js';
 import {
@@ -738,8 +739,8 @@ test('assign → deliver → review → approve, including the rework loop', asy
     cookie: managerCookie,
     body: { stage: 'rework' },
   });
-  assert.equal(draggedOutOfReview.status, 409);
-  assert.equal(draggedOutOfReview.data.error, 'review_required');
+  assert.equal(draggedOutOfReview.status, 400);
+  assert.equal(draggedOutOfReview.data.error, 'review_note_required');
 
   // The employee cannot review their own submission into approval.
   const selfApprove = await request(`/tasks/${task.id}/review`, {
@@ -2009,4 +2010,134 @@ test('HR recurrence settings require HR scope, a real owner and a calendar rule'
   const plan = saved.data.plans.find((item) => item.templateId === 'hr-001');
   assert.equal(plan.enabled, true);
   assert.deepEqual(plan.assigneeIds, [recruiter.user.id]);
+});
+
+test('every move into Rework collects feedback, counts the return and deducts the final score', async () => {
+  const admin = (await request('/auth/me', { cookie: adminCookie })).data.user;
+  for (const source of ['pending', 'working', 'review', 'approved', 'done']) {
+    const { task } = await create('/tasks', {
+      title: `Rework regression from ${source}`,
+      department: 'marketing', subteam: 'creative', stage: 'pending',
+      assigneeIds: [creative.user.id],
+    }, managerCookie);
+    await request(`/tasks/${task.id}/assignment`, {
+      method: 'POST', cookie: creativeCookie, body: { action: 'accept' },
+    });
+    let current = task;
+    if (source !== 'pending') {
+      const moved = await request(`/tasks/${task.id}`, {
+        method: 'PATCH', cookie: adminCookie,
+        body: { stage: source, ...(source === 'done' ? { score: 100 } : {}) },
+      });
+      assert.equal(moved.status, 200, JSON.stringify(moved.data));
+      current = moved.data.task;
+    }
+    assert.equal(stageWriteVerdict(admin, current, 'marketing', 'rework'), 'rework');
+    const refused = await request(`/tasks/${task.id}`, {
+      method: 'PATCH', cookie: adminCookie, body: { stage: 'rework', note: '  ' },
+    });
+    assert.equal(refused.status, 400, source);
+    assert.equal(refused.data.error, 'review_note_required');
+    const unchanged = await request(`/tasks/${task.id}`, { cookie: adminCookie });
+    assert.equal(unchanged.data.task.stage, source);
+    assert.equal(unchanged.data.task.reworkCount, 0);
+
+    const denied = await request(`/tasks/${task.id}`, {
+      method: 'PATCH', cookie: creativeCookie, body: { stage: 'rework', note: 'self return' },
+    });
+    assert.equal(denied.status, 403);
+    const note = `راجع المقاس واللوجو — ${source}`;
+    // Both ordinary review authority and move_any must take the same return path.
+    const returned = await request(`/tasks/${task.id}`, {
+      method: 'PATCH', cookie: source === 'working' ? managerCookie : adminCookie,
+      body: { stage: 'rework', note },
+    });
+    assert.equal(returned.status, 200, JSON.stringify(returned.data));
+    assert.equal(returned.data.task.reviewDecision, 'changes_requested');
+    assert.equal(returned.data.task.reviewNote, note);
+    assert.ok(returned.data.task.reviewedAt);
+    assert.equal(returned.data.task.reworkCount, 1);
+    assert.equal(returned.data.task.scorePenaltyPercent, 10);
+    assert.equal(returned.data.task.score, null);
+    assert.equal(returned.data.task.scoreBeforeReworkPenalty, null);
+    assert.equal(returned.data.task.completedAt, null);
+    assert.equal(returned.data.task.publishedAt, null);
+    assert.equal(returned.data.task.submittedAt, null);
+    const own = await request(`/tasks/${task.id}`, { cookie: creativeCookie });
+    assert.equal(own.data.task.reviewNote, note);
+    const counts = await request('/tasks/counts', { cookie: creativeCookie });
+    assert.equal(counts.data.reworkTasks.find((item) => item.id === task.id)?.scorePenaltyPercent, 10);
+    const notices = await request('/notifications', { cookie: creativeCookie });
+    assert.ok(notices.data.notifications.some((item) => item.type === 'task.returned' && item.link === `/tasks?task=${task.id}`));
+    await request('/tasks/rework/acknowledge', { method: 'POST', cookie: creativeCookie });
+
+    const reordered = await request(`/tasks/${task.id}`, {
+      method: 'PATCH', cookie: adminCookie, body: { stage: 'rework', order: 42 },
+    });
+    assert.equal(reordered.status, 200);
+    assert.equal(reordered.data.task.reworkCount, 1);
+    assert.equal(reordered.data.task.reviewNote, note);
+
+    const submitted = await request(`/tasks/${task.id}/submit`, {
+      method: 'POST', cookie: creativeCookie, body: { note: 'التعديل اتعمل' },
+    });
+    assert.equal(submitted.status, 200, JSON.stringify(submitted.data));
+    const again = await request(`/tasks/${task.id}`, {
+      method: 'PATCH', cookie: adminCookie, body: { stage: 'rework', note: 'محتاجين تعديل تاني' },
+    });
+    assert.equal(again.status, 200);
+    assert.equal(again.data.task.reworkCount, 2);
+    const countsAgain = await request('/tasks/counts', { cookie: creativeCookie });
+    assert.equal(countsAgain.data.reworkTasks.find((item) => item.id === task.id)?.scorePenaltyPercent, 20);
+
+    // Verify the penalty at each real completion gate, as well as forced close.
+    if (source === 'done') {
+      await request(`/tasks/${task.id}/submit`, {
+        method: 'POST', cookie: creativeCookie, body: { note: 'التسليم النهائي' },
+      });
+      await request(`/tasks/${task.id}/review`, {
+        method: 'POST', cookie: managerCookie, body: { decision: 'approved', note: 'تمام' },
+      });
+    }
+    const closed = await request(`/tasks/${task.id}${source === 'done' ? '/publish' : ''}`, {
+      method: source === 'done' ? 'POST' : 'PATCH', cookie: adminCookie,
+      body: { stage: 'done', score: 100 },
+    });
+    assert.equal(closed.status, 200, JSON.stringify(closed.data));
+    assert.equal(closed.data.task.scoreBeforeReworkPenalty, 100);
+    assert.equal(closed.data.task.score, 80);
+  }
+});
+
+test('reopening approved or signed-off work requires a new visible reason and applies rework', async () => {
+  for (const stage of ['approved', 'done']) {
+    const { task } = await create('/tasks', {
+      title: `Reopen regression ${stage}`,
+      department: 'marketing', subteam: 'creative', stage: 'pending',
+      assigneeIds: [creative.user.id],
+    }, managerCookie);
+    await request(`/tasks/${task.id}`, {
+      method: 'PATCH', cookie: adminCookie,
+      body: { stage, ...(stage === 'done' ? { score: 90 } : {}) },
+    });
+    const missing = await request(`/tasks/${task.id}/reopen`, { method: 'POST', cookie: adminCookie });
+    assert.equal(missing.status, 400);
+    assert.equal(missing.data.error, 'review_note_required');
+    const reopened = await request(`/tasks/${task.id}/reopen`, {
+      method: 'POST', cookie: adminCookie, body: { note: 'المطلوب تعديل العنوان قبل النشر' },
+    });
+    assert.equal(reopened.status, 200, JSON.stringify(reopened.data));
+    assert.equal(reopened.data.task.reviewDecision, 'changes_requested');
+    assert.equal(reopened.data.task.reviewNote, 'المطلوب تعديل العنوان قبل النشر');
+    assert.equal(reopened.data.task.reworkCount, 1);
+    assert.equal(reopened.data.task.scorePenaltyPercent, 10);
+    assert.equal(reopened.data.task.score, null);
+    const own = await request(`/tasks/${task.id}`, { cookie: creativeCookie });
+    assert.equal(own.data.task.reviewNote, reopened.data.task.reviewNote);
+    const closed = await request(`/tasks/${task.id}`, {
+      method: 'PATCH', cookie: adminCookie, body: { stage: 'done', score: 90 },
+    });
+    assert.equal(closed.status, 200);
+    assert.equal(closed.data.task.score, 81);
+  }
 });

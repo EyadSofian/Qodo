@@ -48,6 +48,7 @@ import {
   SCORE_BANDS,
   assignmentFor,
   canMoveAnyStage,
+  stageWriteVerdict,
   canPublish,
   canResetToPending,
   canReopen,
@@ -550,12 +551,14 @@ export function ReviewVerdict({ task }: { task: Task }) {
               {t('flow.scoredBy', { name: scorer.name })}
             </span>
           )}
-          {task.scorePenaltyPercent > 0 && (
-            <span className="chip bg-status-badBg text-status-bad">
-              {t('flow.reworkPenaltyApplied', { percent: task.scorePenaltyPercent })}
-            </span>
-          )}
         </div>
+      )}
+      {task.scorePenaltyPercent > 0 && (
+        <p className="mt-2 text-[12px] font-semibold text-status-bad">
+          {t(task.score == null ? 'reworkGuard.penalty' : 'flow.reworkPenaltyApplied', {
+            percent: task.scorePenaltyPercent,
+          })}
+        </p>
       )}
       {task.reviewNote && (
         <p className="mt-2 whitespace-pre-wrap break-words text-[13px] leading-relaxed text-ink">
@@ -644,6 +647,45 @@ export function ResetToPendingAction({
   );
 }
 
+function ReworkReasonGate({ task, busy, onCancel, onReturn }: {
+  task: Task;
+  busy: boolean;
+  onCancel: () => void;
+  onReturn: (note: string) => Promise<void>;
+}) {
+  const { t } = useI18n();
+  const [note, setNote] = useState('');
+  return (
+    <div className="grid gap-3.5 rounded-xl border border-accent-500/25 bg-status-warnBg/40 p-3.5">
+      <h4 className="text-[13px] font-bold text-ink">{t('flow.sendToRework')}</h4>
+      <Field label={t('flow.reviewNote')}>
+        <textarea
+          autoFocus
+          required
+          maxLength={2000}
+          disabled={busy}
+          className="field min-h-[90px] resize-y"
+          value={note}
+          onChange={(event) => setNote(event.target.value)}
+          placeholder={t('flow.returnReasonRequired')}
+        />
+      </Field>
+      <p className="text-[12px] font-semibold text-status-bad">
+        {t('flow.returnPenaltyPreview', { percent: Math.min(100, ((task.reworkCount ?? 0) + 1) * 10) })}
+      </p>
+      <div className="flex flex-wrap justify-end gap-2">
+        <button type="button" onClick={onCancel} disabled={busy} className="btn-quiet btn-sm">
+          {t('common.cancel')}
+        </button>
+        <button type="button" onClick={() => onReturn(note.trim())} disabled={busy || !note.trim()} className="btn-primary btn-sm gap-1.5">
+          {busy ? <Spinner size={15} /> : <RotateCcw size={15} />}
+          {t('flow.requestChanges')}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /**
  * The override, for whoever carries `tasks.move_any`: put this task in any
  * stage of its board.
@@ -683,7 +725,9 @@ export function MoveStageAction({
     setTarget(initialStage && initialStage !== task.stage ? initialStage : '');
   }, [initialStage, task.id, task.stage]);
 
-  if (!canMoveAnyStage(user)) return null;
+  const canOverride = canMoveAnyStage(user);
+  const returning = Boolean(target) && stageWriteVerdict(user, task, department, target) === 'rework';
+  if (!canOverride && !returning) return null;
 
   const stages = getStages(department);
   // Landing in a done column closes the task, and nothing closes a task without
@@ -691,18 +735,23 @@ export function MoveStageAction({
   // than inventing a quieter way to finish something.
   const closing = Boolean(target) && stageType(department, target) === 'done';
 
-  const move = async () => {
+  const move = async (note?: string) => {
     if (!target || target === task.stage) return;
     const stage = stageLabel(department, target, lang);
     setBusy(true);
     try {
-      const { task: updated } = await api.patch<{ task: Task }>(`/tasks/${task.id}`, {
-        stage: target,
-        ...(closing ? { score } : {}),
-      });
+      const { task: updated } = returning && canReview(user, task)
+        ? await api.post<{ task: Task }>(`/tasks/${task.id}/review`, { decision: 'changes_requested', note })
+        : returning && canReopen(user, task)
+          ? await api.post<{ task: Task }>(`/tasks/${task.id}/reopen`, { note })
+          : await api.patch<{ task: Task }>(`/tasks/${task.id}`, {
+            stage: target,
+            ...(closing ? { score } : {}),
+            ...(returning ? { note } : {}),
+          });
       onChanged(updated);
       setTarget('');
-      push(t(closing ? 'flow.movedClosed.toast' : 'flow.moved.toast', { stage }));
+      push(t(returning ? 'flow.returned.toast' : closing ? 'flow.movedClosed.toast' : 'flow.moved.toast', { stage }));
     } catch (err) {
       push(errorMessage(err, lang), 'bad');
     } finally {
@@ -712,7 +761,7 @@ export function MoveStageAction({
 
   return (
     <div className="mt-3 grid gap-3 border-t border-surface-line pt-3">
-      <div className="flex flex-wrap items-center gap-2">
+      {canOverride && <div className="flex flex-wrap items-center gap-2">
         <span className="flex items-center gap-1.5 text-[12px] font-semibold text-ink-muted">
           <Shuffle size={14} />
           {t('flow.moveStage')}
@@ -733,16 +782,20 @@ export function MoveStageAction({
               </option>
             ))}
         </select>
-        {target && !closing && (
-          <button type="button" onClick={move} disabled={busy} className="btn-ghost btn-sm gap-1.5">
+        {target && !closing && !returning && (
+          <button type="button" onClick={() => move()} disabled={busy} className="btn-ghost btn-sm gap-1.5">
             {busy ? <Spinner size={15} /> : <Shuffle size={15} />}
             {t('flow.moveStageGo')}
           </button>
         )}
-      </div>
+      </div>}
 
-      {target && !closing && (
+      {target && !closing && !returning && (
         <p className="text-[12px] leading-relaxed text-ink-muted">{t('flow.moveStageHint')}</p>
+      )}
+
+      {returning && (
+        <ReworkReasonGate task={task} busy={busy} onCancel={() => setTarget('')} onReturn={move} />
       )}
 
       {closing && (
@@ -761,7 +814,7 @@ export function MoveStageAction({
           />
           <button
             type="button"
-            onClick={move}
+            onClick={() => move()}
             disabled={busy}
             className="btn-primary btn-sm ms-auto gap-1.5"
           >
@@ -791,7 +844,7 @@ export function WorkflowActions({
   const { user } = useAuth();
   const { t, lang } = useI18n();
   const { push } = useToast();
-  const [open, setOpen] = useState<'submit' | 'review' | null>(null);
+  const [open, setOpen] = useState<'submit' | 'review' | 'reopen' | null>(null);
   const [busy, setBusy] = useState(false);
 
   const state = stateOf(task);
@@ -828,9 +881,11 @@ export function WorkflowActions({
     if (await act('start')) push(t('flow.started.toast'));
   };
 
-  const reopen = async () => {
-    if (!window.confirm(t('flow.confirmReopen', { title: task.title }))) return;
-    if (await act('reopen')) push(t('flow.reopened.toast'));
+  const reopen = async (note: string) => {
+    if (await act('reopen', { note })) {
+      setOpen(null);
+      push(t('flow.reopened.toast'));
+    }
   };
 
   const publish = async (score: number) => {
@@ -848,14 +903,16 @@ export function WorkflowActions({
         {canPublish(user, task) && (
           <FinalApprovalGate task={task} busy={busy} onApprove={publish} />
         )}
-        <div className="flex flex-wrap items-center gap-2">
+        {open === 'reopen' && canReopen(user, task) ? (
+          <ReworkReasonGate task={task} busy={busy} onCancel={() => setOpen(null)} onReturn={reopen} />
+        ) : <div className="flex flex-wrap items-center gap-2">
           {canReopen(user, task) && (
-            <button type="button" onClick={reopen} disabled={busy} className="btn-ghost btn-sm gap-1.5">
+            <button type="button" onClick={() => setOpen('reopen')} disabled={busy} className="btn-ghost btn-sm gap-1.5">
               <RotateCcw size={15} />
               {t('flow.sendToRework')}
             </button>
           )}
-        </div>
+        </div>}
       </div>
     );
   }
@@ -864,12 +921,14 @@ export function WorkflowActions({
     return (
       <div className="grid gap-3">
         <ReviewVerdict task={task} />
-        {canReopen(user, task) && (
-          <button type="button" onClick={reopen} disabled={busy} className="btn-ghost btn-sm w-fit gap-1.5">
+        {canReopen(user, task) && (open === 'reopen' ? (
+          <ReworkReasonGate task={task} busy={busy} onCancel={() => setOpen(null)} onReturn={reopen} />
+        ) : (
+          <button type="button" onClick={() => setOpen('reopen')} disabled={busy} className="btn-ghost btn-sm w-fit gap-1.5">
             <RotateCcw size={15} />
             {t('flow.reopen')}
           </button>
-        )}
+        ))}
       </div>
     );
   }
@@ -904,11 +963,16 @@ export function WorkflowActions({
   }
 
   if ((state === 'assigned' || state === 'working') && ownsAssignment && awaitingAssignment) {
-    return <AssignmentGate task={task} busy={busy} onAct={act} />;
+    return <div className="grid gap-3">
+      {task.reviewDecision === 'changes_requested' && <ReviewVerdict task={task} />}
+      <AssignmentGate task={task} busy={busy} onAct={act} />
+    </div>;
   }
 
   if ((state === 'assigned' || state === 'working') && awaitingAssignment) {
     return (
+      <div className="grid gap-3">
+      {task.reviewDecision === 'changes_requested' && <ReviewVerdict task={task} />}
       <div className="grid gap-1.5 rounded-xl border border-status-warn/30 bg-status-warnBg px-3.5 py-3">
         <p className="flex items-center gap-2 text-[12.5px] font-bold text-accent-600">
           <Clock3 size={16} />
@@ -917,6 +981,7 @@ export function WorkflowActions({
         {myAssignment?.note && (
           <p className="text-[12px] leading-relaxed text-ink-muted">{myAssignment.note}</p>
         )}
+      </div>
       </div>
     );
   }

@@ -494,6 +494,9 @@ router.patch('/:id', async (req, res) => {
   // from here on; what it still owes is a record that matches the column it just
   // landed in, which is what `overrideStamps` supplies.
   const overridden = verdict === 'override';
+  const returning = verdict === 'rework';
+  const returnNote = String(req.body?.note || '').trim().slice(0, 2000);
+  if (returning && !returnNote) return res.status(400).json({ error: 'review_note_required' });
   const previousState = taskState(task);
   const nextState = taskState({ ...task, department: nextDepartment, stage: nextStage });
   // Forcing a task into a done column closes it, and nothing closes a task
@@ -526,6 +529,10 @@ router.patch('/:id', async (req, res) => {
         score,
       })
     );
+  }
+
+  if (returning) {
+    Object.assign(patch, reworkStamps(task, req.user.id, returnNote));
   }
 
   const assignmentChanged =
@@ -606,7 +613,9 @@ router.patch('/:id', async (req, res) => {
   // edit, and the people who owe the work find out the same way they find out
   // about every other transition — from the task, not from the board changing
   // under them.
-  if (overridden) {
+  if (returning) {
+    await notifyReturn(updated, req.user.id);
+  } else if (overridden) {
     // A close is news of a different order from a move, so it says the number:
     // being scored 88 is the part of "your task was moved to منجزة" that the
     // person who did the work actually needs.
@@ -624,10 +633,12 @@ router.patch('/:id', async (req, res) => {
 
   await logActivity({
     actorId: req.user.id,
-    action: overridden ? 'task.stage_override' : 'task.update',
+    action: returning ? 'task.return' : overridden ? 'task.stage_override' : 'task.update',
     subject: 'task',
     subjectId: task.id,
-    meta: overridden
+    meta: returning
+      ? { title: task.title, reworkCount: updated.reworkCount, scorePenaltyPercent: updated.scorePenaltyPercent }
+      : overridden
       ? {
           title: task.title,
           fromStage: task.stage,
@@ -1040,30 +1051,12 @@ router.post('/:id/review', async (req, res) => {
   if (decision !== 'changes_requested') return res.status(400).json({ error: 'invalid_decision' });
   if (!note) return res.status(400).json({ error: 'review_note_required' });
 
-  const reworkCount = (task.reworkCount ?? 0) + 1;
-  const scorePenaltyPercent = reworkPenaltyPercent(reworkCount);
   const updated = await store.update('tasks', task.id, {
     stage: stageForReturn(department, task.stage),
-    reviewDecision: 'changes_requested',
-    reviewedAt: stamp,
-    reviewedBy: req.user.id,
-    reviewNote: note,
-    reworkCount,
-    scorePenaltyPercent,
-    submittedAt: null,
-    completedAt: null,
-    progress: Math.min(task.progress ?? 90, 90),
+    ...reworkStamps(task, req.user.id, note, stamp),
   });
-
-  await notifyPartners(task, req.user.id, {
-    type: 'task.returned',
-    title: { ar: 'مهمة رجعت إليك للتعديل', en: 'A task was sent back to you' },
-    body: {
-      ar: `${updated.title} — ${note.slice(0, 80)}. خصم التقييم التراكمي الآن ${scorePenaltyPercent}%.`,
-      en: `${updated.title} — ${note.slice(0, 80)}. The cumulative score deduction is now ${scorePenaltyPercent}%.`,
-    },
-    link: `/tasks?task=${updated.id}`,
-  });
+  const { reworkCount, scorePenaltyPercent } = updated;
+  await notifyReturn(updated, req.user.id);
   await logActivity({
     actorId: req.user.id,
     action: 'task.return',
@@ -1225,38 +1218,15 @@ router.post('/:id/reopen', async (req, res) => {
   if (!task) return;
   if (!canReopen(req.user, task)) return res.status(403).json({ error: 'forbidden' });
 
+  const note = String(req.body?.note || '').trim().slice(0, 2000);
+  if (!note) return res.status(400).json({ error: 'review_note_required' });
   const department = task.department ?? DEFAULT_DEPARTMENT;
-  const reworkCount = (task.reworkCount ?? 0) + 1;
-  const scorePenaltyPercent = reworkPenaltyPercent(reworkCount);
   const updated = await store.update('tasks', task.id, {
-    // Work coming back from an approval is rework, and a board that named that
-    // column should get it — landing in "قيد العمل" made a manager's correction
-    // indistinguishable from work somebody simply picked up.
     stage: stageForReturn(department, task.stage),
-    reviewDecision: null,
-    completedAt: null,
-    // The publication is undone with the approval it belonged to; leaving the
-    // stamp behind would claim a post is live that is back on somebody's desk.
-    publishedAt: null,
-    publishedBy: null,
-    reworkCount,
-    score: null,
-    scoreBeforeReworkPenalty: null,
-    scorePenaltyPercent,
-    scoreBy: null,
-    scoredAt: null,
-    progress: Math.min(task.progress ?? 90, 90),
+    ...reworkStamps(task, req.user.id, note),
   });
-
-  await notifyPartners(task, req.user.id, {
-    type: 'task.returned',
-    title: { ar: 'أُعيد فتح مهمة', en: 'A task was reopened' },
-    body: {
-      ar: `${updated.title} — خصم التقييم التراكمي الآن ${scorePenaltyPercent}%.`,
-      en: `${updated.title} — the cumulative score deduction is now ${scorePenaltyPercent}%.`,
-    },
-    link: `/tasks?task=${updated.id}`,
-  });
+  const { reworkCount, scorePenaltyPercent } = updated;
+  await notifyReturn(updated, req.user.id);
   await logActivity({
     actorId: req.user.id,
     action: 'task.reopen',
@@ -1926,6 +1896,41 @@ function datesInPeriod(from, to, workingDays) {
     if (workingDays.includes(date.getUTCDay())) dates.push(date.toISOString().slice(0, 10));
   }
   return dates;
+}
+
+/** Every return carries the same feedback, lifecycle reset and cumulative deduction. */
+function reworkStamps(task, actorId, note, stamp = new Date().toISOString()) {
+  const reworkCount = (task.reworkCount ?? 0) + 1;
+  return {
+    reviewDecision: 'changes_requested',
+    reviewedAt: stamp,
+    reviewedBy: actorId,
+    reviewNote: note,
+    reworkCount,
+    scorePenaltyPercent: reworkPenaltyPercent(reworkCount),
+    submittedAt: null,
+    completedAt: null,
+    publishedAt: null,
+    publishedBy: null,
+    score: null,
+    scoreBeforeReworkPenalty: null,
+    scoreBy: null,
+    scoredAt: null,
+    progress: Math.min(task.progress ?? 90, 90),
+  };
+}
+
+async function notifyReturn(task, actorId) {
+  const note = task.reviewNote.slice(0, 80);
+  await notifyPartners(task, actorId, {
+    type: 'task.returned',
+    title: { ar: 'مهمة رجعت إليك للتعديل', en: 'A task was sent back to you' },
+    body: {
+      ar: `${task.title} — ${note}. خصم التقييم التراكمي الآن ${task.scorePenaltyPercent}%.`,
+      en: `${task.title} — ${note}. The cumulative score deduction is now ${task.scorePenaltyPercent}%.`,
+    },
+    link: `/tasks?task=${task.id}`,
+  });
 }
 
 /** Ten percent of the submitted score per return, capped before it can go negative. */

@@ -669,6 +669,10 @@ const CORE_STRINGS = {
     ar: 'شامل خصم Rework بنسبة {percent}٪',
     en: 'Includes a {percent}% Rework deduction',
   },
+  'flow.returnPenaltyPreview': {
+    ar: 'بعد الإرجاع ده، إجمالي خصم إعادة العمل هيبقى {percent}٪ من التقييم النهائي.',
+    en: 'After this return, the cumulative deduction will be {percent}% of the final score.',
+  },
   'flow.reviewNote': { ar: 'ملاحظات للموظف', en: 'Notes for the assignee' },
   'flow.reviewNotePlaceholder': { ar: 'ما كان جيداً، وما يمكن تحسينه…', en: 'What was good, what could be better…' },
   'flow.returnReason': { ar: 'سبب الإرجاع', en: 'Why it is going back' },

@@ -412,6 +412,10 @@ export function Tasks() {
         push(t('flow.managerOnly'), 'bad');
         return;
       }
+      if (verdict === 'rework') {
+        openTask(task, targetStage);
+        return;
+      }
       if (verdict === 'reset') {
         if (!window.confirm(t('flow.confirmResetPending', { title: task.title }))) return;
         const siblings = column.filter((item) => item.id !== taskId);

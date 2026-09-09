@@ -369,6 +369,7 @@ export function canScore(user) {
  *   'review'     this is a review/final-approval gate, so use its explicit action
  *   'reopen'     approved work must be reopened explicitly before it can move
  *   'reset'      a permitted Marketing desk is returning it all the way to Pending
+ *   'rework'     a return needs a reason and a new deduction, even with move_any
  *   'override'   a gate stands here, and `tasks.move_any` is walking through it
  *   'forbidden'  the caller cannot make this transition
  *
@@ -388,6 +389,14 @@ export function canScore(user) {
  * ordinary move and allowed it.
  */
 export function stageWriteVerdict(user, task, nextDepartment, nextStage) {
+  if (
+    nextStage === 'rework' && stageType(nextDepartment, nextStage) === 'active' &&
+    (task.stage !== nextStage || departmentOfTask(task) !== nextDepartment)
+  ) {
+    return canMoveAnyStage(user) || canReview(user, task) || canReopen(user, task) ||
+      (taskState(task) === 'working' && canReviewWork(user))
+      ? 'rework' : 'forbidden';
+  }
   const verdict = gatedStageVerdict(user, task, nextDepartment, nextStage);
   // The override is read last, and never in place of `reset`: a Marketing desk
   // that holds both keys keeps its dedicated action, which clears the delivery,

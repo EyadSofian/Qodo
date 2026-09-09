@@ -77,8 +77,8 @@ interface Props {
   prefill?: TaskDraft | null;
   /**
    * Column an existing card was dragged onto when the move needs something the
-   * board cannot collect — the score a forced close owes. Aims the override
-   * panel below; ignored by everyone who cannot use it.
+   * board cannot collect — a return reason or a final score. Aims the matching
+   * panel below, subject to the caller's permission.
    */
   moveTo?: string | null;
   onSaved: (task: Task) => void;
