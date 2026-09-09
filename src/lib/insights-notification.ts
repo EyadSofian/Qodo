@@ -23,6 +23,12 @@ const TYPES: Record<InsightsNotificationContext["key"], string> = {
   employees: "insights.employees_attention",
 };
 
+const BRIEF_TYPES = new Set(Object.values(TYPES));
+
+export function isInsightsBriefType(type: string): boolean {
+  return BRIEF_TYPES.has(type);
+}
+
 const LEGACY_NOTICE_KEYS = new Set(Object.keys(TYPES));
 
 const date = (value: unknown): value is string =>

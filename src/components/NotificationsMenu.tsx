@@ -12,7 +12,11 @@ import { useWorkspace } from "../lib/workspace";
 import { cx, timeAgo } from "../lib/utils";
 import { Avatar } from "./ui";
 import type { LocalisedText } from "../lib/types";
-import { notificationPresentation } from "./notification-presentation";
+import {
+  arabicNotificationTime,
+  notificationPresentation,
+} from "./notification-presentation";
+import { isInsightsBriefType } from "../lib/insights-notification";
 
 export function NotificationsMenu({
   open,
@@ -63,11 +67,12 @@ export function NotificationsMenu({
 
   // Titles written before this release are plain strings; newer ones are
   // {ar, en} because the reader's language isn't known at write time.
-  const titleOf = (title: LocalisedText | string) =>
-    typeof title === "string" ? title : (title[lang] ?? title.ar);
-  const bodyOf = (body: LocalisedText | string) =>
-    typeof body === "string" ? body : (body[lang] ?? body.ar);
-  const OpenIcon = dir === "rtl" ? ArrowLeft : ArrowRight;
+  const textOf = (value: LocalisedText | string, forceArabic: boolean) =>
+    typeof value === "string"
+      ? value
+      : forceArabic
+        ? value.ar
+        : (value[lang] ?? value.ar);
 
   return (
     <>
@@ -145,7 +150,12 @@ export function NotificationsMenu({
             const actor = item.actorId ? actors[item.actorId] : undefined;
             const presentation = notificationPresentation(item.type);
             const Icon = presentation.icon;
-            const typeLabel = presentation.label[lang] ?? presentation.label.ar;
+            const forceArabic = isInsightsBriefType(item.type);
+            const typeLabel = forceArabic
+              ? presentation.label.ar
+              : (presentation.label[lang] ?? presentation.label.ar);
+            const ItemOpenIcon =
+              forceArabic || dir === "rtl" ? ArrowLeft : ArrowRight;
             return (
               <button
                 key={item.id}
@@ -159,6 +169,7 @@ export function NotificationsMenu({
                   "group relative flex w-full items-start gap-3 overflow-hidden rounded-2xl border border-surface-line bg-white p-3 text-start shadow-[0_1px_2px_rgba(11,37,69,0.04)] transition hover:-translate-y-px hover:border-brand-200 hover:shadow-card focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500",
                   !item.read && presentation.unread,
                 )}
+                dir={forceArabic ? "rtl" : dir}
               >
                 <span
                   className={cx(
@@ -175,10 +186,14 @@ export function NotificationsMenu({
                       aria-hidden
                       className="h-1 w-1 rounded-full bg-ink-faint/70"
                     />
-                    <time>{timeAgo(item.createdAt, t)}</time>
+                    <time>
+                      {forceArabic
+                        ? arabicNotificationTime(item.createdAt)
+                        : timeAgo(item.createdAt, t)}
+                    </time>
                   </span>
                   <span className="mt-0.5 block text-[13px] font-extrabold leading-5 text-ink">
-                    {titleOf(item.title)}
+                    {textOf(item.title, forceArabic)}
                   </span>
                   <span
                     className={cx(
@@ -187,9 +202,9 @@ export function NotificationsMenu({
                         ? "line-clamp-2 whitespace-pre-line leading-5"
                         : "line-clamp-2 leading-5",
                     )}
-                    dir="auto"
+                    dir={forceArabic ? "rtl" : "auto"}
                   >
-                    {bodyOf(item.body)}
+                    {textOf(item.body, forceArabic)}
                   </span>
                   {actor && (
                     <span className="mt-1.5 flex items-center gap-1.5 text-[10.5px] text-ink-faint">
@@ -203,7 +218,7 @@ export function NotificationsMenu({
                   )}
                 </span>
                 <span className="flex h-10 w-5 shrink-0 items-center justify-center text-ink-faint transition group-hover:text-brand-600">
-                  <OpenIcon size={15} aria-hidden />
+                  <ItemOpenIcon size={15} aria-hidden />
                 </span>
                 {!item.read && (
                   <span

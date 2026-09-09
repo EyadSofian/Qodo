@@ -56,6 +56,7 @@ interface WorkspaceState {
   markRead: (id: string) => Promise<void>;
   markAllRead: () => Promise<void>;
   dismissIncomingNotification: (id: string) => void;
+  showIncomingNotification: (notification: Notification) => void;
   appById: (id: string | null | undefined) => WorkspaceApp | undefined;
   userById: (id: string | null | undefined) => DirectoryUser | undefined;
 }
@@ -106,21 +107,29 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       return notificationReloadPromise.current;
 
     const request = (async () => {
+      const requestedNoticeId = new URLSearchParams(window.location.search).get(
+        "notice",
+      );
+      const noticeQuery = requestedNoticeId
+        ? `?notice=${encodeURIComponent(requestedNoticeId)}`
+        : "";
       const data = await api.get<{
         notifications: Notification[];
         actors: ActorMap;
         unread: number;
-      }>("/notifications");
+      }>(`/notifications${noticeQuery}`);
       const currentIds = new Set(
         data.notifications.map((notification) => notification.id),
       );
       const firstLoad = seenNotificationIds.current === null;
       const fresh = data.notifications.filter((notification) => {
+        if (firstLoad && notification.id === requestedNoticeId) return true;
         if (notification.read) return false;
         if (!firstLoad)
           return !seenNotificationIds.current?.has(notification.id);
-        // If the page was opened by a push that just arrived, still show its
-        // card. Older unread items stay in the bell without replaying a backlog.
+        // A push deep-link names exactly one card and must show it even when
+        // the phone was opened later. Without a named link, replay only very
+        // recent items so an old unread backlog never takes over the screen.
         const created = Date.parse(notification.createdAt);
         return (
           Number.isFinite(created) && Date.now() - created <= RECENT_ON_LOAD_MS
@@ -277,6 +286,20 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  // The test endpoint returns the row it has already persisted. Queueing that
+  // exact row makes the test honest and immediate even if its SSE signal races
+  // the initial notification request. The next ordinary reload remains the
+  // durable source of truth for the bell and unread count.
+  const showIncomingNotification = useCallback((notification: Notification) => {
+    seenNotificationIds.current?.add(notification.id);
+    setIncomingNotifications((queue) =>
+      [
+        notification,
+        ...queue.filter((item) => item.id !== notification.id),
+      ].slice(0, MAX_LIVE_ALERTS),
+    );
+  }, []);
+
   const value = useMemo<WorkspaceState>(
     () => ({
       apps,
@@ -294,6 +317,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       markRead,
       markAllRead,
       dismissIncomingNotification,
+      showIncomingNotification,
       appById: (id) => (id ? apps.find((a) => a.id === id) : undefined),
       userById: (id) => (id ? directory.find((u) => u.id === id) : undefined),
     }),
@@ -313,6 +337,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       markRead,
       markAllRead,
       dismissIncomingNotification,
+      showIncomingNotification,
     ],
   );
 

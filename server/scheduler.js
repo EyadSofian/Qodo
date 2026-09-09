@@ -1,10 +1,14 @@
 /**
  * Scheduled notifications.
  *
- * Two jobs, both optional and both silent when push is not configured:
+ * User-facing jobs are deliberately bounded:
  *
  *   • a once-a-day digest of how much work each department is carrying
- *   • a watcher that pings when the Insights Hub publishes a new sync
+ *   • four management summaries at each configured brief time
+ *
+ * The Insights watcher still records the last successful sync, but does not
+ * create a notification for every data refresh. Those frequent records filled
+ * the bell with near-identical cards and hid the two useful scheduled briefs.
  *
  * Deliberately an in-process timer rather than a cron dependency — the same
  * choice the Insights Hub itself made. The cost is that a restart could re-fire
@@ -37,7 +41,6 @@ import { remindDueSoon } from "./management.js";
 import { remindUpcomingEvents } from "./calendar.js";
 import { generateHROperations } from "./hrOperations.js";
 import {
-  briefSlotLabel,
   buildInsightsBriefNotifications,
   fetchInsightsBriefData,
   latestDueBriefSlot,
@@ -296,63 +299,6 @@ async function checkInsights() {
   const previous = await getSetting("insights.lastSyncedAt");
   if (previous === syncedAt) return;
   await setSetting("insights.lastSyncedAt", syncedAt);
-
-  // First run just records the current state — otherwise every fresh
-  // deployment would announce a "new" sync that nobody actually caused.
-  if (!previous) return;
-
-  const t = data.totals ?? {};
-  const money = (value) =>
-    typeof value === "number"
-      ? Math.round(value).toLocaleString("en-US")
-      : null;
-  const spend = money(t.spend);
-  // `accountingRevenue` is what the books say was invoiced; `revenue` is its
-  // alias on this dashboard. Falling back keeps the line honest if they diverge.
-  const revenue = money(t.accountingRevenue ?? t.revenue);
-  const invoices =
-    typeof t.invoicedOrders === "number" ? t.invoicedOrders : null;
-
-  const monthName = new Intl.DateTimeFormat("ar-EG", {
-    timeZone: TIMEZONE,
-    month: "long",
-  }).format(new Date());
-
-  const arabic = [
-    spend ? `إنفاق ${spend}` : null,
-    revenue ? `إيراد ${revenue}` : null,
-    invoices ? `${invoices} فاتورة` : null,
-  ].filter(Boolean);
-  const english = [
-    spend ? `Spend ${spend}` : null,
-    revenue ? `revenue ${revenue}` : null,
-    invoices ? `${invoices} invoices` : null,
-  ].filter(Boolean);
-
-  // Only people who can open the app should hear about it.
-  const users = await find("users", isActiveUser);
-  for (const user of users) {
-    const allowed =
-      user.role === "admin" ||
-      !Array.isArray(user.appIds) ||
-      user.appIds.includes("insights");
-    if (!allowed || !can(user, PERMISSIONS.APPS_VIEW)) continue;
-
-    await notifyAndRecord(user.id, {
-      type: "insights.updated",
-      title: {
-        ar: `التسويق والمبيعات — ${monthName}`,
-        en: "Insights Hub has new data",
-      },
-      body: {
-        ar: arabic.length ? arabic.join(" · ") : "تم تحديث البيانات.",
-        en: english.length
-          ? english.join(" · ")
-          : "The data has been refreshed.",
-      },
-      link: "/app/insights",
-    });
-  }
 }
 
 /** Current calendar month through today, for the two scheduled summaries. */
@@ -394,16 +340,17 @@ async function sendManagementInsightsBrief(slot, bounds) {
       deliveries.push(
         notifyAndRecordOnce(notificationId, user.id, {
           type: summary.type,
-          // Keep these operational summaries Arabic on every device. Source
-          // campaign and employee names remain untouched identifiers.
-          title: {
-            ar: `${summary.title.ar} — ${briefSlotLabel(slot)}`,
-            en: `${summary.title.en} — ${briefSlotLabel(slot)}`,
-          },
-          body: summary.body,
+          // These are Arabic management updates, even if Qodo or the phone is
+          // currently set to English. Proper names remain untouched source
+          // identifiers, but labels never jump between two languages.
+          title: summary.title.ar,
+          body: summary.body.ar,
           // Keep only the opaque notification id in the URL. The signed-in
           // workspace resolves the stored context and hands it to the Hub.
           link: `/app/insights?notice=${encodeURIComponent(notificationId)}`,
+          // A phone tap first lands on Qodo's compact live card. The explicit
+          // action on that card then opens the right Hub report and Nexus.
+          pushLink: `/?notice=${encodeURIComponent(notificationId)}`,
           tag: `insights-${summary.key}-${slot}`,
           context: {
             kind: "insights_brief",
@@ -447,7 +394,7 @@ async function notifyAndRecord(userId, { type, title, body, link }) {
 async function notifyAndRecordOnce(
   id,
   userId,
-  { type, title, body, link, tag, context },
+  { type, title, body, link, pushLink, tag, context },
 ) {
   const user = await findOne("users", (candidate) => candidate.id === userId);
   const result = await createIfAbsent("notifications", {
@@ -463,7 +410,7 @@ async function notifyAndRecordOnce(
   });
   if (!result.created) return null;
   publishNotification(userId, result.doc.id);
-  await notifyUser(userId, { title, body, link, tag });
+  await notifyUser(userId, { title, body, link: pushLink ?? link, tag });
   return result.doc;
 }
 

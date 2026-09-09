@@ -7,7 +7,11 @@ import { useWorkspace } from "../lib/workspace";
 import { cx, timeAgo } from "../lib/utils";
 import type { LocalisedText, Notification } from "../lib/types";
 import { Avatar } from "./ui";
-import { notificationPresentation } from "./notification-presentation";
+import {
+  arabicNotificationTime,
+  notificationPresentation,
+} from "./notification-presentation";
+import { isInsightsBriefType } from "../lib/insights-notification";
 
 /**
  * Live, actionable alerts. The bell remains the durable inbox; this is the
@@ -115,21 +119,45 @@ export function IncomingNotificationPopup() {
           actor={
             notification.actorId ? actors[notification.actorId] : undefined
           }
-          title={localise(notification.title)}
-          body={localise(notification.body)}
-          kindLabel={localise(
-            notificationPresentation(notification.type).label,
-          )}
-          timeLabel={timeAgo(notification.createdAt, t)}
+          title={
+            isInsightsBriefType(notification.type) &&
+            typeof notification.title !== "string"
+              ? notification.title.ar
+              : localise(notification.title)
+          }
+          body={
+            isInsightsBriefType(notification.type) &&
+            typeof notification.body !== "string"
+              ? notification.body.ar
+              : localise(notification.body)
+          }
+          kindLabel={
+            isInsightsBriefType(notification.type)
+              ? notificationPresentation(notification.type).label.ar
+              : localise(notificationPresentation(notification.type).label)
+          }
+          timeLabel={
+            isInsightsBriefType(notification.type)
+              ? arabicNotificationTime(notification.createdAt)
+              : timeAgo(notification.createdAt, t)
+          }
           openLabel={
-            notification.type.startsWith("insights.")
-              ? lang === "ar"
-                ? "فتح التقرير في Nexus"
-                : "Open report in Nexus"
-              : t("shell.openNotification")
+            isInsightsBriefType(notification.type)
+              ? "فتح التقرير وتحليله"
+              : notification.type.startsWith("insights.")
+                ? lang === "ar"
+                  ? "فتح لوحة التحليلات"
+                  : "Open Insights Hub"
+                : t("shell.openNotification")
           }
           closeLabel={t("common.close")}
-          lang={lang === "en" ? "en" : "ar"}
+          lang={
+            isInsightsBriefType(notification.type)
+              ? "ar"
+              : lang === "en"
+                ? "en"
+                : "ar"
+          }
           onOpen={() => open(notification)}
           onDismiss={() => dismissIncomingNotification(notification.id)}
         />
@@ -169,7 +197,7 @@ function LiveAlert({
   // it honest about how long is actually left rather than drifting ahead of
   // the timer that does the dismissing.
   const [cycle, setCycle] = useState(0);
-  const autoDismissMs = notification.type.startsWith("insights.")
+  const autoDismissMs = isInsightsBriefType(notification.type)
     ? 12_000
     : AUTO_DISMISS_MS;
 

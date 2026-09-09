@@ -61,7 +61,7 @@ export function Shell({ children }: { children: ReactNode }) {
 
   const { user, signOut, can } = useAuth();
   const { t, lang, setLang } = useI18n();
-  const { unread, taskCounts } = useWorkspace();
+  const { unread, taskCounts, reloadNotifications, showIncomingNotification } = useWorkspace();
   const { push: toast } = useToast();
   const openApp = useOpenApp();
   const location = useLocation();
@@ -127,7 +127,9 @@ export function Shell({ children }: { children: ReactNode }) {
   const testPush = async () => {
     setMenuOpen(false);
     try {
-      await sendTestPush(lang);
+      const notification = await sendTestPush(lang);
+      if (notification) showIncomingNotification(notification);
+      await reloadNotifications();
       toast(t('push.testSent'));
     } catch {
       toast(t('push.testFailed'), 'bad');

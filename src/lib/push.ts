@@ -1,4 +1,5 @@
 import { api } from './api';
+import type { Notification as WorkspaceNotification } from './types';
 
 /**
  * Web push subscription.
@@ -85,7 +86,10 @@ export async function enablePush(): Promise<PushState> {
 
 /** Proves the whole chain works — subscription, VAPID keys, and delivery. */
 export async function sendTestPush(lang: 'ar' | 'en') {
-  await api.post('/push/test', { lang });
+  const result = await api.post<{
+    notification: WorkspaceNotification | null;
+  }>('/push/test', { lang });
+  return result.notification;
 }
 
 export async function disablePush(): Promise<PushState> {

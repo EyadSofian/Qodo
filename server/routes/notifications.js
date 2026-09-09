@@ -35,9 +35,18 @@ router.get('/stream', (req, res) => {
 });
 
 router.get('/', async (req, res) => {
-  const mine = (await find('notifications', (n) => n.userId === req.user.id))
-    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
-    .slice(0, 50);
+  const allMine = (
+    await find(
+      'notifications',
+      (n) => n.userId === req.user.id && n.type !== 'insights.updated'
+    )
+  ).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  const mine = allMine.slice(0, 50);
+  const requestedId = typeof req.query.notice === 'string' ? req.query.notice.slice(0, 220) : '';
+  const requested = requestedId ? allMine.find((notification) => notification.id === requestedId) : null;
+  if (requested && !mine.some((notification) => notification.id === requested.id)) {
+    mine.push(requested);
+  }
 
   // Names for the "who did this" line, resolved once per response.
   const actorIds = [...new Set(mine.map((n) => n.actorId).filter(Boolean))];

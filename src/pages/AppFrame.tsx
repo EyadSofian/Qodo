@@ -61,6 +61,29 @@ export function AppFrame() {
     () => buildInsightsNexusHandoff(notice, lang === "en" ? "en" : "ar"),
     [notice, lang],
   );
+  const frameUrl = useMemo(() => {
+    if (!app) return "";
+    if (app.id !== "insights" || !handoff) return app.url;
+
+    // Nexus is the detail layer, but the iframe itself must also land on the
+    // right report. If Botpress is slow or unavailable, the user still sees
+    // the requested data instead of the Hub overview.
+    const paths = {
+      leads: "/leads",
+      website: "/website",
+      campaigns: "/campaigns",
+      employees: "/teams",
+    } as const;
+    try {
+      const url = new URL(app.url);
+      url.pathname = paths[handoff.notification.key];
+      url.searchParams.set("from", handoff.notification.from);
+      url.searchParams.set("to", handoff.notification.to);
+      return url.toString();
+    } catch {
+      return app.url;
+    }
+  }, [app, handoff]);
 
   useEffect(() => {
     if (!appId) return;
@@ -226,7 +249,7 @@ export function AppFrame() {
           </button>
         )}
         <a
-          href={app.url}
+          href={frameUrl || app.url}
           target="_blank"
           rel="noopener noreferrer"
           className="btn-ghost btn-sm !min-h-9 gap-1.5"
@@ -249,7 +272,7 @@ export function AppFrame() {
               {t("frame.blockedBody")}
             </p>
             <a
-              href={app.url}
+              href={frameUrl || app.url}
               target="_blank"
               rel="noopener noreferrer"
               className="btn-primary mt-5 inline-flex"
@@ -278,7 +301,7 @@ export function AppFrame() {
                 </p>
                 {slow && (
                   <a
-                    href={app.url}
+                    href={frameUrl || app.url}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="btn-ghost btn-sm mt-1"
@@ -293,7 +316,7 @@ export function AppFrame() {
           <iframe
             key={nonce}
             ref={iframeRef}
-            src={app.url}
+            src={frameUrl || app.url}
             title={appName}
             onLoad={() => {
               setFrameLoaded(true);

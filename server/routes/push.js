@@ -71,7 +71,11 @@ router.post("/test", async (req, res) => {
     link: "/settings",
   });
 
-  res.json({ ok: true, notificationId: notification?.id ?? null });
+  res.json({
+    ok: true,
+    notificationId: notification?.id ?? null,
+    notification,
+  });
 });
 
 router.post("/unsubscribe", async (req, res) => {

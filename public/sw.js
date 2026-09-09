@@ -27,13 +27,17 @@ self.addEventListener('push', (event) => {
     typeof payload.body === 'string'
       ? payload.body
       : payload.body?.[lang] || payload.body?.ar || '';
+  // Management summaries are intentionally Arabic even on a phone whose
+  // system language is English. Detect the actual copy so punctuation and
+  // numbers render right-to-left instead of inheriting the device direction.
+  const displayLang = /[\u0600-\u06ff]/.test(`${title} ${body}`) ? 'ar' : lang;
 
   event.waitUntil(
     self.registration.showNotification(title, {
       body,
       icon: '/logo.png',
-      dir: lang === 'en' ? 'ltr' : 'rtl',
-      lang,
+      dir: displayLang === 'en' ? 'ltr' : 'rtl',
+      lang: displayLang,
       data: { link: payload.link || '/' },
       // Same tag replaces an unread notification rather than stacking a second
       // copy of the same task on the lock screen.
@@ -51,17 +55,27 @@ self.addEventListener('notificationclick', (event) => {
 
   event.waitUntil(
     (async () => {
+      // Resolve before navigating. Some WebKit versions treat a relative URL
+      // handed to WindowClient.navigate as the app root, which made a useful
+      // notification look as if it only opened Qodo from the beginning.
+      let targetUrl = self.location.origin + '/';
+      try {
+        const candidate = new URL(link, self.location.origin);
+        if (candidate.origin === self.location.origin) targetUrl = candidate.href;
+      } catch {
+        // An invalid or external destination fails closed to the workspace.
+      }
       const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
       // Focus an open workspace tab and navigate it, rather than opening a
       // third copy of the app every time a notification is tapped.
       for (const client of clients) {
         if (new URL(client.url).origin === self.location.origin) {
           await client.focus();
-          if ('navigate' in client) await client.navigate(link);
+          if ('navigate' in client) await client.navigate(targetUrl);
           return;
         }
       }
-      await self.clients.openWindow(link);
+      await self.clients.openWindow(targetUrl);
     })()
   );
 });

@@ -110,25 +110,35 @@ const PRESENTATIONS: Record<string, NotificationPresentation> = {
     icon: AlarmClock,
     label: { ar: "تأخير", en: "Overdue" },
   },
+  "insights.updated": {
+    ...info,
+    icon: Globe2,
+    label: { ar: "تحديث بيانات", en: "Data refresh" },
+  },
+  "insights.management_brief": {
+    ...info,
+    icon: ClipboardList,
+    label: { ar: "ملخص إداري سابق", en: "Previous management brief" },
+  },
   "insights.leads_summary": {
     ...info,
     icon: UsersRound,
-    label: { ar: "ملخص العملاء المحتملين", en: "Lead summary" },
+    label: { ar: "العملاء والمتابعة", en: "Lead summary" },
   },
   "insights.website_summary": {
     ...ok,
     icon: Globe2,
-    label: { ar: "تقرير الموقع", en: "Website report" },
+    label: { ar: "الموقع والمبيعات", en: "Website report" },
   },
   "insights.campaigns_review": {
     ...warning,
     icon: Megaphone,
-    label: { ar: "مراجعة الحملات", en: "Campaign review" },
+    label: { ar: "الحملات", en: "Campaign review" },
   },
   "insights.employees_attention": {
     ...danger,
     icon: TrendingDown,
-    label: { ar: "متابعة أداء الفريق", en: "Team performance" },
+    label: { ar: "أداء الفريق", en: "Team performance" },
   },
 };
 
@@ -136,4 +146,17 @@ export function notificationPresentation(
   type: string,
 ): NotificationPresentation {
   return PRESENTATIONS[type] ?? info;
+}
+
+/** Arabic management cards keep one readable date style in either UI locale. */
+export function arabicNotificationTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("ar-EG", {
+    day: "numeric",
+    month: "short",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "Africa/Cairo",
+  }).format(date);
 }
