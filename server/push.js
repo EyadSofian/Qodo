@@ -80,7 +80,7 @@ export async function hasSubscription(userId) {
  * Titles arrive as `{ar, en}` because the recipient's language isn't known when
  * the task is written. Both are sent; the service worker picks per device.
  */
-export async function notifyUser(userId, { title, body, link }) {
+export async function notifyUser(userId, { title, body, link, tag }) {
   if (!configured || !webpush) return;
 
   const subscriptions = await find('pushSubscriptions', (s) => s.userId === userId);
@@ -90,6 +90,7 @@ export async function notifyUser(userId, { title, body, link }) {
     title: typeof title === 'string' ? { ar: title, en: title } : title,
     body: typeof body === 'string' ? { ar: body, en: body } : body,
     link: link ?? '/',
+    tag: tag ?? null,
   });
 
   const store = await getStore();

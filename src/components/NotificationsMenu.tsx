@@ -128,8 +128,8 @@ export function NotificationsMenu({
                   <span
                     className={cx(
                       'mt-0.5 block text-[12.5px] text-ink-muted',
-                      item.type === 'insights.management_brief'
-                        ? 'line-clamp-6 whitespace-pre-line leading-relaxed'
+                      item.type.startsWith('insights.')
+                        ? 'line-clamp-3 whitespace-pre-line leading-relaxed'
                         : 'truncate'
                     )}
                   >

@@ -34,7 +34,7 @@ import { remindUpcomingEvents } from './calendar.js';
 import { generateHROperations } from './hrOperations.js';
 import {
   briefSlotLabel,
-  buildInsightsBrief,
+  buildInsightsBriefNotifications,
   fetchInsightsBriefData,
   latestDueBriefSlot,
   parseBriefTimes,
@@ -325,20 +325,19 @@ function monthToDateBounds(day) {
 }
 
 /**
- * The 11:30 and 19:00 summaries are deliberately one notification each. Five
- * simultaneous cards train people to dismiss the whole stack; one readable
- * management brief still keeps every requested number together.
+ * The 11:30 and 19:00 summaries are short, separate notifications. Each topic
+ * can be understood from its title without opening one oversized mixed card.
  */
 async function sendManagementInsightsBrief(slot, bounds) {
   const app = await findOne('apps', (candidate) => candidate.id === 'insights');
   if (!app?.url || app.enabled === false) return null;
 
   const data = await fetchInsightsBriefData(app.url, bounds);
-  const brief = buildInsightsBrief({ ...data, ...bounds });
-  if (!brief) return null;
+  const summaries = buildInsightsBriefNotifications({ ...data, ...bounds });
+  if (summaries.length === 0) return null;
 
   const users = await find('users', isActiveUser);
-  let sent = 0;
+  const deliveries = [];
   for (const user of users) {
     const allowed =
       user.role === 'admin' || !Array.isArray(user.appIds) || user.appIds.includes('insights');
@@ -348,22 +347,31 @@ async function sendManagementInsightsBrief(slot, bounds) {
       continue;
     }
 
-    const result = await notifyAndRecordOnce(
-      `insights-management-brief:${slot}:${user.id}`,
-      user.id,
-      {
-        type: 'insights.management_brief',
-        title: {
-          ar: `ملخص الإدارة — ${briefSlotLabel(slot)}`,
-          en: `Management summary — ${briefSlotLabel(slot)}`,
-        },
-        body: brief.body,
-        link: '/app/insights',
-      }
-    );
-    if (result) sent += 1;
+    for (const summary of summaries) {
+      deliveries.push(
+        notifyAndRecordOnce(
+          `insights-management-brief:${slot}:${summary.key}:${user.id}`,
+          user.id,
+          {
+            type: summary.type,
+            // Keep these operational summaries Arabic on every device. Source
+            // campaign and employee names remain untouched identifiers.
+            title: {
+              ar: `${summary.title} — ${briefSlotLabel(slot)}`,
+              en: `${summary.title} — ${briefSlotLabel(slot)}`,
+            },
+            body: summary.body,
+            // The query keeps each card distinct even on a phone whose older
+            // service worker still derives its replacement tag from the link.
+            link: `/app/insights?notice=${summary.key}`,
+            tag: `insights-${summary.key}-${slot}`,
+          }
+        )
+      );
+    }
   }
-  return sent;
+  const results = await Promise.all(deliveries);
+  return results.filter(Boolean).length;
 }
 
 /* ── shared delivery ─────────────────────────────────────────────── */
@@ -391,7 +399,7 @@ async function notifyAndRecord(userId, { type, title, body, link }) {
 }
 
 /** Same delivery with a deterministic id, safe across two Railway instances. */
-async function notifyAndRecordOnce(id, userId, { type, title, body, link }) {
+async function notifyAndRecordOnce(id, userId, { type, title, body, link, tag }) {
   const text = typeof body === 'string' ? body : (body.ar ?? '');
   const user = await findOne('users', (candidate) => candidate.id === userId);
   const result = await createIfAbsent('notifications', {
@@ -406,7 +414,7 @@ async function notifyAndRecordOnce(id, userId, { type, title, body, link }) {
   });
   if (!result.created) return null;
   publishNotification(userId, result.doc.id);
-  await notifyUser(userId, { title, body: text, link });
+  await notifyUser(userId, { title, body: text, link, tag });
   return result.doc;
 }
 

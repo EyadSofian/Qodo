@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   briefSlotLabel,
-  buildInsightsBrief,
+  buildInsightsBriefNotifications,
   latestDueBriefSlot,
   parseBriefTimes,
 } from './insightsBrief.js';
@@ -45,8 +45,8 @@ test('the latest due slot catches up once without repeating', () => {
   assert.equal(briefSlotLabel('2026-09-09T19:00'), '7:00 م');
 });
 
-test('brief uses paid invoices over all leads and includes every requested signal', () => {
-  const result = buildInsightsBrief({
+test('each requested signal becomes a short standalone Arabic notification', () => {
+  const result = buildInsightsBriefNotifications({
     from: '2026-09-01',
     to: '2026-09-09',
     overview: {
@@ -74,19 +74,21 @@ test('brief uses paid invoices over all leads and includes every requested signa
     },
   });
 
-  assert.ok(result);
-  assert.match(result.body, /814 إجمالي/);
-  assert.match(result.body, /74 Lost/);
-  assert.match(result.body, /712 متابعة/);
-  assert.match(result.body, /58 فاتورة مدفوعة ÷ 814 ليد = 7\.1%/);
-  assert.match(result.body, /الموقع:.*\$1,927 مبيعات.*عائد 3\.9×/);
-  assert.match(result.body, /تحتاج مراجعة: 2 حملة/);
-  assert.match(result.body, /Employee A \(10\/100\).*Employee B \(20\/100\).*Employee C \(30\/100\)/);
-  assert.doesNotMatch(result.body, /Missing data/);
+  assert.deepEqual(result.map((item) => item.key), ['leads', 'website', 'campaigns', 'employees']);
+  assert.match(result[0].body, /814 عميلًا محتملًا/);
+  assert.match(result[0].body, /74 صفقة خاسرة/);
+  assert.match(result[0].body, /712 حالة متابعة/);
+  assert.match(result[0].body, /58 فاتورة مدفوعة/);
+  assert.match(result[0].body, /معدل التحويل الفعلي 7\.1%/);
+  assert.doesNotMatch(result[0].body, /÷|Lost|ROAS/);
+  assert.match(result[1].body, /1,927 دولار مبيعات.*كل دولار إنفاق حقق 3\.9 دولار مبيعات/);
+  assert.match(result[2].body, /2 حملة تحتاج تدخلًا/);
+  assert.match(result[3].body, /Employee A: 10 من 100.*Employee B: 20 من 100.*Employee C: 30 من 100/);
+  assert.doesNotMatch(result[3].body, /Missing data/);
 });
 
 test('missing API sections are omitted rather than rendered as zero', () => {
-  const result = buildInsightsBrief({
+  const result = buildInsightsBriefNotifications({
     from: '2026-09-01',
     to: '2026-09-09',
     overview: { totals: { totalLeads: 12, orders: 3 } },
@@ -94,9 +96,11 @@ test('missing API sections are omitted rather than rendered as zero', () => {
     teams: null,
     website: null,
   });
-  assert.match(result.body, /12 إجمالي/);
-  assert.match(result.body, /3 فاتورة مدفوعة/);
-  assert.doesNotMatch(result.body, /Lost|متابعة|الموقع|أقل 3/);
+  assert.equal(result.length, 1);
+  assert.equal(result[0].key, 'leads');
+  assert.match(result[0].body, /12 عميلًا محتملًا/);
+  assert.match(result[0].body, /3 فاتورة مدفوعة/);
+  assert.doesNotMatch(result[0].body, /صفقة خاسرة|متابعة|الموقع|أقل 3/);
 });
 
 function measuredAgent(name, overall, dataCoverage) {

@@ -12,7 +12,10 @@ import {
   UserPlus,
   X,
   AlarmClock,
-  BarChart3,
+  Globe2,
+  Megaphone,
+  TrendingDown,
+  UsersRound,
 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
@@ -61,7 +64,10 @@ const TONES: Record<
   'user.join_request': { icon: UserPlus, ring: 'bg-brand-400', bar: 'bg-brand-300', chip: 'text-brand-100' },
   'management.due_soon': { icon: Clock, ring: 'bg-status-warn', bar: 'bg-status-warn', chip: 'text-amber-100' },
   'task.overdue': { icon: AlarmClock, ring: 'bg-status-bad', bar: 'bg-status-bad', chip: 'text-red-100' },
-  'insights.management_brief': { icon: BarChart3, ring: 'bg-accent-500', bar: 'bg-accent-400', chip: 'text-accent-100' },
+  'insights.leads_summary': { icon: UsersRound, ring: 'bg-brand-400', bar: 'bg-brand-300', chip: 'text-brand-100' },
+  'insights.website_summary': { icon: Globe2, ring: 'bg-status-ok', bar: 'bg-status-ok', chip: 'text-green-100' },
+  'insights.campaigns_review': { icon: Megaphone, ring: 'bg-status-warn', bar: 'bg-status-warn', chip: 'text-amber-100' },
+  'insights.employees_attention': { icon: TrendingDown, ring: 'bg-status-bad', bar: 'bg-status-bad', chip: 'text-red-100' },
 };
 
 const DEFAULT_TONE = {
@@ -123,8 +129,8 @@ export function IncomingNotificationPopup() {
   // second alert landing while the first is up still gets its own chime.
   const soundedRef = useRef<Set<string>>(new Set());
   useEffect(() => {
-    for (const notification of incomingNotifications) {
-      if (soundedRef.current.has(notification.id)) continue;
+    const notification = incomingNotifications[0];
+    if (notification && !soundedRef.current.has(notification.id)) {
       soundedRef.current.add(notification.id);
       chime();
     }
@@ -144,7 +150,7 @@ export function IncomingNotificationPopup() {
 
   return createPortal(
     <div className="pointer-events-none fixed inset-x-3 top-[calc(var(--sat)+var(--topbar-h)+0.75rem)] z-[70] flex flex-col items-center gap-2 sm:items-end sm:px-2">
-      {incomingNotifications.map((notification) => (
+      {incomingNotifications.slice(0, 1).map((notification) => (
         <LiveAlert
           key={notification.id}
           notification={notification}
@@ -186,7 +192,7 @@ function LiveAlert({
   // it honest about how long is actually left rather than drifting ahead of
   // the timer that does the dismissing.
   const [cycle, setCycle] = useState(0);
-  const autoDismissMs = notification.type === 'insights.management_brief' ? 20_000 : AUTO_DISMISS_MS;
+  const autoDismissMs = notification.type.startsWith('insights.') ? 12_000 : AUTO_DISMISS_MS;
 
   // The timer is the authority, not the animation: `prefers-reduced-motion`
   // can stop the bar from ever finishing, and an alert that then never leaves

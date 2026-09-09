@@ -48,7 +48,7 @@ export function briefSlotLabel(slot) {
 
 const integer = (value) => Math.round(value).toLocaleString('en-US');
 const decimal = (value) => value.toLocaleString('en-US', { maximumFractionDigits: 1 });
-const money = (value) => `$${Math.round(value).toLocaleString('en-US')}`;
+const money = (value) => `${Math.round(value).toLocaleString('en-US')} دولار`;
 
 function rangeLabel(from, to) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) return '';
@@ -87,10 +87,11 @@ function lowestMeasuredEmployees(teams) {
 }
 
 /**
- * Build one compact management notification from the four dashboard views.
- * Missing endpoints omit their own line; they never turn into a misleading 0.
+ * Build short, separate management notifications from the dashboard views.
+ * Missing endpoints omit their own notification; they never turn into a
+ * misleading zero or make the remaining summaries disappear.
  */
-export function buildInsightsBrief({ overview, leads, teams, website, from, to }) {
+export function buildInsightsBriefNotifications({ overview, leads, teams, website, from, to }) {
   const totals = leads?.totals ?? overview?.totals ?? {};
   const totalLeads = finite(totals.totalLeads);
   const paidInvoices = finite(totals.orders);
@@ -109,32 +110,40 @@ export function buildInsightsBrief({ overview, leads, teams, website, from, to }
       ? websiteSales / websiteSpend
       : null;
 
-  const lines = [];
   const period = rangeLabel(from, to);
-  if (period) lines.push(`الفترة: ${period}.`);
+  const periodPrefix = period ? `خلال ${period}: ` : '';
+  const notifications = [];
 
   const leadParts = [
-    totalLeads !== null ? `${integer(totalLeads)} إجمالي` : null,
-    lost !== null ? `${integer(lost)} Lost` : null,
-    followUp !== null ? `${integer(followUp)} متابعة` : null,
+    totalLeads !== null ? `${integer(totalLeads)} عميلًا محتملًا` : null,
+    paidInvoices !== null ? `${integer(paidInvoices)} فاتورة مدفوعة` : null,
+    conversion !== null ? `معدل التحويل الفعلي ${decimal(conversion)}%` : null,
+    followUp !== null ? `${integer(followUp)} حالة متابعة` : null,
+    lost !== null ? `${integer(lost)} صفقة خاسرة` : null,
   ].filter(Boolean);
-  if (leadParts.length) lines.push(`مؤشر الليدز: ${leadParts.join(' · ')}.`);
-
-  if (paidInvoices !== null && conversion !== null) {
-    lines.push(
-      `التحويل الحقيقي: ${integer(paidInvoices)} فاتورة مدفوعة ÷ ${integer(totalLeads)} ليد = ${decimal(conversion)}%.`
-    );
-  } else if (paidInvoices !== null) {
-    lines.push(`الفواتير المدفوعة: ${integer(paidInvoices)}.`);
+  if (leadParts.length) {
+    notifications.push({
+      key: 'leads',
+      type: 'insights.leads_summary',
+      title: 'ملخص العملاء المحتملين',
+      body: `${periodPrefix}${leadParts.join('، ')}.`,
+    });
   }
 
   if (websiteSales !== null || websiteSpend !== null) {
     const parts = [
       websiteSales !== null ? `${money(websiteSales)} مبيعات` : null,
       websiteSpend !== null ? `${money(websiteSpend)} إنفاق` : null,
-      websiteRoas !== null ? `عائد ${decimal(websiteRoas)}×` : null,
     ].filter(Boolean);
-    lines.push(`الموقع: ${parts.join(' · ')}.`);
+    const result = websiteRoas !== null
+      ? ` كل دولار إنفاق حقق ${decimal(websiteRoas)} دولار مبيعات.`
+      : '';
+    notifications.push({
+      key: 'website',
+      type: 'insights.website_summary',
+      title: 'عائد الموقع الإلكتروني',
+      body: `${periodPrefix}${parts.join('، ')}.${result}`,
+    });
   }
 
   if (campaigns.length) {
@@ -142,22 +151,30 @@ export function buildInsightsBrief({ overview, leads, teams, website, from, to }
       .slice(0, 2)
       .map((campaign) => shortLabel(campaign.campaignName ?? campaign.name))
       .join('، ');
-    lines.push(`تحتاج مراجعة: ${integer(campaigns.length)} حملة — ${names}.`);
+    notifications.push({
+      key: 'campaigns',
+      type: 'insights.campaigns_review',
+      title: 'حملات تحتاج مراجعة',
+      body: `${periodPrefix}${integer(campaigns.length)} حملة تحتاج تدخلًا. أبرزها: ${names}.`,
+    });
   }
 
   if (employees.length) {
     const names = employees
       .map(
         (employee) =>
-          `${shortLabel(employee.displayName ?? employee.name, 25)} (${decimal(employee.performanceScore.overall)}/100)`
+          `${shortLabel(employee.displayName ?? employee.name, 25)}: ${decimal(employee.performanceScore.overall)} من 100`
       )
       .join('، ');
-    lines.push(`أقل 3 موظفين حسب مؤشر الأداء العام: ${names}.`);
+    notifications.push({
+      key: 'employees',
+      type: 'insights.employees_attention',
+      title: 'أداء الموظفين يحتاج متابعة',
+      body: `${periodPrefix}أقل 3 نتائج حسب مؤشر الأداء العام: ${names}.`,
+    });
   }
 
-  // A period on its own is not a useful notification.
-  if (lines.length <= (period ? 1 : 0)) return null;
-  return { body: lines.join('\n'), campaigns: campaigns.length, employees: employees.length };
+  return notifications;
 }
 
 async function fetchJson(url, fetchFn) {

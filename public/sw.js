@@ -37,7 +37,9 @@ self.addEventListener('push', (event) => {
       data: { link: payload.link || '/' },
       // Same tag replaces an unread notification rather than stacking a second
       // copy of the same task on the lock screen.
-      tag: payload.link || 'engosoft',
+      // Separate scheduled summaries share one destination but must remain
+      // separate cards. Ordinary events keep their link-based replacement.
+      tag: payload.tag || payload.link || 'engosoft',
       renotify: true,
     })
   );

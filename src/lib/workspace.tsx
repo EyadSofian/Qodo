@@ -62,7 +62,7 @@ const TASK_COUNTS_POLL_MS = 60_000;
 const NOTIFICATIONS_FALLBACK_POLL_MS = 5 * 60_000;
 
 /** How many live alerts may stack before the rest wait in the bell alone. */
-const MAX_LIVE_ALERTS = 3;
+const MAX_LIVE_ALERTS = 8;
 
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
