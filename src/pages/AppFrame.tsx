@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, ExternalLink, Github, RotateCw, ShieldAlert } from 'lucide-react';
 import { api } from '../lib/api';
 import { useI18n } from '../lib/i18n';
@@ -7,6 +7,10 @@ import { useWorkspace } from '../lib/workspace';
 import { ModuleIcon } from '../components/ModuleIcon';
 import { Spinner } from '../components/ui';
 import { cx } from '../lib/utils';
+import {
+  buildInsightsNexusHandoff,
+  findInsightsNotification,
+} from '../lib/insights-notification';
 
 interface EmbedCheck {
   embeddable: boolean | 'maybe';
@@ -24,7 +28,8 @@ interface EmbedCheck {
  */
 export function AppFrame() {
   const { appId } = useParams<{ appId: string }>();
-  const { apps, loading } = useWorkspace();
+  const location = useLocation();
+  const { apps, loading, notifications } = useWorkspace();
   const { t, lang, dir } = useI18n();
   const app = apps.find((a) => a.id === appId);
 
@@ -32,6 +37,34 @@ export function AppFrame() {
   const [frameLoaded, setFrameLoaded] = useState(false);
   const [slow, setSlow] = useState(false);
   const [nonce, setNonce] = useState(0);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const postedNoticeRef = useRef<string | null>(null);
+
+  const noticeId = useMemo(
+    () => new URLSearchParams(location.search).get('notice'),
+    [location.search]
+  );
+  const notice = useMemo(
+    () => findInsightsNotification(notifications, noticeId),
+    [noticeId, notifications]
+  );
+  const handoff = useMemo(
+    () => buildInsightsNexusHandoff(notice, lang === 'en' ? 'en' : 'ar'),
+    [notice, lang]
+  );
+
+  const postNoticeToInsights = useCallback(() => {
+    if (!handoff || !app || app.id !== 'insights' || !iframeRef.current?.contentWindow) return;
+    if (postedNoticeRef.current === handoff.notification.id) return;
+    let targetOrigin: string;
+    try {
+      targetOrigin = new URL(app.url).origin;
+    } catch {
+      return;
+    }
+    iframeRef.current.contentWindow.postMessage(handoff, targetOrigin);
+    postedNoticeRef.current = handoff.notification.id;
+  }, [app, handoff]);
 
   useEffect(() => {
     if (!appId) return;
@@ -53,6 +86,19 @@ export function AppFrame() {
     const timer = setTimeout(() => setSlow(true), 6000);
     return () => clearTimeout(timer);
   }, [frameLoaded, check, nonce]);
+
+  // Notifications load asynchronously. Send after both the authenticated row
+  // and the trusted iframe are ready; reloading the iframe intentionally sends
+  // the same context again so the report is not lost on Refresh.
+  useEffect(() => {
+    if (!frameLoaded || !handoff) return;
+    if (postedNoticeRef.current === handoff.notification.id) return;
+    postNoticeToInsights();
+  }, [frameLoaded, handoff, postNoticeToInsights]);
+
+  useEffect(() => {
+    postedNoticeRef.current = null;
+  }, [noticeId, nonce]);
 
   if (loading) {
     return (
@@ -169,9 +215,14 @@ export function AppFrame() {
           )}
           <iframe
             key={nonce}
+            ref={iframeRef}
             src={app.url}
             title={appName}
-            onLoad={() => setFrameLoaded(true)}
+            onLoad={() => {
+              setFrameLoaded(true);
+              postedNoticeRef.current = null;
+              window.setTimeout(postNoticeToInsights, 0);
+            }}
             // Positioned, not `h-full`. The wrapper is a flex item, so its
             // height comes from the flex algorithm and its *specified* height
             // stays `auto` — which means a percentage height on a child has

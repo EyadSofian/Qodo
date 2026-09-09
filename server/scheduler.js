@@ -348,9 +348,10 @@ async function sendManagementInsightsBrief(slot, bounds) {
     }
 
     for (const summary of summaries) {
+      const notificationId = `insights-management-brief:${slot}:${summary.key}:${user.id}`;
       deliveries.push(
         notifyAndRecordOnce(
-          `insights-management-brief:${slot}:${summary.key}:${user.id}`,
+          notificationId,
           user.id,
           {
             type: summary.type,
@@ -361,10 +362,17 @@ async function sendManagementInsightsBrief(slot, bounds) {
               en: `${summary.title} — ${briefSlotLabel(slot)}`,
             },
             body: summary.body,
-            // The query keeps each card distinct even on a phone whose older
-            // service worker still derives its replacement tag from the link.
-            link: `/app/insights?notice=${summary.key}`,
+            // Keep only the opaque notification id in the URL. The signed-in
+            // workspace resolves the stored context and hands it to the Hub.
+            link: `/app/insights?notice=${encodeURIComponent(notificationId)}`,
             tag: `insights-${summary.key}-${slot}`,
+            context: {
+              kind: 'insights_brief',
+              key: summary.key,
+              from: bounds.from,
+              to: bounds.to,
+              slot,
+            },
           }
         )
       );
@@ -399,7 +407,7 @@ async function notifyAndRecord(userId, { type, title, body, link }) {
 }
 
 /** Same delivery with a deterministic id, safe across two Railway instances. */
-async function notifyAndRecordOnce(id, userId, { type, title, body, link, tag }) {
+async function notifyAndRecordOnce(id, userId, { type, title, body, link, tag, context }) {
   const text = typeof body === 'string' ? body : (body.ar ?? '');
   const user = await findOne('users', (candidate) => candidate.id === userId);
   const result = await createIfAbsent('notifications', {
@@ -410,6 +418,7 @@ async function notifyAndRecordOnce(id, userId, { type, title, body, link, tag })
     title,
     body: text,
     link,
+    ...(context ? { context } : {}),
     read: false,
   });
   if (!result.created) return null;

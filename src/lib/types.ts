@@ -414,6 +414,14 @@ export interface PerformanceOverview {
 /** Titles are written bilingually — the reader's language isn't known at write time. */
 export type LocalisedText = { ar: string; en: string };
 
+export interface InsightsNotificationContext {
+  kind: 'insights_brief';
+  key: 'leads' | 'website' | 'campaigns' | 'employees';
+  from: string;
+  to: string;
+  slot: string;
+}
+
 export interface Notification {
   id: string;
   userId: string;
@@ -422,6 +430,7 @@ export interface Notification {
   title: LocalisedText | string;
   body: LocalisedText | string;
   link: string;
+  context?: InsightsNotificationContext | Record<string, unknown>;
   read: boolean;
   createdAt: string;
 }

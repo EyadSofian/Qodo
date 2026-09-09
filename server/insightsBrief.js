@@ -105,9 +105,13 @@ export function buildInsightsBriefNotifications({ overview, leads, teams, websit
   const employees = lowestMeasuredEmployees(teams);
   const websiteSales = finite(website?.totals?.sales);
   const websiteSpend = finite(website?.totals?.websiteCampaignSpend);
+  const websiteAttributionAvailable = website?.websiteCampaignAttribution?.sourceAvailable === true;
+  const linkedWebsiteRevenue = websiteAttributionAvailable
+    ? finite(website?.websiteCampaignAttribution?.attributedRevenue)
+    : null;
   const websiteRoas =
-    websiteSales !== null && websiteSpend !== null && websiteSpend > 0
-      ? websiteSales / websiteSpend
+    linkedWebsiteRevenue !== null && linkedWebsiteRevenue > 0 && websiteSpend !== null && websiteSpend > 0
+      ? linkedWebsiteRevenue / websiteSpend
       : null;
 
   const period = rangeLabel(from, to);
@@ -136,12 +140,14 @@ export function buildInsightsBriefNotifications({ overview, leads, teams, websit
       websiteSpend !== null ? `${money(websiteSpend)} إنفاق` : null,
     ].filter(Boolean);
     const result = websiteRoas !== null
-      ? ` كل دولار إنفاق حقق ${decimal(websiteRoas)} دولار مبيعات.`
-      : '';
+      ? ` كل دولار إنفاق حقق ${decimal(websiteRoas)} دولار مبيعات مرتبطة بالحملات.`
+      : websiteSpend !== null && websiteSpend > 0
+        ? ' لا يوجد إيراد مبيعات مربوط مباشرة بهذه الحملات، لذلك لا يمكن عرض عائد إعلاني موثوق.'
+        : '';
     notifications.push({
       key: 'website',
       type: 'insights.website_summary',
-      title: 'عائد الموقع الإلكتروني',
+      title: websiteRoas !== null ? 'عائد حملات الموقع' : 'مبيعات الموقع وحملاته',
       body: `${periodPrefix}${parts.join('، ')}.${result}`,
     });
   }

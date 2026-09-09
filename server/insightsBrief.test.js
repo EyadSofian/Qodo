@@ -63,6 +63,10 @@ test('each requested signal becomes a short standalone Arabic notification', () 
     },
     website: {
       totals: { sales: 1926.57, websiteCampaignSpend: 500 },
+      websiteCampaignAttribution: {
+        sourceAvailable: true,
+        attributedRevenue: 1000,
+      },
     },
     teams: {
       agents: [
@@ -81,10 +85,34 @@ test('each requested signal becomes a short standalone Arabic notification', () 
   assert.match(result[0].body, /58 فاتورة مدفوعة/);
   assert.match(result[0].body, /معدل التحويل الفعلي 7\.1%/);
   assert.doesNotMatch(result[0].body, /÷|Lost|ROAS/);
-  assert.match(result[1].body, /1,927 دولار مبيعات.*كل دولار إنفاق حقق 3\.9 دولار مبيعات/);
+  assert.match(result[1].body, /1,927 دولار مبيعات.*كل دولار إنفاق حقق 2 دولار مبيعات مرتبطة بالحملات/);
   assert.match(result[2].body, /2 حملة تحتاج تدخلًا/);
   assert.match(result[3].body, /Employee A: 10 من 100.*Employee B: 20 من 100.*Employee C: 30 من 100/);
   assert.doesNotMatch(result[3].body, /Missing data/);
+});
+
+test('website brief never divides all website sales by campaign spend', () => {
+  const result = buildInsightsBriefNotifications({
+    from: '2026-09-01',
+    to: '2026-09-09',
+    overview: null,
+    leads: null,
+    teams: null,
+    website: {
+      totals: { sales: 3179.27, websiteCampaignSpend: 1072.22 },
+      websiteCampaignAttribution: {
+        sourceAvailable: true,
+        attributedRevenue: 0,
+      },
+    },
+  });
+
+  assert.equal(result.length, 1);
+  assert.equal(result[0].key, 'website');
+  assert.match(result[0].body, /3,179 دولار مبيعات/);
+  assert.match(result[0].body, /1,072 دولار إنفاق/);
+  assert.match(result[0].body, /لا يمكن عرض عائد إعلاني موثوق/);
+  assert.doesNotMatch(result[0].body, /2\.9|3\.0|كل دولار إنفاق حقق/);
 });
 
 test('missing API sections are omitted rather than rendered as zero', () => {
