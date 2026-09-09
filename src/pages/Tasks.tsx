@@ -351,13 +351,22 @@ export function Tasks() {
     setDialogOpen(true);
   }, []);
 
-  /** Everything handed in and still waiting, oldest first — review before new work. */
+  /** Everything handed in, including work already approved, so the review
+   * record remains available after the card reaches Done. Active submissions
+   * stay first; the completed review history follows them. */
   const reviewQueue = useMemo(() => {
     if (!tasks) return [];
     return tasks
-      .filter((task) => stateOf(task) === 'submitted')
+      .filter((task) =>
+        Boolean(task.submittedAt) &&
+        ['submitted', 'signed_off', 'approved'].includes(stateOf(task))
+      )
       .filter((task) => !department || (task.department ?? DEFAULT_DEPARTMENT) === department)
-      .sort((a, b) => (a.submittedAt ?? '').localeCompare(b.submittedAt ?? ''));
+      .sort((a, b) => {
+        const aActive = stateOf(a) === 'submitted' ? 0 : 1;
+        const bActive = stateOf(b) === 'submitted' ? 0 : 1;
+        return aActive - bActive || (b.submittedAt ?? '').localeCompare(a.submittedAt ?? '');
+      });
   }, [tasks, department]);
 
   /**
@@ -1146,10 +1155,9 @@ function TaskTable({ tasks, onOpen }: { tasks: Task[]; onOpen: (task: Task) => v
 /**
  * The manager's inbox.
  *
- * Everything handed in and still waiting, oldest first. Kanban practice is that
- * review takes priority over starting new work — if this queue grows, the whole
- * board stalls behind it — so it gets its own tab with a count on it rather than
- * being a column you have to notice.
+ * Everything handed in, with active reviews first and completed review history
+ * kept below them. A reviewer can open a Done card and still read the original
+ * submission and their written verdict.
  */
 function ReviewQueue({ tasks, onOpen }: { tasks: Task[]; onOpen: (task: Task) => void }) {
   const { t, lang } = useI18n();
@@ -1177,6 +1185,7 @@ function ReviewQueue({ tasks, onOpen }: { tasks: Task[]; onOpen: (task: Task) =>
             return person ? [person] : [];
           });
           const department = getDepartment(task.department ?? DEFAULT_DEPARTMENT);
+          const active = stateOf(task) === 'submitted';
           return (
             <li key={task.id}>
               <button
@@ -1199,10 +1208,23 @@ function ReviewQueue({ tasks, onOpen }: { tasks: Task[]; onOpen: (task: Task) =>
                     <span style={{ color: department.color }}>
                       {lang === 'en' ? department.en : department.ar}
                     </span>
-                    <span>{t('flow.waitingSince', { when: timeAgo(task.submittedAt, t) })}</span>
+                    <span>{t(active ? 'flow.waitingSince' : 'flow.reviewedSince', {
+                      when: timeAgo(active ? task.submittedAt : task.reviewedAt, t),
+                    })}</span>
                   </span>
+                  {(task.submissionNote || task.reviewNote) && (
+                    <span className="mt-2 block truncate text-[12px] leading-relaxed text-ink-muted">
+                      {task.reviewNote || task.submissionNote}
+                    </span>
+                  )}
                 </span>
                 <span className="flex shrink-0 flex-wrap items-center gap-1.5">
+                  <span className={cx(
+                    'chip',
+                    active ? 'bg-status-warnBg text-accent-600' : 'bg-status-okBg text-status-ok'
+                  )}>
+                    {t(active ? 'flow.reviewQueueWaiting' : 'flow.reviewQueueDone')}
+                  </span>
                   {task.attachmentCount > 0 && (
                     <span className="chip bg-surface-sunken text-ink-muted">
                       <Paperclip size={12} />

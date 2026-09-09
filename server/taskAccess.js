@@ -142,6 +142,7 @@ export function canAssignUser(actor, assignee, department) {
   if (!assignee || assignee.status !== 'active') return false;
   if (!sameOrganization(actor, assignee)) return false;
   if (!can(actor, PERMISSIONS.TASKS_ASSIGN)) return false;
+  if (!maySeePerson(actor, assignee)) return false;
   if (departmentOf(assignee) !== department) return false;
   if (can(actor, PERMISSIONS.TASKS_VIEW_ALL)) return true;
   if (department !== departmentOf(actor)) return false;
@@ -156,18 +157,59 @@ export function canAssignUser(actor, assignee, department) {
  */
 export function visiblePeople(user, people) {
   const sameTenant = people.filter((person) => organizationOf(person) === organizationOf(user));
+  const scopedPeople = sameTenant.filter((person) => maySeePerson(user, person));
+  if (isMaiUser(user)) return scopedPeople;
   switch (visibilityFor(user)) {
     case 'all':
-      return sameTenant;
+      return scopedPeople;
     case 'department':
-      return sameTenant.filter((person) => sameDepartment(user, person));
+      return scopedPeople.filter((person) => sameDepartment(user, person));
     case 'subteam':
-      return sameTenant.filter(
+      return scopedPeople.filter(
         (person) => person.id === user.id || sameSubteam(user, person)
       );
     default:
-      return sameTenant.filter((person) => person.id === user.id);
+      return scopedPeople.filter((person) => person.id === user.id);
   }
+}
+
+/**
+ * Mai has a deliberately small people directory. Keep this restriction in the
+ * shared access layer so the assignment API and every directory consumer agree,
+ * rather than hiding three names only in one React picker.
+ */
+const MAI_ALLOWED_NAMES = [
+  'ابو العلا',
+  'عبدالله',
+  'حبيبة عسكر',
+  'abu alaa',
+  'abdullah',
+  'habiba askar',
+];
+
+function normalisePersonName(value) {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f\u064B-\u065F]/g, '')
+    .toLowerCase()
+    .replace(/[أإآ]/g, 'ا')
+    .replace(/ى/g, 'ي')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isMaiUser(user) {
+  const name = normalisePersonName(user?.name);
+  const email = normalisePersonName(user?.email).split('@')[0];
+  return name === 'ماي' || name === 'mai' || name === 'may' || email === 'mai' || email === 'may';
+}
+
+function maySeePerson(actor, person) {
+  if (!isMaiUser(actor)) return true;
+  const name = normalisePersonName(person?.name).replace(/\s+/g, '');
+  return MAI_ALLOWED_NAMES.some((allowed) =>
+    name.includes(normalisePersonName(allowed).replace(/\s+/g, ''))
+  );
 }
 
 /**

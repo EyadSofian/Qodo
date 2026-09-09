@@ -1299,6 +1299,28 @@ test('the sub-team default falls through where no sub-team exists', () => {
   assert.equal(canViewTask({ ...seller, visibilityScope: 'subteam' }, colleagueTask), false);
 });
 
+test('Mai sees and can assign only Abu Alaa, Abdullah and Habiba Askar', () => {
+  const mai = {
+    id: 'mai',
+    name: 'Mai',
+    email: 'mai@engosoft.com',
+    organizationId: 'engosoft',
+    department: 'marketing',
+    role: 'manager',
+    status: 'active',
+  };
+  const people = [
+    mai,
+    { id: 'alaa', name: 'أبو العلا', organizationId: 'engosoft', department: 'marketing', status: 'active' },
+    { id: 'abdullah', name: 'عبد الله', organizationId: 'engosoft', department: 'marketing', status: 'active' },
+    { id: 'habiba', name: 'حبيبة عسكر', organizationId: 'engosoft', department: 'marketing', status: 'active' },
+    { id: 'other', name: 'شخص آخر', organizationId: 'engosoft', department: 'marketing', status: 'active' },
+  ];
+  assert.deepEqual(visiblePeople(mai, people).map((person) => person.id), ['alaa', 'abdullah', 'habiba']);
+  assert.equal(canAssignUser(mai, people[1], 'marketing'), true);
+  assert.equal(canAssignUser(mai, people[4], 'marketing'), false);
+});
+
 test('each authority is its own key, and legacy overrides keep all four', () => {
   const base = {
     id: 'x',
