@@ -200,8 +200,9 @@ function normalisePersonName(value) {
 
 function isMaiUser(user) {
   const name = normalisePersonName(user?.name);
+  const firstName = name.split(' ')[0];
   const email = normalisePersonName(user?.email).split('@')[0];
-  return name === 'ماي' || name === 'mai' || name === 'may' || email === 'mai' || email === 'may';
+  return ['ماي', 'mai', 'may'].includes(firstName) || email === 'mai' || email === 'may';
 }
 
 function maySeePerson(actor, person) {
