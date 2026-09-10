@@ -107,6 +107,10 @@ export async function notifyUser(userId, { title, body, link, tag }) {
         // permission revoked). Anything else is transient — keep the row.
         if (err?.statusCode === 404 || err?.statusCode === 410) {
           await store.remove('pushSubscriptions', row.id);
+          console.warn('[push] removed expired device subscription', {
+            userId,
+            statusCode: err.statusCode,
+          });
         } else {
           console.warn('[push] send failed:', err?.statusCode ?? err?.message);
         }

@@ -11,7 +11,10 @@ import {
   arabicNotificationTime,
   notificationPresentation,
 } from "./notification-presentation";
-import { isInsightsBriefType } from "../lib/insights-notification";
+import {
+  isArabicInsightsType,
+  isInsightsBriefType,
+} from "../lib/insights-notification";
 
 /**
  * Live, actionable alerts. The bell remains the durable inbox; this is the
@@ -120,29 +123,29 @@ export function IncomingNotificationPopup() {
             notification.actorId ? actors[notification.actorId] : undefined
           }
           title={
-            isInsightsBriefType(notification.type) &&
+            isArabicInsightsType(notification.type) &&
             typeof notification.title !== "string"
               ? notification.title.ar
               : localise(notification.title)
           }
           body={
-            isInsightsBriefType(notification.type) &&
+            isArabicInsightsType(notification.type) &&
             typeof notification.body !== "string"
               ? notification.body.ar
               : localise(notification.body)
           }
           kindLabel={
-            isInsightsBriefType(notification.type)
+            isArabicInsightsType(notification.type)
               ? notificationPresentation(notification.type).label.ar
               : localise(notificationPresentation(notification.type).label)
           }
           timeLabel={
-            isInsightsBriefType(notification.type)
+            isArabicInsightsType(notification.type)
               ? arabicNotificationTime(notification.createdAt)
               : timeAgo(notification.createdAt, t)
           }
           openLabel={
-            isInsightsBriefType(notification.type)
+            isArabicInsightsType(notification.type)
               ? "فتح التقرير وتحليله"
               : notification.type.startsWith("insights.")
                 ? lang === "ar"
@@ -152,7 +155,7 @@ export function IncomingNotificationPopup() {
           }
           closeLabel={t("common.close")}
           lang={
-            isInsightsBriefType(notification.type)
+            isArabicInsightsType(notification.type)
               ? "ar"
               : lang === "en"
                 ? "en"

@@ -115,6 +115,11 @@ const PRESENTATIONS: Record<string, NotificationPresentation> = {
     icon: Globe2,
     label: { ar: "تحديث بيانات", en: "Data refresh" },
   },
+  "insights.data_updated": {
+    ...info,
+    icon: Globe2,
+    label: { ar: "تحديث البيانات", en: "Data update" },
+  },
   "insights.management_brief": {
     ...info,
     icon: ClipboardList,

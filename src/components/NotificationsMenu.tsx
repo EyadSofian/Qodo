@@ -16,7 +16,7 @@ import {
   arabicNotificationTime,
   notificationPresentation,
 } from "./notification-presentation";
-import { isInsightsBriefType } from "../lib/insights-notification";
+import { isArabicInsightsType } from "../lib/insights-notification";
 
 export function NotificationsMenu({
   open,
@@ -150,7 +150,7 @@ export function NotificationsMenu({
             const actor = item.actorId ? actors[item.actorId] : undefined;
             const presentation = notificationPresentation(item.type);
             const Icon = presentation.icon;
-            const forceArabic = isInsightsBriefType(item.type);
+            const forceArabic = isArabicInsightsType(item.type);
             const typeLabel = forceArabic
               ? presentation.label.ar
               : (presentation.label[lang] ?? presentation.label.ar);

@@ -6,9 +6,9 @@
  *   • a once-a-day digest of how much work each department is carrying
  *   • four management summaries at each configured brief time
  *
- * The Insights watcher still records the last successful sync, but does not
- * create a notification for every data refresh. Those frequent records filled
- * the bell with near-identical cards and hid the two useful scheduled briefs.
+ * The Insights watcher sends one compact update whenever a new successful sync
+ * is observed. Its stable push tag replaces the previous phone alert instead
+ * of stacking duplicates; the four detailed briefs stay on their own schedule.
  *
  * Deliberately an in-process timer rather than a cron dependency — the same
  * choice the Insights Hub itself made. The cost is that a restart could re-fire
@@ -299,6 +299,50 @@ async function checkInsights() {
   const previous = await getSetting("insights.lastSyncedAt");
   if (previous === syncedAt) return;
   await setSetting("insights.lastSyncedAt", syncedAt);
+
+  // The first observation only establishes a baseline. Every later Insights
+  // sync keeps the original throughout-the-day update the team already uses;
+  // the four richer management summaries remain limited to 11:30 and 19:00.
+  if (!previous) return;
+
+  const totals = data.totals ?? {};
+  const formatNumber = (value) =>
+    typeof value === "number"
+      ? Math.round(value).toLocaleString("en-US")
+      : null;
+  const spend = formatNumber(totals.spend);
+  const revenue = formatNumber(totals.accountingRevenue ?? totals.revenue);
+  const invoices =
+    typeof totals.invoicedOrders === "number" ? totals.invoicedOrders : null;
+  const monthName = new Intl.DateTimeFormat("ar-EG", {
+    timeZone: TIMEZONE,
+    month: "long",
+  }).format(new Date());
+  const summary = [
+    revenue ? `الإيراد ${revenue} دولار` : null,
+    spend ? `الإنفاق ${spend} دولار` : null,
+    invoices !== null ? `${invoices} فاتورة` : null,
+  ].filter(Boolean);
+
+  const users = await find("users", isActiveUser);
+  for (const user of users) {
+    const allowed =
+      user.role === "admin" ||
+      !Array.isArray(user.appIds) ||
+      user.appIds.includes("insights");
+    if (!allowed || !can(user, PERMISSIONS.APPS_VIEW)) continue;
+
+    await notifyAndRecord(user.id, {
+      type: "insights.data_updated",
+      title: `تحديث جديد في التسويق والمبيعات — ${monthName}`,
+      body: summary.length
+        ? `${summary.join("، ")}. اضغط لعرض أحدث الأرقام.`
+        : "تم تحديث بيانات التسويق والمبيعات. اضغط لعرض أحدث الأرقام.",
+      link: "/app/insights",
+      pushViaPopup: true,
+      tag: "insights-live-update",
+    });
+  }
 }
 
 /** Current calendar month through today, for the two scheduled summaries. */
@@ -370,7 +414,10 @@ async function sendManagementInsightsBrief(slot, bounds) {
 /* ── shared delivery ─────────────────────────────────────────────── */
 
 /** Writes the in-app notification and sends the push, so both stay in step. */
-async function notifyAndRecord(userId, { type, title, body, link }) {
+async function notifyAndRecord(
+  userId,
+  { type, title, body, link, pushViaPopup = false, tag },
+) {
   const user = await findOne("users", (candidate) => candidate.id === userId);
   const row = await create("notifications", {
     organizationId: organizationOf(user),
@@ -386,7 +433,12 @@ async function notifyAndRecord(userId, { type, title, body, link }) {
   // notice only appears on the next page load, which for "this is late today"
   // is too late to be the point.
   publishNotification(userId, row.id);
-  await notifyUser(userId, { title, body, link });
+  await notifyUser(userId, {
+    title,
+    body,
+    link: pushViaPopup ? `/?notice=${encodeURIComponent(row.id)}` : link,
+    tag,
+  });
   return row;
 }
 

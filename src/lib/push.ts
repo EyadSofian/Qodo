@@ -49,13 +49,30 @@ export async function currentPushState(): Promise<PushState> {
   if (!info?.configured || !info.publicKey) return 'unconfigured';
   if (Notification.permission === 'denied') return 'denied';
 
-  // Trust the browser over the server row: a subscription the server still has
-  // but the browser has dropped would show as "on" and never deliver.
+  // A deployment or an expired endpoint can leave the browser permission in
+  // place while the server no longer has this device. Repair that mismatch on
+  // the next visit; the person already granted permission, so this does not
+  // show another browser prompt.
   try {
-    const existing = await (await registration()).pushManager.getSubscription();
-    return existing ? 'on' : 'off';
+    const reg = await registration();
+    await navigator.serviceWorker.ready;
+    let subscription = await reg.pushManager.getSubscription();
+    if (Notification.permission === 'granted' && (!subscription || !info.subscribed)) {
+      if (subscription && !info.subscribed) {
+        await subscription.unsubscribe().catch(() => {});
+        subscription = null;
+      }
+      subscription = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(info.publicKey),
+      });
+      await api.post('/push/subscribe', { subscription: subscription.toJSON() });
+    }
+    return subscription ? 'on' : 'off';
   } catch {
-    return info.subscribed ? 'on' : 'off';
+    // The browser is authoritative for delivery. A database row without a
+    // working local subscription cannot receive a push on this device.
+    return 'off';
   }
 }
 
