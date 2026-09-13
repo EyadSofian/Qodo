@@ -40,6 +40,8 @@ export interface OfficeSeat {
   userId: string | null;
   /** The name on the desk — from the linked account, or typed at import. */
   occupantName: string | null;
+  /** HR employee code resolved from the linked account or a unique name match. */
+  employeeCode: string | null;
   occupant: SeatOccupant | null;
 }
 

@@ -4,6 +4,7 @@ import { organizationOf } from '../shared/organization.js';
 import { HR_IMPORT_SOURCES, HRWorkbookError, parseHRWorkbook } from './hrWorkbook.js';
 import { usdEgpRate } from './hrFx.js';
 import { odooRecruitmentJob, odooRecruitmentMatches } from './hrRecruitmentOdoo.js';
+import { officeId, seatId } from '../shared/officeInventory.js';
 
 const datasetId = (organizationId, source) => `hr-dataset:${organizationId}:${source}`;
 const linkDocumentId = (organizationId) => `hr-links:${organizationId}`;
@@ -15,6 +16,8 @@ const SOURCE_LABELS = {
   insurance: { ar: 'التأمينات والضرائب', en: 'Insurance & tax' },
   recruitment: { ar: 'طلبات التوظيف', en: 'Recruitment requests' },
   organization: { ar: 'الهيكل التنظيمي', en: 'Organization structure' },
+  leave: { ar: 'الإجازات والأرصدة', en: 'Leave & balances' },
+  offices: { ar: 'توزيع المكاتب', en: 'Office distribution' },
 };
 
 function publicDataset(dataset) {
@@ -65,8 +68,15 @@ function emptyProfile(employeeCode) {
     insurance: null,
     tax: null,
     organizationPosition: null,
+    leave: null,
     linkedUserId: null,
-    sources: { master: false, payroll: false, insurance: false, organization: false },
+    sources: {
+      master: false,
+      payroll: false,
+      insurance: false,
+      organization: false,
+      leave: false,
+    },
   };
 }
 
@@ -167,9 +177,43 @@ function employeeMapFromDatasets(datasets) {
     profile.sources.insurance = true;
   }
 
+  const leaveRecordsByEmployee = new Map();
+  for (const record of bySource.leave?.payload?.records ?? []) {
+    const list = leaveRecordsByEmployee.get(record.employeeCode) ?? [];
+    list.push(record);
+    leaveRecordsByEmployee.set(record.employeeCode, list);
+  }
+  for (const balance of bySource.leave?.payload?.balances ?? []) {
+    const profile = ensure(balance.employeeCode);
+    if (!profile.nameEnglish) profile.nameEnglish = balance.employeeName;
+    if (!profile.title) profile.title = balance.title;
+    if (!profile.hiringDate) profile.hiringDate = balance.hiringDate;
+    if (profile.status === 'unknown') profile.status = balance.status;
+    profile.leave = {
+      ...balance,
+      records: (leaveRecordsByEmployee.get(balance.employeeCode) ?? [])
+        .sort((left, right) => String(right.date).localeCompare(String(left.date))),
+    };
+    profile.sources.leave = true;
+  }
+
   const positions = (bySource.organization?.payload?.positions ?? []).map((position) => {
     const placeholder = comparablePersonName(position.employeeNameKey) === 'جديد';
-    const match = placeholder ? { employee: null, method: null } : matchOrganizationEmployee(position, profiles);
+    const direct = position.employeeCode ? profiles.get(String(position.employeeCode)) : null;
+    const match = placeholder
+      ? { employee: null, method: null }
+      : direct
+        ? { employee: direct, method: 'exact' }
+        : matchOrganizationEmployee(position, profiles);
+    if (!match.employee && position.employeeCode) {
+      const profile = ensure(position.employeeCode);
+      if (!profile.nameEnglish) profile.nameEnglish = position.employeeName;
+      if (!profile.title) profile.title = position.title;
+      if (!profile.department) profile.department = position.departmentCode;
+      if (profile.status === 'unknown') profile.status = 'active';
+      match.employee = profile;
+      match.method = 'exact';
+    }
     const employeeCode = match.employee?.employeeCode ?? null;
     if (employeeCode) {
       const profile = ensure(employeeCode);
@@ -218,6 +262,8 @@ function employeeSummary(profile, includePayroll) {
     linkedUserId: profile.linkedUserId,
     hasPayroll: Boolean(profile.payroll),
     hasInsurance: Boolean(profile.insurance),
+    hasLeave: Boolean(profile.leave),
+    leaveAvailable: profile.leave?.availableNow ?? null,
     documentCompletionRate: profile.documents?.completionRate ?? null,
     totalSalary: includePayroll ? profile.payroll?.totalSalary ?? null : undefined,
   };
@@ -381,6 +427,27 @@ function organizationAnalytics(positions) {
   return { total: positions.length, matched, vacant, unmatched, departments: departments.size };
 }
 
+function leaveAnalytics(dataset) {
+  const balances = dataset?.payload?.balances ?? [];
+  const records = dataset?.payload?.records ?? [];
+  const active = balances.filter((balance) => balance.status === 'active');
+  const currentYear = String(dataset?.payload?.year ?? new Date().getFullYear());
+  const currentRecords = records.filter((record) => String(record.date).startsWith(currentYear));
+  return {
+    year: Number(currentYear),
+    employees: balances.length,
+    activeEmployees: active.length,
+    records: currentRecords.length,
+    annualDays: currentRecords
+      .filter((record) => /annual/i.test(record.code))
+      .reduce((sum, record) => sum + Number(record.days || 0), 0),
+    sickDays: currentRecords
+      .filter((record) => /^sick/i.test(record.code))
+      .reduce((sum, record) => sum + Number(record.days || 0), 0),
+    negativeBalances: active.filter((balance) => Number(balance.availableNow) < 0).length,
+  };
+}
+
 function reconciliation(profiles, positions) {
   const list = [...profiles.values()];
   const active = list.filter((profile) => profile.status === 'active');
@@ -439,6 +506,8 @@ export async function hrDashboardFor(user) {
         ),
         organizationPositions: state.positions.length,
         organizationVacancies: state.positions.filter((position) => position.matchState === 'vacant').length,
+        leaveEmployees: state.bySource.leave?.payload?.balances?.length ?? 0,
+        leaveRecords: state.bySource.leave?.payload?.records?.length ?? 0,
       }
     : {
         employees: visibleProfiles.length,
@@ -451,6 +520,8 @@ export async function hrDashboardFor(user) {
         openPositions: 0,
         organizationPositions: 0,
         organizationVacancies: 0,
+        leaveEmployees: visibleProfiles.filter((profile) => profile.leave).length,
+        leaveRecords: visibleProfiles.reduce((sum, profile) => sum + (profile.leave?.records?.length ?? 0), 0),
       };
 
   return {
@@ -467,6 +538,7 @@ export async function hrDashboardFor(user) {
           payroll: canViewPayroll ? payrollAnalytics(allProfiles, fx) : null,
           recruitment: recruitmentAnalytics(recruitment),
           organization: organizationAnalytics(state.positions),
+          leave: leaveAnalytics(state.bySource.leave),
         }
       : null,
     employees: visibleProfiles
@@ -477,6 +549,9 @@ export async function hrDashboardFor(user) {
       ),
     recruitment: canViewPeople ? recruitment : [],
     organization: canViewPeople ? state.positions : [],
+    leaveBalances: canViewPeople
+      ? (state.bySource.leave?.payload?.balances ?? [])
+      : visibleProfiles.filter((profile) => profile.leave).map((profile) => profile.leave),
     accounts: canManage
       ? state.users
           .filter((account) => account.status === 'active')
@@ -590,6 +665,95 @@ export async function hrEmployeeFor(user, employeeCode) {
   );
 }
 
+const officePersonKey = (value) => String(value || '')
+  .toLowerCase()
+  .normalize('NFKD')
+  .replace(/[\u064B-\u065F\u0670]/g, '')
+  .replace(/[أإآ]/g, 'ا')
+  .replace(/ة/g, 'ه')
+  .replace(/ى/g, 'ي')
+  .replace(/[^\p{L}\p{N}]+/gu, ' ')
+  .replace(/\s+/g, ' ')
+  .trim();
+
+/**
+ * An office workbook is the complete seating snapshot for the zones it names.
+ * Same-room measurements and desk coordinates survive the refresh; occupants,
+ * capacity, room names, and removed rooms follow the uploaded workbook.
+ */
+async function syncOfficeDataset(organizationId, payload) {
+  const store = await getStore();
+  const rooms = payload?.rooms ?? [];
+  const zones = new Set(rooms.map((room) => room.zone));
+  const existingOffices = await find(
+    'offices',
+    (office) => organizationOf(office) === organizationId && zones.has(office.zone)
+  );
+  const existingById = new Map(existingOffices.map((office) => [office.id, office]));
+  const targetIds = new Set();
+  let order = 0;
+
+  for (const room of rooms) {
+    order += 10;
+    const id = officeId(room.zone, room.nameAr);
+    targetIds.add(id);
+    const current = existingById.get(id);
+    const officeDocument = {
+      organizationId,
+      zone: room.zone,
+      nameAr: room.nameAr,
+      nameEn: current?.nameEn ?? null,
+      department: room.department ?? null,
+      kind: room.kind ?? 'workroom',
+      columns: current?.columns ?? null,
+      dimensions: current?.dimensions ?? null,
+      shape: current?.shape ?? null,
+      note: room.note ?? null,
+      order,
+    };
+    if (current) await store.update('offices', id, officeDocument);
+    else await create('offices', { id, ...officeDocument });
+
+    const existingSeats = await find('officeSeats', (seat) => seat.officeId === id);
+    const existingBySeatId = new Map(existingSeats.map((seat) => [seat.id, seat]));
+    const linkedByName = new Map(
+      existingSeats
+        .filter((seat) => seat.userId && seat.occupantName)
+        .map((seat) => [officePersonKey(seat.occupantName), seat.userId])
+    );
+    const wantedSeatIds = new Set();
+    for (let index = 0; index < room.units; index += 1) {
+      const idForSeat = seatId(room.zone, room.nameAr, index);
+      wantedSeatIds.add(idForSeat);
+      const previous = existingBySeatId.get(idForSeat);
+      const occupantName = room.occupants[index] ?? null;
+      const seatDocument = {
+        organizationId,
+        officeId: id,
+        label: previous?.label ?? `D${index + 1}`,
+        gridIndex: index,
+        point: previous?.point ?? null,
+        status: 'free',
+        userId: occupantName ? (linkedByName.get(officePersonKey(occupantName)) ?? null) : null,
+        occupantName,
+        note: null,
+      };
+      if (previous) await store.update('officeSeats', idForSeat, seatDocument);
+      else await create('officeSeats', { id: idForSeat, ...seatDocument });
+    }
+    for (const seat of existingSeats) {
+      if (!wantedSeatIds.has(seat.id)) await store.remove('officeSeats', seat.id);
+    }
+  }
+
+  for (const office of existingOffices) {
+    if (targetIds.has(office.id)) continue;
+    const seats = await find('officeSeats', (seat) => seat.officeId === office.id);
+    for (const seat of seats) await store.remove('officeSeats', seat.id);
+    await store.remove('offices', office.id);
+  }
+}
+
 export async function importHRDataset({
   bytes,
   fileName,
@@ -599,6 +763,9 @@ export async function importHRDataset({
   origin = 'dashboard',
 }) {
   const parsed = await parseHRWorkbook(bytes, requestedSource);
+  if (parsed.source === 'offices') {
+    await syncOfficeDataset(organizationId, parsed.payload);
+  }
   const id = datasetId(organizationId, parsed.source);
   const existing = await findOne('hrDatasets', (dataset) => dataset.id === id);
   const document = {

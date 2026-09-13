@@ -21,6 +21,7 @@ import {
   Plus,
   RotateCw,
   Ruler,
+  Search,
   Trash2,
   UserPlus,
   X,
@@ -48,6 +49,21 @@ import { outlinePoints, presetOutline, roomOutline } from '@shared/offices';
 import { Avatar, EmptyState, Field, Modal, Segmented, useToast } from '../components/ui';
 import { cx } from '../lib/utils';
 
+const officeSearchKey = (value: unknown) => {
+  const arabicDigits = '٠١٢٣٤٥٦٧٨٩';
+  return String(value ?? '')
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[٠-٩]/g, (digit) => String(arabicDigits.indexOf(digit)))
+    .replace(/[\u064B-\u065F\u0670]/g, '')
+    .replace(/[أإآ]/g, 'ا')
+    .replace(/ة/g, 'ه')
+    .replace(/ى/g, 'ي')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
 /**
  * The seating plan.
  *
@@ -57,13 +73,14 @@ import { cx } from '../lib/utils';
  * every desk, and a room missing either falls back to the schematic rather than
  * drawing a floor with holes in it.
  */
-export function Offices() {
+export function Offices({ embedded = false }: { embedded?: boolean }) {
   const { t, lang } = useI18n();
   const { push } = useToast();
   const [plan, setPlan] = useState<OfficePlan | null>(null);
   const [meta, setMeta] = useState<OfficeBootstrap | null>(null);
   const [layout, setLayout] = useState<OfficeLayout>('grid');
   const [zone, setZone] = useState<string>('all');
+  const [query, setQuery] = useState('');
   const [seatOpen, setSeatOpen] = useState<{ office: Office; seat: OfficeSeat } | null>(null);
   const [roomOpen, setRoomOpen] = useState<Office | 'new' | null>(null);
   const [placing, setPlacing] = useState<string | null>(null);
@@ -107,12 +124,25 @@ export function Offices() {
   const zones = useMemo(() => plan?.zones ?? [], [plan]);
   const shown = useMemo(() => {
     const offices = plan?.offices ?? [];
-    return zone === 'all' ? offices : offices.filter((office) => office.zone === zone);
-  }, [plan, zone]);
+    const terms = officeSearchKey(query).split(' ').filter(Boolean);
+    return offices.filter((office) => {
+      if (zone !== 'all' && office.zone !== zone) return false;
+      if (!terms.length) return true;
+      const haystack = [
+        office.zone,
+        office.nameAr,
+        office.nameEn,
+        office.department,
+        ...office.seats.flatMap((seat) => [seat.label, seat.occupantName, seat.employeeCode]),
+      ].filter(Boolean).join(' ');
+      const normalized = officeSearchKey(haystack);
+      return terms.every((term) => normalized.includes(term));
+    });
+  }, [plan, query, zone]);
 
   if (!plan) {
     return (
-      <div className="mx-auto w-full max-w-[1600px] px-4 py-6 sm:px-6 sm:py-9">
+      <div className={embedded ? 'w-full' : 'mx-auto w-full max-w-[1600px] px-4 py-6 sm:px-6 sm:py-9'}>
         <div className="skeleton h-24 rounded-2xl" />
         <div className="skeleton mt-4 h-72 rounded-2xl" />
       </div>
@@ -120,7 +150,7 @@ export function Offices() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-[1600px] px-4 py-6 sm:px-6 sm:py-9">
+    <div className={embedded ? 'w-full' : 'mx-auto w-full max-w-[1600px] px-4 py-6 sm:px-6 sm:py-9'}>
       <header className="mb-5 flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-[22px] font-extrabold text-ink sm:text-[26px]">
@@ -158,6 +188,16 @@ export function Offices() {
       <Summary plan={plan} />
 
       <div className="mt-5 flex flex-wrap items-center gap-2">
+        <label className="relative min-w-[15rem] flex-1 sm:max-w-sm">
+          <Search className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-ink-muted" size={16} />
+          <input
+            className="field ps-10"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder={lang === 'en' ? 'Employee, ID, room, or desk…' : 'الموظف، الرقم، الغرفة أو المكتب…'}
+            aria-label={lang === 'en' ? 'Search office plan' : 'البحث في توزيع المكاتب'}
+          />
+        </label>
         <Segmented<OfficeLayout>
           value={layout}
           onChange={setLayout}
@@ -1233,7 +1273,14 @@ function SeatPanel({
             <span className="block truncate text-[14px] font-bold text-ink">
               {seat.occupantName ?? t(`offices.state.${seat.state}`)}
             </span>
-            {seat.occupant ? (
+            {seat.employeeCode ? (
+              <Link
+                to={`/hr/employees/${seat.employeeCode}`}
+                className="text-[12px] text-brand-500 hover:underline"
+              >
+                {t('offices.openProfile')}
+              </Link>
+            ) : seat.occupant ? (
               <Link
                 to={`/people/${seat.occupant.id}`}
                 className="text-[12px] text-brand-500 hover:underline"

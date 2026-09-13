@@ -70,19 +70,6 @@ export const DEFAULT_APPS = [
     order: 6,
   },
   {
-    id: 'offices',
-    kind: 'internal',
-    nameAr: 'المكاتب',
-    nameEn: 'Offices',
-    descAr: 'مخطط الجلوس: مين قاعد فين، وإيه الوحدات الفاضية في كل مكتب.',
-    url: '/offices',
-    icon: 'grid',
-    color: '#0EA5A5',
-    group: 'workspace',
-    embed: 'internal',
-    order: 7,
-  },
-  {
     id: 'prices',
     kind: 'internal',
     nameAr: 'دليل الأسعار',
@@ -128,7 +115,7 @@ export const DEFAULT_APPS = [
     kind: 'internal',
     nameAr: 'الموارد البشرية',
     nameEn: 'HR Suite',
-    descAr: 'ملف موحّد لكل موظف، الرواتب والتأمينات، التوظيف، والهيكل التنظيمي.',
+    descAr: 'ملف موحّد لكل موظف، الإجازات، المكاتب، الرواتب، التوظيف، والهيكل التنظيمي.',
     url: '/hr',
     repo: null,
     icon: 'people',
@@ -340,8 +327,8 @@ async function seedOfficeInventory() {
   const tally = inventoryTally();
   const line = '─'.repeat(58);
   console.log(`\n${line}\n  Office inventory delivered — ${tally.rooms} rooms, ${tally.units} desks`);
-  console.log(`  ${tally.named} named · ${tally.held} held for a joiner · ${tally.unnamed} counted but unnamed`);
-  console.log('  Rooms arrive unmeasured; measure and arrange them from Offices → Edit.');
+  console.log(`  ${tally.named} named · ${tally.free} available`);
+  console.log('  Rooms arrive unmeasured; measure and arrange them from HR → Offices → Edit.');
   console.log(`${line}\n`);
 }
 
@@ -367,10 +354,13 @@ async function migrateBuiltinApps(store) {
       kind: 'internal',
       nameAr: 'الموارد البشرية',
       nameEn: 'HR Suite',
-      descAr: 'ملف موحّد لكل موظف، الرواتب والتأمينات، التوظيف، والهيكل التنظيمي.',
+      descAr: 'ملف موحّد لكل موظف، الإجازات، المكاتب، الرواتب، التوظيف، والهيكل التنظيمي.',
       url: '/hr',
       repo: null,
       embed: 'internal',
+    },
+    offices: {
+      enabled: false,
     },
   };
   const apps = await find('apps');
@@ -396,6 +386,12 @@ async function migrateOrganisationAndTasks(store) {
     }
     if (!Object.hasOwn(person, 'subteam')) patch.subteam = null;
     if (!Object.hasOwn(person, 'jobRole')) patch.jobRole = null;
+    // Offices now lives inside HR. Preserve explicit per-user app access when
+    // retiring the old launcher tile, otherwise somebody assigned only the
+    // former `offices` app would lose the feature during the migration.
+    if (Array.isArray(person.appIds) && person.appIds.includes('offices')) {
+      patch.appIds = [...new Set(person.appIds.map((appId) => appId === 'offices' ? 'hr' : appId))];
+    }
     const inferredRoles = inferredMarketingWorkflowRoles(person);
     const workflowRoles = [
       ...new Set([...(person.taskWorkflowRoles ?? []), ...inferredRoles]),

@@ -119,6 +119,27 @@ async function workbookBuffer(kind) {
     sheet.addRow(['NO.', 'Emp ID', 'Name English', 'Title', 'KPI`S CONT', 'Department', 'Hiring Date', 'status', new Date('2026-08-01')]);
     sheet.addRow([null, null, null, null, null, null, null, null, new Date('2026-08-01'), 'KPI`S ', 'Total']);
     sheet.addRow(['1', 611, 'Eyad Employee', 'AI Engineer', 'YES', 'AI', new Date('2026-01-15'), 'Active', 27_500, 2_500, 30_000]);
+  } else if (kind === 'organization') {
+    sheet.addRow(['Emp ID', 'Employee Name', 'Department', 'Job Name', 'Team Leader', 'Supervisor', 'Manager']);
+    sheet.addRow([307, 'Former Employee', 'Odoo', 'Implementor', '-', '-', '-']);
+    sheet.addRow([611, 'Eyad Employee', 'AI', 'AI Engineer', '-', '-', 'Former Employee']);
+  } else if (kind === 'leave') {
+    sheet.name = 'Annual Balance';
+    sheet.addRow([
+      'Staff ID', 'Agent Name', 'Project', 'Hiring date', 'Status', 'Team Leader', 'Supervisor',
+      'Transferred Balance From 2025', '2026 current balance', 'YTD limit', 'Total Remaining',
+      'Sick Balance', 'Total Sick Consumption', 'Remaining Sick',
+      'Total Consumption per Employee', 'Remaining',
+    ]);
+    sheet.addRow([611, 'Eyad Employee', 'AI Engineer', new Date('2026-01-15'), 'Active', 'Lead', 'Manager', 2, 21, 14, 12, 7, 1, 6, 4, 10]);
+    const updates = workbook.addWorksheet('Updates');
+    updates.addRow(['Staff ID', 'Agent Name', 'Date', 'Code', 'Comment']);
+    updates.addRow([611, 'Eyad Employee', new Date('2026-08-01'), 'Annual', 'Vacation']);
+    updates.addRow([611, 'Eyad Employee', new Date('2026-08-15'), 'Half Annual', 'Half day']);
+  } else if (kind === 'offices') {
+    sheet.name = 'مكتب ا';
+    sheet.addRow(['اسم المكتب', 'عدد الوحدات', 'اسماء الموجودين', 'عدد الوحدات المتاحة', 'تعديلات']);
+    sheet.addRow(['HR Test Room', 2, 'اياد', 1, 'Current allocation']);
   } else {
     sheet.addRow(['Recruitment requests 8-2026']);
     sheet.addRow([
@@ -216,6 +237,38 @@ test('HR imports reconcile on employee code and preserve least-privilege profile
   });
   assert.equal(mismatch.status, 409);
   assert.equal(mismatch.data.error, 'hr_source_mismatch');
+});
+
+test('organization, leave, and office workbooks become one linked employee profile', async () => {
+  for (const source of ['organization', 'leave', 'offices']) {
+    const imported = await request(`/hr/imports/${source}`, {
+      method: 'POST', cookie: adminCookie, body: await workbookBuffer(source), raw: true,
+      headers: { 'X-File-Name': encodeURIComponent(`${source}.xlsx`) },
+    });
+    assert.equal(imported.status, 200, JSON.stringify(imported.data));
+    assert.equal(imported.data.dataset.source, source);
+  }
+
+  const dashboard = await request('/hr/dashboard', { cookie: payrollCookie });
+  assert.equal(dashboard.status, 200);
+  assert.equal(dashboard.data.summary.organizationPositions, 2);
+  assert.equal(dashboard.data.summary.leaveEmployees, 1);
+  assert.equal(dashboard.data.summary.leaveRecords, 2);
+  assert.equal(dashboard.data.analytics.leave.annualDays, 1.5);
+  assert.equal(dashboard.data.organization.find((row) => row.employeeCode === '611').managerPositionId, 'employee:307');
+
+  const ownProfile = await request('/hr/employees/611', { cookie: employeeCookie });
+  assert.equal(ownProfile.status, 200);
+  assert.equal(ownProfile.data.employee.leave.availableNow, 10);
+  assert.deepEqual(ownProfile.data.employee.leave.records.map((row) => row.days), [0.5, 1]);
+  assert.equal(ownProfile.data.employee.organizationPosition.title, 'AI Engineer');
+
+  const plan = await request('/offices', { cookie: adminCookie });
+  assert.equal(plan.status, 200);
+  const room = plan.data.offices.find((office) => office.nameAr === 'HR Test Room');
+  assert.ok(room);
+  assert.equal(room.counts.units, 2);
+  assert.equal(room.seats.find((seat) => seat.occupantName === 'اياد').employeeCode, '611');
 });
 
 test('recruitment imports expose cycle analytics and auto-close filled requests', async () => {

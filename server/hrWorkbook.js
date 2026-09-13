@@ -1,7 +1,15 @@
 import { Readable } from 'node:stream';
 import ExcelJS from 'exceljs';
 
-export const HR_IMPORT_SOURCES = ['master', 'payroll', 'insurance', 'recruitment', 'organization'];
+export const HR_IMPORT_SOURCES = [
+  'master',
+  'payroll',
+  'insurance',
+  'recruitment',
+  'organization',
+  'leave',
+  'offices',
+];
 export const MAX_HR_WORKBOOK_BYTES = 20 * 1024 * 1024;
 
 const MAX_ROWS_PER_SHEET = 6_000;
@@ -67,6 +75,21 @@ export async function readHRWorkbook(bytes) {
   if (!buffer.length) throw new HRWorkbookError('hr_file_empty');
   if (buffer.length > MAX_HR_WORKBOOK_BYTES) {
     throw new HRWorkbookError('hr_file_too_large', 413, { maxBytes: MAX_HR_WORKBOOK_BYTES });
+  }
+
+  // Compact workbooks often store every label in sharedStrings.xml after the
+  // worksheet entry. ExcelJS's streaming reader then sees the numeric cells
+  // but returns null for the names and even the header (the new HR structure
+  // and office-distribution files are both written this way). The regular
+  // reader is bounded to small files here and preserves those strings.
+  if (buffer.length <= IN_MEMORY_FALLBACK_BYTES) {
+    try {
+      const sheets = await readSmallWorkbook(buffer);
+      if (sheets.length) return sheets;
+    } catch {
+      // Fall through to the streaming reader, which handles unusually large
+      // formatted sheets without materialising a million empty rows.
+    }
   }
 
   const reader = new ExcelJS.stream.xlsx.WorkbookReader(Readable.from([buffer]), {
@@ -270,7 +293,16 @@ export function detectHRSource(sheets) {
   if (sheets.some((sheet) => Boolean(findHeader(sheet, [['كود'], ['اسم الموظف'], ['الرقم التامينى']])))) {
     return 'insurance';
   }
+  if (sheets.some((sheet) => Boolean(findHeader(sheet, [['Staff ID'], ['Agent Name'], ['2026 current balance']])))) {
+    return 'leave';
+  }
+  if (sheets.some((sheet) => Boolean(findHeader(sheet, [['اسم المكتب'], ['عدد الوحدات'], ['اسماء الموجودين']])))) {
+    return 'offices';
+  }
   if (sheets.some((sheet) => Boolean(findHeader(sheet, [['المعرف'], ['معرف المدير المباشر'], ['المسمى الوظيفي']])))) {
+    return 'organization';
+  }
+  if (sheets.some((sheet) => Boolean(findHeader(sheet, [['Emp ID'], ['Employee Name'], ['Job Name'], ['Manager']])))) {
     return 'organization';
   }
   if (
@@ -552,29 +584,66 @@ function normalizeRecruitment(sheets) {
 }
 
 function normalizeOrganization(sheets) {
-  const sheet = findSheet(sheets, (item) =>
-    Boolean(findHeader(item, [['المعرف'], ['معرف المدير المباشر'], ['المسمى الوظيفي']]))
-  );
-  const header = findHeader(sheet, [['المعرف'], ['معرف المدير المباشر'], ['المسمى الوظيفي']]);
+  const sheet = findSheet(sheets, (item) => Boolean(
+    findHeader(item, [['المعرف'], ['معرف المدير المباشر'], ['المسمى الوظيفي']])
+    || findHeader(item, [['Emp ID'], ['Employee Name'], ['Job Name'], ['Manager']])
+  ));
+  const header = findHeader(sheet, [['المعرف'], ['معرف المدير المباشر'], ['المسمى الوظيفي']])
+    || findHeader(sheet, [['Emp ID'], ['Employee Name'], ['Job Name'], ['Manager']]);
   if (!sheet || !header) throw new HRWorkbookError('hr_organization_layout_invalid');
   const map = headerIndex(header);
+  const englishLayout = map.has(headerKey('Emp ID'));
   const positions = rowsAfter(sheet, header)
     .map((row) => {
-      const id = asId(get(row, map, 'المعرف'));
+      const employeeCode = asId(get(row, map, 'Emp ID'));
+      const id = asId(get(row, map, 'المعرف')) || (employeeCode ? `employee:${employeeCode}` : '');
       if (!id) return null;
-      const rawEmployeeName = cleanText(get(row, map, 'اسم الموظف'));
+      const rawEmployeeName = cleanText(get(row, map, 'اسم الموظف', 'Employee Name'));
       const employeeName = normalizedName(rawEmployeeName) === 'جديد' ? '' : rawEmployeeName;
       return {
         id,
         managerPositionId: asId(get(row, map, 'معرف المدير المباشر')) || null,
-        title: cleanText(get(row, map, 'المسمى الوظيفي')),
+        title: cleanText(get(row, map, 'المسمى الوظيفي', 'Job Name')),
         employeeName,
         employeeNameKey: normalizedName(employeeName),
-        departmentCode: cleanText(get(row, map, 'القسم')),
+        employeeCode: employeeCode || null,
+        departmentCode: cleanText(get(row, map, 'القسم', 'Department')),
         color: cleanText(get(row, map, 'لون مخصص (اختياري)')).replace(/^#/, '') || null,
+        reportingNames: englishLayout
+          ? [
+              cleanText(get(row, map, 'Team Leader')),
+              cleanText(get(row, map, 'Supervisor')),
+              cleanText(get(row, map, 'Manager')),
+            ].filter((value) => value && !/^-+$/.test(value))
+          : [],
       };
     })
     .filter(Boolean);
+
+  if (englishLayout) {
+    const skeleton = (value) => normalizedName(value)
+      .replace(/\b(eng|engineer|mr|mrs|ms)\b/g, ' ')
+      .replace(/abdul rahman/g, 'abdulrahman')
+      .split(' ')
+      .filter(Boolean)
+      .map((token) => token.replace(/[aeiouy]/g, ''));
+    const managerFor = (name, position) => {
+      const wanted = skeleton(name);
+      if (!wanted.length) return null;
+      const matches = positions.filter((candidate) => {
+        if (candidate.id === position.id) return false;
+        const available = skeleton(candidate.employeeName);
+        return wanted.every((token) => available.some((part) => part === token || part.startsWith(token) || token.startsWith(part)));
+      });
+      return matches.length === 1 ? matches[0].id : null;
+    };
+    for (const position of positions) {
+      position.managerPositionId = position.reportingNames
+        .map((name) => managerFor(name, position))
+        .find(Boolean) ?? null;
+      delete position.reportingNames;
+    }
+  }
 
   return {
     payload: { positions },
@@ -587,12 +656,153 @@ function normalizeOrganization(sheets) {
   };
 }
 
+function normalizeLeave(sheets) {
+  const balanceSheet = sheets
+    .filter((item) => Boolean(findHeader(item, [['Staff ID'], ['Agent Name'], ['2026 current balance']])))
+    .sort((left, right) => right.rows.length - left.rows.length)[0] ?? null;
+  const balanceHeader = findHeader(balanceSheet, [['Staff ID'], ['Agent Name'], ['2026 current balance']]);
+  // Overview repeats the same record headers for one selected employee. The
+  // source of truth is the longest matching sheet ("Updates" in the supplied
+  // workbook), otherwise only that employee's 27 rows would be imported.
+  const updatesSheet = sheets
+    .filter((item) => Boolean(findHeader(item, [['Staff ID'], ['Date'], ['Code']])))
+    .sort((left, right) => right.rows.length - left.rows.length)[0] ?? null;
+  const updatesHeader = findHeader(updatesSheet, [['Staff ID'], ['Date'], ['Code']]);
+  if (!balanceSheet || !balanceHeader || !updatesSheet || !updatesHeader) {
+    throw new HRWorkbookError('hr_leave_layout_invalid');
+  }
+
+  const balanceMap = headerIndex(balanceHeader);
+  const balances = rowsAfter(balanceSheet, balanceHeader)
+    .map((row) => {
+      const employeeCode = asId(getFirstMeaningful(row, balanceMap, 'Staff ID2', 'Staff ID'));
+      if (!employeeCode) return null;
+      return {
+        employeeCode,
+        employeeName: cleanText(get(row, balanceMap, 'Agent Name')),
+        title: cleanText(get(row, balanceMap, 'Project')),
+        hiringDate: asDate(get(row, balanceMap, 'Hiring date')),
+        status: asStatus(get(row, balanceMap, 'Status')),
+        teamLeader: cleanText(get(row, balanceMap, 'Team Leader')),
+        supervisor: cleanText(get(row, balanceMap, 'Supervisor')),
+        carriedAnnual: asNumber(get(row, balanceMap, 'Transferred Balance From 2025')),
+        annualEntitlement: asNumber(get(row, balanceMap, '2026 current balance')),
+        annualAccrued: asNumber(get(row, balanceMap, 'YTD limit')),
+        annualRemaining: asNumber(get(row, balanceMap, 'Total Remaining')),
+        sickEntitlement: asNumber(get(row, balanceMap, 'Sick Balance')),
+        sickUsed: asNumber(get(row, balanceMap, 'Total Sick Consumption')),
+        sickRemaining: asNumber(get(row, balanceMap, 'Remaining Sick')),
+        annualUsed: asNumber(get(row, balanceMap, 'Total Consumption per Employee')),
+        availableNow: asNumber(get(row, balanceMap, 'Remaining')),
+      };
+    })
+    .filter(Boolean);
+
+  const updatesMap = headerIndex(updatesHeader);
+  const records = rowsAfter(updatesSheet, updatesHeader)
+    .map((row) => {
+      const employeeCode = asId(get(row, updatesMap, 'Staff ID'));
+      const date = asDate(get(row, updatesMap, 'Date'));
+      const code = cleanText(get(row, updatesMap, 'Code'));
+      if (!employeeCode || !date || !code) return null;
+      return {
+        id: `${employeeCode}:${date}:${row.number}`,
+        employeeCode,
+        employeeName: cleanText(get(row, updatesMap, 'Agent Name')),
+        date,
+        code,
+        days: /^half\b/i.test(code) ? 0.5 : 1,
+        comment: cleanText(get(row, updatesMap, 'Comment')),
+      };
+    })
+    .filter(Boolean);
+
+  const duplicateKeys = new Map();
+  for (const record of records) {
+    const key = `${record.employeeCode}:${record.date}:${headerKey(record.code)}`;
+    duplicateKeys.set(key, (duplicateKeys.get(key) ?? 0) + 1);
+  }
+  const warnings = [...duplicateKeys.entries()]
+    .filter(([, count]) => count > 1)
+    .map(([id]) => ({ code: 'duplicate_leave_record', id }));
+  return {
+    payload: { balances, records, year: 2026 },
+    summary: {
+      rows: balances.length,
+      employees: balances.length,
+      records: records.length,
+      annualDays: records.filter((record) => /annual/i.test(record.code)).reduce((sum, record) => sum + record.days, 0),
+      sickDays: records.filter((record) => /^sick/i.test(record.code)).reduce((sum, record) => sum + record.days, 0),
+    },
+    warnings,
+  };
+}
+
+function normalizeOffices(sheets) {
+  const rooms = [];
+  const warnings = [];
+  const departmentFor = (name) => {
+    const key = normalizedName(name);
+    if (key.includes('موارد')) return 'hr';
+    if (key.includes('حساب')) return 'finance';
+    if (key.includes('مبيعات')) return 'sales';
+    if (key.includes('marketing')) return 'marketing';
+    if (key.includes('عمليات')) return 'operations';
+    if (key === 'it') return 'it';
+    return null;
+  };
+
+  for (const sheet of sheets) {
+    const header = findHeader(sheet, [['اسم المكتب'], ['عدد الوحدات'], ['اسماء الموجودين']]);
+    if (!header) continue;
+    const map = headerIndex(header);
+    for (const row of rowsAfter(sheet, header)) {
+      const nameAr = cleanText(get(row, map, 'اسم المكتب'));
+      if (!nameAr) continue;
+      const units = Math.max(0, Math.round(asNumber(get(row, map, 'عدد الوحدات')) ?? 0));
+      const rawNames = cleanText(get(row, map, 'اسماء الموجودين'));
+      const prayer = normalizedName(nameAr).includes('اجتماعات') && normalizedName(rawNames).includes('مصلي');
+      const occupants = prayer ? [] : rawNames.split(/\s*[+\-]\s*/).map(cleanText).filter(Boolean);
+      const statedAvailable = Math.max(0, Math.round(asNumber(get(row, map, 'عدد الوحدات المتاحة')) ?? 0));
+      const free = Math.max(0, units - occupants.length);
+      if (occupants.length + statedAvailable !== units) {
+        warnings.push({ code: 'office_count_reconciled', id: `${sheet.name}:${nameAr}` });
+      }
+      const rawZone = cleanText(sheet.name);
+      rooms.push({
+        zone: /^مكتب\s*[اأإآ]$/.test(rawZone) ? 'مكتب 1' : rawZone,
+        nameAr,
+        department: departmentFor(nameAr),
+        kind: prayer ? 'prayer' : 'workroom',
+        units,
+        occupants: occupants.slice(0, units),
+        free,
+        note: cleanText(get(row, map, 'تعديلات')) || null,
+      });
+    }
+  }
+  if (!rooms.length) throw new HRWorkbookError('hr_offices_layout_invalid');
+  return {
+    payload: { rooms },
+    summary: {
+      rows: rooms.length,
+      rooms: rooms.length,
+      units: rooms.reduce((sum, room) => sum + room.units, 0),
+      occupants: rooms.reduce((sum, room) => sum + room.occupants.length, 0),
+      free: rooms.reduce((sum, room) => sum + room.free, 0),
+    },
+    warnings,
+  };
+}
+
 const NORMALIZERS = {
   master: normalizeMaster,
   payroll: normalizePayroll,
   insurance: normalizeInsurance,
   recruitment: normalizeRecruitment,
   organization: normalizeOrganization,
+  leave: normalizeLeave,
+  offices: normalizeOffices,
 };
 
 export async function parseHRWorkbook(bytes, requestedSource = 'auto') {

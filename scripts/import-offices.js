@@ -58,15 +58,11 @@ async function main() {
   console.log(`  Organization: ${ORGANIZATION}`);
   console.log(line);
 
-  // The plan reports fewer occupied desks than the spreadsheet did, and saying
-  // so here is the point: the difference is exactly the rows that could not
-  // name anybody. Discovering that later as a mystery would be worse.
   console.log(`  Occupied by a named person: ${tally.named}`);
-  console.log(`  Reserved for a new joiner:  ${tally.held}   («موظف جديد» in IT)`);
-  console.log(`  Counted as taken, unnamed:  ${tally.unnamed}   (ODOO — free, carrying the question)`);
+  console.log(`  Available desks:           ${tally.free}`);
   console.log(`${line}\n`);
   console.log('  Rooms arrive unmeasured and unarranged, on purpose. Measure and');
-  console.log('  lay them out from Offices → Edit, and link the names to accounts.\n');
+  console.log('  lay them out from HR → Offices → Edit, and link the names to profiles.\n');
 }
 
 await main();

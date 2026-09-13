@@ -3,26 +3,19 @@ import { seatLabelFor } from './offices.js';
 /**
  * The office inventory as it was handed over.
  *
- * A four-sheet spreadsheet from the management team, transcribed here with its
- * own spelling kept. The sheet itself is not in the repository — it is company
- * data and it is a snapshot, not a source of truth. This is the starting state
- * the workspace is given so somebody can begin correcting it; it is not a
- * record that stays in step with the building.
+ * The latest four-sheet distribution from the management team, transcribed
+ * here with its own spelling kept. This is the fresh-install snapshot; later
+ * uploads through HR → Data sync replace the corresponding office zones.
  *
- * Three things the sheet said that this deliberately does not copy:
+ * Two inconsistent totals are deliberately reconciled instead of copied:
  *
- *   • Its «الشاغرة» column counts desks that ARE taken, despite the word. The
- *     data proves it: HR has 6 desks, the column says 4, and four names are
- *     listed. Nothing here stores that number at all — the desks are the count.
- *   • «موظف جديد» in IT is written where a name goes. It is a desk held for
- *     somebody who has not arrived, so it becomes `reserved`, not a person
- *     called "new employee".
- *   • ODOO's four occupied desks list no names. They come in as plain free
- *     desks carrying the question, because inventing four occupants would be
- *     worse than recording that the room needs asking about.
+ *   • LMS lists 7 units and 4 people but says 2 are available. Capacity and
+ *     named people imply 3 available desks.
+ *   • MARKETING lists 12 units and 12 people but says 1 is available. The room
+ *     is therefore full.
  *
- * `occupants` are the names as written; `free` is the sheet's «المتاحة» column;
- * `unnamed` is how many desks it counts as taken without saying by whom.
+ * `occupants` are the names as written; `free` is always capacity minus those
+ * names so the visible room total cannot contradict itself.
  */
 export const INVENTORY = [
   {
@@ -41,28 +34,24 @@ export const INVENTORY = [
         occupants: ['محمد عجمي', 'احمد شعبان', 'اميرة محمد', 'مصطفي فرحات'],
       },
       {
-        nameAr: 'التدريب',
-        department: 'training',
-        free: 8,
-        occupants: [],
-        note: 'سيتم إضافة 8 وحدات لفريق المبيعات',
+        nameAr: 'غرفة نادر (مبيعات جديد)',
+        department: 'sales',
+        free: 3,
+        occupants: ['نادر عزيز', 'حازم طلعت', 'محمد حسن', 'احمد الشيخ', 'داليا محمد'],
       },
       {
-        nameAr: 'المبيعات',
+        nameAr: 'المبيعات غرفة اسماء',
         department: 'sales',
-        free: 2,
+        free: 5,
         occupants: [
-          'اسماء فتحي',
-          'منة مجدي',
-          'احمد شعبان',
-          'احمد فاروق',
-          'داليا محمد',
-          'نادر رفعت',
-          'محمد سامي',
-          'حازم طلعت',
-          'احمد ايهاب',
-          'محمود حسن',
+          'اسماء',
+          'سامي',
+          'مازن',
           'محمد ايهاب',
+          'احمد ايهاب',
+          'سارة عسكر',
+          'احمد فارق',
+          'احمد سليمان',
         ],
       },
     ],
@@ -74,30 +63,29 @@ export const INVENTORY = [
         nameAr: 'IT',
         department: 'it',
         free: 0,
-        occupants: ['عبدالله ذكي', 'عبدالله شحاتة'],
-        reserved: 1,
+        occupants: ['عبدالله ذكي', 'عبدالله شحاتة', 'احمد لطفي'],
       },
       {
         nameAr: 'ODOO',
         // Not resolved yet: an Odoo team is a system, not one of the nine
         // departments. Left unset rather than guessed.
         department: null,
-        free: 1,
-        occupants: [],
-        unnamed: 4,
-        note: 'الجرد يقول 4 وحدات مشغولة بلا أسماء · وقرار بإزالة المكتب وتركيب وحدتين',
+        free: 2,
+        occupants: ['اياد', 'عطية', 'صابر', 'كريم'],
       },
       {
         nameAr: 'LMS',
         department: null,
-        free: 2,
-        occupants: ['جورج', 'عبدالرحمن', 'حربي', 'عمر', 'احمد هشام'],
-        note: 'إزالة جورج وتعيين بديل',
+        occupants: ['عبدالرحمن', 'حربي', 'عمر', 'محمد هشام'],
+        // The sheet says seven units and lists four people, while its available
+        // column says two. Capacity and named occupants are authoritative, so
+        // the third unassigned desk is kept visible instead of disappearing.
+        free: 3,
       },
       {
         nameAr: 'MARKETING',
         department: 'marketing',
-        free: 1,
+        free: 0,
         occupants: [
           'صديق',
           'السيد',
@@ -109,8 +97,9 @@ export const INVENTORY = [
           'طه',
           'شيماء',
           'رنا',
+          'مي مصطفي',
+          'احمد هشام',
         ],
-        note: 'الزيادة لموظفة السوشيال الجديدة',
       },
     ],
   },
@@ -120,18 +109,18 @@ export const INVENTORY = [
       {
         nameAr: 'مبيعات كبير',
         department: 'sales',
-        free: 10,
-        occupants: ['منتصر', 'هادي', 'مريم', 'ياسمين', 'احمد ابراهيم', 'مصطفي', 'حسين'],
-        note: 'ستتم إزالة أحمد إبراهيم',
+        free: 11,
+        occupants: ['منتصر', 'هادي', 'ياسمين', 'مصطفي', 'حسين', 'صابرين'],
+        note: 'سيتم إزالة أحمد إبراهيم',
       },
       {
         nameAr: 'مبيعات صغير',
         department: 'sales',
-        free: 0,
-        occupants: ['منة', 'شريف', 'صابرين', 'بسمة', 'اسلام', 'بهاء', 'محمد عبدالله'],
+        free: 1,
+        occupants: ['منة', 'شريف', 'بسمة', 'اسلام', 'بهاء', 'محمد عبدالله'],
       },
       {
-        nameAr: 'اجتماعات · مصلّى',
+        nameAr: 'اجتماعات',
         department: null,
         kind: 'prayer',
         free: 0,
@@ -151,6 +140,7 @@ export const INVENTORY = [
           'احمد شعبان',
           'وفاء',
         ],
+        note: 'سيتم تعيين موظف جديد في مكان عمل وفاء',
       },
       {
         nameAr: 'جودة و ادمن',
@@ -238,7 +228,7 @@ export function inventoryDocuments(organizationId) {
   return { offices, seats };
 }
 
-/** What the sheet said, and what could not be honoured — printed on import. */
+/** The fresh-install snapshot tally printed on first boot. */
 export function inventoryTally() {
   let named = 0;
   let held = 0;
@@ -253,5 +243,12 @@ export function inventoryTally() {
         (room.occupants ?? []).length + (room.reserved ?? 0) + (room.unnamed ?? 0) + (room.free ?? 0);
     }
   }
-  return { rooms: INVENTORY.reduce((n, z) => n + z.rooms.length, 0), units, named, held, unnamed };
+  return {
+    rooms: INVENTORY.reduce((n, z) => n + z.rooms.length, 0),
+    units,
+    named,
+    free: units - named - held - unnamed,
+    held,
+    unnamed,
+  };
 }

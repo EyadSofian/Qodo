@@ -1,4 +1,41 @@
-export type HRSource = 'master' | 'payroll' | 'insurance' | 'recruitment' | 'organization';
+export type HRSource =
+  | 'master'
+  | 'payroll'
+  | 'insurance'
+  | 'recruitment'
+  | 'organization'
+  | 'leave'
+  | 'offices';
+
+export interface HRLeaveRecord {
+  id: string;
+  employeeCode: string;
+  employeeName: string;
+  date: string;
+  code: string;
+  days: number;
+  comment: string;
+}
+
+export interface HRLeaveBalance {
+  employeeCode: string;
+  employeeName: string;
+  title: string;
+  hiringDate: string | null;
+  status: string;
+  teamLeader: string;
+  supervisor: string;
+  carriedAnnual: number | null;
+  annualEntitlement: number | null;
+  annualAccrued: number | null;
+  annualRemaining: number | null;
+  sickEntitlement: number | null;
+  sickUsed: number | null;
+  sickRemaining: number | null;
+  annualUsed: number | null;
+  availableNow: number | null;
+  records?: HRLeaveRecord[];
+}
 
 export interface HREmployeeSummary {
   employeeCode: string;
@@ -15,6 +52,8 @@ export interface HREmployeeSummary {
   linkedUserId: string | null;
   hasPayroll: boolean;
   hasInsurance: boolean;
+  hasLeave: boolean;
+  leaveAvailable: number | null;
   documentCompletionRate: number | null;
   totalSalary?: number | null;
 }
@@ -188,16 +227,28 @@ export interface HRDashboardData {
     openPositions: number;
     organizationPositions: number;
     organizationVacancies: number;
+    leaveEmployees: number;
+    leaveRecords: number;
   };
   analytics: null | {
     workforce: HRWorkforceAnalytics;
     payroll: HRPayrollAnalytics | null;
     recruitment: HRRecruitmentAnalytics;
     organization: { total: number; matched: number; vacant: number; unmatched: number; departments: number };
+    leave: {
+      year: number;
+      employees: number;
+      activeEmployees: number;
+      records: number;
+      annualDays: number;
+      sickDays: number;
+      negativeBalances: number;
+    };
   };
   employees: HREmployeeSummary[];
   recruitment: HRRecruitmentRequest[];
   organization: HROrganizationPosition[];
+  leaveBalances: HRLeaveBalance[];
   datasets: HRDatasetMeta[];
   accounts: Array<{ id: string; name: string; email: string }>;
   reconciliation: HRReconciliation | null;
@@ -242,6 +293,7 @@ export interface HREmployeeProfile extends HREmployeeSummary {
   insurance: null | Record<string, string | number | null>;
   tax: null | { months: Record<string, number | null>; total: number | null };
   organizationPosition: HROrganizationPosition | null;
+  leave: HRLeaveBalance | null;
   sources: Record<string, boolean>;
 }
 
@@ -275,5 +327,17 @@ export const HR_SOURCE_LABELS: Record<HRSource, { ar: string; en: string; hintAr
     en: 'Organization',
     hintAr: 'المناصب والمدير المباشر والشواغر',
     hintEn: 'Positions, reporting lines, and vacancies',
+  },
+  leave: {
+    ar: 'الإجازات والأرصدة',
+    en: 'Leave & balances',
+    hintAr: 'الرصيد السنوي والمرضي وسجل الإجازات لعام 2026',
+    hintEn: 'Annual and sick balances with 2026 leave history',
+  },
+  offices: {
+    ar: 'توزيع المكاتب',
+    en: 'Office distribution',
+    hintAr: 'الغرف والسعة والأسماء ومواقع الجلوس الحالية',
+    hintEn: 'Rooms, capacity, occupants, and current seating',
   },
 };

@@ -19,7 +19,6 @@ import { Profile } from './pages/Profile';
 import { Settings } from './pages/Settings';
 import { Mail } from './pages/Mail';
 import { Calendar } from './pages/Calendar';
-import { Offices } from './pages/Offices';
 import { Book } from './pages/Book';
 import { HR, HREmployee } from './pages/HR';
 import { Prices } from './pages/Prices';
@@ -187,7 +186,7 @@ function Gate() {
         </Route>
         <Route path="/mail" element={<Mail />} />
         <Route path="/calendar" element={<Calendar />} />
-        <Route path="/offices" element={<Offices />} />
+        <Route path="/offices" element={<Navigate to="/hr?tab=offices" replace />} />
         <Route path="/hr" element={<HR />} />
         <Route path="/hr/employees/:employeeCode" element={<HREmployee />} />
         <Route path="/prices" element={<Prices />} />

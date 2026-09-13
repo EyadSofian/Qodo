@@ -98,9 +98,9 @@ export async function seatFor(office, seatId) {
  * A room dressed for the client: its seats in layout order, its derived counts,
  * and how far it is from being drawable to scale.
  */
-export function publicOffice(office, seats, people) {
+export function publicOffice(office, seats, people, employees = null) {
   const mine = orderedSeats(seats.filter((seat) => seat.officeId === office.id));
-  const dressed = mine.map((seat) => publicSeat(seat, people));
+  const dressed = mine.map((seat) => publicSeat(seat, people, employees, office));
   // Counted from the stored rows, never from `dressed`: presentation renames
   // `status` to the already-derived `state`, so deriving a second time off the
   // dressed shape reads an absent field and silently calls every reserved desk
@@ -125,8 +125,12 @@ export function publicOffice(office, seats, people) {
   };
 }
 
-export function publicSeat(seat, people) {
+export function publicSeat(seat, people, employees = null, office = null) {
   const person = seat.userId ? people.get(seat.userId) : null;
+  const employee = employees
+    ? employees.byUserId.get(seat.userId)
+      ?? matchOfficeEmployee(person?.name ?? seat.occupantName, employees.list, office)
+    : null;
   return {
     id: seat.id,
     officeId: seat.officeId,
@@ -140,6 +144,7 @@ export function publicSeat(seat, people) {
     // imported under rather than emptying the desk — the person may well still
     // be sitting there.
     occupantName: person?.name ?? seat.occupantName ?? null,
+    employeeCode: employee?.employeeCode ?? null,
     occupant: person
       ? {
           id: person.id,
@@ -150,6 +155,215 @@ export function publicSeat(seat, people) {
         }
       : null,
   };
+}
+
+const officeNameKey = (value) => String(value || '')
+  .toLowerCase()
+  .normalize('NFKD')
+  .replace(/[\u064B-\u065F\u0670]/g, '')
+  .replace(/[أإآ]/g, 'ا')
+  .replace(/ة/g, 'ه')
+  .replace(/ى/g, 'ي')
+  .replace(/[^\p{L}\p{N}]+/gu, ' ')
+  .replace(/\s+/g, ' ')
+  .trim();
+
+const ARABIC_LATIN = {
+  ا: 'a', ب: 'b', ت: 't', ث: 'th', ج: 'g', ح: 'h', خ: 'kh',
+  د: 'd', ذ: 'z', ر: 'r', ز: 'z', س: 's', ش: 'sh', ص: 's',
+  ض: 'd', ط: 't', ظ: 'z', ع: '', غ: 'gh', ف: 'f', ق: 'k',
+  ك: 'k', ل: 'l', م: 'm', ن: 'n', ه: 'h', و: 'w', ي: 'y',
+  ة: 'a', ى: 'a', ء: '', ئ: 'y', ؤ: 'u',
+};
+
+const phoneticNameKey = (value) => String(value || '')
+  .toLowerCase()
+  .normalize('NFKD')
+  .replace(/[\u064B-\u065F\u0670]/g, '')
+  .replace(/[أإآ]/g, 'ا')
+  .replace(/[^\p{L}\p{N}]+/gu, ' ')
+  .replace(/\s+/g, ' ')
+  .trim();
+
+function phoneticToken(value, compact = false) {
+  const latin = [...value]
+    .map((character) => ARABIC_LATIN[character] ?? character)
+    .join('');
+  const skeleton = latin
+    .replace(/ph/g, 'f')
+    .replace(/ch/g, 'sh')
+    .replace(/gh/g, 'g')
+    .replace(/q/g, 'k')
+    .replace(/j/g, 'g')
+    .replace(/c/g, 'k')
+    .replace(/[aeiou\s-]+/g, '')
+    .replace(/(.)\1+/g, '$1');
+  return compact ? skeleton.replace(/[wy]/g, '').replace(/(.)\1+/g, '$1') : skeleton;
+}
+
+function phoneticParts(value, compact = false) {
+  return phoneticNameKey(value).split(' ').map((part) => phoneticToken(part, compact)).filter(Boolean);
+}
+
+function phoneticForms(parts) {
+  const forms = new Set(parts);
+  for (let index = 0; index < parts.length; index += 1) {
+    if (parts[index + 1]) forms.add(parts[index] + parts[index + 1]);
+    if (parts[index + 2]) forms.add(parts[index] + parts[index + 1] + parts[index + 2]);
+  }
+  return [...forms];
+}
+
+function employeePoolForOffice(office, employees) {
+  const room = officeNameKey(`${office?.nameAr ?? ''} ${office?.nameEn ?? ''}`);
+  const department = officeNameKey(office?.department);
+  let pattern = null;
+  if (department === 'hr') pattern = /\b(hr|recruit|talent|workforce|human resource)/;
+  else if (department === 'finance') pattern = /(account|treasur|finance)/;
+  else if (department === 'sales') pattern = /(sales|re sale|tele sales)/;
+  else if (department === 'operations') pattern = /(operation|coordination|support)/;
+  else if (department === 'it') pattern = /(^| )(it|system|help desk)( |$)/;
+  else if (department === 'marketing') pattern = /(marketing|social media|media buyer|content|graphic|seo)/;
+  else if (room.includes('odoo')) pattern = /odoo/;
+  else if (room.includes('lms')) pattern = /(lms|instructional)/;
+  else if (room.includes('جوده') || room.includes('ادمن')) pattern = /(quality|sales admin|pre sales)/;
+  if (!pattern) return [];
+  return employees.filter((employee) => employee.tags.some((tag) => pattern.test(tag)));
+}
+
+function matchOfficeEmployee(name, employees, office = null) {
+  const wanted = officeNameKey(name);
+  if (!wanted) return null;
+  const exact = employees.filter((employee) => employee.keys.includes(wanted));
+  if (exact.length === 1) return exact[0];
+  const tokens = wanted.split(' ').filter(Boolean);
+  const candidates = employees.filter((employee) => employee.keys.some((key) => {
+    if (key.startsWith(`${wanted} `) || wanted.startsWith(`${key} `)) return true;
+    const available = key.split(' ');
+    return tokens.every((token) => available.includes(token));
+  }));
+  if (candidates.length === 1) return candidates[0];
+
+  // The supplied seating sheet uses Arabic nicknames while HR's official
+  // names are Latin. Compare consonant skeletons only when they resolve to one
+  // employee. For two-part seat names the first part must still be the
+  // employee's leading name; this prevents "Mohamed Shazly" from matching a
+  // Karim whose fourth legal name happens to be Mohamed.
+  const phoneticMatch = (pool, wantedPhonetic, field, leadingField) => pool.filter((employee) => {
+    if (wantedPhonetic.length === 1) return employee[leadingField].includes(wantedPhonetic[0]);
+    return employee[leadingField].includes(wantedPhonetic[0])
+      && wantedPhonetic.slice(1).every((token) => employee[field].includes(token));
+  });
+  const wantedPhonetic = phoneticParts(name);
+  if (!wantedPhonetic.length) return null;
+  const inOfficeDomain = employeePoolForOffice(office, employees);
+  const preferred = employees.filter((employee) => employee.inOrganization);
+  const preferredInOfficeDomain = inOfficeDomain.filter((employee) => employee.inOrganization);
+  const candidatePools = wantedPhonetic.length === 1
+    ? [preferredInOfficeDomain, inOfficeDomain, employees]
+    : [inOfficeDomain, preferred, employees];
+  for (const pool of candidatePools) {
+    if (!pool.length) continue;
+    const primaryMatches = phoneticMatch(pool, wantedPhonetic, 'phonetic', 'leadingPhonetic');
+    if (primaryMatches.length === 1) return primaryMatches[0];
+  }
+
+  // A second signature treats w/y as written vowels (Mahfouz/Mahfuz,
+  // Yasmin/Yasmine). Short compact signatures are too collision-prone.
+  const wantedCompact = phoneticParts(name, true);
+  if (
+    (wantedCompact.length === 1 && wantedCompact[0].length < 3)
+    || (wantedCompact.length > 1 && wantedCompact.some((token) => token.length < 2))
+  ) return null;
+  for (const pool of candidatePools) {
+    if (!pool.length) continue;
+    const compactMatches = phoneticMatch(pool, wantedCompact, 'phoneticCompact', 'leadingPhoneticCompact');
+    if (compactMatches.length === 1) return compactMatches[0];
+  }
+  return null;
+}
+
+async function employeeIndex(organizationId) {
+  const [datasets, links] = await Promise.all([
+    find('hrDatasets', (dataset) => dataset.organizationId === organizationId),
+    findOne('hrEmployeeLinks', (document) => document.id === `hr-links:${organizationId}`),
+  ]);
+  const byCode = new Map();
+  const ensure = (employeeCode) => {
+    const code = String(employeeCode || '').trim();
+    if (!code) return null;
+    if (!byCode.has(code)) {
+      byCode.set(code, {
+        employeeCode: code,
+        inOrganization: false,
+        tags: [],
+        keys: [],
+        phonetic: [],
+        leadingPhonetic: [],
+        phoneticCompact: [],
+        leadingPhoneticCompact: [],
+      });
+    }
+    return byCode.get(code);
+  };
+  const addName = (employee, name) => {
+    const key = officeNameKey(name);
+    if (key && !employee.keys.includes(key)) employee.keys.push(key);
+    for (const compact of [false, true]) {
+      const parts = phoneticParts(name, compact);
+      const field = compact ? 'phoneticCompact' : 'phonetic';
+      const leadingField = compact ? 'leadingPhoneticCompact' : 'leadingPhonetic';
+      for (const form of phoneticForms(parts)) {
+        if (form && !employee[field].includes(form)) employee[field].push(form);
+      }
+      const leading = [parts[0], parts.slice(0, 2).join(''), parts.slice(0, 3).join('')];
+      for (const form of leading) {
+        if (form && !employee[leadingField].includes(form)) employee[leadingField].push(form);
+      }
+    }
+  };
+  const addTags = (employee, ...values) => {
+    for (const value of values) {
+      const tag = officeNameKey(value);
+      if (tag && !employee.tags.includes(tag)) employee.tags.push(tag);
+    }
+  };
+  for (const dataset of datasets) {
+    if (dataset.source === 'master') {
+      for (const row of dataset.payload?.employees ?? []) {
+        const employee = ensure(row.employeeCode);
+        if (!employee) continue;
+        addName(employee, row.nameArabic);
+        addName(employee, row.nameEnglish);
+        addTags(employee, row.department, row.sector, row.title);
+      }
+    }
+    if (dataset.source === 'leave') {
+      for (const row of dataset.payload?.balances ?? []) {
+        const employee = ensure(row.employeeCode);
+        if (employee) {
+          addName(employee, row.employeeName);
+          addTags(employee, row.title);
+        }
+      }
+    }
+    if (dataset.source === 'organization') {
+      for (const row of dataset.payload?.positions ?? []) {
+        const employee = ensure(row.employeeCode);
+        if (employee) {
+          employee.inOrganization = true;
+          addName(employee, row.employeeName);
+          addTags(employee, row.departmentCode, row.title);
+        }
+      }
+    }
+  }
+  const byUserId = new Map();
+  for (const [employeeCode, userId] of Object.entries(links?.links ?? {})) {
+    const employee = byCode.get(employeeCode);
+    if (employee && userId) byUserId.set(userId, employee);
+  }
+  return { list: [...byCode.values()], byUserId };
 }
 
 /** Everyone in this organization, indexed for seat presentation. */
@@ -164,12 +378,13 @@ export async function peopleIndex(organizationId) {
 /** The whole plan in one payload — what the page loads on open. */
 export async function readPlan(user) {
   const organizationId = organizationOf(user);
-  const [offices, seats, people] = await Promise.all([
+  const [offices, seats, people, employees] = await Promise.all([
     officesOf(organizationId),
     seatsOf(organizationId),
     peopleIndex(organizationId),
+    employeeIndex(organizationId),
   ]);
-  const dressed = offices.map((office) => publicOffice(office, seats, people));
+  const dressed = offices.map((office) => publicOffice(office, seats, people, employees));
   return {
     offices: dressed,
     zones: [...new Set(dressed.map((office) => office.zone))],
@@ -201,8 +416,14 @@ export async function seatOfUser(organizationId, userId) {
   if (!seat) return { office: null, seat: null };
   const office = await findOne('offices', (row) => row.id === seat.officeId);
   if (!office) return { office: null, seat: null };
-  const people = await peopleIndex(organizationId);
-  return { office: publicOffice(office, [seat], people), seat: publicSeat(seat, people) };
+  const [people, employees] = await Promise.all([
+    peopleIndex(organizationId),
+    employeeIndex(organizationId),
+  ]);
+  return {
+    office: publicOffice(office, [seat], people, employees),
+    seat: publicSeat(seat, people, employees, office),
+  };
 }
 
 /* ── writes ──────────────────────────────────────────────────────────── */

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   Activity,
   AlertTriangle,
@@ -9,6 +9,8 @@ import {
   Banknote,
   Bot,
   BriefcaseBusiness,
+  Building2,
+  CalendarDays,
   Check,
   ChevronDown,
   ChevronRight,
@@ -38,12 +40,14 @@ import { useI18n } from '../lib/i18n';
 import { cx } from '../lib/utils';
 import { Avatar, EmptyState, Modal, Spinner, useToast } from '../components/ui';
 import { KPIScorecards, type KPISubject } from '../components/hr/KPIScorecards';
+import { Offices } from './Offices';
 import {
   HR_SOURCE_LABELS,
   type HRDashboardData,
   type HRDatasetMeta,
   type HREmployeeProfile,
   type HREmployeeSummary,
+  type HRLeaveBalance,
   type HROrganizationPosition,
   type HROdooRecruitmentData,
   type HROdooRecruitmentJobOption,
@@ -52,15 +56,17 @@ import {
   type HRSource,
 } from '../lib/hr';
 
-type HRTab = 'overview' | 'people' | 'payroll' | 'recruitment' | 'kpi' | 'organization' | 'imports';
+type HRTab = 'overview' | 'people' | 'leave' | 'payroll' | 'recruitment' | 'kpi' | 'organization' | 'offices' | 'imports';
 
 const TABS: Array<{ id: HRTab; ar: string; en: string; icon: typeof UsersRound }> = [
   { id: 'overview', ar: 'نظرة عامة', en: 'Overview', icon: LayoutDashboard },
   { id: 'people', ar: 'الموظفون', en: 'People', icon: UsersRound },
+  { id: 'leave', ar: 'الإجازات', en: 'Leave', icon: CalendarDays },
   { id: 'payroll', ar: 'الرواتب', en: 'Payroll', icon: Banknote },
   { id: 'recruitment', ar: 'التوظيف', en: 'Recruitment', icon: BriefcaseBusiness },
   { id: 'kpi', ar: 'مؤشرات الأداء', en: 'KPIs', icon: Gauge },
   { id: 'organization', ar: 'الهيكل', en: 'Organization', icon: GitBranch },
+  { id: 'offices', ar: 'المكاتب', en: 'Offices', icon: Building2 },
   { id: 'imports', ar: 'تحديث البيانات', en: 'Data sync', icon: Database },
 ];
 
@@ -70,6 +76,8 @@ const SOURCE_ICONS: Record<HRSource, typeof Database> = {
   insurance: ShieldCheck,
   recruitment: BriefcaseBusiness,
   organization: GitBranch,
+  leave: CalendarDays,
+  offices: Building2,
 };
 
 const STATUS_STYLE: Record<string, string> = {
@@ -107,12 +115,23 @@ export function HR() {
   const { lang } = useI18n();
   const { push } = useToast();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [data, setData] = useState<HRDashboardData | null>(null);
   const [error, setError] = useState('');
-  const [tab, setTab] = useState<HRTab>('overview');
+  const [employeeQuery, setEmployeeQuery] = useState('');
+  const requestedTab = searchParams.get('tab') as HRTab | null;
+  const initialTab = TABS.some((item) => item.id === requestedTab) ? requestedTab! : 'overview';
+  const [tab, setTabState] = useState<HRTab>(initialTab);
   const [uploading, setUploading] = useState<HRSource | null>(null);
 
   const l = (ar: string, en: string) => (lang === 'en' ? en : ar);
+  const setTab = (next: HRTab) => {
+    setTabState(next);
+    const params = new URLSearchParams(searchParams);
+    if (next === 'overview') params.delete('tab');
+    else params.set('tab', next);
+    setSearchParams(params, { replace: true });
+  };
   const load = async () => {
     setError('');
     try {
@@ -127,9 +146,9 @@ export function HR() {
   }, []);
 
   useEffect(() => {
-    if (!data?.permissions.selfOnly || data.employees.length !== 1) return;
+    if (tab === 'offices' || !data?.permissions.selfOnly || data.employees.length !== 1) return;
     navigate(`/hr/employees/${data.employees[0].employeeCode}`, { replace: true });
-  }, [data, navigate]);
+  }, [data, navigate, tab]);
 
   const upload = async (source: HRSource, event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -178,7 +197,7 @@ export function HR() {
     // Someone who may only see themselves still gets the KPI desk: the endpoint
     // returns their own scorecards and nobody else's, and their own grade is
     // the half of this module they have the most reason to read.
-    if (!data.permissions.canViewPeople && item.id !== 'overview' && item.id !== 'kpi') return false;
+    if (!data.permissions.canViewPeople && !['overview', 'kpi', 'offices'].includes(item.id)) return false;
     if (!data.permissions.canViewPayroll && item.id === 'payroll') return false;
     if (!data.permissions.canManage && item.id === 'imports') return false;
     return true;
@@ -216,7 +235,7 @@ export function HR() {
             <HeadlineStat label={l('نشط', 'Active')} value={data.summary.active} />
             <HeadlineStat label={l('جدد هذا الشهر', 'New this month')} value={data.analytics?.workforce.newHires ?? 0} />
             <HeadlineStat label={l('شواغر', 'Open seats')} value={data.summary.openPositions} signal />
-            <HeadlineStat label={l('مصادر', 'Sources')} value={`${readySources}/5`} />
+            <HeadlineStat label={l('مصادر', 'Sources')} value={`${readySources}/${data.datasets.length}`} />
           </div>
         </div>
       </header>
@@ -251,17 +270,143 @@ export function HR() {
         </button>
       </div>
 
+      <GlobalEmployeeSearch
+        employees={data.employees}
+        lang={lang}
+        query={employeeQuery}
+        onQueryChange={setEmployeeQuery}
+      />
+
       <div className="mt-5 animate-fade-up" key={tab}>
         {tab === 'overview' && <Overview data={data} lang={lang} onOpen={setTab} />}
         {tab === 'people' && <PeopleDirectory data={data} lang={lang} />}
+        {tab === 'leave' && <LeaveDesk data={data} lang={lang} />}
         {tab === 'payroll' && <PayrollDesk data={data} lang={lang} />}
         {tab === 'recruitment' && <RecruitmentDesk data={data} lang={lang} onChanged={load} />}
         {tab === 'kpi' && <KPIScorecards lang={lang} canManage={data.permissions.canManage} subjects={kpiSubjects} />}
         {tab === 'organization' && <OrganizationDesk data={data} lang={lang} />}
+        {tab === 'offices' && <Offices embedded />}
         {tab === 'imports' && (
           <ImportDesk data={data} lang={lang} uploading={uploading} onUpload={upload} />
         )}
       </div>
+    </div>
+  );
+}
+
+function GlobalEmployeeSearch({ employees, lang, query, onQueryChange }: {
+  employees: HREmployeeSummary[];
+  lang: 'ar' | 'en';
+  query: string;
+  onQueryChange: (query: string) => void;
+}) {
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const l = (ar: string, en: string) => (lang === 'en' ? en : ar);
+  const results = useMemo(() => {
+    const needle = query.trim();
+    if (!needle) return [];
+    return employees
+      .filter((employee) => includesSearch([
+        employee.employeeCode,
+        employee.nameArabic,
+        employee.nameEnglish,
+      ], needle))
+      .slice(0, 8);
+  }, [employees, query]);
+
+  const openEmployee = (employee: HREmployeeSummary) => {
+    onQueryChange('');
+    setOpen(false);
+    navigate(`/hr/employees/${employee.employeeCode}`);
+  };
+
+  return (
+    <div
+      className="relative z-10 mt-3"
+      onFocus={() => setOpen(true)}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false);
+      }}
+    >
+      <div className="hr-stat flex items-center gap-3 px-3 py-2.5 sm:px-4">
+        <Search className="shrink-0 text-brand-600" size={18} />
+        <div className="min-w-0 flex-1">
+          <label htmlFor="hr-global-employee-search" className="sr-only">
+            {l('ابحث عن موظف بالاسم أو الكود من أي قسم في الموارد البشرية', 'Find an employee by name or ID from any HR section')}
+          </label>
+          <input
+            id="hr-global-employee-search"
+            type="search"
+            role="combobox"
+            aria-autocomplete="list"
+            aria-expanded={open && Boolean(query.trim())}
+            aria-controls="hr-global-employee-results"
+            autoComplete="off"
+            value={query}
+            onChange={(event) => {
+              onQueryChange(event.target.value);
+              setOpen(true);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') {
+                onQueryChange('');
+                setOpen(false);
+              }
+              if (event.key === 'Enter' && results[0]) {
+                event.preventDefault();
+                const exact = results.find((employee) => normalizeSearch(employee.employeeCode) === normalizeSearch(query));
+                openEmployee(exact ?? results[0]);
+              }
+            }}
+            className="w-full bg-transparent text-sm font-semibold text-navy outline-none placeholder:font-normal placeholder:text-ink-faint"
+            placeholder={l('ابحث عن موظف بالاسم أو كود الموظف — البحث متاح في كل تابات HR', 'Search by employee name or ID — available across every HR tab')}
+          />
+        </div>
+        <span className="hidden shrink-0 rounded-lg bg-brand-50 px-2.5 py-1 text-[10px] font-bold text-brand-700 sm:inline-flex">
+          {l('بحث موحّد', 'Global search')}
+        </span>
+      </div>
+
+      {open && query.trim() && (
+        <div
+          id="hr-global-employee-results"
+          role="listbox"
+          className="absolute inset-x-0 top-[calc(100%+0.4rem)] overflow-hidden rounded-2xl border border-line bg-white p-1.5 shadow-[0_20px_50px_-24px_rgba(11,37,69,0.45)]"
+        >
+          {results.length ? results.map((employee) => {
+            const name = employee.nameArabic || employee.nameEnglish || `#${employee.employeeCode}`;
+            const secondaryName = employee.nameArabic && employee.nameEnglish ? employee.nameEnglish : '';
+            return (
+              <button
+                key={employee.employeeCode}
+                type="button"
+                role="option"
+                aria-selected="false"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => openEmployee(employee)}
+                className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-start transition-colors hover:bg-brand-50 focus:bg-brand-50 focus:outline-none"
+              >
+                <Avatar name={name} size={32} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-semibold text-navy">{name}</span>
+                  <span className="block truncate text-[11px] text-ink-muted">
+                    {[secondaryName, employee.title, employee.department || employee.sector].filter(Boolean).join(' · ') || l('ملف موظف', 'Employee profile')}
+                  </span>
+                </span>
+                <span className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-surface-sunken px-2 py-1 font-mono text-[11px] font-bold text-ink-muted">
+                  <IdCard size={12} />{employee.employeeCode}
+                </span>
+                {lang === 'ar' ? <ArrowLeft size={15} className="shrink-0 text-ink-faint" /> : <ArrowRight size={15} className="shrink-0 text-ink-faint" />}
+              </button>
+            );
+          }) : (
+            <div className="px-4 py-5 text-center text-xs text-ink-muted">
+              {l('لا يوجد موظف مطابق للاسم أو الكود.', 'No employee matches that name or ID.')}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -698,13 +843,41 @@ function buildDepartments(data: HRDashboardData): DepartmentSummary[] {
     .sort((left, right) => right.active - left.active || right.people.length - left.people.length || left.key.localeCompare(right.key, 'ar'));
 }
 
+function normalizeSearch(value: string) {
+  const arabicDigits = '٠١٢٣٤٥٦٧٨٩';
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[٠-٩]/g, (digit) => String(arabicDigits.indexOf(digit)))
+    .replace(/[\u064B-\u065F\u0670]/g, '')
+    .replace(/[أإآ]/g, 'ا')
+    .replace(/ة/g, 'ه')
+    .replace(/ى/g, 'ي')
+    .replace(/[^\p{L}\p{N}@.+]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function includesSearch(values: Array<string | number | null | undefined>, query: string) {
+  const terms = normalizeSearch(query).split(' ').filter(Boolean);
+  if (!terms.length) return true;
+  const haystack = normalizeSearch(values.filter((value) => value !== null && value !== undefined).join(' '));
+  return terms.every((term) => haystack.includes(term));
+}
+
 function matchesEmployee(employee: HREmployeeSummary, needle: string, status: string) {
   const matchesStatus = status === 'all' || employee.status === status;
   if (!matchesStatus) return false;
   if (!needle) return true;
-  return `${employee.employeeCode} ${employee.nameArabic} ${employee.nameEnglish} ${employee.department} ${employee.title}`
-    .toLowerCase()
-    .includes(needle);
+  return includesSearch([
+    employee.employeeCode,
+    employee.nameArabic,
+    employee.nameEnglish,
+    employee.department,
+    employee.sector,
+    employee.title,
+    employee.companyEmail,
+  ], needle);
 }
 
 function PeopleDirectory({ data, lang }: { data: HRDashboardData; lang: 'ar' | 'en' }) {
@@ -722,12 +895,18 @@ function PeopleDirectory({ data, lang }: { data: HRDashboardData; lang: 'ar' | '
     [data.employees]
   );
   const people = useMemo(() => {
-    const needle = query.trim().toLowerCase();
+    const needle = query.trim();
     return data.employees.filter((employee) => {
       const matchesDepartment = department === 'all' || employee.department === department || employee.sector === department;
       return matchesDepartment && matchesEmployee(employee, needle, status);
     });
   }, [data.employees, department, query, status]);
+  const shownGroups = useMemo(
+    () => query.trim()
+      ? groups.filter((group) => group.people.some((employee) => matchesEmployee(employee, query, status)))
+      : groups,
+    [groups, query, status]
+  );
 
   const open = groups.find((group) => group.key === openDepartment) ?? null;
   if (open) {
@@ -756,24 +935,30 @@ function PeopleDirectory({ data, lang }: { data: HRDashboardData; lang: 'ar' | '
           </div>
           <p className="text-[12px] text-ink-muted">
             {view === 'departments'
-              ? l(`${groups.length} قسم · ${data.employees.length} موظف`, `${groups.length} departments · ${data.employees.length} people`)
+              ? l(`${shownGroups.length} قسم · ${data.employees.length} موظف`, `${shownGroups.length} departments · ${data.employees.length} people`)
               : l(`${people.length} من ${data.employees.length}`, `${people.length} of ${data.employees.length}`)}
           </p>
         </div>
 
         {view === 'departments' ? (
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {groups.map((group) => (
-              <DepartmentCard key={group.key} group={group} lang={lang} onOpen={() => setOpenDepartment(group.key)} />
-            ))}
-            {!groups.length && <EmptyState title={l('لا توجد أقسام', 'No departments')} body={l('لم يُستورد أي موظف بعد.', 'No employees have been imported yet.')} />}
-          </div>
+          <>
+            <div className="hr-panel relative min-w-0 p-4">
+              <Search className="pointer-events-none absolute start-7 top-1/2 -translate-y-1/2 text-ink-muted" size={16} />
+              <input className="field ps-10" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={l('الاسم، الرقم الوظيفي، البريد، القسم أو المسمى…', 'Name, employee number, email, department, or job title…')} />
+            </div>
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {shownGroups.map((group) => (
+                <DepartmentCard key={group.key} group={group} lang={lang} onOpen={() => setOpenDepartment(group.key)} />
+              ))}
+              {!shownGroups.length && <EmptyState title={l('لا توجد نتائج', 'No matching departments')} body={l('جرّب اسمًا أو رقمًا وظيفيًا أو قسمًا آخر.', 'Try another name, employee number, or department.')} />}
+            </div>
+          </>
         ) : (
           <div className="hr-panel-solid overflow-hidden">
             <div className="grid gap-3 border-b border-navy/[0.07] p-5 lg:grid-cols-[minmax(0,1fr)_15rem_auto] lg:items-center">
               <div className="relative min-w-0">
                 <Search className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-ink-muted" size={16} />
-                <input className="field ps-10" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={l('الاسم، الكود أو المسمى الوظيفي…', 'Name, code, or job title…')} />
+                <input className="field ps-10" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={l('الاسم، الرقم الوظيفي، البريد، القسم أو المسمى…', 'Name, employee number, email, department, or job title…')} />
               </div>
               <select className="field" value={department} onChange={(event) => setDepartment(event.target.value)}>
                 <option value="all">{l('كل الأقسام', 'All departments')}</option>
@@ -1057,6 +1242,102 @@ function CoverageDot({ active, title }: { active: boolean; title: string }) {
 function StatusChip({ status, lang }: { status: string; lang: 'ar' | 'en' }) {
   const meta = STATUS_LABEL[status] ?? STATUS_LABEL.unknown;
   return <span className={cx('chip whitespace-nowrap', STATUS_STYLE[status] ?? STATUS_STYLE.unknown)}>{meta[lang]}</span>;
+}
+
+function LeaveDesk({ data, lang }: { data: HRDashboardData; lang: 'ar' | 'en' }) {
+  const l = (ar: string, en: string) => (lang === 'en' ? en : ar);
+  const [query, setQuery] = useState('');
+  const [status, setStatus] = useState<'active' | 'all'>('active');
+  const analytics = data.analytics?.leave;
+  const rows = useMemo<HRLeaveBalance[]>(
+    () => (data.leaveBalances ?? [])
+      .filter((balance) => status === 'all' || balance.status === 'active')
+      .filter((balance) => includesSearch([
+        balance.employeeCode,
+        balance.employeeName,
+        balance.title,
+        balance.teamLeader,
+        balance.supervisor,
+      ], query))
+      .sort((left, right) => left.employeeName.localeCompare(right.employeeName, 'ar')),
+    [data.leaveBalances, query, status]
+  );
+  const days = (value: number | null) => value === null || !Number.isFinite(value)
+    ? '—'
+    : new Intl.NumberFormat(lang === 'en' ? 'en-US' : 'ar-EG-u-nu-latn', { maximumFractionDigits: 1 }).format(value);
+
+  return (
+    <div className="space-y-8">
+      <TabSummary title={l(`ملخص إجازات ${analytics?.year ?? 2026}`, `${analytics?.year ?? 2026} leave summary`)} items={[
+        { label: l('موظفون لهم رصيد', 'Employees with balances'), value: analytics?.employees ?? data.leaveBalances.length, featured: true },
+        { label: l('أيام سنوية مستخدمة', 'Annual days used'), value: days(analytics?.annualDays ?? 0) },
+        { label: l('أيام مرضية', 'Sick days'), value: days(analytics?.sickDays ?? 0) },
+        { label: l('حركات مسجلة', 'Recorded entries'), value: analytics?.records ?? 0 },
+        { label: l('أرصدة سالبة', 'Negative balances'), value: analytics?.negativeBalances ?? 0 },
+      ]} />
+
+      <section className="hr-panel-solid overflow-hidden">
+        <div className="grid gap-3 border-b border-navy/[0.07] p-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+          <div className="relative min-w-0">
+            <Search className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-ink-muted" size={16} />
+            <input
+              className="field ps-10"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={l('الاسم، الرقم الوظيفي، المسمى أو المسؤول…', 'Name, employee number, role, or manager…')}
+            />
+          </div>
+          <div className="hr-seg">
+            <button type="button" className="hr-seg-btn" aria-pressed={status === 'active'} onClick={() => setStatus('active')}>{l('نشط', 'Active')}</button>
+            <button type="button" className="hr-seg-btn" aria-pressed={status === 'all'} onClick={() => setStatus('all')}>{l('الكل', 'All')}</button>
+          </div>
+        </div>
+
+        <div className="hidden overflow-x-auto md:block">
+          <table className="w-full text-start text-sm">
+            <thead className="bg-navy/[0.035] text-[11px] font-semibold text-ink-muted">
+              <tr>
+                <th className="px-5 py-3 text-start">{l('الموظف', 'Employee')}</th>
+                <th className="px-4 py-3 text-start">{l('المسمى', 'Role')}</th>
+                <th className="px-4 py-3 text-end">{l('المتاح الآن', 'Available now')}</th>
+                <th className="px-4 py-3 text-end">{l('سنوي مستخدم', 'Annual used')}</th>
+                <th className="px-4 py-3 text-end">{l('مرضي متبقٍ', 'Sick remaining')}</th>
+                <th className="px-4 py-3 text-start">{l('المسؤول', 'Manager')}</th>
+                <th className="w-12" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-navy/[0.06]">
+              {rows.map((balance) => (
+                <tr key={balance.employeeCode} className="group transition-colors hover:bg-brand-50/50">
+                  <td className="px-5 py-3">
+                    <Link to={`/hr/employees/${balance.employeeCode}`} className="font-semibold text-navy group-hover:text-brand-500">
+                      {balance.employeeName || `#${balance.employeeCode}`}
+                      <span className="ltr ms-2 text-[11px] font-normal text-ink-muted">#{balance.employeeCode}</span>
+                    </Link>
+                  </td>
+                  <td className="max-w-[16rem] truncate px-4 py-3 text-xs text-ink-muted" title={balance.title}>{balance.title || '—'}</td>
+                  <td className={cx('hr-num px-4 py-3 text-end font-semibold', Number(balance.availableNow) < 0 ? 'text-status-bad' : 'text-navy')}>{days(balance.availableNow)}</td>
+                  <td className="hr-num px-4 py-3 text-end text-ink-muted">{days(balance.annualUsed)}</td>
+                  <td className="hr-num px-4 py-3 text-end text-ink-muted">{days(balance.sickRemaining)}</td>
+                  <td className="px-4 py-3 text-xs text-ink-muted">{balance.supervisor || balance.teamLeader || '—'}</td>
+                  <td className="px-4"><Link to={`/hr/employees/${balance.employeeCode}`} className="grid h-8 w-8 place-items-center rounded-lg text-ink-faint hover:bg-brand-50 hover:text-brand-500" aria-label={l('فتح الملف', 'Open profile')}><ChevronRight className="rtl:rotate-180" size={17} /></Link></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="divide-y divide-navy/[0.06] md:hidden">
+          {rows.map((balance) => (
+            <Link key={balance.employeeCode} to={`/hr/employees/${balance.employeeCode}`} className="flex items-center justify-between gap-3 p-4 active:bg-surface-sunken">
+              <span className="min-w-0"><span className="block truncate font-semibold text-navy">{balance.employeeName}</span><span className="ltr block text-[11px] text-ink-muted">#{balance.employeeCode}</span></span>
+              <span className={cx('hr-num shrink-0 font-semibold', Number(balance.availableNow) < 0 ? 'text-status-bad' : 'text-navy')}>{days(balance.availableNow)} {l('يوم', 'days')}</span>
+            </Link>
+          ))}
+        </div>
+        {!rows.length && <EmptyState icon={<CalendarDays size={26} />} title={l('لا توجد نتائج', 'No matching balances')} body={l('جرّب اسمًا أو رقمًا وظيفيًا آخر.', 'Try another name or employee number.')} />}
+      </section>
+    </div>
+  );
 }
 
 function PayrollDesk({ data, lang }: { data: HRDashboardData; lang: 'ar' | 'en' }) {
@@ -1731,7 +2012,14 @@ function OrgNode({ node, children, lang, depth }: { node: HROrganizationPosition
         <span className={cx('h-8 w-1 shrink-0 rounded-full', node.matchState === 'matched' ? 'bg-brand-500' : node.matchState === 'vacant' ? 'bg-accent-500' : 'bg-status-bad')} aria-hidden="true" />
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-semibold text-navy" title={node.title}>{node.title}</div>
-          <div className="truncate text-[11px] leading-5 text-ink-muted">{node.employeeName || (lang === 'en' ? 'Vacant position' : 'منصب شاغر')} · {node.departmentCode}</div>
+          <div className="truncate text-[11px] leading-5 text-ink-muted">
+            {node.employeeCode ? (
+              <Link className="font-semibold text-brand-600 hover:underline" to={`/hr/employees/${node.employeeCode}`}>
+                {node.employeeName}
+              </Link>
+            ) : node.employeeName || (lang === 'en' ? 'Vacant position' : 'منصب شاغر')}
+            {' · '}{node.departmentCode}
+          </div>
         </div>
         {node.employeeCode && <Link className="ltr shrink-0 rounded-lg px-2 py-1 text-[11px] font-bold text-brand-500 hover:bg-brand-50 hover:underline" to={`/hr/employees/${node.employeeCode}`}>#{node.employeeCode}</Link>}
       </div>
@@ -1870,6 +2158,30 @@ export function HREmployee() {
               [l('العنوان', 'Address'), employee.address], [l('الحالة الاجتماعية', 'Marital status'), employee.maritalStatus],
             ]} />
           </ProfileSection>
+          <ProfileSection icon={CalendarDays} title={l('الإجازات والأرصدة', 'Leave & balances')}>
+            {employee.leave ? (
+              <div className="space-y-5">
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <LeaveBalanceBlock label={l('المتاح الآن', 'Available now')} value={employee.leave.availableNow} primary />
+                  <LeaveBalanceBlock label={l('سنوي مستخدم', 'Annual used')} value={employee.leave.annualUsed} />
+                  <LeaveBalanceBlock label={l('مرضي متبقٍ', 'Sick remaining')} value={employee.leave.sickRemaining} />
+                </div>
+                {(employee.leave.records?.length ?? 0) > 0 && (
+                  <div>
+                    <h3 className="mb-2 text-[11px] font-bold text-ink-faint">{l('آخر الحركات', 'Recent entries')}</h3>
+                    <div className="divide-y divide-navy/[0.06] rounded-xl border border-navy/[0.08] bg-white/55">
+                      {employee.leave.records?.slice(0, 8).map((record) => (
+                        <div key={record.id} className="flex items-center justify-between gap-3 px-3 py-2.5 text-xs">
+                          <span className="font-semibold text-ink">{record.code}</span>
+                          <span className="text-ink-muted">{record.days} {l('يوم', 'day')} · {formatDate(record.date, lang)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : <MissingData text={l('لا يوجد رصيد إجازات مرتبط بهذا الرقم الوظيفي.', 'No leave balance is linked to this employee number.')} />}
+          </ProfileSection>
           {canPayroll && <ProfileSection icon={Banknote} title={l('الراتب الحالي', 'Current payroll')} action={canManage && dashboard?.permissions.canViewPayroll ? <EditButton onClick={() => setEditor('payroll')} lang={lang} /> : null}>
             {employee.payroll ? <div className="grid gap-3 sm:grid-cols-3"><MoneyBlock label={l('الأساسي', 'Base')} value={employee.payroll.baseSalary} lang={lang} /><MoneyBlock label="KPI" value={employee.payroll.kpiAmount} lang={lang} /><MoneyBlock label={l('الإجمالي', 'Total')} value={employee.payroll.totalSalary} lang={lang} primary /></div> : <MissingData text={l('لا يوجد سجل راتب مرتبط بهذا الكود.', 'No payroll row is linked to this code.')} />}
           </ProfileSection>}
@@ -1940,6 +2252,17 @@ function MoneyBlock({ label, value, lang, primary }: { label: string; value: num
     <div className={cx('hr-stat relative p-4', primary && 'ring-1 ring-brand-500/25')}>
       <div className="text-[11px] font-semibold text-ink-faint">{label}</div>
       <div className={cx('hr-num mt-2 font-semibold text-navy', primary ? 'text-xl sm:text-2xl' : 'text-lg sm:text-xl')}>{money(value, lang)}</div>
+    </div>
+  );
+}
+function LeaveBalanceBlock({ label, value, primary }: { label: string; value: number | null; primary?: boolean }) {
+  const negative = value !== null && value < 0;
+  return (
+    <div className={cx('hr-stat relative p-4', primary && 'ring-1 ring-brand-500/25')}>
+      <div className="text-[11px] font-semibold text-ink-faint">{label}</div>
+      <div className={cx('hr-num mt-2 text-xl font-semibold', negative ? 'text-status-bad' : 'text-navy')}>
+        {value === null ? '—' : new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 }).format(value)}
+      </div>
     </div>
   );
 }

@@ -134,9 +134,9 @@ test('the inventory is delivered on first boot, and delivered only once', async 
 
   // The rooms arrive on their own — nobody has to run a script for the plan to
   // have something in it.
-  assert.equal(plan.summary.units, 98);
-  assert.equal(plan.summary.occupied, 64);
-  assert.equal(plan.summary.reserved, 1, '«موظف جديد» in IT is held, not occupied');
+  assert.equal(plan.summary.units, 100);
+  assert.equal(plan.summary.occupied, 70);
+  assert.equal(plan.summary.reserved, 0);
   assert.deepEqual(plan.zones, ['مكتب 1', 'مكتب 2', 'مكتب 3']);
 
   // And unarranged: measuring and laying out is the job of whoever knows the
@@ -144,14 +144,14 @@ test('the inventory is delivered on first boot, and delivered only once', async 
   assert.ok(plan.offices.every((office) => office.dimensions === null));
   assert.ok(plan.offices.every((office) => office.plan.placed === 0));
 
-  // ODOO's four are free and carry the question rather than naming anybody.
+  // ODOO now carries the four names from the latest distribution.
   const odoo = roomNamed(plan, 'ODOO');
-  assert.equal(odoo.counts.occupied, 0);
-  assert.equal(odoo.seats.filter((seat) => seat.note).length, 4);
+  assert.equal(odoo.counts.occupied, 4);
+  assert.equal(odoo.counts.free, 2);
 
   // A room removed on purpose must not come back on the next deploy, which is
   // the whole reason the delivery is recorded rather than topped up.
-  const spare = roomNamed(plan, 'التدريب');
+  const spare = roomNamed(plan, 'اجتماعات');
   const removed = await request(`/offices/${spare.id}`, {
     method: 'DELETE',
     cookie: adminCookie,
@@ -161,8 +161,8 @@ test('the inventory is delivered on first boot, and delivered only once', async 
   await restartServer();
   adminCookie = await login('admin@test.local', 'AdminPass123!');
   const after = (await request('/offices', { cookie: adminCookie })).data;
-  assert.equal(roomNamed(after, 'التدريب'), undefined, 'a deleted room stays deleted');
-  assert.equal(after.summary.units, 98 - 8);
+  assert.equal(roomNamed(after, 'اجتماعات'), undefined, 'a deleted room stays deleted');
+  assert.equal(after.summary.units, 100);
 });
 
 
