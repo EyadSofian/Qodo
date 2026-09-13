@@ -269,6 +269,11 @@ test('organization, leave, and office workbooks become one linked employee profi
   assert.ok(room);
   assert.equal(room.counts.units, 2);
   assert.equal(room.seats.find((seat) => seat.occupantName === 'اياد').employeeCode, '611');
+  assert.equal(
+    plan.data.unlinked.some((entry) => entry.name === 'اياد'),
+    false,
+    'a seat matched to an HR employee is not reported as needing profile review'
+  );
 });
 
 test('recruitment imports expose cycle analytics and auto-close filled requests', async () => {

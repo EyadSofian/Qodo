@@ -169,14 +169,14 @@ const CORE_STRINGS = {
   'offices.placeOnPlan': { ar: 'حدّد مكانها على المخطط', en: 'Place on the plan' },
   'offices.movePlacement': { ar: 'غيّر مكانها على المخطط', en: 'Move on the plan' },
 
-  'offices.unlinkedTitle': { ar: '{n} اسم غير مربوط بحساب', en: '{n} names with no account' },
+  'offices.unlinkedTitle': { ar: '{n} اسم لم يُطابق ملف موظف', en: '{n} names unmatched to an employee profile' },
   'offices.unlinkedBody': {
-    ar: 'أسماء جات مع الجرد ولسه ماتربطتش بحساب في المساحة.',
-    en: 'Names that came with the inventory and were never linked to an account.',
+    ar: 'الأسماء موجودة على مقاعدها، لكن لم نجد لها كود موظف مطابق في مصادر HR.',
+    en: 'These names remain on their desks, but no matching employee ID was found in the HR sources.',
   },
   'offices.unlinkedBodyManage': {
-    ar: 'أسماء جات مع الجرد. اضغط على وحدة الشخص واربطها بحسابه علشان الاسم يفضل متحدّث.',
-    en: 'Names from the inventory. Open a desk and link it to an account so the name stays current.',
+    ar: 'الأسماء موجودة على مقاعدها. راجع الاسم أو كود الموظف في قاعدة HR لإكمال ربط البروفايل.',
+    en: 'These names remain on their desks. Review the name or employee ID in HR to complete the profile match.',
   },
 
   'offices.edit': { ar: 'تعديل', en: 'Edit' },

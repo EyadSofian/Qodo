@@ -389,13 +389,14 @@ export async function readPlan(user) {
     offices: dressed,
     zones: [...new Set(dressed.map((office) => office.zone))],
     summary: summariseOffices(dressed),
-    // Names carried over from the inventory that never found an account. The
-    // page lists them so somebody can link them, instead of leaving them to be
-    // discovered one desk at a time.
+    // Only names that did not resolve to an HR employee profile need review.
+    // A Qodo login is optional: most people in the seating workbook do not
+    // have a workspace account, but a unique HR match still gives the desk a
+    // stable employee code and a working profile link.
     unlinked: dressed
       .flatMap((office) =>
         office.seats
-          .filter((seat) => !seat.userId && seat.occupantName)
+          .filter((seat) => !seat.employeeCode && seat.occupantName)
           .map((seat) => ({
             seatId: seat.id,
             officeId: office.id,

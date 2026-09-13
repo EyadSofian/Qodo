@@ -1602,7 +1602,7 @@ function RoomForm({
   );
 }
 
-/* ── names that never found an account ───────────────────────────── */
+/* ── names that never matched an HR employee profile ─────────────── */
 
 function Unlinked({ plan, canManage }: { plan: OfficePlan; canManage: boolean }) {
   const { t } = useI18n();
