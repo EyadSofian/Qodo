@@ -522,7 +522,10 @@ export function ReviewVerdict({ task }: { task: Task }) {
   return (
     <div
       className={cx(
-        'rounded-xl border p-3.5',
+        // This is a grid item in the task workspace.  A pasted URL can be one
+        // uninterrupted token, which otherwise gives the item an oversized
+        // intrinsic width and lets it paint over the properties rail.
+        'min-w-0 max-w-full overflow-hidden rounded-xl border p-3.5',
         approved ? 'border-status-ok/25 bg-status-okBg/60' : 'border-accent-500/25 bg-status-warnBg/70'
       )}
     >
@@ -561,7 +564,7 @@ export function ReviewVerdict({ task }: { task: Task }) {
         </p>
       )}
       {task.reviewNote && (
-        <p className="mt-2 whitespace-pre-wrap break-words text-[13px] leading-relaxed text-ink">
+        <p className="mt-2 min-w-0 max-w-full whitespace-pre-wrap break-words text-[13px] leading-relaxed text-ink [overflow-wrap:anywhere]">
           {task.reviewNote}
         </p>
       )}
@@ -578,7 +581,7 @@ export function SubmissionSummary({ task }: { task: Task }) {
   const onTime = submittedOnTime(task);
 
   return (
-    <div className="rounded-xl border border-brand-200 bg-brand-50/60 p-3.5">
+    <div className="min-w-0 max-w-full overflow-hidden rounded-xl border border-brand-200 bg-brand-50/60 p-3.5">
       <div className="flex flex-wrap items-center gap-2">
         {author && <Avatar name={author.name} color={author.avatarColor} size={22} />}
         <span className="text-[12.5px] font-semibold text-ink">
@@ -595,7 +598,7 @@ export function SubmissionSummary({ task }: { task: Task }) {
         )}
       </div>
       {task.submissionNote && (
-        <p className="mt-2 whitespace-pre-wrap break-words text-[13px] leading-relaxed text-ink">
+        <p className="mt-2 min-w-0 max-w-full whitespace-pre-wrap break-words text-[13px] leading-relaxed text-ink [overflow-wrap:anywhere]">
           {task.submissionNote}
         </p>
       )}
