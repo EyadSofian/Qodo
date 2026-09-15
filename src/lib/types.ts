@@ -446,7 +446,7 @@ export interface ActivityEntry {
 }
 
 export interface SearchResult {
-  type: 'app' | 'task' | 'user' | 'office' | 'seat' | 'project' | 'issue' | 'document';
+  type: 'app' | 'task' | 'user' | 'office' | 'seat' | 'project' | 'issue' | 'document' | 'learning_course' | 'learning_lesson';
   id: string;
   title: string;
   subtitle?: string;

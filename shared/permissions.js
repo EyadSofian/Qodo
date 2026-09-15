@@ -35,6 +35,26 @@ export const PERMISSIONS = {
   USERS_VIEW: 'users.view',
   USERS_MANAGE: 'users.manage',
   SETTINGS_MANAGE: 'settings.manage',
+  // E-Learning Production. The same keys as shared/learningProduction/permissions.js,
+  // listed here so they are granted from the Users screen like every other key.
+  // A key here reaches every course; course roles grant them one course at a time.
+  ELEARNING_PRODUCTION_VIEW: 'elearning_production.view',
+  ELEARNING_PRODUCTION_COURSE_CREATE: 'elearning_production.course.create',
+  ELEARNING_PRODUCTION_COURSE_EDIT: 'elearning_production.course.edit',
+  ELEARNING_PRODUCTION_COURSE_DELETE: 'elearning_production.course.delete',
+  ELEARNING_PRODUCTION_LESSON_CREATE: 'elearning_production.lesson.create',
+  ELEARNING_PRODUCTION_LESSON_EDIT: 'elearning_production.lesson.edit',
+  ELEARNING_PRODUCTION_ASSET_ASSIGN: 'elearning_production.asset.assign',
+  ELEARNING_PRODUCTION_ASSET_EDIT: 'elearning_production.asset.edit',
+  ELEARNING_PRODUCTION_ASSET_SUBMIT: 'elearning_production.asset.submit',
+  ELEARNING_PRODUCTION_ASSET_REVIEW: 'elearning_production.asset.review',
+  ELEARNING_PRODUCTION_ASSET_APPROVE: 'elearning_production.asset.approve',
+  ELEARNING_PRODUCTION_ASSET_REOPEN: 'elearning_production.asset.reopen',
+  ELEARNING_PRODUCTION_ASSET_LOCK: 'elearning_production.asset.lock',
+  ELEARNING_PRODUCTION_DEPENDENCY_OVERRIDE: 'elearning_production.dependency.override',
+  ELEARNING_PRODUCTION_TEAM_MANAGE: 'elearning_production.team.manage',
+  ELEARNING_PRODUCTION_REPORT_VIEW: 'elearning_production.report.view',
+  ELEARNING_PRODUCTION_ADMIN: 'elearning_production.admin',
 };
 
 export const ALL_PERMISSIONS = Object.values(PERMISSIONS);
@@ -130,6 +150,11 @@ export const ROLES = {
       PERMISSIONS.TASKS_ARCHIVE,
       PERMISSIONS.TASKS_EXPORT,
       PERMISSIONS.USERS_VIEW,
+      // A manager can open every production course, start new ones and read the
+      // reports. Running a particular course comes from its team roles.
+      PERMISSIONS.ELEARNING_PRODUCTION_VIEW,
+      PERMISSIONS.ELEARNING_PRODUCTION_COURSE_CREATE,
+      PERMISSIONS.ELEARNING_PRODUCTION_REPORT_VIEW,
     ],
     defaultVisibility: 'department',
   },

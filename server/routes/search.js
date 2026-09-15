@@ -8,6 +8,7 @@ import { officesOf, seatsOf } from '../offices.js';
 import { organizationOf } from '../../shared/organization.js';
 import { isAvailable as projectsAvailable } from '../projects/db.js';
 import { searchProjects } from '../projects/searchService.js';
+import { globalSearchResults as searchLearningProduction } from '../learningProduction/services/insightsService.js';
 import { seatState } from '../../shared/offices.js';
 
 const router = Router();
@@ -53,6 +54,10 @@ router.get('/', async (req, res) => {
    * a search box that returns the name of a project you cannot open has already
    * told you it exists.
    */
+  // E-Learning Production courses and lessons, filtered by course visibility
+  // inside the module. Adds nothing, and never throws, without its database.
+  results.push(...(await searchLearningProduction(req.user, query, lang)));
+
   if (projectsAvailable()) {
     try {
       results.push(...(await searchProjects(req.user, query, lang)));

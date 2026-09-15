@@ -25,6 +25,8 @@ import taskRoutes from './routes/tasks.js';
 import projectRoutes from './routes/projects/index.js';
 import * as projectsStorage from './projects/db.js';
 import { ensureDefaults as ensureProjectDefaults } from './projects/metadataService.js';
+import learningProductionRoutes, { learningProductionBodyErrors } from './routes/learningProduction/index.js';
+import * as learningProductionStorage from './learningProduction/db.js';
 import { DEFAULT_ORGANIZATION_ID } from '../shared/organization.js';
 import hrOperationsRoutes from './routes/hrOperations.js';
 import hrRoutes from './routes/hr.js';
@@ -50,6 +52,10 @@ const app = express();
 app.disable('x-powered-by');
 app.set('trust proxy', 1); // Railway terminates TLS in front of us.
 
+// E-Learning Production autosaves a whole outline or script at once, which a
+// long lesson outgrows at 256 KB. Parsed here first, so the workspace-wide
+// parser below finds the body already read and leaves it alone.
+app.use('/api/learning-production', express.json({ limit: '2mb' }), learningProductionBodyErrors);
 app.use(express.json({ limit: '256kb' }));
 app.use(cookieParser());
 
@@ -73,6 +79,10 @@ app.use('/api/tasks', taskRoutes);
 // rather than carrying a second implementation of every query against the JSON
 // store. See docs/QODO_PROJECTS_ARCHITECTURE.md, ADR-2.
 app.use('/api/projects', projectRoutes);
+// E-Learning Production — courses from outline to final video. Its own schema
+// and API; it shares users, sessions, blobs and notifications with the
+// workspace and nothing with Projects. See docs/ELEARNING_PRODUCTION.md.
+app.use('/api/learning-production', learningProductionRoutes);
 app.use('/api/hr-operations', hrOperationsRoutes);
 app.use('/api/hr', hrRoutes);
 app.use('/api/kpi', kpiRoutes);
@@ -159,6 +169,17 @@ if (projectsStorage.isAvailable()) {
     console.log('[projects] schema ready');
   } catch (error) {
     console.error('[projects] storage unavailable —', error.message);
+  }
+}
+
+// Same bargain as Projects: without a database the module answers 503 and the
+// workspace boots regardless.
+if (learningProductionStorage.isAvailable()) {
+  try {
+    await learningProductionStorage.init();
+    console.log('[learning-production] schema ready');
+  } catch (error) {
+    console.error('[learning-production] storage unavailable —', error.message);
   }
 }
 

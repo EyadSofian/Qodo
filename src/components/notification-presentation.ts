@@ -63,6 +63,56 @@ const PRESENTATIONS: Record<string, NotificationPresentation> = {
     icon: BellRing,
     label: { ar: "اختبار الإشعارات", en: "Notification test" },
   },
+  "learning.assigned": {
+    ...info,
+    icon: ClipboardList,
+    label: { ar: "عمل إنتاج جديد", en: "New production work" },
+  },
+  "learning.reviewer_assigned": {
+    ...info,
+    icon: UserPlus,
+    label: { ar: "مراجعة مسندة إليك", en: "You are the reviewer" },
+  },
+  "learning.submitted": {
+    ...info,
+    icon: Send,
+    label: { ar: "بانتظار مراجعتك", en: "Waiting for your review" },
+  },
+  "learning.resubmitted": {
+    ...info,
+    icon: Send,
+    label: { ar: "أُعيد الإرسال للمراجعة", en: "Resubmitted for review" },
+  },
+  "learning.changes_requested": {
+    ...warning,
+    icon: RotateCcw,
+    label: { ar: "مطلوب تعديلات", en: "Changes requested" },
+  },
+  "learning.approved": {
+    ...ok,
+    icon: CheckCircle2,
+    label: { ar: "تم الاعتماد", en: "Approved" },
+  },
+  "learning.reopened": {
+    ...warning,
+    icon: RotateCcw,
+    label: { ar: "أُعيد فتح العمل", en: "Work reopened" },
+  },
+  "learning.comment": {
+    ...info,
+    icon: MessageSquare,
+    label: { ar: "ملاحظة جديدة", en: "New comment" },
+  },
+  "learning.due_soon": {
+    ...warning,
+    icon: AlarmClock,
+    label: { ar: "موعد قريب", en: "Due soon" },
+  },
+  "learning.overdue": {
+    ...danger,
+    icon: AlarmClock,
+    label: { ar: "متأخر عن موعده", en: "Overdue" },
+  },
   "task.assigned": {
     ...info,
     icon: ClipboardList,

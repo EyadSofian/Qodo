@@ -167,8 +167,8 @@ export const DEFAULT_APPS = [
   {
     id: 'elearning',
     kind: 'internal',
-    nameAr: 'الكورسات',
-    nameEn: 'Courses',
+    nameAr: 'تحليلات الكورسات',
+    nameEn: 'E-Learning Analytics',
     descAr: 'التعلّم الإلكتروني: الإقبال، الاشتراكات، التقدم، ونسب الإكمال.',
     url: '/elearning',
     icon: 'folder',
@@ -176,6 +176,21 @@ export const DEFAULT_APPS = [
     group: 'operations',
     embed: 'internal',
     order: 56,
+  },
+  {
+    // Making courses, not measuring them — the analytics tile above reads Odoo,
+    // this one runs production from the outline to the final video.
+    id: 'learning-production',
+    kind: 'internal',
+    nameAr: 'إنتاج المحتوى التعليمي',
+    nameEn: 'E-Learning Production',
+    descAr: 'إنتاج الكورسات من المخطط حتى الفيديو: المصفوفة، المراجعات، والاعتمادات.',
+    url: '/learning-production',
+    icon: 'grid',
+    color: '#175C99',
+    group: 'operations',
+    embed: 'internal',
+    order: 56.5,
   },
   {
     id: 'projects',
@@ -345,9 +360,11 @@ async function migrateBuiltinApps(store) {
       nameEn: 'Events',
       descAr: 'التدريب اللي بميعاد: الطلب والحجوزات، محاضرات النهاردة، والتحليل.',
     },
+    // Renamed when E-Learning Production arrived: two tiles both reading
+    // "Courses" would leave people guessing which one makes them.
     elearning: {
-      nameAr: 'الكورسات',
-      nameEn: 'Courses',
+      nameAr: 'تحليلات الكورسات',
+      nameEn: 'E-Learning Analytics',
       descAr: 'التعلّم الإلكتروني: الإقبال، الاشتراكات، التقدم، ونسب الإكمال.',
     },
     hr: {

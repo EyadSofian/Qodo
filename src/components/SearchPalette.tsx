@@ -109,6 +109,8 @@ export function SearchPalette({ open, onClose }: { open: boolean; onClose: () =>
     project: t('search.typeProject'),
     issue: t('search.typeIssue'),
     document: t('search.typeDocument'),
+    learning_course: t('lp.search.course'),
+    learning_lesson: t('lp.search.lesson'),
   };
 
   return createPortal(

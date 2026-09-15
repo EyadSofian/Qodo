@@ -10,10 +10,15 @@ export class ApiError extends Error {
   payload: Record<string, unknown>;
 
   constructor(status: number, payload: Record<string, unknown>) {
-    super(String(payload?.error ?? `HTTP ${status}`));
+    // Most modules answer `{ error: 'code' }`; E-Learning Production answers
+    // `{ error: { code, message, details } }`. Both read as the same code here.
+    const raw = payload?.error;
+    const code =
+      raw && typeof raw === 'object' ? String((raw as { code?: unknown }).code ?? 'unknown') : String(raw ?? 'unknown');
+    super(code === 'unknown' ? `HTTP ${status}` : code);
     this.name = 'ApiError';
     this.status = status;
-    this.code = String(payload?.error ?? 'unknown');
+    this.code = code;
     this.payload = payload ?? {};
   }
 }

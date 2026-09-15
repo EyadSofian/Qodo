@@ -9,6 +9,7 @@ import {
 } from 'react';
 
 import { PROJECT_STRINGS } from './i18nProjects';
+import { learningProductionString } from './learningProduction/strings';
 
 export type Lang = 'ar' | 'en';
 
@@ -916,6 +917,23 @@ const CORE_STRINGS = {
   'perm.users.view': { ar: 'رؤية المستخدمين', en: 'View users' },
   'perm.users.manage': { ar: 'إضافة المستخدمين وتعديلهم', en: 'Add and edit users' },
   'perm.settings.manage': { ar: 'الدخول لإعدادات المساحة', en: 'Access workspace settings' },
+  'perm.elearning_production.view': { ar: 'إنتاج المحتوى: رؤية كل الكورسات', en: 'E-Learning Production: see every course' },
+  'perm.elearning_production.course.create': { ar: 'إنتاج المحتوى: إنشاء كورس', en: 'E-Learning Production: create courses' },
+  'perm.elearning_production.course.edit': { ar: 'إنتاج المحتوى: تعديل أي كورس', en: 'E-Learning Production: edit any course' },
+  'perm.elearning_production.course.delete': { ar: 'إنتاج المحتوى: أرشفة الكورسات', en: 'E-Learning Production: archive courses' },
+  'perm.elearning_production.lesson.create': { ar: 'إنتاج المحتوى: إضافة دروس', en: 'E-Learning Production: add lessons' },
+  'perm.elearning_production.lesson.edit': { ar: 'إنتاج المحتوى: تعديل الدروس وترتيبها', en: 'E-Learning Production: edit and reorder lessons' },
+  'perm.elearning_production.asset.assign': { ar: 'إنتاج المحتوى: إسناد الأعمال', en: 'E-Learning Production: assign work' },
+  'perm.elearning_production.asset.edit': { ar: 'إنتاج المحتوى: العمل على أي مرحلة', en: 'E-Learning Production: work on any stage' },
+  'perm.elearning_production.asset.submit': { ar: 'إنتاج المحتوى: الإرسال للمراجعة', en: 'E-Learning Production: submit for review' },
+  'perm.elearning_production.asset.review': { ar: 'إنتاج المحتوى: المراجعة وطلب التعديل', en: 'E-Learning Production: review and request changes' },
+  'perm.elearning_production.asset.approve': { ar: 'إنتاج المحتوى: الاعتماد', en: 'E-Learning Production: approve' },
+  'perm.elearning_production.asset.reopen': { ar: 'إنتاج المحتوى: إعادة فتح المعتمد', en: 'E-Learning Production: reopen approved work' },
+  'perm.elearning_production.asset.lock': { ar: 'إنتاج المحتوى: قفل المعتمد', en: 'E-Learning Production: lock approved work' },
+  'perm.elearning_production.dependency.override': { ar: 'إنتاج المحتوى: تجاوز ترتيب المراحل', en: 'E-Learning Production: override stage order' },
+  'perm.elearning_production.team.manage': { ar: 'إنتاج المحتوى: إدارة فرق الكورسات', en: 'E-Learning Production: manage course teams' },
+  'perm.elearning_production.report.view': { ar: 'إنتاج المحتوى: التقارير', en: 'E-Learning Production: view reports' },
+  'perm.elearning_production.admin': { ar: 'إنتاج المحتوى: صلاحية كاملة', en: 'E-Learning Production: full control' },
 
   /* ── visibility scope ────────────────────────────────────── */
   'scope.label': { ar: 'نطاق الرؤية', en: 'Task visibility' },
@@ -1238,7 +1256,10 @@ const CORE_STRINGS = {
  */
 const STRINGS = { ...CORE_STRINGS, ...PROJECT_STRINGS };
 
-export type StringKey = keyof typeof STRINGS;
+// The production module owns a larger, feature-local dictionary. Keep the
+// workspace keys strict while allowing that one namespaced surface to resolve
+// through its feature-local copy/fallback.
+export type StringKey = keyof typeof STRINGS | `lp.${string}`;
 
 interface I18nState {
   lang: Lang;
@@ -1281,8 +1302,8 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<I18nState>(() => {
     const t = (key: StringKey, vars?: Record<string, string | number>) => {
-      const entry = STRINGS[key];
-      let text: string = entry ? entry[lang] : key;
+      const entry = (STRINGS as Record<string, { ar: string; en: string } | undefined>)[key];
+      let text: string = entry ? entry[lang] : learningProductionString(key, lang);
       if (vars) {
         for (const [name, replacement] of Object.entries(vars)) {
           text = text.replaceAll(`{${name}}`, String(replacement));

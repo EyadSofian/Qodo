@@ -18,6 +18,7 @@
 
 import { create, createIfAbsent, find, findOne, getStore } from "./store.js";
 import { isAvailable as projectsAvailable } from "./projects/db.js";
+import { runLearningProductionClock } from "./learningProduction/clock.js";
 import {
   dueEscalations as dueSlaEscalations,
   recordEscalation as recordSlaEscalation,
@@ -738,6 +739,12 @@ export function startScheduler() {
           console.log(`[scheduler] ${called} calendar reminder(s) sent`);
 
         await runProjectClocks(organization.id);
+
+        // Production deadlines: each asset announced once as due soon and once
+        // as overdue. Throttled inside, so a minute-by-minute tick costs nothing.
+        const productionNotices = await runLearningProductionClock(organization.id);
+        if (productionNotices)
+          console.log(`[scheduler] ${productionNotices} production deadline notice(s) sent`);
       }
     } catch (err) {
       console.error("[scheduler]", err);

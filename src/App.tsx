@@ -77,6 +77,29 @@ const ProjectActivity = lazy(() =>
   import('./pages/projects/tabs/ProjectActivity').then((module) => ({ default: module.ProjectActivity }))
 );
 
+/**
+ * E-Learning Production, also on demand — pdf.js and the review tools only
+ * load for the people who open a lesson.
+ */
+const lpPage = <K extends string>(loader: () => Promise<Record<K, React.ComponentType>>, name: K) =>
+  lazy(() => loader().then((module) => ({ default: module[name] })));
+const LearningProductionLayout = lpPage(() => import('./pages/learning-production/Layout'), 'LearningProductionLayout');
+const LpDashboard = lpPage(() => import('./pages/learning-production/Dashboard'), 'Dashboard');
+const LpCourses = lpPage(() => import('./pages/learning-production/Courses'), 'Courses');
+const LpCourseCreate = lpPage(() => import('./pages/learning-production/CourseCreate'), 'CourseCreate');
+const LpCourseWorkspace = lpPage(() => import('./pages/learning-production/CourseWorkspace'), 'CourseWorkspace');
+const LpCourseOverview = lpPage(() => import('./pages/learning-production/course/CourseOverview'), 'CourseOverview');
+const LpCourseLessons = lpPage(() => import('./pages/learning-production/course/CourseLessons'), 'CourseLessons');
+const LpCourseProduction = lpPage(() => import('./pages/learning-production/course/CourseProduction'), 'CourseProduction');
+const LpCourseTeam = lpPage(() => import('./pages/learning-production/course/CourseTeam'), 'CourseTeam');
+const LpCourseFiles = lpPage(() => import('./pages/learning-production/course/CourseFiles'), 'CourseFiles');
+const LpCourseActivity = lpPage(() => import('./pages/learning-production/course/CourseActivity'), 'CourseActivity');
+const LpCourseSettings = lpPage(() => import('./pages/learning-production/course/CourseSettings'), 'CourseSettings');
+const LpLessonWorkspace = lpPage(() => import('./pages/learning-production/LessonWorkspace'), 'LessonWorkspace');
+const LpMyWork = lpPage(() => import('./pages/learning-production/MyWork'), 'MyWork');
+const LpReviews = lpPage(() => import('./pages/learning-production/Reviews'), 'Reviews');
+const LpReports = lpPage(() => import('./pages/learning-production/Reports'), 'Reports');
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -183,6 +206,27 @@ function Gate() {
           <Route path="reports" element={<Suspended><ProjectReports /></Suspended>} />
           <Route path="members" element={<Suspended><ProjectMembers /></Suspended>} />
           <Route path="activity" element={<Suspended><ProjectActivity /></Suspended>} />
+        </Route>
+        {/* E-Learning Production. Open to every session; the API decides what
+            each person sees, the same choice Projects makes above. */}
+        <Route path="/learning-production" element={<Suspended><LearningProductionLayout /></Suspended>}>
+          <Route index element={<Suspended><LpDashboard /></Suspended>} />
+          <Route path="courses" element={<Suspended><LpCourses /></Suspended>} />
+          <Route path="courses/new" element={<Suspended><LpCourseCreate /></Suspended>} />
+          <Route path="courses/:courseId" element={<Suspended><LpCourseWorkspace /></Suspended>}>
+            <Route index element={<Suspended><LpCourseOverview /></Suspended>} />
+            <Route path="lessons" element={<Suspended><LpCourseLessons /></Suspended>} />
+            <Route path="production" element={<Suspended><LpCourseProduction /></Suspended>} />
+            <Route path="team" element={<Suspended><LpCourseTeam /></Suspended>} />
+            <Route path="files" element={<Suspended><LpCourseFiles /></Suspended>} />
+            <Route path="activity" element={<Suspended><LpCourseActivity /></Suspended>} />
+            <Route path="settings" element={<Suspended><LpCourseSettings /></Suspended>} />
+          </Route>
+          <Route path="courses/:courseId/lessons/:lessonId" element={<Suspended><LpLessonWorkspace /></Suspended>} />
+          <Route path="courses/:courseId/lessons/:lessonId/:stage" element={<Suspended><LpLessonWorkspace /></Suspended>} />
+          <Route path="my-work" element={<Suspended><LpMyWork /></Suspended>} />
+          <Route path="reviews" element={<Suspended><LpReviews /></Suspended>} />
+          <Route path="reports" element={<Suspended><LpReports /></Suspended>} />
         </Route>
         <Route path="/mail" element={<Mail />} />
         <Route path="/calendar" element={<Calendar />} />
