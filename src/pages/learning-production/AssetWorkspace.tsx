@@ -126,9 +126,10 @@ export function AssetWorkspace({ assetId }: { assetId: string }) {
           )}
           {type === 'OUTLINE' && <OutlineEditor key={assetId} />}
           {type === 'SCRIPT' && <ScriptEditor key={assetId} />}
-          {type === 'PPT' && <PPTReviewer key={assetId} />}
-          {type === 'VOICE_OVER' && <AudioReviewer key={assetId} />}
-          {type === 'VIDEO' && <VideoReviewer key={assetId} />}
+          {/* Before the first upload the panel above says everything; the viewer's own empty state would repeat it. */}
+          {type === 'PPT' && !(showUpload && !data.currentVersion) && <PPTReviewer key={assetId} />}
+          {type === 'VOICE_OVER' && !(showUpload && !data.currentVersion) && <AudioReviewer key={assetId} />}
+          {type === 'VIDEO' && !(showUpload && !data.currentVersion) && <VideoReviewer key={assetId} />}
         </div>
         {sidebarOpen ? (
           <ReviewSidebar onCollapse={() => setSidebarOpen(false)} />

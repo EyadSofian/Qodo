@@ -9,7 +9,7 @@ import { useI18n } from '../../lib/i18n';
 import { cx, formatDate } from '../../lib/utils';
 import { paths } from '../../lib/learningProduction/api';
 import { useLpQuery } from '../../lib/learningProduction/hooks';
-import { BLOCKED_META, STAGE_ICON, STATUS_META, stageKey, stageSlug, statusKey } from '../../lib/learningProduction/format';
+import { BLOCKED_META, STAGE_COLOR, STAGE_ICON, STATUS_META, stageKey, stageSlug, statusKey } from '../../lib/learningProduction/format';
 import { assetTypeFromSlug } from '@shared/learningProduction/constants';
 import type { AssetType, LessonDetail } from '../../lib/learningProduction/types';
 import { ErrorPanel, PageHeader, PersonChip, ProgressBar, SkeletonRows } from '../../components/learning-production/kit';
@@ -93,12 +93,16 @@ export function LessonWorkspace() {
                 )
               }
             >
-              <StageIcon size={15} aria-hidden="true" />
-              <span className="flex-1 truncate">{t(stageKey(entry.assetType))}</span>
-              <span className="flex items-center gap-1 text-[11px] font-normal opacity-80" title={entry.blocked ? t('lp.blocked') : t(statusKey(entry.status))}>
-                <StatusIcon size={12} aria-hidden="true" />
-                <span className="sr-only">{entry.blocked ? t('lp.blocked') : t(statusKey(entry.status))}</span>
-              </span>
+              {({ isActive }) => (
+                <>
+                  <StageIcon size={15} className={isActive ? undefined : STAGE_COLOR[entry.assetType]} aria-hidden="true" />
+                  <span className="flex-1 truncate">{t(stageKey(entry.assetType))}</span>
+                  <span className="flex items-center gap-1 text-[11px] font-normal opacity-80" title={entry.blocked ? t('lp.blocked') : t(statusKey(entry.status))}>
+                    <StatusIcon size={12} aria-hidden="true" />
+                    <span className="sr-only">{entry.blocked ? t('lp.blocked') : t(statusKey(entry.status))}</span>
+                  </span>
+                </>
+              )}
             </NavLink>
           );
         })}

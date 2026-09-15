@@ -167,9 +167,10 @@ export function ReviewableText({
   useEffect(() => {
     const element = area.current;
     if (!element) return;
-    element.style.height = 'auto';
-    element.style.height = `${Math.max(element.scrollHeight, rows * 24)}px`;
-  }, [value, rows]);
+    // Read-only text is a reading surface: fit the words, not the editor's minimum rows.
+    element.style.height = readOnly ? '0px' : 'auto';
+    element.style.height = `${readOnly ? element.scrollHeight : Math.max(element.scrollHeight, rows * 24)}px`;
+  }, [value, rows, readOnly]);
 
   const fieldComments = (comments?.comments ?? []).filter((comment) => comment.status === 'OPEN' && comment.anchor && matches(comment, anchor));
 
@@ -221,7 +222,7 @@ export function ReviewableText({
       </div>
       <textarea
         ref={area}
-        className={cx('field resize-none leading-relaxed', size === 'lg' ? 'text-[15px]' : 'text-[14px]', readOnly && '!bg-surface-bg')}
+        className={cx('field resize-none leading-relaxed', size === 'lg' ? 'text-[15px]' : 'text-[14px]', readOnly && '!border-transparent !bg-transparent !px-0 !shadow-none focus:!ring-0')}
         value={value}
         readOnly={readOnly}
         rows={rows}

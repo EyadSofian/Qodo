@@ -87,22 +87,26 @@ export function VideoReviewer() {
     <div className="space-y-3">
       <Section bodyClassName="!p-3">
         {src ? (
-          <div className="relative mx-auto overflow-hidden rounded-xl bg-black" style={{ aspectRatio: `${aspect}`, maxHeight: 'calc(100dvh - 320px)' }}>
-            <video
-              ref={video}
-              src={src}
-              preload="metadata"
-              className="h-full w-full"
-              onLoadedMetadata={(event) => {
-                const element = event.currentTarget;
-                if (element.videoWidth && element.videoHeight) setAspect(element.videoWidth / element.videoHeight);
-              }}
-              onClick={() => !drawing && media.toggle()}
-              playsInline
-            />
-            {(drawing || shown) && (
-              <DrawingSurface placed={placed} drafts={drafts.drafts} tool={drawing ? tool : 'POINTER'} color={color} onDraw={drafts.add} />
-            )}
+          // A full-width dark stage, so a portrait or square cut sits centred on
+          // the canvas instead of shrinking to a strip inside a white card.
+          <div className="flex justify-center rounded-xl bg-navy p-2">
+            <div className="relative overflow-hidden rounded-lg bg-black" style={{ aspectRatio: `${aspect}`, maxHeight: 'calc(100dvh - 280px)', maxWidth: '100%' }}>
+              <video
+                ref={video}
+                src={src}
+                preload="metadata"
+                className="h-full w-full"
+                onLoadedMetadata={(event) => {
+                  const element = event.currentTarget;
+                  if (element.videoWidth && element.videoHeight) setAspect(element.videoWidth / element.videoHeight);
+                }}
+                onClick={() => !drawing && media.toggle()}
+                playsInline
+              />
+              {(drawing || shown) && (
+                <DrawingSurface placed={placed} drafts={drafts.drafts} tool={drawing ? tool : 'POINTER'} color={color} onDraw={drafts.add} />
+              )}
+            </div>
           </div>
         ) : (
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-surface-bg px-4 py-6 text-[13px]">

@@ -11,7 +11,7 @@ import { AlertTriangle, Ban, Check, Lock, MoreHorizontal, Pencil, Play, RotateCc
 import { useI18n } from '../../../lib/i18n';
 import { cx } from '../../../lib/utils';
 import { lp } from '../../../lib/learningProduction/api';
-import { assetRoute, lpErrorKey, priorityKey, stageKey, statusKey } from '../../../lib/learningProduction/format';
+import { STAGE_HEX, assetRoute, lpErrorKey, priorityKey, stageKey, statusKey } from '../../../lib/learningProduction/format';
 import { dueState, todayIn } from '@shared/learningProduction/workflow';
 import { isTextAsset } from '@shared/learningProduction/constants';
 import type { AssetAction, AssetDetail, Priority } from '../../../lib/learningProduction/types';
@@ -75,7 +75,7 @@ export function AssetHeader() {
   );
 
   return (
-    <header className="mb-4 rounded-2xl border border-surface-line bg-white p-4">
+    <header className="mb-4 rounded-2xl border border-t-4 border-surface-line bg-white p-4" style={{ borderTopColor: STAGE_HEX[asset.assetType] }}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h1 className="flex flex-wrap items-center gap-2 text-lg font-bold text-ink">

@@ -20,6 +20,7 @@ import { lp } from '../../lib/learningProduction/api';
 import { invalidate } from '../../lib/learningProduction/hooks';
 import {
   BLOCKED_META,
+  STAGE_HEX,
   STAGES,
   STATUS_META,
   TONE_CELL,
@@ -70,7 +71,13 @@ export function ProductionMatrix({
   const allSelected = selectable && lessons.length > 0 && lessons.every((lesson) => selected?.has(lesson.id));
 
   return (
-    <div className="relative overflow-auto rounded-2xl border border-surface-line bg-white" style={{ maxHeight: 'calc(100dvh - 260px)', minHeight: 240 }}>
+    <div
+      className="relative overflow-auto rounded-2xl border border-surface-line bg-white"
+      // Tuned for the module's own scrolling pane (sidebar shell, no more
+      // stacked module tab strip above it) — nudge if a gap or double
+      // scrollbar shows up against the actual chrome above this component.
+      style={{ maxHeight: 'calc(100dvh - 220px)', minHeight: 240 }}
+    >
       <table className="w-full min-w-[860px] border-separate border-spacing-0 text-[13px]">
         <thead>
           <tr>
@@ -89,7 +96,12 @@ export function ProductionMatrix({
               </span>
             </th>
             {STAGES.map((type) => (
-              <th key={type} scope="col" className="sticky top-0 z-20 border-b border-surface-line bg-surface-bg px-2 py-2.5 text-start font-semibold text-ink-muted">
+              <th
+                key={type}
+                scope="col"
+                className="sticky top-0 z-20 border-b-2 bg-surface-bg px-2 py-2.5 text-start font-semibold text-ink-muted"
+                style={{ borderBottomColor: STAGE_HEX[type] }}
+              >
                 <StageLabel type={type} />
               </th>
             ))}
@@ -237,10 +249,11 @@ function MatrixCell({
         title={details}
         aria-label={details.replaceAll('\n', '. ')}
         className={cx(
-          'flex h-10 w-full min-w-[120px] items-center gap-1.5 rounded-lg border px-2 text-start text-[12px] font-semibold transition-colors hover:brightness-[0.97] focus-visible:ring-2',
+          'flex h-10 w-full min-w-[120px] items-center gap-1.5 rounded-lg border border-s-[3px] px-2 text-start text-[12px] font-semibold transition-colors hover:brightness-[0.97] focus-visible:ring-2',
           TONE_CELL[tone],
           unassigned && 'border-dashed'
         )}
+        style={{ borderInlineStartColor: STAGE_HEX[asset.assetType], borderInlineStartStyle: 'solid' }}
       >
         <Icon size={13} className="shrink-0" aria-hidden="true" />
         <span className="min-w-0 flex-1 truncate">{overdue && !asset.blocked ? t('lp.due.OVERDUE') : label}</span>

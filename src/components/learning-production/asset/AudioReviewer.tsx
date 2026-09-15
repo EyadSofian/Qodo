@@ -18,6 +18,11 @@ import { MarkerTrack, PlayerControls, useMediaState, useRange } from './MediaToo
 
 const BARS = 480;
 
+// Mirrors tailwind.config.js `colors.stage.voice`/`voiceBg` — canvas drawing
+// can't reach a Tailwind class, so the two literal hex values live here.
+const PLAYED_COLOR = '#0284C7';
+const UNPLAYED_COLOR = '#BAE6FD';
+
 /** Peaks for the waveform. Decoding a very long file in the browser is refused, and the plain timeline is shown instead. */
 async function peaksFor(url: string): Promise<number[] | null> {
   const response = await fetch(url, { credentials: 'same-origin' });
@@ -85,7 +90,7 @@ export function AudioReviewer() {
     const barWidth = width / peaks.length;
     peaks.forEach((peak, index) => {
       const barHeight = Math.max(2, peak * (height - 6));
-      context.fillStyle = index / peaks.length <= played ? '#1D6FB8' : '#B4D4EF';
+      context.fillStyle = index / peaks.length <= played ? PLAYED_COLOR : UNPLAYED_COLOR;
       context.fillRect(index * barWidth, (height - barHeight) / 2, Math.max(1, barWidth - 1), barHeight);
     });
   }, [peaks, media.time, media.duration]);
@@ -161,8 +166,8 @@ export function AudioReviewer() {
           {peaks ? (
             <canvas ref={canvas} className="h-full w-full" />
           ) : (
-            <div className="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-brand-100">
-              <span className="block h-full rounded-full bg-brand-500" style={{ width: `${media.duration ? (media.time / media.duration) * 100 : 0}%` }} />
+            <div className="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-stage-voiceBg">
+              <span className="block h-full rounded-full bg-stage-voice" style={{ width: `${media.duration ? (media.time / media.duration) * 100 : 0}%` }} />
             </div>
           )}
           <MarkerTrack comments={markers} duration={media.duration} kind="audio" activeId={focus?.comment.id} onPick={focusComment} />

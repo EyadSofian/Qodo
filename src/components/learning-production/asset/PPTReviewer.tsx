@@ -284,21 +284,6 @@ function PdfSlides({ url, versionId, fileVersionId, focusNonce, focusComment }: 
             <Plus size={14} />
           </button>
         </div>
-        {canDraw && (
-          <DrawingToolbar
-            tool={tool}
-            onTool={(next) => {
-              setTool(next);
-              if (next === 'POINTER') draft.clear();
-            }}
-            color={color}
-            onColor={setColor}
-            canUndo={draft.drafts.length > 0}
-            canRedo={draft.canRedo}
-            onUndo={draft.undo}
-            onRedo={draft.redo}
-          />
-        )}
         <div className="ms-auto flex items-center gap-2">
           <label className="flex items-center gap-1.5 text-[12px] text-ink-muted">
             <input type="checkbox" className="h-3.5 w-3.5 accent-brand-500" checked={showResolved} onChange={(event) => setShowResolved(event.target.checked)} />
@@ -314,6 +299,24 @@ function PdfSlides({ url, versionId, fileVersionId, focusNonce, focusComment }: 
             <Download size={14} />
           </a>
         </div>
+        {/* Drawing tools get their own row, so navigation and actions stay on one line above the slide. */}
+        {canDraw && (
+          <div className="-mx-3 w-[calc(100%+1.5rem)] border-t border-surface-line px-3 pt-2">
+            <DrawingToolbar
+              tool={tool}
+              onTool={(next) => {
+                setTool(next);
+                if (next === 'POINTER') draft.clear();
+              }}
+              color={color}
+              onColor={setColor}
+              canUndo={draft.drafts.length > 0}
+              canRedo={draft.canRedo}
+              onUndo={draft.undo}
+              onRedo={draft.redo}
+            />
+          </div>
+        )}
       </div>
       {comments?.canComment && narrow && <p className="border-b border-surface-line px-3 py-2 text-[12px] text-ink-faint">{t('lp.ppt.desktopHint')}</p>}
 
@@ -342,10 +345,11 @@ function PdfSlides({ url, versionId, fileVersionId, focusNonce, focusComment }: 
         </div>
       )}
 
-      <div ref={frame} className="overflow-auto bg-surface-sunken p-3" style={{ maxHeight: 'calc(100dvh - 240px)' }}>
+      {/* pdf.js draws glyphs on a canvas; inheriting an RTL page direction breaks Arabic shaping on the slide. */}
+      <div ref={frame} dir="ltr" className="overflow-auto bg-navy p-3" style={{ maxHeight: 'calc(100dvh - 200px)' }}>
         {!doc && (
           <div className="grid aspect-video place-items-center">
-            <Spinner size={22} className="text-ink-faint" />
+            <Spinner size={22} className="text-white/60" />
           </div>
         )}
         <div className={cx('relative mx-auto shadow-card', !doc && 'hidden')} style={{ width: pageSize.width || undefined, height: pageSize.height || undefined }}>

@@ -10,7 +10,7 @@ import { useI18n } from '../../lib/i18n';
 import { cx } from '../../lib/utils';
 import { paths } from '../../lib/learningProduction/api';
 import { useLpQuery } from '../../lib/learningProduction/hooks';
-import { HEALTH_TONE, healthKey, stageKey } from '../../lib/learningProduction/format';
+import { HEALTH_TONE, STAGE_HEX, healthKey, stageKey } from '../../lib/learningProduction/format';
 import type { CourseWithStats, People, ReportsResponse } from '../../lib/learningProduction/types';
 import { Chip, ErrorPanel, PageHeader, PersonChip, ProgressBar, Section, SkeletonRows, StageLabel } from '../../components/learning-production/kit';
 import { WorkList } from '../../components/learning-production/WorkList';
@@ -154,7 +154,7 @@ export function Reports() {
                       </td>
                       <td className="px-2 py-2.5">
                         <div className="flex items-center gap-2">
-                          <ProgressBar value={stage.percent} className="max-w-[120px]" />
+                          <ProgressBar value={stage.percent} className="max-w-[120px]" color={STAGE_HEX[stage.assetType]} />
                           <span className="tabular-nums">{stage.percent}%</span>
                         </div>
                       </td>

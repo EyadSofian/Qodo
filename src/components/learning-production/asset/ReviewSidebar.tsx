@@ -27,7 +27,10 @@ export function ReviewSidebar({ onCollapse }: { onCollapse: () => void }) {
   const [tab, setTab] = useState<Tab>('comments');
 
   return (
-    <aside className="flex min-h-[420px] flex-col rounded-2xl border border-surface-line bg-white lg:sticky lg:top-[calc(var(--topbar-h)+12px)] lg:max-h-[calc(100dvh-var(--topbar-h)-24px)]">
+    // The module now scrolls inside its own pane (Layout.tsx), not the
+    // document under the fixed topbar, so this sticks relative to that
+    // pane's scrollport (padded `py-5`) rather than the viewport itself.
+    <aside className="flex min-h-[420px] flex-col rounded-2xl border border-surface-line bg-white lg:sticky lg:top-3 lg:max-h-[calc(100dvh-var(--topbar-h)-56px)]">
       <div className="flex items-center gap-1 border-b border-surface-line px-2 pt-2">
         {(['comments', 'versions', 'activity'] as Tab[]).map((key) => (
           <button

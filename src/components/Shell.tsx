@@ -137,7 +137,11 @@ export function Shell({ children }: { children: ReactNode }) {
   };
 
   const isFramed = location.pathname.startsWith('/app/');
-  const isFullHeight = isFramed || location.pathname.startsWith('/mail');
+  // Its own module (dark sidebar + internally-scrolling pane), not a guest
+  // app — kept as a second flag rather than folded into `isFramed` so that
+  // name keeps meaning only "/app/*".
+  const isLearningProduction = location.pathname.startsWith('/learning-production');
+  const isFullHeight = isFramed || isLearningProduction || location.pathname.startsWith('/mail');
   // On iPhone, web push only exists once the site is on the home screen — so a
   // plain Safari tab reports unsupported and the row is hidden rather than
   // offering a button that cannot work. Every desktop browser that matters
@@ -440,7 +444,9 @@ export function Shell({ children }: { children: ReactNode }) {
         {children}
       </main>
 
-      {!isFramed && <BottomNav onOpenSwitcher={() => setSwitcherOpen(true)} />}
+      {/* The module's own mobile drawer (its Layout) replaces this with all
+          five destinations, so the global bar would only duplicate it. */}
+      {!isFramed && !isLearningProduction && <BottomNav onOpenSwitcher={() => setSwitcherOpen(true)} />}
 
       <SearchPalette open={searchOpen} onClose={() => setSearchOpen(false)} />
       <ChangePasswordModal open={passwordOpen} onClose={() => setPasswordOpen(false)} />

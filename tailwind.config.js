@@ -55,6 +55,22 @@ export default {
           info: '#1D6FB8',
           infoBg: '#EAF3FB',
         },
+        // Production-stage identity for E-Learning Production. Accent only —
+        // icon tint / thin border / underline — never a fill, so a stage never
+        // competes with the status.* tones above (which own fills). No teal:
+        // that hue is reserved off-limits workspace-wide outside grade scales.
+        stage: {
+          outline: '#7C3AED',
+          outlineBg: '#F5F3FF',
+          ppt: '#B45309',
+          pptBg: '#FFFBEB',
+          script: '#2563EB',
+          scriptBg: '#EFF6FF',
+          voice: '#0284C7',
+          voiceBg: '#F0F9FF',
+          video: '#F43F5E',
+          videoBg: '#FFF1F2',
+        },
       },
       fontFamily: {
         sans: ['Cairo', 'Tajawal', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],

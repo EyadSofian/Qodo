@@ -32,7 +32,7 @@ export function WorkList({
         <li key={item.id}>
           <Link
             to={assetRoute(item.course.id, item.lesson.id, item.assetType)}
-            className="grid grid-cols-1 gap-x-4 gap-y-1.5 px-4 py-3 transition-colors hover:bg-surface-bg sm:grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_minmax(0,1.2fr)_auto] sm:items-center"
+            className="grid grid-cols-1 gap-x-4 gap-y-1.5 px-4 py-2.5 transition-colors hover:bg-surface-bg sm:grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_minmax(0,1.2fr)_auto] sm:items-center"
           >
             <div className="min-w-0">
               <p className="flex items-center gap-2 text-[13.5px] font-semibold text-ink">

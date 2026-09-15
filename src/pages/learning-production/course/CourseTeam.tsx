@@ -69,7 +69,7 @@ export function CourseTeam() {
           <tbody>
             {data.members.map((member) => (
               <tr key={member.userId} className="border-t border-surface-line">
-                <td className="max-w-0 px-4 py-2.5">
+                <td className="min-w-[170px] whitespace-nowrap px-4 py-2.5">
                   <PersonChip userId={member.userId} people={data.people} />
                 </td>
                 <td className="px-2 py-2.5">

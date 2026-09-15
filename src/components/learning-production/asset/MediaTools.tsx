@@ -125,9 +125,17 @@ export function MarkerTrack({
             }}
             title={`${formatTimecode(marker.startSeconds)} · ${comment.body}`}
             aria-label={t('lp.media.markerAt', { time: formatTimecode(marker.startSeconds) })}
+            // A moment is a solid tick; a range is a light band with edges, so a
+            // long stretch never paints a heavy block over the waveform.
             className={cx(
               'pointer-events-auto absolute top-0 h-full rounded-sm',
-              comment.status === 'RESOLVED' ? 'bg-status-ok/40' : 'bg-accent-500/70',
+              width
+                ? comment.status === 'RESOLVED'
+                  ? 'border-x-2 border-status-ok/60 bg-status-ok/15'
+                  : 'border-x-2 border-accent-500 bg-accent-500/20'
+                : comment.status === 'RESOLVED'
+                  ? 'bg-status-ok/60'
+                  : 'bg-accent-500',
               activeId === comment.id && 'ring-2 ring-navy'
             )}
             style={{ left: `${left}%`, width: width ? `${width}%` : 4, marginLeft: width ? 0 : -2 }}

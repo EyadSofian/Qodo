@@ -214,7 +214,9 @@ function BulkBar({
   };
 
   return (
-    <div className="sticky top-[calc(var(--topbar-h)+8px)] z-40 mb-3 flex flex-wrap items-end gap-2 rounded-2xl border border-brand-200 bg-brand-50 p-3 shadow-card">
+    // Sticks relative to the module's own scrolling pane (Layout.tsx), not
+    // the document under the fixed topbar — see the same fix in ReviewSidebar.
+    <div className="sticky top-3 z-40 mb-3 flex flex-wrap items-end gap-2 rounded-2xl border border-brand-200 bg-brand-50 p-3 shadow-card">
       <p className="w-full text-[13px] font-semibold text-ink sm:w-auto sm:self-center">{t('lp.bulk.selected', { n: lessonIds.length })}</p>
       <label className="block">
         <span className="label !mb-1">{t('lp.stage')}</span>

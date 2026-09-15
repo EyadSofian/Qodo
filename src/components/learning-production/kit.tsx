@@ -15,6 +15,7 @@ import { lp } from '../../lib/learningProduction/api';
 import {
   DUE_TONE,
   PRIORITY_TONE,
+  STAGE_COLOR,
   STAGE_ICON,
   STATUS_META,
   TONE_CHIP,
@@ -134,7 +135,7 @@ export function StageLabel({ type, className }: { type: AssetType; className?: s
   const Icon = STAGE_ICON[type];
   return (
     <span className={cx('inline-flex items-center gap-1.5', className)}>
-      <Icon size={14} className="shrink-0 text-brand-500" aria-hidden="true" />
+      <Icon size={14} className={cx('shrink-0', STAGE_COLOR[type])} aria-hidden="true" />
       {t(stageKey(type))}
     </span>
   );
@@ -170,8 +171,10 @@ export function CommentCount({ count }: { count: number }) {
   );
 }
 
-export function ProgressBar({ value, tone = 'info', label, className }: { value: number; tone?: 'info' | 'ok'; label?: string; className?: string }) {
+export function ProgressBar({ value, tone = 'info', label, className, color }: { value: number; tone?: 'info' | 'ok'; label?: string; className?: string; color?: string }) {
   const clamped = Math.max(0, Math.min(100, Math.round(value)));
+  // A stage's own bar takes the stage color; a finished bar is always green.
+  const fill = clamped === 100 || tone === 'ok' ? undefined : color;
   return (
     <div
       className={cx('h-1.5 w-full overflow-hidden rounded-full bg-surface-sunken', className)}
@@ -182,8 +185,8 @@ export function ProgressBar({ value, tone = 'info', label, className }: { value:
       aria-label={label}
     >
       <span
-        className={cx('block h-full rounded-full transition-[width] duration-500', clamped === 100 || tone === 'ok' ? 'bg-status-ok' : 'bg-brand-500')}
-        style={{ width: `${clamped}%` }}
+        className={cx('block h-full rounded-full transition-[width] duration-500', clamped === 100 || tone === 'ok' ? 'bg-status-ok' : !fill && 'bg-brand-500')}
+        style={{ width: `${clamped}%`, background: fill }}
       />
     </div>
   );

@@ -133,7 +133,7 @@ export function Courses() {
 function CourseCard({ course, people }: { course: CourseWithStats; people: People }) {
   const { t, lang } = useI18n();
   return (
-    <Link to={`/learning-production/courses/${course.id}`} className="group flex flex-col rounded-2xl border border-surface-line bg-white p-4 transition-colors hover:border-brand-200">
+    <Link to={`/learning-production/courses/${course.id}`} className="group flex flex-col rounded-2xl border border-surface-line bg-white p-4 transition-shadow hover:shadow-card">
       <div className="flex items-start gap-3">
         {course.hasCover ? (
           <img src={paths.cover(course.id, course.updatedAt)} alt="" className="h-12 w-12 shrink-0 rounded-xl object-cover" loading="lazy" />

@@ -382,6 +382,16 @@
     @apply visible opacity-100;
   }
 
+  /* ── E-Learning Production sidebar ──────────────────────────────
+     Everything else in the module's rail is plain utilities (bg-navy,
+     text-white/70, border-white/10); this is the one thing Tailwind can't
+     express inline — a scroll-edge fade so a clipped "recent courses" row
+     reads as scrollable, not as a bug. */
+  .lp-rail-scroll {
+    -webkit-mask-image: linear-gradient(to bottom, transparent, black 12px, black calc(100% - 12px), transparent);
+    mask-image: linear-gradient(to bottom, transparent, black 12px, black calc(100% - 12px), transparent);
+  }
+
   /* Loading placeholder that doesn't flash — used while the grid resolves. */
   .skeleton {
     @apply relative overflow-hidden rounded-xl bg-slate-200/70;

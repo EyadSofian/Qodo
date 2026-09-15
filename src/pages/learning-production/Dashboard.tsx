@@ -63,8 +63,10 @@ export function Dashboard() {
       <PageHeader title={t('lp.dashboard.title')} description={t('lp.dashboard.subtitle')} actions={newCourse} />
 
       {(data.mine.assigned > 0 || data.mine.reviews > 0) && (
-        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-2xl border border-brand-100 bg-brand-50/60 px-4 py-3 text-[13px]">
-          <Inbox size={16} className="text-brand-600" aria-hidden="true" />
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-2xl border border-surface-line bg-white px-4 py-3 text-[13px]">
+          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-600">
+            <Inbox size={15} aria-hidden="true" />
+          </span>
           <span className="font-semibold text-ink">{t('lp.dashboard.yourWork')}</span>
           {data.mine.assigned > 0 && (
             <Link to="/learning-production/my-work" className="font-semibold text-brand-600 hover:underline">
@@ -189,9 +191,9 @@ function Kpi({ label, value, hint, tone, to, onClick }: { label: string; value: 
       </span>
     </>
   );
-  const className = 'block rounded-2xl border border-surface-line bg-white px-4 py-3 text-start transition-colors';
-  if (to) return <Link to={to} className={cx(className, 'hover:border-brand-200')}>{body}</Link>;
-  if (onClick) return <button type="button" onClick={onClick} className={cx(className, 'hover:border-brand-200')}>{body}</button>;
+  const className = 'block rounded-2xl border border-surface-line bg-white px-3.5 py-2.5 text-start transition-shadow';
+  if (to) return <Link to={to} className={cx(className, 'hover:shadow-card')}>{body}</Link>;
+  if (onClick) return <button type="button" onClick={onClick} className={cx(className, 'hover:shadow-card')}>{body}</button>;
   return <div className={className}>{body}</div>;
 }
 

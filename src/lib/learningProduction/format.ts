@@ -70,6 +70,34 @@ export const STAGE_ICON: Record<AssetType, LucideIcon> = {
   VIDEO: Clapperboard,
 };
 
+/**
+ * Each stage's identity color — an accent only (icon tint, thin border,
+ * underline). Never a fill: status tone owns fills, so a "PPT under review"
+ * cell can show both facts without the two hues fighting for the same pixel.
+ */
+export const STAGE_COLOR: Record<AssetType, string> = {
+  OUTLINE: 'text-stage-outline',
+  PPT: 'text-stage-ppt',
+  SCRIPT: 'text-stage-script',
+  VOICE_OVER: 'text-stage-voice',
+  VIDEO: 'text-stage-video',
+};
+
+/**
+ * Raw hex twins of `tailwind.config.js`'s `colors.stage.*`, for the couple of
+ * spots (a single border edge, a canvas fill) where a Tailwind border-color
+ * utility would set every side at once and fight whatever tone/status color
+ * already owns the other sides — an inline style only touches the one CSS
+ * property it's given.
+ */
+export const STAGE_HEX: Record<AssetType, string> = {
+  OUTLINE: '#7C3AED',
+  PPT: '#B45309',
+  SCRIPT: '#2563EB',
+  VOICE_OVER: '#0284C7',
+  VIDEO: '#F43F5E',
+};
+
 export const STAGES = ASSET_TYPES as readonly AssetType[];
 
 export const statusKey = (status: AssetStatus) => `lp.status.${status}` as StringKey;

@@ -8,7 +8,7 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useI18n } from '../../lib/i18n';
 import { cx } from '../../lib/utils';
-import { STAGE_ICON, stageKey } from '../../lib/learningProduction/format';
+import { STAGE_COLOR, STAGE_HEX, STAGE_ICON, stageKey } from '../../lib/learningProduction/format';
 import type { StageStat } from '../../lib/learningProduction/types';
 import { ProgressBar } from './kit';
 
@@ -22,7 +22,7 @@ export function StageBars({ stages, overall }: { stages: StageStat[]; overall?: 
           <div key={stage.assetType}>
             <div className="mb-1 flex items-center justify-between gap-2 text-[13px]">
               <span className="flex items-center gap-1.5 font-semibold text-ink">
-                <Icon size={14} className="text-brand-500" aria-hidden="true" />
+                <Icon size={14} className={STAGE_COLOR[stage.assetType]} aria-hidden="true" />
                 {t(stageKey(stage.assetType))}
               </span>
               <span className="tabular-nums text-ink-muted">
@@ -32,7 +32,7 @@ export function StageBars({ stages, overall }: { stages: StageStat[]; overall?: 
                 </span>
               </span>
             </div>
-            <ProgressBar value={stage.percent} label={t(stageKey(stage.assetType))} className="!h-2" />
+            <ProgressBar value={stage.percent} label={t(stageKey(stage.assetType))} className="!h-2" color={STAGE_HEX[stage.assetType]} />
           </div>
         );
       })}
@@ -64,7 +64,7 @@ export function Pipeline({ stages }: { stages: StageStat[] }) {
                 stage.percent === 100 ? 'border-green-200 bg-status-okBg' : 'border-surface-line bg-white'
               )}
             >
-              <Icon size={18} className={stage.percent === 100 ? 'text-status-ok' : 'text-brand-500'} aria-hidden="true" />
+              <Icon size={18} className={stage.percent === 100 ? 'text-status-ok' : STAGE_COLOR[stage.assetType]} aria-hidden="true" />
               <span className="mt-1 text-[12.5px] font-semibold text-ink">{t(stageKey(stage.assetType))}</span>
               <span className="text-lg font-bold tabular-nums text-ink">{stage.percent}%</span>
             </div>
