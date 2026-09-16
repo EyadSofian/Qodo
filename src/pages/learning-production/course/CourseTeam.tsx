@@ -13,8 +13,8 @@ import { STAGES, lpErrorKey, roleKey } from '../../../lib/learningProduction/for
 import { COURSE_ROLES } from '@shared/learningProduction/constants';
 import { STAGE_ROLES } from '@shared/learningProduction/permissions';
 import type { AssetType, CourseRole, ProductionDefaults, TeamResponse } from '../../../lib/learningProduction/types';
-import { Modal, Spinner, useToast } from '../../../components/ui';
-import { ErrorPanel, PersonChip, PersonSelect, Section, SkeletonRows, StageLabel, usePeople } from '../../../components/learning-production/kit';
+import { Avatar, Modal, Spinner, useToast } from '../../../components/ui';
+import { Chip, ErrorPanel, PersonChip, PersonSelect, Section, SkeletonRows, StageLabel, usePeople } from '../../../components/learning-production/kit';
 import { useCourse } from '../CourseWorkspace';
 
 export function CourseTeam() {
@@ -55,51 +55,33 @@ export function CourseTeam() {
         }
         bodyClassName="!p-0"
       >
-        <table className="w-full text-[13px]">
-          <thead>
-            <tr className="text-[11.5px] text-ink-faint">
-              <th className="px-4 py-2 text-start font-semibold">{t('lp.person')}</th>
-              <th className="px-2 py-2 text-start font-semibold">{t('lp.team.roles')}</th>
-              <th className="px-2 py-2 text-end font-semibold">{t('lp.workload.active')}</th>
-              <th className="px-2 py-2 text-end font-semibold">{t('lp.workload.review')}</th>
-              <th className="px-2 py-2 text-end font-semibold">{t('lp.workload.overdue')}</th>
-              {manage && <th className="w-10" />}
-            </tr>
-          </thead>
-          <tbody>
-            {data.members.map((member) => (
-              <tr key={member.userId} className="border-t border-surface-line">
-                <td className="min-w-[170px] whitespace-nowrap px-4 py-2.5">
-                  <PersonChip userId={member.userId} people={data.people} />
-                </td>
-                <td className="px-2 py-2.5">
+        <ul>
+          {data.members.map((member) => {
+            const person = data.people[member.userId];
+            return (
+              <li key={member.userId} className="flex items-center gap-3 border-b border-surface-line px-4 py-3 last:border-0">
+                <Avatar name={person?.name ?? '—'} color={person?.avatarColor ?? '#94A3B8'} size={34} />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[13.5px] font-bold text-ink">{person?.name ?? t('common.removedUser')}</p>
                   <button
                     type="button"
                     disabled={!manage}
                     onClick={() => setEditing({ userId: member.userId, roles: member.roles })}
-                    className={cx('flex flex-wrap gap-1 text-start', manage && 'hover:opacity-80')}
+                    className={cx('block max-w-full truncate text-start text-[12px] text-ink-muted', manage && 'hover:text-brand-600 hover:underline')}
                   >
-                    {member.roles.map((role) => (
-                      <span key={role} className="rounded-full bg-surface-sunken px-2 py-0.5 text-[11.5px] font-semibold text-ink-muted">
-                        {t(roleKey(role))}
-                      </span>
-                    ))}
+                    {member.roles.map((role) => t(roleKey(role))).join('، ')}
                   </button>
-                </td>
-                <td className="px-2 py-2.5 text-end tabular-nums">{member.workload.active}</td>
-                <td className="px-2 py-2.5 text-end tabular-nums">{member.workload.reviewing}</td>
-                <td className={cx('px-2 py-2.5 text-end tabular-nums', member.workload.overdue > 0 && 'font-bold text-status-bad')}>{member.workload.overdue}</td>
+                </div>
+                <Chip tone={person?.active === false ? 'neutral' : 'ok'}>{person?.active === false ? t('lp.team.inactive') : t('lp.team.active')}</Chip>
                 {manage && (
-                  <td className="px-2">
-                    <button type="button" className="btn-quiet !min-h-8 rounded-lg px-1.5" onClick={() => void remove(member.userId)} aria-label={t('lp.team.remove')}>
-                      <Trash2 size={14} />
-                    </button>
-                  </td>
+                  <button type="button" className="btn-quiet !min-h-8 rounded-lg px-1.5" onClick={() => void remove(member.userId)} aria-label={t('lp.team.remove')}>
+                    <Trash2 size={14} />
+                  </button>
                 )}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+              </li>
+            );
+          })}
+        </ul>
         {data.contributors.length > 0 && (
           <div className="border-t border-surface-line px-4 py-3">
             <p className="mb-2 text-[12px] font-semibold text-ink-muted">{t('lp.team.contributors')}</p>
@@ -115,7 +97,29 @@ export function CourseTeam() {
         )}
       </Section>
 
-      <DefaultsEditor courseId={courseId} initial={data.productionDefaults} editable={manage} people={people} peopleMap={data.people} teamIds={data.members.map((member) => member.userId)} />
+      <div className="space-y-4">
+        <Section title={t('lp.dashboard.workload')}>
+          {data.members.length === 0 ? (
+            <p className="text-[13px] text-ink-faint">{t('lp.team.empty')}</p>
+          ) : (
+            <div className="space-y-2">
+              {data.members.map((member) => (
+                <div key={member.userId} className="rounded-xl border border-surface-line bg-surface-bg px-3 py-2.5">
+                  <p className="truncate text-[13px] font-bold text-ink">{data.people[member.userId]?.name ?? t('common.removedUser')}</p>
+                  <p className="mt-0.5 text-[12px] text-ink-muted">
+                    {t('lp.team.load', { active: member.workload.active, reviews: member.workload.reviewing })}
+                    {member.workload.overdue > 0 ? (
+                      <span className="font-bold text-status-bad"> · {t('lp.team.loadOverdue', { n: member.workload.overdue })}</span>
+                    ) : null}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </Section>
+
+        <DefaultsEditor courseId={courseId} initial={data.productionDefaults} editable={manage} people={people} peopleMap={data.people} teamIds={data.members.map((member) => member.userId)} />
+      </div>
 
       {editing && (
         <MemberDialog

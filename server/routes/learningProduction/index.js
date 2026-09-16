@@ -185,6 +185,8 @@ router.get(
     return { assets: lesson.assets, people: lesson.people };
   })
 );
+/** The five assets with the little of each one's content a card can draw. */
+router.get('/lessons/:lessonId/asset-board', json((req) => lessons.assetBoard(req.actor, id(req, 'lessonId'))));
 router.patch('/lessons/:lessonId', json((req) => lessons.updateLesson(req.actor, id(req, 'lessonId'), req.body)));
 router.post('/lessons/:lessonId/duplicate', json((req) => lessons.duplicateLesson(req.actor, id(req, 'lessonId'), req.body), 201));
 router.post('/lessons/:lessonId/archive', json((req) => lessons.archiveLesson(req.actor, id(req, 'lessonId'))));

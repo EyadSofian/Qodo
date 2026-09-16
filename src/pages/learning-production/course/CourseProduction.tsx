@@ -3,7 +3,8 @@
  * Filters are kept for the browser session, per course.
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Filter, Search, X } from 'lucide-react';
 import { useI18n } from '../../../lib/i18n';
 import { cx } from '../../../lib/utils';
@@ -25,6 +26,20 @@ export function CourseProduction() {
   const courseId = detail.course.id;
   const { data, error, loading, reload } = useLpQuery<MatrixResponse>(paths.matrix(courseId));
   const [filters, setFilters] = useSessionState<MatrixFilters>(`matrix.${courseId}`, EMPTY_FILTERS);
+  const [params, setParams] = useSearchParams();
+
+  // `?quick=OVERDUE` — how the overview's "4 assets overdue" note arrives here
+  // already filtered. It is consumed once and dropped from the address, so a
+  // reload of the page a manager has since re-filtered does not snap back.
+  const quickParam = params.get('quick');
+  useEffect(() => {
+    if (!quickParam) return;
+    const next = new URLSearchParams(params);
+    next.delete('quick');
+    setParams(next, { replace: true });
+    if ((QUICK as string[]).includes(quickParam)) setFilters({ ...EMPTY_FILTERS, quick: quickParam as QuickFilter });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs for the arriving link, not for every filter edit.
+  }, [quickParam]);
   const [moreOpen, setMoreOpen] = useState(activeFilterCount({ ...filters, quick: 'ALL', search: '' }) > 0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const canAssign = detail.capabilities.assignAny;

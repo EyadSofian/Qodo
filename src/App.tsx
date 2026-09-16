@@ -91,6 +91,7 @@ const LpCourseWorkspace = lpPage(() => import('./pages/learning-production/Cours
 const LpCourseOverview = lpPage(() => import('./pages/learning-production/course/CourseOverview'), 'CourseOverview');
 const LpCourseLessons = lpPage(() => import('./pages/learning-production/course/CourseLessons'), 'CourseLessons');
 const LpCourseProduction = lpPage(() => import('./pages/learning-production/course/CourseProduction'), 'CourseProduction');
+const LpCourseAssets = lpPage(() => import('./pages/learning-production/course/CourseAssets'), 'CourseAssets');
 const LpCourseTeam = lpPage(() => import('./pages/learning-production/course/CourseTeam'), 'CourseTeam');
 const LpCourseFiles = lpPage(() => import('./pages/learning-production/course/CourseFiles'), 'CourseFiles');
 const LpCourseActivity = lpPage(() => import('./pages/learning-production/course/CourseActivity'), 'CourseActivity');
@@ -217,6 +218,7 @@ function Gate() {
             <Route index element={<Suspended><LpCourseOverview /></Suspended>} />
             <Route path="lessons" element={<Suspended><LpCourseLessons /></Suspended>} />
             <Route path="production" element={<Suspended><LpCourseProduction /></Suspended>} />
+            <Route path="assets" element={<Suspended><LpCourseAssets /></Suspended>} />
             <Route path="team" element={<Suspended><LpCourseTeam /></Suspended>} />
             <Route path="files" element={<Suspended><LpCourseFiles /></Suspended>} />
             <Route path="activity" element={<Suspended><LpCourseActivity /></Suspended>} />

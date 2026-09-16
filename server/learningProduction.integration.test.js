@@ -522,6 +522,42 @@ describe('E-Learning Production', { skip: SKIP }, () => {
     assert.equal(lesson.state, 'COMPLETE');
   });
 
+  /* ── the asset board ───────────────────────────────────────────── */
+
+  test('the asset board shows each stage as the thing it is, and never the content itself', async () => {
+    const board = await lessons.assetBoard(actor('manager'), lessonOne);
+    assert.equal(board.assets.length, 5, 'all five stages, in stage order');
+    assert.deepEqual(
+      board.assets.map((asset) => asset.assetType),
+      ['OUTLINE', 'PPT', 'SCRIPT', 'VOICE_OVER', 'VIDEO']
+    );
+
+    const preview = Object.fromEntries(board.assets.map((asset) => [asset.assetType, asset.preview]));
+    assert.equal(preview.OUTLINE.kind, 'OUTLINE');
+    assert.ok(preview.OUTLINE.sections.length > 0, 'the outline card has something to draw');
+    assert.equal(preview.SCRIPT.kind, 'SCRIPT');
+    assert.equal(preview.SCRIPT.blockCount, 1);
+    assert.ok(preview.SCRIPT.blocks[0].narration.startsWith('Welcome to maintenance KPIs'));
+    assert.equal(preview.PPT.kind, 'PPT');
+    assert.equal(preview.PPT.fileName, 'lesson-1-v3.pdf', 'the card names the file the designer uploaded');
+    assert.equal(preview.VOICE_OVER.kind, 'VOICE_OVER');
+    assert.equal(preview.VOICE_OVER.hasTranscript, true);
+    assert.equal(preview.VIDEO.kind, 'VIDEO');
+
+    // A card is a way in, not a way to read the work: the board carries an
+    // excerpt of each version and none of the versions themselves.
+    for (const asset of board.assets) {
+      assert.equal(asset.preview.content, undefined);
+      assert.ok(JSON.stringify(asset.preview).length < 2000, `${asset.assetType} preview stays small`);
+    }
+
+    const ppt = board.assets.find((asset) => asset.assetType === 'PPT');
+    assert.equal(ppt.versionCount, 3, 'the board says how many versions there have been');
+
+    await refuses(lessons.assetBoard(actor('mallory'), lessonOne), 'NOT_FOUND');
+    await refuses(lessons.assetBoard(actor('outsider'), lessonOne), 'NOT_FOUND');
+  });
+
   /* ── reopening ─────────────────────────────────────────────────── */
 
   test('reopening locked work needs the authority and a reason, and is recorded', async () => {

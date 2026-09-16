@@ -15,7 +15,8 @@
     "start": "node --env-file-if-exists=.env.local server/index.js",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test": "node --test server/*.test.js"
+    "test": "node --test server/*.test.js",
+    "seed:learning-demo": "node --env-file-if-exists=.env.local scripts/seed-learning-demo.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",

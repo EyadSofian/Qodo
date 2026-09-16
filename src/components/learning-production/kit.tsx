@@ -11,12 +11,14 @@ import { AlertTriangle, Ban, CalendarClock, MessageSquare } from 'lucide-react';
 import { useI18n, type StringKey } from '../../lib/i18n';
 import { cx, timeAgo } from '../../lib/utils';
 import { Avatar, Modal, Spinner } from '../ui';
-import { lp } from '../../lib/learningProduction/api';
+import { lp, paths } from '../../lib/learningProduction/api';
 import {
   DUE_TONE,
   PRIORITY_TONE,
   STAGE_COLOR,
+  STAGE_HEX,
   STAGE_ICON,
+  STAGE_TAG,
   STATUS_META,
   TONE_CHIP,
   assetRoute,
@@ -27,7 +29,7 @@ import {
   statusKey,
   type Tone,
 } from '../../lib/learningProduction/format';
-import type { ActivityEntry, AssetStatus, AssetType, DueState, People, Person, Priority } from '../../lib/learningProduction/types';
+import type { ActivityEntry, AssetStatus, AssetSummary, AssetType, DueState, People, Person, Priority } from '../../lib/learningProduction/types';
 
 /* ── layout ──────────────────────────────────────────────────────── */
 
@@ -141,14 +143,23 @@ export function StageLabel({ type, className }: { type: AssetType; className?: s
   );
 }
 
-export function DueChip({ dueDate, dueState }: { dueDate: string | null; dueState: DueState }) {
+/**
+ * When something is due, and how worried to be about it.
+ *
+ * `compact` keeps the date and the colour but drops the state's word for
+ * anything short of overdue — for a table column where the date is the point
+ * and "Due soon · 18 Sept" is twice as wide as the column deserves. Overdue
+ * keeps its word at every size: that one is never inferred from a colour.
+ */
+export function DueChip({ dueDate, dueState, compact = false }: { dueDate: string | null; dueState: DueState; compact?: boolean }) {
   const { t, lang } = useI18n();
   if (!dueDate) return <span className="text-[12px] text-ink-faint">—</span>;
   if (!dueState) return <span className="text-[12px] text-ink-muted">{formatDay(dueDate, lang)}</span>;
+  const overdue = dueState === 'OVERDUE';
   return (
     <Chip tone={DUE_TONE[dueState]}>
-      {dueState === 'OVERDUE' ? <AlertTriangle size={12} aria-hidden="true" /> : <CalendarClock size={12} aria-hidden="true" />}
-      {t(`lp.due.${dueState}` as StringKey)} · {formatDay(dueDate, lang)}
+      {overdue ? <AlertTriangle size={12} aria-hidden="true" /> : <CalendarClock size={12} aria-hidden="true" />}
+      {compact && !overdue ? formatDay(dueDate, lang) : `${t(`lp.due.${dueState}` as StringKey)} · ${formatDay(dueDate, lang)}`}
     </Chip>
   );
 }
@@ -396,6 +407,213 @@ export function PersonSelect({
         ))}
       </optgroup>
     </select>
+  );
+}
+
+/* ── the course workspace's own furniture ────────────────────────── */
+
+/**
+ * A course's cover: its uploaded image, or a tile built from its own name.
+ *
+ * Every course gets a picture either way. The fallback is deterministic — the
+ * same course keeps the same tint across sessions and screens — so a list of
+ * covers stays recognisable without anybody having to upload one.
+ */
+export function CourseCover({
+  courseId,
+  name,
+  hasCover,
+  stamp,
+  size = 68,
+  className,
+}: {
+  courseId: string;
+  name: string;
+  hasCover: boolean;
+  stamp?: string;
+  size?: number;
+  className?: string;
+}) {
+  const radius = Math.round(size / 4.2);
+  if (hasCover) {
+    return (
+      <img
+        src={paths.cover(courseId, stamp)}
+        alt=""
+        loading="lazy"
+        className={cx('shrink-0 border border-surface-line object-cover', className)}
+        style={{ width: size, height: size, borderRadius: radius }}
+      />
+    );
+  }
+  const tint = COVER_TINTS[hashOf(courseId || name) % COVER_TINTS.length];
+  return (
+    <span
+      aria-hidden="true"
+      className={cx('grid shrink-0 place-items-center border font-extrabold', className)}
+      style={{
+        width: size,
+        height: size,
+        borderRadius: radius,
+        fontSize: Math.round(size / 3),
+        background: tint.background,
+        borderColor: tint.border,
+        color: tint.ink,
+      }}
+    >
+      {initialsOf(name)}
+    </span>
+  );
+}
+
+/** Two letters that survive Arabic, English and a one-word name alike. */
+export function initialsOf(name: string) {
+  const words = String(name ?? '').trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return '—';
+  if (words.length === 1) return words[0].slice(0, 2);
+  return `${words[0][0]}${words[1][0]}`;
+}
+
+/** A stable small integer for a string — the only thing the tints are chosen by. */
+function hashOf(value: string) {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
+  return hash;
+}
+
+const COVER_TINTS = [
+  { background: 'linear-gradient(135deg,#EFF6FC,#D8E9F7)', border: '#B4D4EF', ink: '#175C99' },
+  { background: 'linear-gradient(135deg,#F5F3FF,#EDE9FE)', border: '#DDD6FE', ink: '#6D28D9' },
+  { background: 'linear-gradient(135deg,#FFFBEB,#FEF3C7)', border: '#FDE68A', ink: '#B45309' },
+  { background: 'linear-gradient(135deg,#F0F9FF,#E0F2FE)', border: '#BAE6FD', ink: '#0369A1' },
+  { background: 'linear-gradient(135deg,#FFF1F2,#FFE4E6)', border: '#FECDD3', ink: '#BE123C' },
+  { background: 'linear-gradient(135deg,#ECFDF3,#DCFCE7)', border: '#BBF7D0', ink: '#15803D' },
+];
+
+/** The lesson's picture in a content row — the same deterministic tint, smaller. */
+export function LessonThumb({ seed, className }: { seed: string; className?: string }) {
+  const tint = COVER_TINTS[hashOf(seed) % COVER_TINTS.length];
+  return (
+    <span
+      aria-hidden="true"
+      className={cx('relative block h-9 w-[52px] shrink-0 overflow-hidden rounded-lg border', className)}
+      style={{ background: tint.background, borderColor: tint.border }}
+    >
+      <span className="absolute inset-x-2 bottom-2 block h-[5px] rounded" style={{ background: tint.ink, opacity: 0.35 }} />
+    </span>
+  );
+}
+
+/**
+ * One compact figure: a number, what it counts, and — when the number is a
+ * percentage — the bar that number is.
+ */
+export function KpiCard({
+  label,
+  value,
+  sub,
+  progress,
+  bad,
+  icon,
+}: {
+  label: ReactNode;
+  value: ReactNode;
+  sub?: ReactNode;
+  progress?: number;
+  bad?: boolean;
+  icon?: ReactNode;
+}) {
+  return (
+    <div className="rounded-2xl border border-surface-line bg-white p-4">
+      <p className="flex items-center gap-1.5 text-[12px] font-semibold text-ink-muted">
+        {icon}
+        {label}
+      </p>
+      <p className={cx('mt-1.5 text-[26px] font-extrabold leading-none tabular-nums', bad ? 'text-status-bad' : 'text-ink')}>{value}</p>
+      {progress !== undefined && <ProgressBar value={progress} className="!mt-2.5 !h-2" />}
+      {sub && <p className="mt-1.5 text-[12px] text-ink-faint">{sub}</p>}
+    </div>
+  );
+}
+
+/** The stage's own name, tinted — a label for which stage, never for its state. */
+export function StageTag({ type, className }: { type: AssetType; className?: string }) {
+  const { t } = useI18n();
+  const Icon = STAGE_ICON[type];
+  return (
+    <span className={cx('inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] font-extrabold', STAGE_TAG[type], className)}>
+      <Icon size={12} aria-hidden="true" />
+      {t(stageKey(type))}
+    </span>
+  );
+}
+
+/** One line of "this needs somebody": a sentence, its detail, and a way in. */
+export function AttentionNote({ title, body, to, icon }: { title: ReactNode; body?: ReactNode; to?: string; icon?: ReactNode }) {
+  const inner = (
+    <>
+      <span className="flex items-start gap-2">
+        {icon && <span className="mt-0.5 shrink-0 text-ink-muted">{icon}</span>}
+        <span className="min-w-0">
+          <span className="block text-[13px] font-bold text-ink">{title}</span>
+          {body && <span className="mt-0.5 block text-[12px] leading-relaxed text-ink-muted">{body}</span>}
+        </span>
+      </span>
+    </>
+  );
+  const className = 'block rounded-xl border border-surface-line bg-surface-bg px-3 py-2.5';
+  return to ? (
+    <Link to={to} className={cx(className, 'transition-colors hover:border-brand-200 hover:bg-brand-50/60')}>
+      {inner}
+    </Link>
+  ) : (
+    <div className={className}>{inner}</div>
+  );
+}
+
+const TONE_TEXT: Record<Tone, string> = {
+  neutral: 'text-ink-faint',
+  info: 'text-brand-600',
+  review: 'text-indigo-700',
+  warn: 'text-accent-700',
+  ok: 'text-status-ok',
+  bad: 'text-status-bad',
+};
+
+/**
+ * One stage of one lesson, at content-row size: the stage on its coloured
+ * edge, its state underneath. Five of these across a row is the whole point of
+ * the content tab — a reader scans a column, not a row, to find where a course
+ * is stuck.
+ */
+export function StageCell({ type, asset, courseId, lessonId }: { type: AssetType; asset?: AssetSummary; courseId: string; lessonId: string }) {
+  const { t } = useI18n();
+  const overdue = asset?.dueState === 'OVERDUE';
+  const tone: Tone = !asset ? 'neutral' : asset.blocked ? 'neutral' : overdue ? 'bad' : STATUS_META[asset.status].tone;
+  const state = !asset ? '—' : asset.blocked ? t('lp.blocked') : overdue ? t('lp.due.OVERDUE') : t(statusKey(asset.status));
+  const body = (
+    <>
+      <b className="block text-[11px] font-bold text-ink">{t(stageKey(type))}</b>
+      <span className={cx('block truncate text-[10.5px] font-semibold', TONE_TEXT[tone])}>{state}</span>
+    </>
+  );
+  const className = 'block min-w-0 rounded-lg border-s-[3px] bg-surface-bg px-2 py-1.5 text-start';
+  if (!asset) {
+    return (
+      <span className={className} style={{ borderInlineStartColor: STAGE_HEX[type] }}>
+        {body}
+      </span>
+    );
+  }
+  return (
+    <Link
+      to={assetRoute(courseId, lessonId, type)}
+      className={cx(className, 'transition-colors hover:bg-surface-sunken')}
+      style={{ borderInlineStartColor: STAGE_HEX[type] }}
+      title={`${t(stageKey(type))}: ${state}`}
+    >
+      {body}
+    </Link>
   );
 }
 

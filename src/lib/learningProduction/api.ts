@@ -9,6 +9,7 @@
 import { ApiError, api } from '../api';
 import type {
   ActivityEntry,
+  AssetBoardResponse,
   AssetDetail,
   AssetStatus,
   AttentionKind,
@@ -67,6 +68,7 @@ export const paths = {
   courseActivity: (courseId: string, before?: string) => `${BASE}/courses/${courseId}/activity${query({ before })}`,
   checklistTemplate: (courseId: string) => `${BASE}/courses/${courseId}/checklist-template?assetType=VIDEO`,
   lesson: (lessonId: string) => `${BASE}/lessons/${lessonId}`,
+  assetBoard: (lessonId: string) => `${BASE}/lessons/${lessonId}/asset-board`,
   asset: (assetId: string) => `${BASE}/assets/${assetId}`,
   comments: (assetId: string) => `${BASE}/assets/${assetId}/comments`,
   assetActivity: (assetId: string) => `${BASE}/assets/${assetId}/activity`,
@@ -118,6 +120,7 @@ export const lp = {
   duplicateLesson: (lessonId: string, name: string) => api.post<{ lesson: Lesson }>(`${paths.lesson(lessonId)}/duplicate`, { name }),
   restoreLesson: (lessonId: string) => api.post(`${paths.lesson(lessonId)}/restore`),
   lesson: (lessonId: string) => api.get<LessonDetail>(paths.lesson(lessonId)),
+  assetBoard: (lessonId: string) => api.get<AssetBoardResponse>(paths.assetBoard(lessonId)),
   createModule: (courseId: string, name: string) => api.post<{ module: ModuleRow }>(`${paths.course(courseId)}/modules`, { name }),
   updateModule: (moduleId: string, name: string) => api.patch<{ module: ModuleRow }>(`${BASE}/modules/${moduleId}`, { name }),
   archiveModule: (moduleId: string) => api.delete(`${BASE}/modules/${moduleId}`),

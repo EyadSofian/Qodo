@@ -98,6 +98,30 @@ export const STAGE_HEX: Record<AssetType, string> = {
   VIDEO: '#F43F5E',
 };
 
+/**
+ * The stage's tinted tag — the small "PPT" / "Voice Over" label the course
+ * workspace puts above an asset card or in a matrix header. Background and
+ * text both come from the stage ramp, which is the one place a stage colour is
+ * allowed to fill anything: the tag says *which stage*, never what state it is
+ * in, so there is no status tone for it to fight.
+ */
+export const STAGE_TAG: Record<AssetType, string> = {
+  OUTLINE: 'bg-stage-outlineBg text-stage-outline',
+  PPT: 'bg-stage-pptBg text-stage-ppt',
+  SCRIPT: 'bg-stage-scriptBg text-stage-script',
+  VOICE_OVER: 'bg-stage-voiceBg text-stage-voice',
+  VIDEO: 'bg-stage-videoBg text-stage-video',
+};
+
+/** Hex twins of the tag backgrounds, for the canvases an inline style paints. */
+export const STAGE_TINT_HEX: Record<AssetType, string> = {
+  OUTLINE: '#F5F3FF',
+  PPT: '#FFFBEB',
+  SCRIPT: '#EFF6FF',
+  VOICE_OVER: '#F0F9FF',
+  VIDEO: '#FFF1F2',
+};
+
 export const STAGES = ASSET_TYPES as readonly AssetType[];
 
 export const statusKey = (status: AssetStatus) => `lp.status.${status}` as StringKey;

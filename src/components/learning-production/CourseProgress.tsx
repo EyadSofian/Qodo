@@ -10,7 +10,7 @@ import { useI18n } from '../../lib/i18n';
 import { cx } from '../../lib/utils';
 import { STAGE_COLOR, STAGE_HEX, STAGE_ICON, stageKey } from '../../lib/learningProduction/format';
 import type { StageStat } from '../../lib/learningProduction/types';
-import { ProgressBar } from './kit';
+import { Chip, ProgressBar } from './kit';
 
 export function StageBars({ stages, overall }: { stages: StageStat[]; overall?: number }) {
   const { t } = useI18n();
@@ -45,6 +45,39 @@ export function StageBars({ stages, overall }: { stages: StageStat[]; overall?: 
           <ProgressBar value={overall} tone="ok" label={t('lp.overallCompletion')} className="!h-2.5" />
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * The five stages as a row of cards — the course workspace's headline picture
+ * of where production stands.
+ *
+ * Each card carries its stage's colour twice and no more: the dot beside the
+ * name, and the bar's fill. The percentage is a chip whose tone comes from how
+ * far along the stage is, not from the stage — so "Video 31%" and "Outline
+ * 92%" are told apart at a glance without reading either number.
+ */
+export function StageCards({ stages }: { stages: StageStat[] }) {
+  const { t } = useI18n();
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+      {stages.map((stage) => (
+        <div key={stage.assetType} className="rounded-2xl border border-surface-line bg-white p-3.5">
+          <div className="flex items-center justify-between gap-2">
+            <span className="flex min-w-0 items-center gap-2 text-[13px] font-bold text-ink">
+              <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: STAGE_HEX[stage.assetType] }} aria-hidden="true" />
+              <span className="truncate">{t(stageKey(stage.assetType))}</span>
+            </span>
+            <Chip tone={stage.percent === 100 ? 'ok' : stage.percent >= 70 ? 'info' : stage.percent >= 40 ? 'warn' : 'neutral'}>{stage.percent}%</Chip>
+          </div>
+          <ProgressBar value={stage.percent} className="!mt-2.5 !h-2" label={t(stageKey(stage.assetType))} color={STAGE_HEX[stage.assetType]} />
+          <p className="mt-1.5 text-[11.5px] tabular-nums text-ink-faint">
+            {t('lp.stageCard.done', { done: stage.complete, total: stage.total })}
+            {stage.review > 0 ? ` · ${t('lp.stageCard.inReview', { n: stage.review })}` : ''}
+          </p>
+        </div>
+      ))}
     </div>
   );
 }

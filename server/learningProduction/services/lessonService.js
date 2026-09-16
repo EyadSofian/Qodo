@@ -7,7 +7,7 @@
  * "Sara designs the slides" does not have to say it again for lesson forty.
  */
 
-import { ASSET_TYPES } from '../../../shared/learningProduction/constants.js';
+import { ASSET_TYPES, OUTLINE_SECTIONS } from '../../../shared/learningProduction/constants.js';
 import { LP_PERMISSIONS as P } from '../../../shared/learningProduction/permissions.js';
 import { currentStage, lessonProgress, lessonState } from '../../../shared/learningProduction/workflow.js';
 import { MAX_IMPORT_LESSONS } from '../../../shared/learningProduction/lessonImport.js';
@@ -444,6 +444,134 @@ export async function getLesson(actor, lessonId) {
     currentStage: currentStage(statuses),
     capabilities: courseCapabilities(ctx),
     people: await peopleFor(userIdsIn([mapped, summaries])),
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* The asset board                                                      */
+/* ------------------------------------------------------------------ */
+
+/** Whitespace-collapsed and cut to `limit`, with an ellipsis when it was cut. */
+function excerpt(value, limit) {
+  const clean = String(value ?? '').replace(/\s+/g, ' ').trim();
+  return clean.length > limit ? `${clean.slice(0, limit).trimEnd()}…` : clean;
+}
+
+/**
+ * The small piece of an asset's current version that its card can draw.
+ *
+ * Deliberately not the version itself: the board shows five assets at once and
+ * a script's blocks or an outline's sections can each be pages long. What comes
+ * back is enough to recognise the content — a couple of objectives, the first
+ * lines of narration, how long the audio runs — and never enough to read it.
+ * Opening the asset is what reading it is for.
+ */
+function previewOf(assetType, version) {
+  if (!version) return null;
+  const content = version.content_json ?? null;
+  if (assetType === 'OUTLINE') {
+    const sections = content?.sections ?? {};
+    const filled = OUTLINE_SECTIONS.filter((key) => String(sections[key] ?? '').trim()).map((key) => ({
+      key,
+      // The card draws its own bullet, so the section's first one would double it.
+      text: excerpt(String(sections[key]).replace(/^[\s•\-–]+/, ''), 160),
+    }));
+    return { kind: 'OUTLINE', sections: filled.slice(0, 4), sectionCount: filled.length };
+  }
+  if (assetType === 'SCRIPT') {
+    const blocks = Array.isArray(content?.blocks) ? content.blocks : [];
+    const words = blocks.reduce((sum, block) => sum + String(block?.narration ?? '').split(/\s+/).filter(Boolean).length, 0);
+    return {
+      kind: 'SCRIPT',
+      mode: content?.mode === 'SCENE' ? 'SCENE' : 'SLIDE',
+      blockCount: blocks.length,
+      words,
+      blocks: blocks.slice(0, 2).map((block) => ({ title: excerpt(block?.title, 60), narration: excerpt(block?.narration, 220) })),
+    };
+  }
+  if (assetType === 'PPT') {
+    return {
+      kind: 'PPT',
+      fileName: version.file_name ?? null,
+      fileSize: version.file_size === null || version.file_size === undefined ? null : Number(version.file_size),
+      hasPreview: Boolean(version.preview_storage_key),
+      externalUrl: version.external_url ?? null,
+    };
+  }
+  const duration = version.duration_seconds === null || version.duration_seconds === undefined ? null : Number(version.duration_seconds);
+  if (assetType === 'VOICE_OVER') {
+    return {
+      kind: 'VOICE_OVER',
+      durationSeconds: duration,
+      fileName: version.file_name ?? null,
+      hasTranscript: Boolean(version.transcript_body),
+      transcript: excerpt(version.transcript_body, 180) || null,
+    };
+  }
+  return { kind: 'VIDEO', durationSeconds: duration, fileName: version.file_name ?? null, externalUrl: version.external_url ?? null };
+}
+
+/**
+ * One lesson's five assets, each with the little of its content a card can
+ * show — the course workspace's Assets tab.
+ *
+ * One query for the assets, one for their current versions. It never loads a
+ * file, a comment thread or an annotation: a board that showed five previews by
+ * fetching five whole assets would be the most expensive read in the module and
+ * would still show less than this does.
+ */
+export async function assetBoard(actor, lessonId) {
+  const lesson = await lessonRow(actor, lessonId);
+  const ctx = await courseContext(actor, lesson.course_id);
+
+  const assets = await direct.rows(`${ASSET_ROWS_SQL} WHERE a.lesson_id = $1`, [lessonId]);
+  const versionIds = assets.map((asset) => asset.current_version_id).filter(Boolean);
+  const versions = versionIds.length
+    ? await direct.rows(
+        `SELECT v.id, v.asset_id, v.version_number, v.source_kind, v.file_name, v.mime_type, v.file_size,
+                v.external_url, v.content_json, v.preview_storage_key, v.duration_seconds, v.version_notes,
+                v.created_by, v.created_at, tr.body AS transcript_body
+           FROM ${S}.learning_asset_versions v
+           LEFT JOIN ${S}.learning_transcripts tr ON tr.version_id = v.id
+          WHERE v.id = ANY($1::uuid[])`,
+        [versionIds]
+      )
+    : [];
+  const counts = await direct.rows(
+    `SELECT asset_id, count(*)::int AS n FROM ${S}.learning_asset_versions
+      WHERE asset_id = ANY($1::uuid[]) GROUP BY asset_id`,
+    [assets.map((asset) => asset.id)]
+  );
+
+  const versionOf = new Map(versions.map((version) => [version.id, version]));
+  const versionCount = new Map(counts.map((entry) => [entry.asset_id, entry.n]));
+  const statuses = Object.fromEntries(assets.map((asset) => [asset.asset_type, asset.status]));
+  const day = today();
+
+  const board = ASSET_TYPES.map((type) => assets.find((asset) => asset.asset_type === type))
+    .filter(Boolean)
+    .map((asset) => {
+      const version = asset.current_version_id ? versionOf.get(asset.current_version_id) ?? null : null;
+      return {
+        ...assetSummary(asset, statuses, ctx.settings, day),
+        versionCount: versionCount.get(asset.id) ?? 0,
+        versionNotes: version?.version_notes ?? '',
+        versionCreatedAt: version?.created_at ? new Date(version.created_at).toISOString() : null,
+        versionCreatedBy: version?.created_by ?? null,
+        preview: previewOf(asset.asset_type, version),
+      };
+    });
+
+  const mapped = { ...mapLesson(lesson), moduleName: lesson.module_name ?? null };
+  return {
+    lesson: mapped,
+    course: { id: ctx.course.id, name: ctx.course.name, code: ctx.course.code },
+    assets: board,
+    progress: lessonProgress(statuses),
+    state: lessonState(statuses),
+    currentStage: currentStage(statuses),
+    capabilities: courseCapabilities(ctx),
+    people: await peopleFor(userIdsIn([mapped, board])),
   };
 }
 

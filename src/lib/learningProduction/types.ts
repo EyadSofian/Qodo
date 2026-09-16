@@ -240,6 +240,37 @@ export interface LessonDetail {
   people: People;
 }
 
+/**
+ * The slice of an asset's current version its card draws on the Assets board.
+ * A recognisable fragment, never the content itself — see `previewOf` in
+ * `server/learningProduction/services/lessonService.js`.
+ */
+export type AssetPreview =
+  | { kind: 'OUTLINE'; sections: Array<{ key: string; text: string }>; sectionCount: number }
+  | { kind: 'SCRIPT'; mode: 'SLIDE' | 'SCENE'; blockCount: number; words: number; blocks: Array<{ title: string; narration: string }> }
+  | { kind: 'PPT'; fileName: string | null; fileSize: number | null; hasPreview: boolean; externalUrl: string | null }
+  | { kind: 'VOICE_OVER'; durationSeconds: number | null; fileName: string | null; hasTranscript: boolean; transcript: string | null }
+  | { kind: 'VIDEO'; durationSeconds: number | null; fileName: string | null; externalUrl: string | null };
+
+export interface BoardAsset extends AssetSummary {
+  versionCount: number;
+  versionNotes: string;
+  versionCreatedAt: string | null;
+  versionCreatedBy: string | null;
+  preview: AssetPreview | null;
+}
+
+export interface AssetBoardResponse {
+  lesson: Lesson & { moduleName: string | null };
+  course: { id: string; name: string; code: string | null };
+  assets: BoardAsset[];
+  progress: LessonProgress;
+  state: LessonState;
+  currentStage: AssetType | null;
+  capabilities: CourseCapabilities;
+  people: People;
+}
+
 export interface Verdict {
   allowed: boolean;
   reason: string | null;
