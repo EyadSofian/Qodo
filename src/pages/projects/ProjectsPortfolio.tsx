@@ -236,7 +236,7 @@ export function ProjectsPortfolio() {
                         // "0 hours" would read as "no work".
                         <span className="text-ink-faint">{t('workload.noEstimate')}</span>
                       ) : (
-                        `${person.assignedHours} ${t('time.hours')}`
+                        `${person.assignedHours} ${t('projects.hoursUnit')}`
                       )}
                     </span>
                   </li>

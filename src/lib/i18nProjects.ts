@@ -347,7 +347,10 @@ export const PROJECT_STRINGS = {
   'projects.nav.budget': { ar: 'الميزانية', en: 'Budget' },
   'time.title': { ar: 'الوقت', en: 'Time' },
   'time.log': { ar: 'تسجيل وقت', en: 'Log time' },
-  'time.hours': { ar: 'ساعات', en: 'Hours' },
+  // Not `time.hours`: that key belongs to the workspace's relative-time table
+  // ("3h ago"), and PROJECT_STRINGS is spread over CORE_STRINGS — so naming it
+  // twice made every "Nh ago" in the app render as the word "Hours".
+  'projects.hoursUnit': { ar: 'ساعات', en: 'Hours' },
   'time.date': { ar: 'التاريخ', en: 'Date' },
   'time.notes': { ar: 'ملاحظات', en: 'Notes' },
   'time.billable': { ar: 'قابل للفوترة', en: 'Billable' },

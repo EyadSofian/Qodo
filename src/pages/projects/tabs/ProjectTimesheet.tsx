@@ -219,7 +219,7 @@ export function ProjectTimesheet() {
                 <th scope="col" className="px-3 py-2.5 text-start font-semibold">{t('time.date')}</th>
                 <th scope="col" className="px-3 py-2.5 text-start font-semibold">{t('time.task')}</th>
                 <th scope="col" className="px-3 py-2.5 text-start font-semibold">{t('time.notes')}</th>
-                <th scope="col" className="px-3 py-2.5 text-end font-semibold">{t('time.hours')}</th>
+                <th scope="col" className="px-3 py-2.5 text-end font-semibold">{t('projects.hoursUnit')}</th>
                 <th scope="col" className="w-10 px-3 py-2.5" />
               </tr>
             </thead>
@@ -273,7 +273,7 @@ export function ProjectTimesheet() {
                   {row.userName ?? t('common.unknown')} · {row.periodStart} → {row.periodEnd}
                 </span>
                 <span className="chip bg-surface-sunken tabular-nums text-ink-muted">
-                  {row.hours ?? 0} {t('time.hours')}
+                  {row.hours ?? 0} {t('projects.hoursUnit')}
                 </span>
                 <button
                   type="button"
@@ -418,9 +418,9 @@ function LogTimeDialog({
             <input type="date" className="field" value={logDate} onChange={(e) => setLogDate(e.target.value)} required />
           </Field>
           <Field
-            label={t('time.hours')}
+            label={t('projects.hoursUnit')}
             required
-            error={hours && !valid ? t('time.hours') : undefined}
+            error={hours && !valid ? t('projects.hoursUnit') : undefined}
           >
             <input
               type="number"

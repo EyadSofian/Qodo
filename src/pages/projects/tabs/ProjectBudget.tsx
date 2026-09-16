@@ -409,7 +409,7 @@ function BudgetDialog({
         </Field>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label={isHours ? t('time.hours') : `${t('budget.title')} (${currency})`} required>
+          <Field label={isHours ? t('projects.hoursUnit') : `${t('budget.title')} (${currency})`} required>
             <input
               type="number"
               min={1}
