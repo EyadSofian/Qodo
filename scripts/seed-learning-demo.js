@@ -385,8 +385,8 @@ async function load({ viewer, organizationId }) {
       `INSERT INTO ${S}.learning_courses
          (organization_id, name, code, description, cover_storage_key, cover_mime_type, manager_user_id,
           status, priority, start_date, target_date, settings_json, production_defaults_json, is_demo,
-          created_by, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,'image/png',$6,$7,$8,$9,$10,'{}'::jsonb,$11,true,$12,$13,$13)
+          created_by, created_at, updated_at, archived_at, archived_by)
+       VALUES ($1,$2,$3,$4,$5,'image/png',$6,$7,$8,$9,$10,'{}'::jsonb,$11,true,$12,$13,$13,$14,$15)
        RETURNING id`,
       [
         organizationId,
@@ -395,7 +395,7 @@ async function load({ viewer, organizationId }) {
         course.description,
         coverKey,
         managerId,
-        'ACTIVE',
+        course.status ?? 'ACTIVE',
         course.priority,
         day(course.startOffset),
         day(course.targetOffset),
@@ -404,6 +404,9 @@ async function load({ viewer, organizationId }) {
         ),
         viewer.id,
         ago(Math.abs(course.startOffset)),
+        // One retired course, so the Archived tab is not an empty tab.
+        course.archived ? ago(Math.abs(course.targetOffset)) : null,
+        course.archived ? managerId : null,
       ]
     );
     const courseId = courseRow.rows[0].id;
@@ -589,7 +592,10 @@ async function buildAsset(context) {
   const assignee = people.assignee ?? null;
   const reviewer = people.reviewer && people.reviewer !== assignee ? people.reviewer : ids.dina;
   const started = status !== 'NOT_STARTED';
-  const age = 4 + (slot % 26);
+  // How long ago this asset's history happened. Spread over two months rather
+  // than one, so "approvals per week" has eight weeks of shape to draw and a
+  // course started in the spring does not look like it was all made yesterday.
+  const age = 4 + (slot % 60);
   // Work always starts before it is due, including for the assets whose due
   // date is already in the past — the table has a CHECK that says so.
   const startedOn = -Math.max(age, dueOffset !== null && dueOffset < 0 ? Math.abs(dueOffset) + 3 : 0);
@@ -872,7 +878,7 @@ async function addReviewConversation(context) {
 
   if (assetType === 'PPT') {
     for (const [index, note] of PPT_COMMENTS.entries()) {
-      if (index > slot % 4) break;
+      if (index > 1 + (slot % 3)) break;
       const at = ago(1, index * 3 + 2);
       const id = await comment({ body: note.body, type: 'ANNOTATION', anchor: { pageNumber: note.page }, resolved: index === 3, at });
       await query(
@@ -895,7 +901,7 @@ async function addReviewConversation(context) {
 
   if (assetType === 'VOICE_OVER') {
     for (const [index, note] of VOICE_COMMENTS.entries()) {
-      if (index > slot % 3) break;
+      if (index > 1 + (slot % 2)) break;
       const at = ago(1, index * 4 + 1);
       const id = await comment({ body: note.body, type: 'AUDIO_TIMESTAMP', resolved: Boolean(note.resolved), at });
       await query(
@@ -923,7 +929,7 @@ async function addReviewConversation(context) {
 
   if (assetType === 'VIDEO') {
     for (const [index, note] of VIDEO_COMMENTS.entries()) {
-      if (index > slot % 3) break;
+      if (index > 1 + (slot % 2)) break;
       const at = ago(1, index * 5 + 2);
       const id = await comment({ body: note.body, type: 'VIDEO_TIMESTAMP', resolved: false, at });
       await query(
@@ -963,7 +969,7 @@ async function addReviewConversation(context) {
 
   if (assetType === 'SCRIPT') {
     for (const [index, note] of SCRIPT_COMMENTS.entries()) {
-      if (index > slot % 2) break;
+      if (index > slot % 2 || !note) break;
       await comment({
         body: note.body,
         type: note.suggestion ? 'SUGGESTION' : 'SCRIPT_BLOCK',

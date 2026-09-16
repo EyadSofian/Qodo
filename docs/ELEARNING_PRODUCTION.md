@@ -34,6 +34,28 @@ asset workspace. Text assets autosave drafts and snapshot immutable versions
 when submitted; file assets stream versioned uploads and support slide, audio,
 and video review contexts.
 
+## The dashboard
+
+The module's landing screen is the one place in it that is allowed to be loud.
+Six headline figures, each in its own tone — brand blue for the catalogue, navy
+for its size, green for finished work, indigo for what sits with a reviewer,
+amber for what came back, red for what is late. Underneath: the five stages as
+stacked bars cut by status, a ring of every asset by status, a ring of every
+course by health with the attention list beside it, approvals per week as
+columns, and workload as a bar per person split into active, reviewing and
+overdue.
+
+The charts live in `src/components/learning-production/charts.tsx` rather than
+in the workspace's `Charts.tsx`, and they break that file's one-hue rule on
+purpose: a stage, a status and a health state are *kinds*, not sizes, and each
+already owns a colour the badges have been using since the module shipped. The
+charts reuse those exact values, so a slice of "Changes requested" is the same
+amber as the chip that says it. The one chart that does measure magnitude —
+approvals per week — keeps the single hue.
+
+`GET /dashboard/summary` carries the two aggregates the rings need
+(`statusMix`, `healthCounts`) and the eight-week `throughput` series.
+
 ## The course workspace
 
 A course opens on a header — cover, name, lesson count, completion, target date,
@@ -56,11 +78,12 @@ returns the content itself; reading it is what opening the asset is for.
 
 ## Demo data
 
-`npm run seed:learning-demo` fills a development database with seven courses,
-about a hundred lessons and five hundred assets — versions, review decisions,
-comments, annotations, timestamped audio and video notes, QA checklists and a
-back-dated activity history. It exists because none of the screens above can be
-judged against three lessons typed in by hand.
+`npm run seed:learning-demo` fills a development database with thirteen courses,
+about two hundred lessons and a thousand assets — versions, review decisions,
+comments, annotations, timestamped audio and video notes, QA checklists and two
+months of back-dated activity. It exists because none of the screens above can
+be judged against three lessons typed in by hand, and because a dashboard is a
+picture of a busy studio or it is a picture of nothing.
 
 ```sh
 npm run seed:learning-demo             # build it
@@ -77,10 +100,12 @@ picker and the workload report would accept nothing less — created with no
 password hash and addresses on the reserved `.invalid` domain, so neither the
 password route nor the Google route can turn one into a session.
 
-Two things about the content are deliberate. Course health is spread across all
-four states (one completed, three on track, two at risk, one delayed) by giving
-each course a share of late work either side of the `delayedOverdueShare`
-threshold rather than by chance. And the finished videos are links rather than
+Three things about the content are deliberate. Course health is spread across
+all four states by giving each course a share of late work either side of the
+`delayedOverdueShare` threshold rather than by chance, and one course is on
+hold and one archived so that neither state is a screen nobody has seen. Each
+asset's history is dated over the last two months rather than the last week, so
+"approvals per week" has eight weeks of shape to draw. And the finished videos are links rather than
 files: a PDF deck and a WAV recording can be generated from arithmetic, so the
 slide reviewer and the audio reviewer work on real bytes, but an MP4 cannot, and
 a file that fails to play would prove less than an honest link.

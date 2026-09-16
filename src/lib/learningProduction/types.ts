@@ -499,6 +499,11 @@ export interface DashboardResponse {
   overallPercent: number;
   stages: StageStat[];
   attention: { overdue: number; review: number; changes: number; blockedAssets: number; blockedLessons: number };
+  /** Every visible asset by status, and courses by health — the dashboard's two rings. */
+  statusMix: Record<AssetStatus, number>;
+  healthCounts: Partial<Record<CourseHealth, number>>;
+  /** Approvals per week for the last eight weeks, oldest first. */
+  throughput: Array<{ week: string; approved: number }>;
   watchlist: CourseWithStats[];
   workload: WorkloadRow[];
   activity: ActivityEntry[];

@@ -777,6 +777,26 @@ export const LP_STRINGS: Record<string, Pair> = {
   'lp.team.inactive': { ar: 'غير نشط', en: 'Inactive' },
   'lp.team.load': { ar: '{active} عمل · {reviews} مراجعة', en: '{active} active · {reviews} reviews' },
   'lp.team.loadOverdue': { ar: '{n} متأخر', en: '{n} overdue' },
+
+  // ── The production dashboard's charts ───────────────────────────
+  'lp.charts.noData': { ar: 'لا توجد بيانات بعد', en: 'Nothing to chart yet' },
+  'lp.dashboard.statusMix': { ar: 'توزيع حالات الملفات', en: 'Where everything stands' },
+  'lp.dashboard.healthMix': { ar: 'حالة الكورسات', en: 'Course health' },
+  'lp.dashboard.throughput': { ar: 'الاعتمادات أسبوعيًا', en: 'Approvals per week' },
+  'lp.dashboard.throughputHint': { ar: 'عدد الملفات المعتمدة في كل أسبوع خلال الشهرين الماضيين.', en: 'Assets approved each week over the last two months.' },
+  'lp.dashboard.thisWeek': { ar: 'هذا الأسبوع: {n}', en: 'This week: {n}' },
+  'lp.dashboard.stagesShare': { ar: 'المعتمد في كل مرحلة', en: 'Approved by stage' },
+  'lp.dashboard.assetsWord': { ar: 'ملف', en: 'assets' },
+  'lp.dashboard.coursesWord': { ar: 'كورس', en: 'courses' },
+  'lp.dashboard.approvedWord': { ar: 'معتمد', en: 'approved' },
+  'lp.dashboard.assetsTotal': { ar: '{n} ملف إنتاجي', en: '{n} production assets' },
+  'lp.dashboard.ofCourses': { ar: 'من {n} كورس', en: 'of {n} courses' },
+  'lp.dashboard.dueSoon': { ar: '{n} يقترب موعدها', en: '{n} due soon' },
+  'lp.dashboard.ofOpen': { ar: 'من {n} مفتوح', en: 'of {n} open' },
+  'lp.dashboard.blockedShort': { ar: '{n} متوقف', en: '{n} blocked' },
+  'lp.dashboard.stageOverdue': { ar: '{n} متأخر', en: '{n} overdue' },
+  'lp.dashboard.mixBar': { ar: 'كل الملفات في شريط واحد', en: 'Everything in one bar' },
+  'lp.dashboard.mixHint': { ar: '{done} منتهي · {open} ما زال مفتوحًا', en: '{done} finished · {open} still open' },
 };
 
 const WORDS: Record<string, Pair> = {

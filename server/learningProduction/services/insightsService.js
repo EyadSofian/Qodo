@@ -6,7 +6,7 @@
  * for itself.
  */
 
-import { ASSET_TYPES, DUE_SOON_DAYS, PRIORITIES } from '../../../shared/learningProduction/constants.js';
+import { ASSET_STATUSES, ASSET_TYPES, DUE_SOON_DAYS, PRIORITIES } from '../../../shared/learningProduction/constants.js';
 import { LP_PERMISSIONS as P, buildGrants } from '../../../shared/learningProduction/permissions.js';
 import { SCHEMA as S, direct, isAvailable } from '../db.js';
 import { actorFor, assignsAnywhere, courseContext, requireGrant, seesEveryCourse, visibleCourseCondition } from '../access.js';
@@ -111,7 +111,7 @@ export async function dashboard(actor) {
   const managerView = seesEveryCourse(actor) || (await assignsAnywhere(actor));
   const day = today();
 
-  const [courses, stages, kpi, blocked, workload, activity, mine] = await Promise.all([
+  const [courses, stages, kpi, blocked, workload, activity, mine, statusMix, throughput] = await Promise.all([
     coursesWithStats(direct, { condition, params }),
     stageStats(direct, { condition, params }),
     direct.row(
@@ -138,6 +138,25 @@ export async function dashboard(actor) {
       limit: 12,
     }),
     myCounts(actor),
+    // Where the whole catalogue is standing, as nine numbers. The dashboard
+    // draws it as one bar; the shape of that bar is the studio's shape.
+    direct.rows(
+      `SELECT a.status, count(*)::int AS n
+         ${ASSET_JOIN}
+        WHERE ${condition}
+        GROUP BY a.status`,
+      params
+    ),
+    // Approvals per week for two months — the only figure on the dashboard that
+    // says whether the work is speeding up or slowing down.
+    direct.rows(
+      `SELECT to_char(date_trunc('week', ap.reviewed_at), 'YYYY-MM-DD') AS week, count(*)::int AS approved
+         ${APPROVAL_JOIN}
+        WHERE ${condition} AND ap.decision = 'APPROVED'
+          AND ap.reviewed_at >= date_trunc('week', now()) - interval '7 weeks'
+        GROUP BY 1`,
+      params
+    ),
   ]);
 
   const totalLessons = courses.reduce((sum, course) => sum + course.stats.lessons, 0);
@@ -174,6 +193,11 @@ export async function dashboard(actor) {
       blockedLessons: blocked.lessons,
     },
     healthCounts: courses.reduce((counts, course) => ({ ...counts, [course.health]: (counts[course.health] ?? 0) + 1 }), {}),
+    statusMix: Object.fromEntries(ASSET_STATUSES.map((status) => [status, statusMix.find((row) => row.status === status)?.n ?? 0])),
+    throughput: (() => {
+      const weeks = new Map(throughput.map((row) => [row.week, row.approved]));
+      return weekStarts(8).map((week) => ({ week, approved: weeks.get(week) ?? 0 }));
+    })(),
     watchlist,
     workload: workloadList,
     activity,
