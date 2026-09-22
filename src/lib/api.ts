@@ -272,6 +272,54 @@ const ERRORS: Record<string, { ar: string; en: string }> = {
   invalid_max_uses: { ar: 'عدد الاستخدامات يجب أن يكون من ١ إلى ٥٠٠.', en: 'Uses must be between 1 and 500.' },
   invalid_expiry: { ar: 'مدة الصلاحية يجب أن تكون من يوم إلى ٣٦٥ يوماً.', en: 'Expiry must be between 1 and 365 days.' },
   invalid_status: { ar: 'حالة الحساب غير معروفة.', en: 'That account status is not recognised.' },
+  // Odoo, as the Events and eLearning pages meet it. Each says what happened
+  // and whether waiting will help, rather than "something went wrong".
+  odoo_not_configured: {
+    ar: 'الاتصال بأودو لسه مش متظبط على السيرفر.',
+    en: 'The Odoo connection is not configured on the server.',
+  },
+  odoo_auth_failed: {
+    ar: 'أودو رفض مفتاح الربط (API key). محتاج المسؤول يراجع ODOO_LOGIN و ODOO_API_KEY.',
+    en: 'Odoo rejected the integration API key. An administrator needs to check ODOO_LOGIN and ODOO_API_KEY.',
+  },
+  odoo_timeout: {
+    ar: 'أودو اتأخر في الرد ومالحقش. جرّب تاني بعد دقيقة.',
+    en: 'Odoo took too long to answer. Try again in a minute.',
+  },
+  odoo_unreachable: {
+    ar: 'مش قادرين نوصل لأودو دلوقتي. جرّب تاني بعد شوية.',
+    en: 'Odoo cannot be reached right now. Try again shortly.',
+  },
+  odoo_bad_response: {
+    ar: 'أودو رجّع رد ناقص. جرّب تاني.',
+    en: 'Odoo returned an incomplete response. Try again.',
+  },
+  odoo_schema_changed: {
+    ar: 'حقول الإيفينتات في أودو اتغيرت. أعد المحاولة — هنكتشف الحقول من جديد.',
+    en: 'The Events fields in Odoo changed. Retry and they will be discovered again.',
+  },
+  odoo_access_denied: {
+    ar: 'حساب الربط في أودو ملوش صلاحية يقرأ البيانات دي.',
+    en: 'The Odoo integration account is not allowed to read this data.',
+  },
+  odoo_error: {
+    ar: 'أودو رجّع خطأ. التفاصيل متسجّلة على السيرفر.',
+    en: 'Odoo returned an error. The details were logged on the server.',
+  },
+  invalid_course: { ar: 'رقم الكورس مش صحيح.', en: 'That course id is not valid.' },
+  course_not_found: {
+    ar: 'الكورس ده مش موجود في أودو أو اتمسح.',
+    en: 'That course does not exist in Odoo, or was deleted.',
+  },
+  invalid_schedule_range: {
+    ar: 'نطاق التواريخ مش صحيح. راجع تاريخ البداية والنهاية.',
+    en: 'That date range is not valid. Check the start and end dates.',
+  },
+  schedule_range_too_long: {
+    ar: 'النطاق أطول من المسموح (٦ شهور للجدول، سنة للأرشيف). اختار فترة أقصر.',
+    en: 'That range is too long (6 months for the schedule, a year for the archive).',
+  },
+  invalid_archive_year: { ar: 'السنة دي مش متاحة في الأرشيف.', en: 'That year is not available in the archive.' },
   invalid_analytics_period: {
     ar: 'فترة التحليل غير صحيحة. راجع تاريخ البداية والنهاية.',
     en: 'That reporting period is not valid. Check the start and end dates.',

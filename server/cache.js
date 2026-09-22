@@ -27,11 +27,11 @@ export function makeCache(freshMs) {
       const request = (async () => {
         try {
           const value = await load();
-          if (startedIn === generation) store.set(key, { at: Date.now(), value });
+          if (startedIn === generation) store.set(key, { at: Date.now(), fetched: Date.now(), value });
           return value;
         } catch (error) {
           if (!hit) throw error;
-          return { ...hit.value, stale: true, fetchedAt: new Date(hit.at).toISOString() };
+          return { ...hit.value, stale: true, fetchedAt: new Date(hit.fetched ?? hit.at).toISOString() };
         } finally {
           if (inflight.get(key) === request) inflight.delete(key);
         }
@@ -43,6 +43,17 @@ export function makeCache(freshMs) {
       generation += 1;
       store.clear();
       inflight.clear();
+    },
+    /**
+     * "Fetch fresh next time" without forgetting what worked. A manual sync
+     * pressed while Odoo is down must still fall back to the last good answer —
+     * `clear()` would have thrown that away and turned a slow ERP into an error
+     * page at exactly the moment somebody was trying to fix it.
+     */
+    expire: () => {
+      generation += 1;
+      inflight.clear();
+      for (const hit of store.values()) hit.at = 0;
     },
   };
 }

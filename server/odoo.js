@@ -40,6 +40,16 @@ export function odooMissingConfig() {
     .map((key) => `ODOO_${key === 'apiKey' ? 'API_KEY' : key.toUpperCase()}`);
 }
 
+/**
+ * The Odoo form for one record — what "Open in Odoo" points at. Only the public
+ * site address is used; nothing about the credentials leaves the server.
+ */
+export function odooRecordUrl(model, id) {
+  const { url } = CONFIG();
+  if (!url || !Number.isInteger(id)) return null;
+  return `${url}/web#id=${id}&model=${encodeURIComponent(model)}&view_type=form`;
+}
+
 class OdooError extends Error {
   constructor(message, status = 502) {
     super(message);
@@ -223,7 +233,10 @@ export async function fieldsOf(model) {
     model,
     'fields_get',
     [],
-    { attributes: ['string', 'type', 'relation', 'selection', 'required'] },
+    // `store` is what separates a cheap column from a computed field Odoo
+    // evaluates per row in Python — the difference between one second and
+    // eighteen for `seats_taken`. Schema discovery refuses the latter.
+    { attributes: ['string', 'type', 'relation', 'selection', 'required', 'store'] },
   ]);
 }
 
