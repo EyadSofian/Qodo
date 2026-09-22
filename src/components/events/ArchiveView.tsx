@@ -2,7 +2,7 @@
  * The Archive — one place for what the workbook split across "All Finished",
  * "Finished Engineering", "Finished English" and the rest.
  *
- * Same rows, same grid, same filters as the Schedule; only the loading
+ * Same cards, same filters, same details panel as the schedule; only the loading
  * differs. History is fetched a year (or a custom range of up to a year) at a
  * time and paged, never all at once, and a search also goes to Odoo so it can
  * find a course beyond the first page.
@@ -13,11 +13,23 @@ import { AlertCircle, RefreshCw } from 'lucide-react';
 import { errorMessage } from '../../lib/api';
 import { fetchArchive, ksaTodayIso, type ScheduleResponse } from '../../lib/eventsSchedule';
 import { Spinner } from '../ui';
-import { ScheduleWorkspace } from './ScheduleWorkspace';
+import { CourseWorkspace } from './CourseWorkspace';
 
 type Scope = { kind: 'year'; year: number } | { kind: 'range'; from: string; to: string };
 
-export function ArchiveView({ version, onOpen }: { version: number; onOpen: (id: number) => void }) {
+export function ArchiveView({
+  version,
+  selectedId,
+  onOpen,
+  onClose,
+  docked,
+}: {
+  version: number;
+  selectedId: number | null;
+  onOpen: (id: number) => void;
+  onClose: () => void;
+  docked: boolean;
+}) {
   const thisYear = Number(ksaTodayIso().slice(0, 4));
   const [scope, setScope] = useState<Scope>({ kind: 'year', year: thisYear });
   const [search, setSearch] = useState('');
@@ -68,7 +80,7 @@ export function ArchiveView({ version, onOpen }: { version: number; onOpen: (id:
       <label>
         <span className="sr-only">السنة</span>
         <select
-          className="field !w-auto !py-2 text-[13px]"
+          className="h-10 cursor-pointer rounded-xl border border-surface-line bg-white px-3.5 text-[13px] font-semibold text-ink hover:border-brand-200 focus:outline-none focus:ring-2 focus:ring-brand-100"
           value={scope.kind === 'year' ? String(scope.year) : 'custom'}
           onChange={(event) =>
             setScope(event.target.value === 'custom' ? { kind: 'range', ...draft } : { kind: 'year', year: Number(event.target.value) })
@@ -115,15 +127,19 @@ export function ArchiveView({ version, onOpen }: { version: number; onOpen: (id:
         </p>
       )}
       {(rows || !error) && (
-        <ScheduleWorkspace
-          storageKey="qodo.events.archive.v1"
+        <CourseWorkspace
+          storageKey="qodo.events.archive.v2"
           rows={rows}
           meta={last?.meta ?? null}
           loading={loading}
           stale={pages.some((page) => page.stale)}
           fetchedAt={last?.fetchedAt}
+          selectedId={selectedId}
           onOpen={onOpen}
-          rangeControl={rangeControl}
+          onClose={onClose}
+          docked={docked}
+          version={version}
+          dateControl={rangeControl}
           archive
           onSearch={setSearch}
           footer={

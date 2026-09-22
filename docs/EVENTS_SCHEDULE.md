@@ -17,10 +17,11 @@ record.
 
 ```
 Events
-├── Overview   the day at a glance: six counts, today, starting soon, status, departments
-├── Schedule   all courses overlapping a date range (≤ 186 days), online + offline
-│   ├── filters: All · Arch & Decor · Mechanical · Electrical · Civil · Development · English · Webinar
-│   └── views: Cards · Compact List (phones always get cards)
+├── Courses    the dashboard: five counts, department chips, filters, course cards,
+│              and a details panel docked beside them — every course overlapping a
+│              date range (≤ 186 days), online + offline
+│   ├── departments: All · Arch & Decor · Mechanical · Electrical · Civil · Development · English · Webinar
+│   └── views: Cards · List
 ├── Today      every lecture on today's Cairo calendar, with Zoom links
 ├── Analytics  unchanged: in-person demand, capacity, Insights Hub paid revenue
 └── Archive    finished / cancelled / refused / hold / ended, one year per request, paged
@@ -273,28 +274,58 @@ value is `null` and the filter is not offered.
 
 ## The interface
 
-Overview leads with six counts — running, today's lectures, starting within a
-week, active trainees, near capacity, needing review. They are counts of real
-rows, computed from the schedule already loaded, so Overview costs no extra
-Odoo request. A finished course is excluded from all of them: its trainees, its
-fill and its gaps are not work anybody can still do. A course whose `seats_max`
-Odoo does not know is never "0 % full" — it is left out of the capacity count.
+The workbook defined the fields; the approved dashboard mock defined the page.
+Everything is Arabic and right-to-left; only what Odoo holds (course, package
+and people names, codes) stays in Latin.
 
-A course is a **card**: name, then department • package • code, then instructor,
-type and delivery, then dates, work days and the KSA hours, then trainees over
-capacity, then session progress, then the next lecture, then the coordinator.
-**Compact List** is the same information at operations density, one line per
-course. Below 640 px the list is not offered — it hides too much to be useful on
-a phone — and cards are used instead.
+**Header** — title, the Odoo freshness badge (or the last good sync when Odoo is
+down), the sync button, and the module's four sections as one underline row:
+الكورسات (the dashboard, default) · النهاردة · التحليل · الأرشيف.
 
-Sessions are a **timeline**, never columns. It opens on today, shows a window
-around it, counts what is done, happening and still to come, and expands to the
-full list on request — so a forty-lecture Civil course costs the same screen as
-a four-lecture one until somebody asks for it.
+**Five counts** open the dashboard — running courses, lectures today, starting
+within a week, active trainees, near capacity. They are counted from the rows
+already loaded (no extra Odoo request), closed courses are left out of all of
+them, and "near capacity" is the same test as the smart filter of that name
+(80 % of a capacity Odoo knows), so the count always equals the cards that
+filter shows. A course with no `seats_max` is never "near" anything.
 
-Today groups its lectures under the hour they start, because the hour is what
-somebody is looking for when they open it before a lecture.
+**Filters** — department chips; then search, status, type, instructor and the
+date range inline; everything else (delivery, coordinator, package, work days,
+the less common alerts, closed courses) behind one "فلاتر" button whose badge
+counts what it holds. Six smart filters sit under them: running now, starting
+this week, a lecture today, no registrations, near capacity, no instructor.
 
-Nothing in the module scrolls the page sideways. Chip rows scroll inside
-themselves; cards and their grid carry `min-w-0` so a long package name cannot
-widen the page on a phone.
+**A course is a card**: department chip and status, then the name, code and
+package, the instructor (initials avatar — no invented photos), type and
+delivery beside trainees over capacity with a thin bar, dates, work days and
+KSA hours, a tinted "next lecture" box (or "live now" while one is running),
+and the coordinator. **List** is the same, one 96 px row per course.
+
+Card columns follow the width the grid actually has, not the window: at most
+three, none narrower than 440 px — and with the details panel docked, at most
+two, none narrower than 340 px.
+
+**Details panel** — at 1280 px and wider it docks on the right at about 35 % of
+the width and the cards reflow beside it; the selected card keeps a blue
+border and choosing another swaps the panel. Below that it is a sheet over the
+page, the whole screen on a phone, with a focus trap. Four underline tabs:
+
+- نظرة عامة — department / package / type, instructor and coordinator, a
+  five-number strip (trainees, total, done, upcoming, today), the schedule with
+  a next-lecture panel and a Zoom button when a lecture is today, five session
+  tiles around today, and the comments.
+- المحاضرات — every lecture as a vertical timeline: forty read as easily as four.
+- المتدربين — registrations: confirmed over capacity, interested, attended,
+  cancelled, and the minimum when Odoo has one. Trainee names are not listed;
+  they are in Odoo.
+- التفاصيل — every remaining field, where each derived value came from, and
+  the data-quality notes in words.
+
+Sessions are never columns, anywhere. Nothing in the module scrolls the page
+sideways: chip rows scroll inside themselves, and cards, grids and truncating
+names carry `min-w-0` — a long English name keeps its beginning and loses
+its end, even inside an Arabic card.
+
+Effects that call `scrollTo` use a block body: Chromium's `scrollTo()` now
+returns a Promise, and an arrow that returned it hands React a Promise as the
+effect's cleanup — which crashed the page on the first tab switch.

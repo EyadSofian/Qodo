@@ -250,17 +250,7 @@ const CAIRO = 'Africa/Cairo';
 const ksaDateFmt = new Intl.DateTimeFormat('ar-EG-u-nu-latn', { timeZone: KSA, day: 'numeric', month: 'short', year: 'numeric' });
 const ksaShortFmt = new Intl.DateTimeFormat('ar-EG-u-nu-latn', { timeZone: KSA, day: 'numeric', month: 'short' });
 const ksaTimeFmt = new Intl.DateTimeFormat('ar-EG-u-nu-latn', { timeZone: KSA, hour: 'numeric', minute: '2-digit' });
-const ksaMonthFmt = new Intl.DateTimeFormat('ar-EG-u-nu-latn', { timeZone: KSA, month: 'long', year: 'numeric' });
-const ksaFullFmt = new Intl.DateTimeFormat('ar-EG-u-nu-latn', {
-  timeZone: KSA,
-  weekday: 'short',
-  day: 'numeric',
-  month: 'short',
-  year: 'numeric',
-  hour: 'numeric',
-  minute: '2-digit',
-  hour12: true,
-});
+const ksaDayLabelFmt = new Intl.DateTimeFormat('ar-EG-u-nu-latn', { timeZone: KSA, weekday: 'long', day: 'numeric', month: 'short' });
 
 const format = (fmt: Intl.DateTimeFormat) => (iso: string | null | undefined) =>
   iso && !Number.isNaN(Date.parse(iso)) ? fmt.format(new Date(iso)) : '';
@@ -271,14 +261,14 @@ export const ksaDate = format(ksaDateFmt);
 export const ksaShortDate = format(ksaShortFmt);
 /** "7:00 PM" on Riyadh's clock. */
 export const ksaTime = format(ksaTimeFmt);
-export const ksaMonth = format(ksaMonthFmt);
-export const ksaFull = format(ksaFullFmt);
+/** "الخميس 24 سبتمبر" — for a lecture that is not today. */
+export const ksaDayLabel = format(ksaDayLabelFmt);
 
-/** "19:00" (the server's KSA wall clock) → "7:00 PM". */
+/** "19:00" (the server's KSA wall clock) → "7:00 م", matching `ksaTime`. */
 export function hhmmLabel(hhmm: string | null): string {
   if (!hhmm) return '';
   const [h, m] = hhmm.split(':').map(Number);
-  const suffix = h >= 12 ? 'PM' : 'AM';
+  const suffix = h >= 12 ? 'م' : 'ص';
   return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${suffix}`;
 }
 

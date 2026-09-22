@@ -106,7 +106,7 @@ export function departmentPreset(key) {
  */
 export const VIEW_MODES = ['cards', 'list'];
 
-export const VIEW_LABELS = { cards: 'كروت', list: 'لستة مختصرة' };
+export const VIEW_LABELS = { cards: 'كروت', list: 'لستة' };
 
 export function resolveViewMode(mode) {
   return VIEW_MODES.includes(mode) ? mode : 'cards';
@@ -148,11 +148,15 @@ export function sessionState(session, now = new Date()) {
   return new Date(session.startsAt).getTime() < now.getTime() ? 'past' : 'upcoming';
 }
 
-export const SESSION_GLYPHS = { past: '✓', today: '●', upcoming: '○', missing: '—' };
-
 /* ── filters ─────────────────────────────────────────────────────── */
 
 const inRange = (day, range) => Boolean(day) && day >= range.from && day <= range.to;
+
+/** A course at 80% of its known capacity or more. Unknown capacity is never "near". */
+export const NEAR_CAPACITY_RATIO = 0.8;
+export const isNearCapacity = (row) => row.capacity !== null && row.capacity > 0 && row.traineeCount >= row.capacity * NEAR_CAPACITY_RATIO;
+
+const hasSessionOn = (row, day) => (row.sessions ?? []).some((session) => session.startsAt && ksaDay(session.startsAt) === day);
 
 /**
  * Operational shortcuts. Each one is a question somebody used to answer by
@@ -162,11 +166,18 @@ const inRange = (day, range) => Boolean(day) && day >= range.from && day <= rang
 export const QUICK_FILTERS = {
   running: {
     label: 'شغّالة دلوقتي',
+    primary: true,
     test: (row) => row.statusCanonical === 'in_progress',
   },
   startsThisWeek: {
     label: 'بتبدأ الأسبوع ده',
+    primary: true,
     test: (row, now) => inRange(ksaDay(row.startsAt), ksaWeek(now)),
+  },
+  today: {
+    label: 'عندها محاضرة النهاردة',
+    primary: true,
+    test: (row, now) => hasSessionOn(row, ksaDay(now.toISOString())),
   },
   startsNextWeek: {
     label: 'بتبدأ الأسبوع الجاي',
@@ -178,11 +189,13 @@ export const QUICK_FILTERS = {
   },
   noRegistrations: {
     label: 'من غير حجوزات',
+    primary: true,
     test: (row) => row.traineeCount === 0 && row.registrations?.interested === 0,
   },
   nearCapacity: {
     label: 'قرّبت تكمل',
-    test: (row) => row.capacity !== null && row.traineeCount >= row.capacity * 0.8,
+    primary: true,
+    test: isNearCapacity,
   },
   belowMinimum: {
     label: 'تحت الحد الأدنى',
@@ -191,6 +204,7 @@ export const QUICK_FILTERS = {
   },
   missingInstructor: {
     label: 'من غير مدرّب',
+    primary: true,
     test: (row) => !row.instructor,
   },
   missingCoordinator: {
@@ -215,7 +229,7 @@ export const QUICK_FILTERS = {
 export function availableQuickFilters(discoveredFields = {}) {
   return Object.entries(QUICK_FILTERS)
     .filter(([, filter]) => !filter.requires || discoveredFields[filter.requires])
-    .map(([key, filter]) => ({ key, label: filter.label }));
+    .map(([key, filter]) => ({ key, label: filter.label, primary: Boolean(filter.primary) }));
 }
 
 /**
@@ -246,8 +260,8 @@ export function activeFilterCount(filters) {
   return count;
 }
 
-/** Package or section, whichever this course has — the sheet's first column. */
-export const groupOf = (row) => row.package ?? row.section ?? null;
+/** Package or section, whichever this course has. */
+const groupOf = (row) => row.package ?? row.section ?? null;
 
 /**
  * Rows that pass every active filter. `showClosed` off hides finished,
@@ -380,47 +394,9 @@ export function overviewStats(rows, now = new Date()) {
     // work anybody can still do, so none of them count here.
     if (CLOSED_STATUSES.includes(row.statusCanonical)) continue;
     trainees += row.traineeCount ?? 0;
-    if (row.capacity && row.traineeCount / row.capacity >= 0.85) nearCapacity += 1;
+    if (isNearCapacity(row)) nearCapacity += 1;
     if ((row.qualityFlags?.length ?? 0) > 0) needsAttention += 1;
   }
 
   return { active, startingSoon, todaySessions, trainees, nearCapacity, needsAttention, total: rows.length };
-}
-
-/** Course counts per status, in the order the chips are shown. */
-export function statusCounts(rows) {
-  const counts = new Map(STATUS_ORDER.map((status) => [status, 0]));
-  for (const row of rows) {
-    if (row.statusCanonical && counts.has(row.statusCanonical)) {
-      counts.set(row.statusCanonical, counts.get(row.statusCanonical) + 1);
-    }
-  }
-  return STATUS_ORDER.map((status) => ({ status, label: STATUS_LABELS[status], count: counts.get(status) })).filter(
-    (entry) => entry.count > 0
-  );
-}
-
-/** Courses per department, busiest first — the Overview's department breakdown. */
-export function departmentBreakdown(rows) {
-  const counts = new Map();
-  for (const row of rows) {
-    const key = row.department ?? 'Unclassified';
-    counts.set(key, (counts.get(key) ?? 0) + 1);
-  }
-  return [...counts]
-    .map(([department, count]) => ({ department, count }))
-    .sort((a, b) => b.count - a.count || a.department.localeCompare(b.department));
-}
-
-/** Today's lectures across every loaded course, earliest first. */
-export function todaysSessions(rows, now = new Date()) {
-  const today = ksaDay(now.toISOString());
-  const out = [];
-  for (const row of rows) {
-    for (const session of row.sessions ?? []) {
-      if (!session.startsAt || ksaDay(session.startsAt) !== today) continue;
-      out.push({ row, session });
-    }
-  }
-  return out.sort((a, b) => compareText(a.session.startsAt, b.session.startsAt));
 }
