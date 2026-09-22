@@ -6,8 +6,10 @@
  *   1. `event.event`   — one bounded, capped `search_read`
  *   2. `event.track`   — one query for all of those events' lectures   ┐ in
  *   3. `event.registration` — one `read_group` by (event, state)        │ parallel
- *   4. many2many names — one read per relation model, only if a        ┘
- *      discovered concept (tags, work days) is a many2many
+ *   4. many2many names — one read per relation model, only if a        │
+ *      discovered concept (tags, work days) is a many2many             │
+ *   5. training.package.group — one read, only if this database routes ┘
+ *      events to a package through a cohort group
  *
  * then joined in Node. Never a query per course or per lecture: this Odoo takes
  * 4 seconds to answer `version`, and forty of those in a row is a page that
@@ -18,7 +20,7 @@
  * counting fake in the tests.
  */
 
-import { buildScheduleRow, canonicalStatus, idOf, registrationCounts } from './normalize.js';
+import { buildScheduleRow, canonicalStatus, idOf, nameOf, registrationCounts } from './normalize.js';
 import { relationModels } from './schema.js';
 
 export async function readStages(client) {
@@ -40,6 +42,28 @@ export async function readStages(client) {
 export async function readRegistrationGroups(client, eventIds) {
   if (eventIds.length === 0) return [];
   return client.readGroup('event.registration', [['event_id', 'in', eventIds]], ['event_id', 'state']);
+}
+
+/**
+ * The cohort group each event belongs to, and the package behind it.
+ *
+ * This database has no package field on `event.event`: the chain is
+ * `related_group_id` → `training.package.group.package_id` → the package.
+ * One bounded read for every group in the page, never one per course.
+ */
+async function readPackageGroups(client, schema, events) {
+  const concept = schema.concepts?.packageGroup;
+  if (!concept?.field || !concept.relation) return new Map();
+  const ids = new Set();
+  for (const event of events) {
+    const id = idOf(event[concept.field]);
+    if (id !== null) ids.add(id);
+  }
+  if (ids.size === 0) return new Map();
+  const rows = await client.searchRead(concept.relation, [['id', 'in', [...ids]]], ['name', 'package_id'], {
+    limit: ids.size,
+  });
+  return new Map(rows.map((row) => [row.id, { name: row.name || null, package: nameOf(row.package_id) }]));
 }
 
 async function readRelationNames(client, schema, events) {
@@ -78,7 +102,7 @@ export async function loadScheduleRows(
   const events = eventsTruncated ? fetched.slice(0, limit) : fetched;
   const eventIds = events.map((event) => event.id);
 
-  const [tracks, groups, relationNames] = await Promise.all([
+  const [tracks, groups, relationNames, packageGroups] = await Promise.all([
     eventIds.length
       ? client.searchRead('event.track', [['event_id', 'in', eventIds]], trackFields ?? schema.trackReadFields, {
           limit: trackLimit,
@@ -87,6 +111,7 @@ export async function loadScheduleRows(
       : [],
     readRegistrationGroups(client, eventIds),
     readRelationNames(client, schema, events),
+    readPackageGroups(client, schema, events),
   ]);
 
   const tracksByEvent = new Map();
@@ -107,6 +132,7 @@ export async function loadScheduleRows(
       stages: stageMap,
       schema,
       relationNames,
+      packageGroups,
       now,
     })
   );

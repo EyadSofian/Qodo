@@ -247,7 +247,15 @@ function DrawerBody({ course }: { course: TrainingScheduleRow }) {
 
       <Section title="Operations">
         <dl>
-          <Fact label="Coordinator">{value(course.coordinator, 'مش متسجّل / مش موجود في أودو')}</Fact>
+          <Fact label="Coordinator">
+            {value(course.coordinator, 'مش متسجّل / مش موجود في أودو')}
+            {course.coordinatorSource === 'responsible' && course.coordinator ? (
+              <span className="ms-1.5 text-[11.5px] text-ink-muted" title="أودو مفيهاش عمود Coordinator؛ ده الـResponsible بتاع الإيفينت">
+                (Responsible)
+              </span>
+            ) : null}
+          </Fact>
+          <Fact label="Group">{value(course.cohort)}</Fact>
           <Fact label="Venue">{value(course.location.venue)}</Fact>
         </dl>
         <div className="mt-2">

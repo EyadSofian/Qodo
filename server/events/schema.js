@@ -69,11 +69,20 @@ export const CONCEPTS = {
     label: /\bsection\b/i,
   },
   package: {
-    types: ['many2one', 'char', 'selection', 'many2many'],
+    types: ['many2one', 'char', 'many2many'],
     primary: /(^|_)(package|training_package)(_ids?)?$/,
     secondary: /package|bundle/,
     label: /\bpackages?\b|باق[ةه]|الباق[ةه]/i,
     relation: /^training\.package$/,
+  },
+  // The cohort an event belongs to ("Evening Group September 2026"), and the
+  // only route to its package: training.package.group.package_id.
+  packageGroup: {
+    types: ['many2one'],
+    primary: /(^|_)(related_group|package_group|group)(_id)?$/,
+    secondary: /group/,
+    label: /\bgroup\b|مجموعة/i,
+    relation: /^training\.package\.group$/,
   },
   coordinator: {
     types: ['many2one', 'char'],
@@ -89,8 +98,8 @@ export const CONCEPTS = {
   },
   workDays: {
     types: ['many2many', 'char', 'selection', 'text'],
-    primary: /(^|_)(work|week|lecture|session|training|class)_?days(_ids?)?$/,
-    secondary: /days_of_week|(^|_)days(_ids?)?$/,
+    primary: /(^|_)(work|week|lecture|session|training|class)_?days?(_ids?)?$/,
+    secondary: /days?_of_week|(^|_)days?(_ids?)?$/,
     label: /work ?days|week ?days|days of (the )?week|lecture days|training days|أيام/i,
   },
   minimumCapacity: {
@@ -101,6 +110,10 @@ export const CONCEPTS = {
   },
   // Standard Odoo 17 fields, used only as category labels for the department
   // tabs and only when this database has them.
+  // Odoo's standard "Responsible". Not a coordinator field, but on this
+  // database it is the person who owns the event operationally, and the
+  // workbook's Coordinator column has no other home. Reported as such.
+  responsible: { types: ['many2one'], exact: 'user_id' },
   template: { types: ['many2one'], exact: 'event_type_id' },
   tags: { types: ['many2many'], exact: 'tag_ids' },
 };

@@ -394,7 +394,16 @@ function mostCommon(values) {
  * @param {Map<string, Map<number,string>>} [input.relationNames]  model → id → name, for many2many
  * @param {Date} [input.now]
  */
-export function buildScheduleRow({ event, tracks = [], registrations, stages, schema, relationNames = new Map(), now = new Date() }) {
+export function buildScheduleRow({
+  event,
+  tracks = [],
+  registrations,
+  stages,
+  schema,
+  relationNames = new Map(),
+  packageGroups = new Map(),
+  now = new Date(),
+}) {
   const concepts = schema.concepts;
   const conceptValue = (concept) => readConcept(event, concepts[concept], relationNames);
 
@@ -410,7 +419,11 @@ export function buildScheduleRow({ event, tracks = [], registrations, stages, sc
   const courseName = text(event.name) ?? 'بدون اسم';
 
   const section = conceptValue('section');
-  const pkg = conceptValue('package');
+  // This database reaches the package through the cohort group; a direct
+  // package field on the event is honoured first if another one ever has it.
+  const cohortId = concepts.packageGroup ? idOf(event[concepts.packageGroup.field]) : null;
+  const cohort = cohortId !== null ? packageGroups.get(cohortId) ?? null : null;
+  const pkg = conceptValue('package') ?? cohort?.package ?? null;
   const template = conceptValue('template');
   const tags = conceptValue('tags');
   const { department, source: departmentSource } = classifyDepartment({
@@ -442,7 +455,10 @@ export function buildScheduleRow({ event, tracks = [], registrations, stages, sc
 
   const regs = registrations ?? { confirmed: 0, interested: 0, attended: 0, cancelled: 0 };
   const capacity = positive(event.seats_max);
-  const coordinator = conceptValue('coordinator');
+  const ownCoordinator = conceptValue('coordinator');
+  const responsible = conceptValue('responsible');
+  const coordinator = ownCoordinator ?? responsible ?? null;
+  const coordinatorSource = ownCoordinator ? 'coordinator' : responsible ? 'responsible' : null;
 
   const row = {
     id: event.id,
@@ -454,6 +470,7 @@ export function buildScheduleRow({ event, tracks = [], registrations, stages, sc
     departmentSource,
     section,
     package: pkg,
+    cohort: cohort?.name ?? null,
     instructor: nameOf(event.instructor_id),
     trainingType: type.displayLabel,
     typeCategory: type.category,
@@ -481,6 +498,7 @@ export function buildScheduleRow({ event, tracks = [], registrations, stages, sc
     workDaysSource,
     configuredWorkDays: configuredDays,
     coordinator,
+    coordinatorSource,
     comments: concepts.comments ? plainText(event[concepts.comments.field]) : null,
     sessions,
     sessionsTotal: sessions.length,
@@ -497,7 +515,7 @@ export function buildScheduleRow({ event, tracks = [], registrations, stages, sc
     event,
     numberingConsistent,
     distinctStarts: distinctStarts.size,
-    coordinatorKnown: Boolean(concepts.coordinator),
+    coordinatorKnown: Boolean(concepts.coordinator || concepts.responsible),
   });
   return row;
 }

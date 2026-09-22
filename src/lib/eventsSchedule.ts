@@ -60,6 +60,8 @@ export interface TrainingScheduleRow {
   departmentSource: DepartmentSource | null;
   section: string | null;
   package: string | null;
+  /** The intake this course belongs to — "Evening Group September 2026". */
+  cohort: string | null;
   instructor: string | null;
   /** "Group Online", "Company Offline"… — null when Odoo has neither half. */
   trainingType: string | null;
@@ -89,6 +91,8 @@ export interface TrainingScheduleRow {
   workDaysSource: 'sessions' | 'odoo' | null;
   configuredWorkDays: string[] | null;
   coordinator: string | null;
+  /** `responsible` means it is Odoo's "Responsible", not a coordinator field. */
+  coordinatorSource: 'coordinator' | 'responsible' | null;
   comments: string | null;
   sessions: TrainingSession[];
   sessionsTotal: number;

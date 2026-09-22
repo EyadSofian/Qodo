@@ -15,7 +15,7 @@ import {
   registrationCounts,
 } from './events/normalize.js';
 import { CORE_EVENT_FIELDS, parseFieldOverride, resolveEventSchema } from './events/schema.js';
-import { loadScheduleRows } from './events/reader.js';
+import { loadScheduleRows, readStages } from './events/reader.js';
 import {
   clearScheduleCaches,
   eventDetail,
@@ -88,7 +88,7 @@ function evaluate(domain, row) {
   return stack.every(Boolean);
 }
 
-function fakeOdoo({ events = [], tracks = [], registrations = [], eventFields = coreFieldsMeta, fail = false } = {}) {
+function fakeOdoo({ events = [], tracks = [], registrations = [], groups = [], eventFields = coreFieldsMeta, fail = false } = {}) {
   const calls = [];
   const guard = () => {
     if (client.fail) throw new OdooError('odoo_timeout');
@@ -104,7 +104,10 @@ function fakeOdoo({ events = [], tracks = [], registrations = [], eventFields = 
     async searchRead(model, domain, fields, options = {}) {
       calls.push({ kind: 'search_read', model, domain, fields, options });
       guard();
-      const source = { 'event.stage': STAGES, 'event.event': events, 'event.track': tracks }[model] ?? [];
+      const source =
+        { 'event.stage': STAGES, 'event.event': events, 'event.track': tracks, 'training.package.group': groups }[
+          model
+        ] ?? [];
       const matched = source.filter((row) => evaluate(domain, row));
       const [orderField, direction] = String(options.order ?? '').split(/[ ,]+/);
       if (orderField) {
@@ -562,4 +565,132 @@ test('Odoo rejecting our key never reaches the browser as a 401', () => {
   } finally {
     console.error = original;
   }
+});
+
+/* ── the live schema: fields this database actually has ──────────── */
+
+/**
+ * Taken from `fields_get` on the production database (2026-09-22). The three
+ * that matter are the ones discovery originally got wrong:
+ * `package_training_style` is a delivery mode wearing the word "Package",
+ * the real package hangs off `related_group_id`, and the work-days field is
+ * `week_day_ids` — "day", not "days".
+ */
+const liveFieldsMeta = {
+  ...coreFieldsMeta,
+  package_training_style: {
+    string: 'Package Training Style',
+    type: 'selection',
+    store: true,
+    selection: [
+      ['onsite', 'On-site Attendance'],
+      ['online', 'Online Attendance'],
+    ],
+  },
+  related_group_id: {
+    string: 'Related Training Package Group',
+    type: 'many2one',
+    relation: 'training.package.group',
+    store: true,
+  },
+  week_day_ids: { string: 'Week Day', type: 'many2many', relation: 'week.day', store: true },
+  user_id: { string: 'Responsible', type: 'many2one', relation: 'res.users', store: true },
+  note: { string: 'Note', type: 'html', store: true },
+  event_type_id: { string: 'Template', type: 'many2one', relation: 'event.type', store: true },
+  tag_ids: { string: 'Tags', type: 'many2many', relation: 'event.tag', store: true },
+};
+
+test('"Package Training Style" is a delivery mode, not a package, and never wins the package slot', () => {
+  const schema = resolveEventSchema(liveFieldsMeta, trackFieldsMeta);
+  assert.equal(schema.concepts.package, null);
+  assert.equal(schema.concepts.packageGroup.field, 'related_group_id');
+  assert.equal(schema.concepts.packageGroup.relation, 'training.package.group');
+  // It is still reported as a candidate so a human can see why it was rejected.
+  assert.ok(!schema.eventReadFields.includes('package_training_style'));
+});
+
+test('the work-days field is found when Odoo spells it "week_day_ids"', () => {
+  const schema = resolveEventSchema(liveFieldsMeta, trackFieldsMeta);
+  assert.equal(schema.concepts.workDays.field, 'week_day_ids');
+  assert.equal(schema.concepts.workDays.type, 'many2many');
+  assert.ok(schema.eventReadFields.includes('week_day_ids'));
+});
+
+test('a course reaches its package through the cohort group, in one extra query', async () => {
+  const client = fakeOdoo({
+    events: [
+      event(1, { related_group_id: [77, 'Evening Group September 2026'], user_id: [4, 'Ramy Emad'] }),
+      event(2, { related_group_id: [77, 'Evening Group September 2026'] }),
+      event(3, { related_group_id: false }),
+    ],
+    groups: [{ id: 77, name: 'Evening Group September 2026', package_id: [6, 'Mechanical Engineering Professional Track'] }],
+    eventFields: liveFieldsMeta,
+  });
+  const schema = resolveEventSchema(liveFieldsMeta, trackFieldsMeta);
+  const stages = await readStages(client);
+  client.calls.length = 0;
+
+  const { rows } = await loadScheduleRows(client, {
+    schema,
+    stages,
+    domain: [['id', 'in', [1, 2, 3]]],
+    limit: 50,
+    now: NOW,
+  });
+
+  const groupReads = client.calls.filter((c) => c.model === 'training.package.group');
+  assert.equal(groupReads.length, 1, 'one read for the page, never one per course');
+  assert.deepEqual(groupReads[0].domain, [['id', 'in', [77]]]);
+
+  assert.equal(rows[0].package, 'Mechanical Engineering Professional Track');
+  assert.equal(rows[0].cohort, 'Evening Group September 2026');
+  assert.equal(rows[1].package, 'Mechanical Engineering Professional Track');
+  // A course outside any package is not in a package — not "unknown", not "".
+  assert.equal(rows[2].package, null);
+  assert.equal(rows[2].cohort, null);
+});
+
+test('the package name, not the course name, decides the department', async () => {
+  const client = fakeOdoo({
+    // "Revit" alone is deliberately unclassifiable: it is taught in several
+    // departments, so only the package can place this course.
+    events: [event(1, { name: 'Revit Work-Sharing 5406', related_group_id: [8, 'April Group 2026'] })],
+    groups: [{ id: 8, name: 'April Group 2026', package_id: [12, 'BIM MEP Professional Track'] }],
+    eventFields: liveFieldsMeta,
+  });
+  const schema = resolveEventSchema(liveFieldsMeta, trackFieldsMeta);
+  const stages = await readStages(client);
+  const { rows } = await loadScheduleRows(client, { schema, stages, domain: [], limit: 50, now: NOW });
+
+  assert.equal(rows[0].department, 'Mechanical');
+  assert.equal(rows[0].departmentSource, 'category');
+});
+
+test('Odoo\'s "Responsible" fills the Coordinator column, and says that is where it came from', async () => {
+  const client = fakeOdoo({
+    events: [event(1, { user_id: [4, 'Ramy Emad'] }), event(2, { user_id: false })],
+    eventFields: liveFieldsMeta,
+  });
+  const schema = resolveEventSchema(liveFieldsMeta, trackFieldsMeta);
+  assert.equal(schema.concepts.responsible.field, 'user_id');
+  const stages = await readStages(client);
+  const { rows } = await loadScheduleRows(client, { schema, stages, domain: [], limit: 50, now: NOW });
+
+  assert.equal(rows[0].coordinator, 'Ramy Emad');
+  assert.equal(rows[0].coordinatorSource, 'responsible');
+  assert.equal(rows[1].coordinator, null);
+  assert.equal(rows[1].coordinatorSource, null);
+});
+
+test('a database with no cohort groups asks for none', async () => {
+  const client = fakeOdoo({ events: [event(1)], eventFields: coreFieldsMeta });
+  const schema = resolveEventSchema(coreFieldsMeta, trackFieldsMeta);
+  assert.equal(schema.concepts.packageGroup, null);
+  const stages = await readStages(client);
+  client.calls.length = 0;
+  const { rows } = await loadScheduleRows(client, { schema, stages, domain: [], limit: 50, now: NOW });
+
+  assert.equal(client.calls.filter((c) => c.model === 'training.package.group').length, 0);
+  assert.equal(rows[0].package, null);
+  assert.equal(rows[0].cohort, null);
 });

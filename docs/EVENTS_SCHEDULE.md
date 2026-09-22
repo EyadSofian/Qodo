@@ -60,13 +60,14 @@ has no such field. Nothing is guessed.
 | Status | `event.event.stage_id` → `event.stage` flags + name | confirmed |
 | S1 … Sn | `event.track` rows, ordered by `date` | confirmed |
 | Venue / branch | `address_id`, `headquarter`, `if_offline` | confirmed |
-| Department | discovered field → else category label → else course name | discovered / derived |
-| Package | discovered (name/label "package", or relation `training.package`) | discovered |
-| Section | discovered (name/label "section") | discovered |
-| Coordinator | discovered (name/label "coordinator") | discovered |
-| Comments | discovered ("comment"/"remark"); Odoo 17's stored `note` qualifies | discovered |
-| Minimum capacity | discovered ("min seats/capacity/attendees") | discovered |
-| Configured work days | discovered (field or seven weekday booleans), compared only | discovered |
+| Department | derived from the package name (below) | derived |
+| Package | `related_group_id` → `training.package.group.package_id` | confirmed |
+| Group / intake | `related_group_id` → `training.package.group.name` | confirmed |
+| Section | no such field on this database | absent |
+| Coordinator | `user_id` ("Responsible") — see below | confirmed, renamed |
+| Comments | `note`; present but empty on every course read | confirmed, unused |
+| Minimum capacity | no such field on this database | absent |
+| Configured work days | `week_day_ids` → `week.day` | confirmed |
 | Zoom link | `active_join_live_url` → `zoom_join_link` → `meeting_url` → `zoom_link` (http/https only) | confirmed |
 
 Standard Odoo 17 `event_type_id` (template) and `tag_ids` are used only as
@@ -74,9 +75,28 @@ category labels for the department tabs, when present.
 
 ### What the live database answered
 
-Field discovery could **not** be run while this was built: the development
-machine has no Odoo credentials. The discovered rows above are therefore
-unverified until somebody with access checks them:
+Discovery was run against production on **2026-09-22** (`fields_get` on
+`event.event`: 165 fields). Three things it first got wrong, and the fix:
+
+| Concept | First guess | What it actually is |
+|---|---|---|
+| Package | `package_training_style` | A *delivery mode* (`onsite`/`online`) that merely contains the word "Package". Selections no longer qualify as a package; the real one is reached through the cohort group. |
+| Work days | nothing found | `week_day_ids` → `week.day`. The pattern required "days"; Odoo spells it **day**. |
+| Coordinator | nothing found | No coordinator field exists. `user_id` ("Responsible") is the operational owner and fills the column, labelled as such. |
+
+There is no `department`, `section` or minimum-seats field. Department is
+derived from the package, which is a clean 12-value list
+("Mechanical Engineering Professional Track", "BIM Structure Professional
+Track", …) that maps onto the workbook's tabs.
+
+Over 1 Sep – 31 Dec 2026 (124 courses): department **94 %**, package **73 %**,
+work days **98 %**, coordinator **100 %**, comments **1 %**.
+
+`note` exists and is stored, but is empty on every course — the workbook's
+Comments column has no home in Odoo today, and the drawer says so rather than
+inventing one.
+
+A re-check is always available at:
 
 ```
 GET /api/events/diagnostics      (administrators — settings.manage)
@@ -87,8 +107,8 @@ field chosen for each concept and every candidate with its score, label, type
 and `store` flag, the selection values of `event_type` / `attendance_method`,
 and each stage with its canonical status. No records, credentials or URLs.
 
-If discovery picks the wrong field, or a concept lives under an unexpected
-name, pin it:
+Discovery is still by name and label, so a renamed custom field changes the
+answer. If it picks the wrong one, pin it:
 
 ```
 ODOO_EVENT_FIELD_MAP={"coordinator":"x_coordinator_id","package":"x_package_id"}
@@ -227,9 +247,17 @@ value is `null` and the filter is not offered.
 
 ## Known limitations
 
-- Custom-field discovery is unverified against the live database (see above).
-  Until it is, Department comes from category labels / course names, and
-  Package, Section, Coordinator and Comments may be empty.
+- **Coordinator is Odoo's "Responsible"** (`user_id`), not a field the
+  operations team fills as a coordinator. The drawer marks it. If the two
+  are meant to be different people, this column needs a real Odoo field.
+- **Comments are always empty.** `note` is the only candidate and no course
+  uses it, so the workbook's Comments do not survive the move.
+- **Section and minimum capacity do not exist** in this Odoo, and are `null`.
+- 27 % of courses sit outside any package, so they have no department from
+  that route and fall back to the course name — or stay unclassified when the
+  name is taught in more than one department (Revit, BIM, AutoCAD).
+- LMS-style courses carry all seven `week_day_ids`; the lectures' own days
+  win whenever a course has lectures.
 - Webinars appear only if they exist in Odoo as `event.event`; the workbook's
   webinar list is not imported.
 - Archive search (`q`) reaches Odoo by name and code only; instructor and
