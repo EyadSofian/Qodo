@@ -53,13 +53,18 @@ export function rowMatches(row, query) {
 /* ── status ──────────────────────────────────────────────────────── */
 
 export const STATUS_ORDER = ['in_progress', 'planned', 'hold', 'finished', 'canceled', 'refused'];
+/**
+ * What the chips say. The app is Arabic, so these are Arabic; Odoo's own stage
+ * name travels beside them on the row and shows on hover, for anybody
+ * reconciling a course against the ERP.
+ */
 export const STATUS_LABELS = {
-  in_progress: 'In Progress',
-  planned: 'Planned',
-  hold: 'Hold',
-  finished: 'Finished',
-  canceled: 'Canceled',
-  refused: 'Refused',
+  in_progress: 'شغّالة',
+  planned: 'مخطّطة',
+  hold: 'متأجّلة',
+  finished: 'خلصت',
+  canceled: 'ملغية',
+  refused: 'مرفوضة',
 };
 /** Out of the day-to-day schedule unless asked for; the Archive is their home. */
 export const CLOSED_STATUSES = ['finished', 'canceled', 'refused'];
@@ -71,15 +76,21 @@ export const CLOSED_STATUSES = ['finished', 'canceled', 'refused'];
  * workbook's tabs: one list of courses, narrowed — never a separate page.
  */
 export const DEPARTMENT_PRESETS = [
-  { key: 'all', label: 'All', department: null, groupLabel: 'Department / Package' },
-  { key: 'arch', label: 'Arch & Decor', department: 'Arch & Decor', groupLabel: 'Section' },
-  { key: 'mechanical', label: 'Mechanical', department: 'Mechanical', groupLabel: 'Package' },
-  { key: 'electrical', label: 'Electrical', department: 'Electrical', groupLabel: 'Package' },
-  { key: 'civil', label: 'Civil', department: 'Civil', groupLabel: 'Package' },
-  { key: 'development', label: 'Development', department: 'Development', groupLabel: 'Section' },
-  { key: 'english', label: 'English', department: 'English', groupLabel: 'Section' },
-  { key: 'webinar', label: 'Webinar', department: 'Webinar', groupLabel: 'Section' },
+  { key: 'all', label: 'الكل', department: null },
+  { key: 'arch', label: 'عمارة وديكور', department: 'Arch & Decor' },
+  { key: 'mechanical', label: 'ميكانيكا', department: 'Mechanical' },
+  { key: 'electrical', label: 'كهرباء', department: 'Electrical' },
+  { key: 'civil', label: 'مدني', department: 'Civil' },
+  { key: 'development', label: 'تطوير', department: 'Development' },
+  { key: 'english', label: 'إنجليزي', department: 'English' },
+  { key: 'webinar', label: 'ويبينار', department: 'Webinar' },
 ];
+
+/** Canonical department value → the Arabic word shown for it. */
+export function departmentLabel(department) {
+  if (!department) return null;
+  return DEPARTMENT_PRESETS.find((preset) => preset.department === department)?.label ?? department;
+}
 
 export function departmentPreset(key) {
   return DEPARTMENT_PRESETS.find((preset) => preset.key === key) ?? DEPARTMENT_PRESETS[0];
@@ -95,7 +106,7 @@ export function departmentPreset(key) {
  */
 export const VIEW_MODES = ['cards', 'list'];
 
-export const VIEW_LABELS = { cards: 'Cards', list: 'Compact List' };
+export const VIEW_LABELS = { cards: 'كروت', list: 'لستة مختصرة' };
 
 export function resolveViewMode(mode) {
   return VIEW_MODES.includes(mode) ? mode : 'cards';
@@ -150,49 +161,49 @@ const inRange = (day, range) => Boolean(day) && day >= range.from && day <= rang
  */
 export const QUICK_FILTERS = {
   running: {
-    label: 'Running now',
+    label: 'شغّالة دلوقتي',
     test: (row) => row.statusCanonical === 'in_progress',
   },
   startsThisWeek: {
-    label: 'Starting this week',
+    label: 'بتبدأ الأسبوع ده',
     test: (row, now) => inRange(ksaDay(row.startsAt), ksaWeek(now)),
   },
   startsNextWeek: {
-    label: 'Starting next week',
+    label: 'بتبدأ الأسبوع الجاي',
     test: (row, now) => inRange(ksaDay(row.startsAt), ksaWeek(now, 1)),
   },
   endsThisWeek: {
-    label: 'Ending this week',
+    label: 'بتخلص الأسبوع ده',
     test: (row, now) => inRange(ksaDay(row.endsAt), ksaWeek(now)),
   },
   noRegistrations: {
-    label: 'No registrations',
+    label: 'من غير حجوزات',
     test: (row) => row.traineeCount === 0 && row.registrations?.interested === 0,
   },
   nearCapacity: {
-    label: 'Near capacity',
+    label: 'قرّبت تكمل',
     test: (row) => row.capacity !== null && row.traineeCount >= row.capacity * 0.8,
   },
   belowMinimum: {
-    label: 'Below minimum',
+    label: 'تحت الحد الأدنى',
     requires: 'minimumCapacity',
     test: (row) => row.minimumCapacity !== null && row.traineeCount < row.minimumCapacity,
   },
   missingInstructor: {
-    label: 'Missing instructor',
+    label: 'من غير مدرّب',
     test: (row) => !row.instructor,
   },
   missingCoordinator: {
-    label: 'Missing coordinator',
+    label: 'من غير كوردينيتور',
     requires: 'coordinator',
     test: (row) => row.qualityFlags.includes('missing_coordinator'),
   },
   missingSessions: {
-    label: 'Missing sessions',
+    label: 'من غير محاضرات',
     test: (row) => row.qualityFlags.includes('no_sessions') || row.qualityFlags.includes('lecture_count_mismatch'),
   },
   scheduleMismatch: {
-    label: 'Schedule mismatch',
+    label: 'الجدول مش مظبوط',
     test: (row) =>
       ['session_outside_range', 'work_days_mismatch', 'inconsistent_session_times', 'end_before_start'].some((flag) =>
         row.qualityFlags.includes(flag)

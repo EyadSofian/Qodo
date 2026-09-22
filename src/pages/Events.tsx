@@ -116,7 +116,7 @@ export function Events() {
       <header className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-[11.5px] font-bold text-brand-600">
-            الإيفينتات <span className="text-ink-faint">/</span> <span dir="ltr">Training Schedule</span>
+            الإيفينتات <span className="text-ink-faint">/</span> جدول التدريب
           </p>
           <h1 className="mt-0.5 text-[24px] font-extrabold leading-tight text-ink">جدول التدريب</h1>
           <p className="mt-0.5 text-[12.5px] text-ink-muted">جدول تشغيلي لكل الكورسات — أونلاين وحضوري — مقروء مباشرة من أودو.</p>
@@ -125,7 +125,7 @@ export function Events() {
           {ready && <Freshness schedule={schedule} loading={loading && !schedule} />}
           <button type="button" onClick={sync} disabled={!ready || syncing} className="btn-navy btn-sm gap-1.5">
             {syncing ? <Spinner size={15} /> : <RefreshCw size={15} />}
-            {syncing ? 'بنزامن…' : 'Sync Odoo'}
+            {syncing ? 'بنزامن…' : 'زامن مع أودو'}
           </button>
         </div>
       </header>
@@ -231,7 +231,7 @@ function OverviewSkeleton() {
   );
 }
 
-/** "Live from Odoo · synced 4:18 PM" — or, plainly, that it is not live. */
+/** "مباشر من أودو · آخر مزامنة ٤:١٨" — or, plainly, that it is not live. */
 function Freshness({ schedule, loading }: { schedule: ScheduleResponse | null; loading: boolean }) {
   if (loading || !schedule) {
     return <span className="skeleton hidden h-8 w-40 rounded-full sm:block" aria-hidden />;
@@ -247,7 +247,7 @@ function Freshness({ schedule, loading }: { schedule: ScheduleResponse | null; l
       title={`Source: Odoo · ${new Date(schedule.fetchedAt).toLocaleString('en-GB', { timeZone: 'Africa/Cairo' })} Cairo`}
     >
       {stale ? <AlertCircle size={13} /> : <CheckCircle2 size={13} className="text-status-ok" />}
-      <span dir="ltr">{stale ? 'Stale Odoo data' : 'Live from Odoo'}</span>
+      <span>{stale ? 'بيانات قديمة من أودو' : 'مباشر من أودو'}</span>
       <span className="text-ink-faint">·</span>
       آخر مزامنة {stale ? agoLabel(schedule.fetchedAt) : cairoTime(schedule.fetchedAt)}
     </span>

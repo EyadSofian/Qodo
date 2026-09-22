@@ -133,7 +133,7 @@ function SessionList({ sessions, now, onOpen }: { sessions: TodaySession[]; now:
         <section key={hour}>
           <h3 className="mb-2 flex items-center gap-3">
             <span dir="ltr" className="shrink-0 text-[13px] font-extrabold tabular-nums text-ink">{hour}</span>
-            <span className="text-[10.5px] font-semibold text-ink-faint">KSA</span>
+            <span className="text-[10.5px] font-semibold text-ink-faint">السعودية</span>
             <span aria-hidden className="h-px flex-1 bg-surface-line" />
           </h3>
           <SessionRows sessions={items} now={now} onOpen={onOpen} />
@@ -166,7 +166,7 @@ function SessionRows({ sessions, now, onOpen }: { sessions: TodaySession[]; now:
                   {ksaTime(session.startsAt)}
                 </span>
                 <span className={cx('text-[10px] font-semibold', live ? 'text-white/70' : 'text-brand-500')}>
-                  {live ? 'شغّالة دلوقتي' : `KSA · ${cairoTime(session.startsAt)} القاهرة`}
+                  {live ? 'شغّالة دلوقتي' : `بتوقيت السعودية · ${cairoTime(session.startsAt)} القاهرة`}
                 </span>
               </span>
               <span className="min-w-0 flex-1">
@@ -175,9 +175,9 @@ function SessionRows({ sessions, now, onOpen }: { sessions: TodaySession[]; now:
                 </bdi>
                 <span className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[12px] text-ink-muted">
                   {session.number && (
-                    <span dir="ltr" className="font-semibold text-ink">
-                      Session {session.number}
-                      {total ? ` of ${total}` : ''}
+                    <span className="font-semibold text-ink">
+                      محاضرة <span className="tabular-nums">{session.number}</span>
+                      {total ? <> من <span className="tabular-nums">{total}</span></> : null}
                     </span>
                   )}
                   {session.event.instructor && <bdi dir="auto">{session.event.instructor}</bdi>}
@@ -205,7 +205,7 @@ function JoinAction({ session }: { session: TodaySession }) {
     return (
       <a href={session.joinUrl} target="_blank" rel="noreferrer noopener" className="btn-primary btn-sm shrink-0 gap-1.5">
         <Video size={15} />
-        Join Zoom
+        ادخل على زووم
       </a>
     );
   }

@@ -1,14 +1,15 @@
 /**
- * The schedule grid's cell vocabulary — status, capacity, work days, quality.
+ * The small shared pieces a course is described with — status, capacity, work
+ * days, quality — used by the cards, the compact list and the drawer alike.
  *
- * Restrained on purpose: a dense operations table where every cell shouts is a
- * table nobody can scan. Colour is a hint on top of words and glyphs, never the
- * only carrier, and anything Odoo did not supply is a quiet "—", never a zero.
+ * Restrained on purpose: a list where every element shouts is a list nobody can
+ * scan. Colour is a hint on top of words and glyphs, never the only carrier,
+ * and anything Odoo did not supply is a quiet "—", never a zero.
  */
 
 import { AlertTriangle } from 'lucide-react';
 import { STATUS_LABELS } from '@shared/eventsSchedule';
-import { QUALITY_LABELS, type StatusCanonical, type TrainingScheduleRow } from '../../lib/eventsSchedule';
+import { QUALITY_LABELS, WEEKDAY_AR, type StatusCanonical, type TrainingScheduleRow } from '../../lib/eventsSchedule';
 import { cx } from '../../lib/utils';
 
 export function Missing({ label = 'غير متوفر في أودو' }: { label?: string }) {
@@ -51,7 +52,7 @@ export function StatusChip({
   const label = status ? STATUS_LABELS[status] : stage;
   return (
     <span
-      title={stage && stage !== label ? `Odoo stage: ${stage}` : undefined}
+      title={stage && stage !== label ? `مرحلة أودو: ${stage}` : undefined}
       className={cx(
         'inline-flex max-w-full items-center gap-1.5 whitespace-nowrap rounded-full font-semibold ring-1 ring-inset',
         size === 'sm' ? 'px-2 py-0.5 text-[11px]' : 'px-2.5 py-1 text-[12px]',
@@ -71,7 +72,7 @@ export function StatusChip({
 export function CapacityCell({ count, capacity, compact }: { count: number; capacity: number | null; compact?: boolean }) {
   const ratio = capacity ? Math.min(1, count / capacity) : null;
   return (
-    <span className="inline-flex min-w-[3.5rem] flex-col gap-1" title={capacity ? `${count} of ${capacity} seats confirmed` : `${count} confirmed · capacity not set in Odoo`}>
+    <span className="inline-flex min-w-[3.5rem] flex-col gap-1" title={capacity ? `${count} حجز مؤكّد من ${capacity} مكان` : `${count} حجز مؤكّد · السعة مش متسجّلة في أودو`}>
       <span className="whitespace-nowrap font-semibold tabular-nums text-ink">
         {count.toLocaleString('en-US')}
         <span className="font-normal text-ink-faint"> / {capacity ? capacity.toLocaleString('en-US') : '—'}</span>
@@ -93,11 +94,11 @@ export function WorkDaysChips({ days, source }: { days: string[]; source?: Train
   return (
     <span
       className="inline-flex flex-wrap gap-0.5"
-      title={source === 'odoo' ? 'From the work-days field in Odoo' : 'From the actual lecture dates (KSA)'}
+      title={source === 'odoo' ? 'من حقل أيام الدراسة في أودو' : 'من تواريخ المحاضرات نفسها (بتوقيت السعودية)'}
     >
       {days.map((day) => (
-        <span key={day} className="rounded-md bg-surface-sunken px-1.5 py-px font-mono text-[10px] font-bold tracking-wide text-ink-muted">
-          {day}
+        <span key={day} className="rounded-md bg-surface-sunken px-1.5 py-px text-[10.5px] font-bold text-ink-muted">
+          {WEEKDAY_AR[day] ?? day}
         </span>
       ))}
     </span>
@@ -109,13 +110,13 @@ export function QualityMark({ flags }: { flags: string[] }) {
   if (flags.length === 0) return null;
   const text = flags.map((flag) => QUALITY_LABELS[flag] ?? flag).join('\n');
   return (
-    <span className="inline-flex shrink-0 text-accent-600" title={text} aria-label={`${flags.length} data checks: ${text}`}>
+    <span className="inline-flex shrink-0 text-accent-600" title={text} aria-label={`${flags.length} ملاحظة على البيانات: ${text}`}>
       <AlertTriangle size={13} strokeWidth={2.25} />
     </span>
   );
 }
 
-/** One line in the table, the whole thing on hover; never a tall row. */
+/** One line, the whole thing on hover; never a tall row. */
 export function CommentCell({ text }: { text: string | null }) {
   if (!text) return <Missing label="مفيش تعليقات" />;
   return (

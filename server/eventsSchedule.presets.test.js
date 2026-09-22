@@ -28,7 +28,7 @@ const row = (id, overrides = {}) => ({
   section: null,
   instructor: 'Micheal Adel',
   coordinator: null,
-  trainingType: 'Group Online',
+  trainingType: 'جروب أونلاين',
   deliveryMode: 'online',
   statusCanonical: 'planned',
   startsAt: '2026-10-01T16:00:00Z',

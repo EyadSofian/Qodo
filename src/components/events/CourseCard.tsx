@@ -9,6 +9,7 @@
  */
 
 import { ArrowLeft, CalendarDays, Clock, MessageSquareText, User, Video } from 'lucide-react';
+import { departmentLabel } from '@shared/eventsSchedule';
 import { type TrainingScheduleRow, hhmmLabel, ksaShortDate, ksaTime, placeLabel } from '../../lib/eventsSchedule';
 import { cx } from '../../lib/utils';
 import { CapacityCell, Missing, QualityMark, StatusChip, WorkDaysChips } from './ScheduleCells';
@@ -71,7 +72,7 @@ function NextSession({ row, now }: { row: TrainingScheduleRow; now: Date }) {
         <span className="mx-1.5 text-ink-faint">·</span>
         <span className="tabular-nums">{ksaTime(next.startsAt)}</span>
         <span className="mx-1.5 text-ink-faint">·</span>
-        <span>S{next.number} من {row.sessionsTotal}</span>
+        <span>محاضرة {next.number} من {row.sessionsTotal}</span>
       </span>
     </div>
   );
@@ -88,7 +89,7 @@ function Meta({ icon, children }: { icon: React.ReactNode; children: React.React
 
 /** "Mechanical • HVAC Package" — context, never a column of its own. */
 function Subtitle({ row }: { row: TrainingScheduleRow }) {
-  const parts = [row.department, row.package ?? row.section].filter(Boolean) as string[];
+  const parts = [departmentLabel(row.department), row.package ?? row.section].filter(Boolean) as string[];
   return (
     <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[12px] text-ink-muted">
       {parts.length > 0 && <span className="min-w-0 truncate">{parts.join(' • ')}</span>}
@@ -140,7 +141,7 @@ export function CourseCard({
             <span className="whitespace-nowrap tabular-nums">
               {hhmmLabel(row.startTimeKsa)}
               {row.endTimeKsa ? ` – ${hhmmLabel(row.endTimeKsa)}` : ''}
-              <span className="ms-1 text-[11px] font-semibold text-ink-faint">KSA</span>
+              <span className="ms-1 text-[11px] font-semibold text-ink-faint">السعودية</span>
             </span>
           )}
         </div>
@@ -154,7 +155,7 @@ export function CourseCard({
         <span className="inline-flex min-w-0 items-center gap-1.5 text-[12px] text-ink-muted">
           {row.coordinator ? (
             <>
-              <span className="shrink-0 text-ink-faint">Coordinator</span>
+              <span className="shrink-0 text-ink-faint">الكوردينيتور</span>
               <span className="min-w-0 truncate font-medium text-ink">{row.coordinator}</span>
             </>
           ) : row.comments ? (

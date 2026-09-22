@@ -10,6 +10,7 @@ import { Activity, AlertTriangle, CalendarClock, CalendarPlus, GaugeCircle, User
 import {
   CLOSED_STATUSES,
   departmentBreakdown,
+  departmentLabel,
   overviewStats,
   statusCounts,
   todaysSessions,
@@ -134,7 +135,7 @@ export function OverviewTab({
                     <span className="min-w-0 flex-1">
                       <bdi dir="auto" className="block truncate text-[13px] font-semibold text-ink">{row.courseName}</bdi>
                       <span className="block truncate text-[11.5px] text-ink-muted">
-                        {[row.instructor, `S${session.number} / ${row.sessionsTotal}`].filter(Boolean).join(' • ')}
+                        {[row.instructor, `محاضرة ${session.number} / ${row.sessionsTotal}`].filter(Boolean).join(' • ')}
                       </span>
                     </span>
                   </button>
@@ -169,7 +170,7 @@ export function OverviewTab({
                     <span className="min-w-0 flex-1">
                       <bdi dir="auto" className="block truncate text-[13px] font-semibold text-ink">{row.courseName}</bdi>
                       <span className="block truncate text-[11.5px] text-ink-muted">
-                        {[row.instructor, row.department].filter(Boolean).join(' • ') || '—'}
+                        {[row.instructor, departmentLabel(row.department)].filter(Boolean).join(' • ') || '—'}
                       </span>
                     </span>
                     <span className="shrink-0 text-[12px] tabular-nums text-ink-muted">
@@ -205,7 +206,9 @@ export function OverviewTab({
             <ul className="space-y-2">
               {departments.slice(0, 7).map(({ department, count }) => (
                 <li key={department} className="flex items-center gap-3">
-                  <span className="w-28 shrink-0 truncate text-[12.5px] text-ink-muted">{department}</span>
+                  <span className="w-28 shrink-0 truncate text-[12.5px] text-ink-muted">
+                    {department === 'Unclassified' ? 'من غير قسم' : departmentLabel(department)}
+                  </span>
                   <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-sunken" aria-hidden>
                     <span className="block h-full rounded-full bg-brand-400" style={{ width: `${Math.max(4, (count / busiest) * 100)}%` }} />
                   </span>

@@ -18,7 +18,15 @@ import {
   VIEW_MODES,
   availableQuickFilters,
 } from '@shared/eventsSchedule';
-import { SCHEDULE_MAX_DAYS, rangeDays, rangeFor, type DateRange, type RangePreset, type ScheduleMeta } from '../../lib/eventsSchedule';
+import {
+  SCHEDULE_MAX_DAYS,
+  WEEKDAY_AR,
+  rangeDays,
+  rangeFor,
+  type DateRange,
+  type RangePreset,
+  type ScheduleMeta,
+} from '../../lib/eventsSchedule';
 import { cx } from '../../lib/utils';
 
 export type ScheduleFilters = typeof EMPTY_FILTERS;
@@ -38,7 +46,7 @@ export function DepartmentTabs({
   onChange: (key: string) => void;
 }) {
   return (
-    <div role="tablist" aria-label="Department" dir="ltr" className="no-scrollbar -mx-1 flex min-w-0 gap-1 overflow-x-auto px-1 pb-0.5">
+    <div role="tablist" aria-label="القسم" dir="ltr" className="no-scrollbar -mx-1 flex min-w-0 gap-1 overflow-x-auto px-1 pb-0.5">
       {DEPARTMENT_PRESETS.map((preset) => {
         const active = preset.key === value;
         return (
@@ -229,26 +237,26 @@ export function FilterPanel({
   return (
     <div id="schedule-filters" className="grid gap-3 rounded-2xl border border-surface-line bg-white/80 p-3.5 shadow-sm backdrop-blur">
       <div className="grid grid-cols-2 gap-2.5 md:grid-cols-3 xl:grid-cols-6">
-        <Select label="Type" value={filters.type} options={plain(meta?.availableTypes)} onChange={(v) => set('type', v)} />
+        <Select label="النوع" value={filters.type} options={plain(meta?.availableTypes)} onChange={(v) => set('type', v)} />
         <Select
-          label="Delivery"
+          label="طريقة الحضور"
           value={filters.delivery}
           options={[
-            { value: 'online', label: 'Online' },
-            { value: 'offline', label: 'Offline' },
+            { value: 'online', label: 'أونلاين' },
+            { value: 'offline', label: 'حضوري' },
           ]}
           onChange={(v) => set('delivery', v)}
         />
         <Select
-          label="Package / Section"
+          label="الباقة / السكشن"
           value={filters.group}
           options={plain(groups)}
           onChange={(v) => set('group', v)}
           disabledHint="مش موجود في أودو"
         />
-        <Select label="Instructor" value={filters.instructor} options={plain(meta?.availableInstructors)} onChange={(v) => set('instructor', v)} />
+        <Select label="المدرّب" value={filters.instructor} options={plain(meta?.availableInstructors)} onChange={(v) => set('instructor', v)} />
         <Select
-          label="Coordinator"
+          label="الكوردينيتور"
           value={filters.coordinator}
           options={plain(meta?.availableCoordinators)}
           onChange={(v) => set('coordinator', v)}
@@ -259,7 +267,7 @@ export function FilterPanel({
 
       {showStatus && (
         <fieldset className="flex flex-wrap items-center gap-1.5">
-          <legend className="mb-1 text-[11px] font-bold text-ink-faint">Status</legend>
+          <legend className="mb-1 text-[11px] font-bold text-ink-faint">الحالة</legend>
           {STATUS_ORDER.map((status) => {
             const on = filters.status.includes(status);
             return (
@@ -289,8 +297,8 @@ export function FilterPanel({
         </fieldset>
       )}
 
-      <fieldset className="flex flex-wrap items-center gap-1.5" dir="ltr">
-        <legend className="mb-1 text-[11px] font-bold text-ink-faint">Work Days</legend>
+      <fieldset className="flex flex-wrap items-center gap-1.5">
+        <legend className="mb-1 text-[11px] font-bold text-ink-faint">أيام الدراسة</legend>
         {WEEKDAY_CHIPS.map((day) => {
           const on = filters.workDays.includes(day);
           return (
@@ -300,11 +308,11 @@ export function FilterPanel({
               aria-pressed={on}
               onClick={() => set('workDays', toggle(filters.workDays, day))}
               className={cx(
-                'rounded-md border px-2 py-0.5 font-mono text-[11px] font-bold',
+                'rounded-md border px-2 py-0.5 text-[11.5px] font-bold',
                 on ? 'border-navy bg-navy text-white' : 'border-surface-line bg-white text-ink-muted hover:text-ink'
               )}
             >
-              {day}
+              {WEEKDAY_AR[day] ?? day}
             </button>
           );
         })}
@@ -335,7 +343,7 @@ export function QuickFilters({
   discoveredFields: Record<string, string | null> | undefined;
 }) {
   return (
-    <div dir="ltr" className="no-scrollbar flex min-w-0 gap-1.5 overflow-x-auto" role="group" aria-label="Quick filters">
+    <div dir="ltr" className="no-scrollbar flex min-w-0 gap-1.5 overflow-x-auto" role="group" aria-label="فلاتر سريعة">
       {availableQuickFilters(discoveredFields ?? {}).map((filter) => {
         const on = value === filter.key;
         return (
@@ -369,7 +377,7 @@ type ViewMode = keyof typeof VIEW_LABELS;
 
 export function ViewModeSwitch({ value, onChange }: { value: string; onChange: (view: string) => void }) {
   return (
-    <div role="radiogroup" aria-label="View mode" dir="ltr" className="flex rounded-xl border border-surface-line bg-white p-0.5">
+    <div role="radiogroup" aria-label="طريقة العرض" dir="ltr" className="flex rounded-xl border border-surface-line bg-white p-0.5">
       {(VIEW_MODES as readonly ViewMode[]).map((mode) => {
         const on = mode === value;
         const Icon = mode === 'cards' ? LayoutGrid : Rows3;

@@ -68,7 +68,7 @@ function Row({ session, now }: { session: TrainingSession; now: Date }) {
           rel="noopener noreferrer"
           className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-brand-500 px-2 py-1 text-[11.5px] font-semibold text-white hover:bg-brand-600"
         >
-          <Video size={12} /> Join
+          <Video size={12} /> ادخل
         </a>
       )}
     </li>

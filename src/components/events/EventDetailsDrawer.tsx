@@ -6,14 +6,14 @@
  * real dialog: focus moves in, Tab stays inside, Escape closes, and focus goes
  * back to the row that opened it.
  *
- * Read-only like the rest of the module. "Open in Odoo" is the way to change
+ * Read-only like the rest of the module. "افتح في أودو" is the way to change
  * anything, because Odoo is where the course is run.
  */
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertTriangle, ExternalLink, X } from 'lucide-react';
-import { groupOf } from '@shared/eventsSchedule';
+import { departmentLabel, groupOf } from '@shared/eventsSchedule';
 import { errorMessage } from '../../lib/api';
 import {
   DAY_PART_AR,
@@ -104,7 +104,7 @@ export function EventDetailsDrawer({ id, onClose }: { id: number | null; onClose
           <div className="flex items-start gap-3">
             <div className="min-w-0 flex-1">
               <h2 id="event-drawer-title" className="text-[19px] font-black leading-snug text-ink">
-                <bdi dir="auto">{course?.courseName ?? (error ? 'Course' : 'Loading…')}</bdi>
+                <bdi dir="auto">{course?.courseName ?? (error ? 'الكورس' : 'جارٍ التحميل…')}</bdi>
               </h2>
               {course && (
                 <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[12px] text-ink-muted">
@@ -118,7 +118,7 @@ export function EventDetailsDrawer({ id, onClose }: { id: number | null; onClose
               type="button"
               data-autofocus
               onClick={onClose}
-              aria-label="Close details"
+              aria-label="اقفل التفاصيل"
               className="btn-quiet !min-h-9 rounded-lg p-1.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-400"
             >
               <X size={18} />
@@ -147,7 +147,7 @@ export function EventDetailsDrawer({ id, onClose }: { id: number | null; onClose
           <footer className="flex items-center justify-between gap-3 border-t border-surface-line px-5 py-3 pb-safe sm:pb-3">
             <p dir="rtl" className="text-[11px] leading-relaxed text-ink-faint">للتعديل افتح السجل في أودو — محتاج صلاحية الإيفينتات هناك.</p>
             <a href={data.odooUrl} target="_blank" rel="noreferrer noopener" className="btn-navy btn-sm shrink-0 gap-1.5">
-              Open in Odoo
+              افتح في أودو
               <ExternalLink size={14} />
             </a>
           </footer>
@@ -205,46 +205,46 @@ function DrawerBody({ course }: { course: TrainingScheduleRow }) {
         </div>
       )}
 
-      <Section title="Overview">
+      <Section title="نظرة عامة">
         <dl>
-          <Fact label="Department" hint={course.departmentSource ? DEPARTMENT_SOURCE_AR[course.departmentSource] : undefined}>
-            {value(course.department, 'مش متصنّف')}
+          <Fact label="القسم" hint={course.departmentSource ? DEPARTMENT_SOURCE_AR[course.departmentSource] : undefined}>
+            {value(departmentLabel(course.department), 'مش متصنّف')}
           </Fact>
-          <Fact label="Package / Section">{value(groupOf(course), 'مش موجود في أودو')}</Fact>
-          <Fact label="Instructor">{value(course.instructor, 'مفيش مدرّب')}</Fact>
-          <Fact label="Type">{value(course.trainingType)}</Fact>
-          <Fact label="Delivery">{value(place)}</Fact>
-          <Fact label="Trainees">
+          <Fact label="الباقة / السكشن">{value(groupOf(course), 'مش موجود في أودو')}</Fact>
+          <Fact label="المدرّب">{value(course.instructor, 'مفيش مدرّب')}</Fact>
+          <Fact label="النوع">{value(course.trainingType)}</Fact>
+          <Fact label="طريقة الحضور">{value(place)}</Fact>
+          <Fact label="المتدربين">
             <CapacityCell count={course.traineeCount} capacity={course.capacity} />
           </Fact>
-          {course.minimumCapacity !== null && <Fact label="Minimum to start">{course.minimumCapacity}</Fact>}
-          <Fact label="Lectures" hint={course.lectureCount !== null && course.sessionsTotal !== course.lectureCount ? `${course.sessionsTotal} متولّدة فعلاً في أودو` : undefined}>
+          {course.minimumCapacity !== null && <Fact label="الحد الأدنى للبدء">{course.minimumCapacity}</Fact>}
+          <Fact label="المحاضرات" hint={course.lectureCount !== null && course.sessionsTotal !== course.lectureCount ? `${course.sessionsTotal} متولّدة فعلاً في أودو` : undefined}>
             {course.lectureCount ?? course.sessionsTotal ?? <Missing />}
             {course.sessionHours ? <span className="font-normal text-ink-muted"> · {course.sessionHours}h each</span> : null}
           </Fact>
         </dl>
       </Section>
 
-      <Section title="Schedule">
+      <Section title="المواعيد">
         <dl>
-          <Fact label="Start">{course.startsAt ? ksaDate(course.startsAt) : <Missing />}</Fact>
-          <Fact label="End">{course.endsAt ? ksaDate(course.endsAt) : <Missing />}</Fact>
-          <Fact label="KSA time">
+          <Fact label="البداية">{course.startsAt ? ksaDate(course.startsAt) : <Missing />}</Fact>
+          <Fact label="النهاية">{course.endsAt ? ksaDate(course.endsAt) : <Missing />}</Fact>
+          <Fact label="التوقيت السعودي">
             {course.startTimeKsa ? `${hhmmLabel(course.startTimeKsa)}${course.endTimeKsa ? ` – ${hhmmLabel(course.endTimeKsa)}` : ''}` : <Missing />}
           </Fact>
-          <Fact label="Work days">
+          <Fact label="أيام الدراسة">
             <WorkDaysChips days={course.workDays} source={course.workDaysSource} />
           </Fact>
-          <Fact label="Day / Night">{course.dayPart ? `${DAY_PART_AR[course.dayPart]} · ${course.dayPart}` : <Missing />}</Fact>
-          <Fact label="Progress">
+          <Fact label="صباحي / مسائي">{course.dayPart ? `${DAY_PART_AR[course.dayPart]} · ${course.dayPart}` : <Missing />}</Fact>
+          <Fact label="التقدّم">
             <Progress course={course} />
           </Fact>
         </dl>
       </Section>
 
-      <Section title="Operations">
+      <Section title="التشغيل">
         <dl>
-          <Fact label="Coordinator">
+          <Fact label="الكوردينيتور">
             {value(course.coordinator, 'مش متسجّل / مش موجود في أودو')}
             {course.coordinatorSource === 'responsible' && course.coordinator ? (
               <span className="ms-1.5 text-[11.5px] text-ink-muted" title="أودو مفيهاش عمود Coordinator؛ ده الـResponsible بتاع الإيفينت">
@@ -252,11 +252,11 @@ function DrawerBody({ course }: { course: TrainingScheduleRow }) {
               </span>
             ) : null}
           </Fact>
-          <Fact label="Group">{value(course.cohort)}</Fact>
-          <Fact label="Venue">{value(course.location.venue)}</Fact>
+          <Fact label="المجموعة">{value(course.cohort)}</Fact>
+          <Fact label="المكان">{value(course.location.venue)}</Fact>
         </dl>
         <div className="mt-2">
-          <p className="mb-1 text-[13px] text-ink-muted">Comments</p>
+          <p className="mb-1 text-[13px] text-ink-muted">ملاحظات</p>
           {course.comments ? (
             <p dir="auto" className="whitespace-pre-wrap rounded-xl bg-surface-bg px-3 py-2.5 text-[12.5px] leading-relaxed text-ink">
               {course.comments}
@@ -279,14 +279,14 @@ function DrawerBody({ course }: { course: TrainingScheduleRow }) {
         />
       </Section>
 
-      <Section title="Registrations">
+      <Section title="الحجوزات">
         <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           {(
             [
-              ['Confirmed', course.registrations.confirmed],
-              ['Interested', course.registrations.interested],
-              ['Attended', course.registrations.attended],
-              ['Cancelled', course.registrations.cancelled],
+              ['مؤكّدة', course.registrations.confirmed],
+              ['مهتمين', course.registrations.interested],
+              ['حضروا', course.registrations.attended],
+              ['ملغية', course.registrations.cancelled],
             ] as const
           ).map(([label, count]) => (
             <div key={label} className="rounded-xl border border-surface-line px-3 py-2">
@@ -306,7 +306,7 @@ function DrawerBody({ course }: { course: TrainingScheduleRow }) {
 /** Lectures that have happened, out of those scheduled — never a fake 0%. */
 function Progress({ course }: { course: TrainingScheduleRow }) {
   if (course.progress === null) {
-    return course.lectureCount ? <span className="text-accent-700">Schedule incomplete</span> : <Missing />;
+    return course.lectureCount ? <span className="text-accent-700">الجدول ناقص</span> : <Missing />;
   }
   return (
     <span className="grid gap-1">
