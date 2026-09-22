@@ -1,9 +1,14 @@
 # Events — Training Schedule workspace
 
 The Events app (الإيفينتات) is the operations team's training schedule, read
-live from Odoo. It replaces day-to-day use of the `SCHEDULE REPORT` workbook
-while keeping its vocabulary: the same column names, the same department tabs,
-the same S1…Sn session columns.
+live from Odoo. It replaces day-to-day use of the `SCHEDULE REPORT` workbook.
+
+**The workbook defines the fields, not the interface.** Everything the sheet
+records is here; none of how it looked is. There is no wall of columns, no
+S1…S40 band, no sideways scrolling and no frozen header — a course is a card,
+its lectures are a timeline, and the long tail of the sheet lives in a detail
+drawer. What an operations person needs on *every* pass through the list is on
+the card; everything else is one click away.
 
 **Odoo is the only source of truth.** The workbook defined what operations
 people expect to *see*; Odoo supplies every value. Nothing here writes to Odoo,
@@ -12,9 +17,10 @@ record.
 
 ```
 Events
+├── Overview   the day at a glance: six counts, today, starting soon, status, departments
 ├── Schedule   all courses overlapping a date range (≤ 186 days), online + offline
-│   ├── All · Arch & Decor · Mechanical · Electrical · Civil · Development · English · Webinar
-│   └── views: Excel Full · Operations · Sessions · Compact (+ English / Webinar layouts)
+│   ├── filters: All · Arch & Decor · Mechanical · Electrical · Civil · Development · English · Webinar
+│   └── views: Cards · Compact List (phones always get cards)
 ├── Today      every lecture on today's Cairo calendar, with Zoom links
 ├── Analytics  unchanged: in-person demand, capacity, Insights Hub paid revenue
 └── Archive    finished / cancelled / refused / hold / ended, one year per request, paged
@@ -31,7 +37,7 @@ Odoo (JSON-RPC)
      └─ server/events/schedule.js   ranges, caches, schedule/archive/today/detail
          └─ server/routes/events.js  HTTP, app-tile gate, error translation
              └─ src/lib/eventsSchedule.ts   types, fetchers, KSA/Cairo formatting
-                 └─ shared/eventsSchedule.js presets, columns, filters, sorting (tested)
+                 └─ shared/eventsSchedule.js filters, search, sorting, overview counts (tested)
                      └─ src/components/events/*  the UI
 ```
 
@@ -264,3 +270,31 @@ value is `null` and the filter is not offered.
   coordinator search applies to loaded pages.
 - The schedule range is capped at 186 days per request; a wider plan needs two
   ranges.
+
+## The interface
+
+Overview leads with six counts — running, today's lectures, starting within a
+week, active trainees, near capacity, needing review. They are counts of real
+rows, computed from the schedule already loaded, so Overview costs no extra
+Odoo request. A finished course is excluded from all of them: its trainees, its
+fill and its gaps are not work anybody can still do. A course whose `seats_max`
+Odoo does not know is never "0 % full" — it is left out of the capacity count.
+
+A course is a **card**: name, then department • package • code, then instructor,
+type and delivery, then dates, work days and the KSA hours, then trainees over
+capacity, then session progress, then the next lecture, then the coordinator.
+**Compact List** is the same information at operations density, one line per
+course. Below 640 px the list is not offered — it hides too much to be useful on
+a phone — and cards are used instead.
+
+Sessions are a **timeline**, never columns. It opens on today, shows a window
+around it, counts what is done, happening and still to come, and expands to the
+full list on request — so a forty-lecture Civil course costs the same screen as
+a four-lecture one until somebody asks for it.
+
+Today groups its lectures under the hour they start, because the hour is what
+somebody is looking for when they open it before a lecture.
+
+Nothing in the module scrolls the page sideways. Chip rows scroll inside
+themselves; cards and their grid carry `min-w-0` so a long package name cannot
+widen the page on a phone.

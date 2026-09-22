@@ -13,7 +13,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { AlertCircle, Archive, BarChart3, CalendarClock, CheckCircle2, RefreshCw, Table2 } from 'lucide-react';
+import { AlertCircle, Archive, BarChart3, CalendarClock, CheckCircle2, LayoutDashboard, RefreshCw, Table2 } from 'lucide-react';
 import { errorMessage } from '../lib/api';
 import { fetchStatus } from '../lib/events';
 import {
@@ -27,6 +27,7 @@ import {
   type ScheduleResponse,
 } from '../lib/eventsSchedule';
 import { ArchiveView } from '../components/events/ArchiveView';
+import { OverviewTab } from '../components/events/OverviewTab';
 import { EventDetailsDrawer } from '../components/events/EventDetailsDrawer';
 import { EventsAnalytics } from '../components/events/EventsAnalytics';
 import { ScheduleWorkspace } from '../components/events/ScheduleWorkspace';
@@ -35,14 +36,14 @@ import { TodaySessions } from '../components/events/TodaySessions';
 import { Segmented, Spinner, useToast } from '../components/ui';
 import { cx } from '../lib/utils';
 
-type Tab = 'schedule' | 'today' | 'analytics' | 'archive';
-const TABS: Tab[] = ['schedule', 'today', 'analytics', 'archive'];
+type Tab = 'overview' | 'schedule' | 'today' | 'analytics' | 'archive';
+const TABS: Tab[] = ['overview', 'schedule', 'today', 'analytics', 'archive'];
 
 export function Events() {
   const { push } = useToast();
   const [params, setParams] = useSearchParams();
-  const tab = (TABS.includes(params.get('tab') as Tab) ? params.get('tab') : 'schedule') as Tab;
-  const setTab = (next: Tab) => setParams(next === 'schedule' ? {} : { tab: next }, { replace: true });
+  const tab = (TABS.includes(params.get('tab') as Tab) ? params.get('tab') : 'overview') as Tab;
+  const setTab = (next: Tab) => setParams(next === 'overview' ? {} : { tab: next }, { replace: true });
 
   const [connection, setConnection] = useState<{ checked: boolean; missing: string[]; error: string }>({
     checked: false,
@@ -139,6 +140,7 @@ export function Events() {
             value={tab}
             onChange={setTab}
             options={[
+              { value: 'overview', label: 'نظرة عامة', icon: <LayoutDashboard size={14} /> },
               { value: 'schedule', label: 'الجدول', icon: <Table2 size={14} /> },
               { value: 'today', label: 'النهاردة', icon: <CalendarClock size={14} /> },
               { value: 'analytics', label: 'التحليل', icon: <BarChart3 size={14} /> },
@@ -181,6 +183,26 @@ export function Events() {
               )}
             </>
           )}
+          {tab === 'overview' &&
+            (schedule ? (
+              <OverviewTab
+                rows={schedule.rows}
+                now={new Date()}
+                onOpen={setOpenId}
+                onGoToday={() => setTab('today')}
+                onGoSchedule={() => setTab('schedule')}
+              />
+            ) : scheduleError ? (
+              <div className="flex flex-wrap items-center gap-2 rounded-xl bg-status-badBg px-3.5 py-2.5 text-[12.5px] font-semibold text-status-bad">
+                <AlertCircle size={15} />
+                {scheduleError}
+                <button type="button" className="btn-ghost btn-sm ms-auto gap-1.5" onClick={loadSchedule}>
+                  <RefreshCw size={14} /> جرّب تاني
+                </button>
+              </div>
+            ) : (
+              <OverviewSkeleton />
+            ))}
           {tab === 'today' && <TodaySessions version={version} onOpen={setOpenId} />}
           {tab === 'analytics' && <EventsAnalytics version={version} onOpen={setOpenId} />}
           {tab === 'archive' && <ArchiveView version={version} onOpen={setOpenId} />}
@@ -188,6 +210,23 @@ export function Events() {
       )}
 
       <EventDetailsDrawer id={openId} onClose={closeDrawer} />
+    </div>
+  );
+}
+
+function OverviewSkeleton() {
+  return (
+    <div className="space-y-4" aria-busy="true">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+        {Array.from({ length: 6 }, (_, i) => (
+          <div key={i} className="h-[92px] animate-pulse rounded-2xl border border-surface-line bg-white" />
+        ))}
+      </div>
+      <div className="grid gap-4 lg:grid-cols-2">
+        {Array.from({ length: 4 }, (_, i) => (
+          <div key={i} className="h-[232px] animate-pulse rounded-2xl border border-surface-line bg-white" />
+        ))}
+      </div>
     </div>
   );
 }

@@ -67,167 +67,38 @@ export const CLOSED_STATUSES = ['finished', 'canceled', 'refused'];
 /* ── department presets ──────────────────────────────────────────── */
 
 /**
- * The workbook's live tabs. `department` is matched against the row's
- * normalised department; `groupLabel` is what that sheet called its first
- * column, because Mechanical said "Package" and Arch & Decor said "Section".
+ * The departments courses are filtered by. These are filter chips, not the
+ * workbook's tabs: one list of courses, narrowed — never a separate page.
  */
 export const DEPARTMENT_PRESETS = [
-  { key: 'all', label: 'All', department: null, groupLabel: 'Department / Package', view: null },
-  { key: 'arch', label: 'Arch & Decor', department: 'Arch & Decor', groupLabel: 'Section', view: null },
-  { key: 'mechanical', label: 'Mechanical', department: 'Mechanical', groupLabel: 'Package', view: null },
-  { key: 'electrical', label: 'Electrical', department: 'Electrical', groupLabel: 'Package', view: null },
-  { key: 'civil', label: 'Civil', department: 'Civil', groupLabel: 'Package', view: null },
-  { key: 'development', label: 'Development', department: 'Development', groupLabel: 'Section', view: null },
-  { key: 'english', label: 'English', department: 'English', groupLabel: 'Section', view: 'english' },
-  { key: 'webinar', label: 'Webinar', department: 'Webinar', groupLabel: 'Section', view: 'webinar' },
+  { key: 'all', label: 'All', department: null, groupLabel: 'Department / Package' },
+  { key: 'arch', label: 'Arch & Decor', department: 'Arch & Decor', groupLabel: 'Section' },
+  { key: 'mechanical', label: 'Mechanical', department: 'Mechanical', groupLabel: 'Package' },
+  { key: 'electrical', label: 'Electrical', department: 'Electrical', groupLabel: 'Package' },
+  { key: 'civil', label: 'Civil', department: 'Civil', groupLabel: 'Package' },
+  { key: 'development', label: 'Development', department: 'Development', groupLabel: 'Section' },
+  { key: 'english', label: 'English', department: 'English', groupLabel: 'Section' },
+  { key: 'webinar', label: 'Webinar', department: 'Webinar', groupLabel: 'Section' },
 ];
 
 export function departmentPreset(key) {
   return DEPARTMENT_PRESETS.find((preset) => preset.key === key) ?? DEPARTMENT_PRESETS[0];
 }
 
-/* ── columns ─────────────────────────────────────────────────────── */
+/* ── view mode ───────────────────────────────────────────────────── */
 
 /**
- * Header groups and their columns. Labels stay in the sheet's own words —
- * including the two Arabic ones — so the people who ran the spreadsheet find
- * everything where they expect it.
+ * How the course list is drawn. Two modes, no spreadsheet: cards to scan, a
+ * compact list for a denser day. The columns, grouped headers and S1…Sn bands
+ * that used to live here are gone — sessions belong on a timeline, and the
+ * long tail of Excel fields belongs in the detail drawer.
  */
-export const COLUMN_GROUPS = {
-  course: 'Course Info',
-  capacity: 'Capacity',
-  schedule: 'Schedule',
-  operations: 'Operations',
-  sessions: 'Sessions',
-};
+export const VIEW_MODES = ['cards', 'list'];
 
-/** @type {Record<string, { group: string, label: string, sticky?: boolean, sortKey?: string, numeric?: boolean }>} */
-export const COLUMNS = {
-  group: { group: 'course', label: 'Package / Section', sticky: true, sortKey: 'group' },
-  courseName: { group: 'course', label: 'Course Name', sticky: true, sortKey: 'courseName' },
-  course: { group: 'course', label: 'Course', sticky: true, sortKey: 'courseName' },
-  courseNameCode: { group: 'course', label: 'Course Name & Code', sticky: true, sortKey: 'courseName' },
-  webinarName: { group: 'course', label: 'Webinar Name', sticky: true, sortKey: 'courseName' },
-  instructor: { group: 'course', label: 'Inst. Name', sortKey: 'instructor' },
-  type: { group: 'course', label: 'Type', sortKey: 'type' },
-  code: { group: 'course', label: 'Course Code', sortKey: 'code' },
-  lectures: { group: 'capacity', label: 'عدد المحاضرات', sortKey: 'lectures', numeric: true },
-  trainees: { group: 'capacity', label: 'عدد المتدربين', sortKey: 'trainees', numeric: true },
-  attCapacity: { group: 'capacity', label: 'No. of Att / Capacity', sortKey: 'trainees', numeric: true },
-  capacity: { group: 'capacity', label: 'Capacity', sortKey: 'capacity', numeric: true },
-  registrations: { group: 'capacity', label: 'Registrations', sortKey: 'trainees', numeric: true },
-  month: { group: 'schedule', label: 'Month', sortKey: 'start' },
-  startDate: { group: 'schedule', label: 'Start Date', sortKey: 'start' },
-  endDate: { group: 'schedule', label: 'End Date', sortKey: 'end' },
-  date: { group: 'schedule', label: 'Date', sortKey: 'start' },
-  startTime: { group: 'schedule', label: 'Start Time KSA', sortKey: 'time' },
-  endTime: { group: 'schedule', label: 'End Time KSA', sortKey: 'time' },
-  timeKsa: { group: 'schedule', label: 'Time KSA', sortKey: 'time' },
-  dayPart: { group: 'schedule', label: 'Day / Night', sortKey: 'time' },
-  workDays: { group: 'schedule', label: 'Work Days', sortKey: 'workDays' },
-  nextSession: { group: 'schedule', label: 'Next Session', sortKey: 'next' },
-  status: { group: 'operations', label: 'Status', sortKey: 'status' },
-  coordinator: { group: 'operations', label: 'Coordinator', sortKey: 'coordinator' },
-  comments: { group: 'operations', label: 'Comments' },
-};
+export const VIEW_LABELS = { cards: 'Cards', list: 'Compact List' };
 
-/**
- * View modes. `sessions: true` appends S1…Sn after the listed columns;
- * `grouped` draws the Course Info / Capacity / Schedule header band, which only
- * reads well where each group's columns sit together. `english` and `webinar`
- * are the two tabs whose sheets had their own layout; they are chosen by the
- * department preset rather than offered for every tab.
- */
-export const VIEW_PRESETS = {
-  excel: {
-    label: 'Excel Full',
-    columns: ['group', 'courseName', 'instructor', 'type', 'code', 'lectures', 'trainees', 'startDate', 'endDate', 'startTime', 'endTime', 'dayPart', 'workDays', 'status', 'coordinator', 'comments'],
-    sessions: true,
-    grouped: true,
-    labels: {},
-  },
-  operations: {
-    label: 'Operations',
-    columns: ['course', 'instructor', 'type', 'trainees', 'capacity', 'startDate', 'endDate', 'workDays', 'status', 'coordinator', 'comments'],
-    sessions: false,
-    grouped: true,
-    labels: {},
-  },
-  sessions: {
-    label: 'Sessions',
-    columns: ['courseName', 'code', 'instructor', 'status'],
-    sessions: true,
-    grouped: true,
-    labels: {},
-  },
-  compact: {
-    label: 'Compact',
-    columns: ['course', 'status', 'instructor', 'startDate', 'trainees', 'capacity', 'nextSession', 'workDays'],
-    sessions: false,
-    grouped: false,
-    labels: {},
-  },
-  english: {
-    label: 'English',
-    columns: ['workDays', 'type', 'timeKsa', 'courseNameCode', 'attCapacity', 'instructor', 'startDate', 'endDate', 'status', 'coordinator', 'comments'],
-    sessions: false,
-    grouped: false,
-    labels: { instructor: 'Instructor' },
-  },
-  webinar: {
-    label: 'Webinar',
-    columns: ['month', 'webinarName', 'instructor', 'date', 'timeKsa', 'status', 'registrations'],
-    sessions: false,
-    grouped: false,
-    labels: { instructor: 'Inst. Name' },
-  },
-};
-
-export const GENERAL_VIEWS = ['excel', 'operations', 'sessions', 'compact'];
-
-/** The view actually drawn: a department with its own sheet layout gets it by default. */
-export function resolveView(view, departmentKey) {
-  const preset = departmentPreset(departmentKey);
-  if (view === 'auto' || !VIEW_PRESETS[view]) return preset.view ?? 'excel';
-  return view;
-}
-
-/**
- * The longest course among the rows on screen decides how many S-columns are
- * drawn — sixteen for a package of sixteen-lecture courses, forty for Civil —
- * rather than forty empty columns for everybody.
- */
-export function maxSessionCount(rows) {
-  let max = 0;
-  for (const row of rows) max = Math.max(max, row.sessions?.length ?? 0);
-  return max;
-}
-
-/**
- * Column ids for a view, minus the ones the person hid, plus `s1…sN`. Session
- * columns are ids here only — the data stays one `sessions` array per course.
- *
- * @param {string} view
- * @param {{ hidden?: string[], sessionCount?: number }} [options]
- * @returns {string[]}
- */
-export function visibleColumns(view, { hidden = [], sessionCount = 0 } = {}) {
-  const preset = VIEW_PRESETS[view] ?? VIEW_PRESETS.excel;
-  const base = preset.columns.filter((id) => !hidden.includes(id) || COLUMNS[id]?.sticky);
-  const sessions = preset.sessions ? Array.from({ length: sessionCount }, (_, i) => `s${i + 1}`) : [];
-  return [...base, ...sessions];
-}
-
-/** Header groups as spans over the visible columns, in order. */
-export function headerGroups(columnIds) {
-  const groups = [];
-  for (const id of columnIds) {
-    const group = id.startsWith('s') && /^s\d+$/.test(id) ? 'sessions' : COLUMNS[id]?.group ?? 'course';
-    const last = groups.at(-1);
-    if (last && last.group === group) last.span += 1;
-    else groups.push({ group, label: COLUMN_GROUPS[group], span: 1 });
-  }
-  return groups;
+export function resolveViewMode(mode) {
+  return VIEW_MODES.includes(mode) ? mode : 'cards';
 }
 
 /* ── time on Riyadh's calendar ───────────────────────────────────── */
@@ -462,4 +333,83 @@ export function sortRows(rows, sort) {
   const sorter = sort?.key ? SORTERS[sort.key] : null;
   const direction = sort?.dir === 'desc' ? -1 : 1;
   return [...rows].sort((a, b) => (sorter ? sorter(a, b) * direction : 0) || defaultCompare(a, b));
+}
+
+/* ── overview ────────────────────────────────────────────────────── */
+
+/**
+ * The numbers the Overview tab leads with, from the rows already loaded.
+ *
+ * Every one of them is a count of real rows, never a percentage of a guess:
+ * `trainees` sums confirmed registrations, and `nearCapacity` only counts
+ * courses whose capacity Odoo actually knows — a course with no `seats_max`
+ * is not "0% full", it is unknown, and it is left out.
+ */
+export function overviewStats(rows, now = new Date()) {
+  const today = ksaDay(now.toISOString());
+  const weekEnd = new Date(now.getTime() + 7 * DAY_MS).toISOString();
+
+  let active = 0;
+  let startingSoon = 0;
+  let todaySessions = 0;
+  let trainees = 0;
+  let nearCapacity = 0;
+  let needsAttention = 0;
+
+  for (const row of rows) {
+    if (row.statusCanonical === 'in_progress') active += 1;
+    if (row.statusCanonical === 'planned' && row.startsAt && row.startsAt <= weekEnd && row.startsAt >= now.toISOString()) {
+      startingSoon += 1;
+    }
+    for (const session of row.sessions ?? []) {
+      if (session.startsAt && ksaDay(session.startsAt) === today) todaySessions += 1;
+    }
+
+    // A finished course is history: its load, its fill and its gaps are not
+    // work anybody can still do, so none of them count here.
+    if (CLOSED_STATUSES.includes(row.statusCanonical)) continue;
+    trainees += row.traineeCount ?? 0;
+    if (row.capacity && row.traineeCount / row.capacity >= 0.85) nearCapacity += 1;
+    if ((row.qualityFlags?.length ?? 0) > 0) needsAttention += 1;
+  }
+
+  return { active, startingSoon, todaySessions, trainees, nearCapacity, needsAttention, total: rows.length };
+}
+
+/** Course counts per status, in the order the chips are shown. */
+export function statusCounts(rows) {
+  const counts = new Map(STATUS_ORDER.map((status) => [status, 0]));
+  for (const row of rows) {
+    if (row.statusCanonical && counts.has(row.statusCanonical)) {
+      counts.set(row.statusCanonical, counts.get(row.statusCanonical) + 1);
+    }
+  }
+  return STATUS_ORDER.map((status) => ({ status, label: STATUS_LABELS[status], count: counts.get(status) })).filter(
+    (entry) => entry.count > 0
+  );
+}
+
+/** Courses per department, busiest first — the Overview's department breakdown. */
+export function departmentBreakdown(rows) {
+  const counts = new Map();
+  for (const row of rows) {
+    const key = row.department ?? 'Unclassified';
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return [...counts]
+    .map(([department, count]) => ({ department, count }))
+    .sort((a, b) => b.count - a.count || a.department.localeCompare(b.department));
+}
+
+/** Today's lectures across every loaded course, earliest first. */
+export function todaysSessions(rows, now = new Date()) {
+  const today = ksaDay(now.toISOString());
+  const out = [];
+  for (const row of rows) {
+    for (const session of row.sessions ?? []) {
+      if (!session.startsAt || ksaDay(session.startsAt) !== today) continue;
+      out.push({ row, session });
+    }
+  }
+  return out.sort((a, b) => compareText(a.session.startsAt, b.session.startsAt));
 }

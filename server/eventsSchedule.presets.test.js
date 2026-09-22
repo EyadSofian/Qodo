@@ -5,15 +5,16 @@ import {
   activeFilterCount,
   applyFilters,
   availableQuickFilters,
+  VIEW_MODES,
+  departmentBreakdown,
   departmentCounts,
-  headerGroups,
   ksaWeek,
-  maxSessionCount,
-  resolveView,
+  overviewStats,
+  resolveViewMode,
   rowMatches,
   sessionState,
   sortRows,
-  visibleColumns,
+  todaysSessions,
 } from '../shared/eventsSchedule.js';
 
 const NOW = new Date('2026-09-22T12:00:00Z');
@@ -45,46 +46,49 @@ const row = (id, overrides = {}) => ({
   ...overrides,
 });
 
-test('session columns grow to the longest visible course, and only where the view has them', () => {
-  const rows = [row(1, { sessions: new Array(16).fill({}) }), row(2, { sessions: new Array(40).fill({}) })];
-  assert.equal(maxSessionCount(rows), 40);
-  assert.equal(maxSessionCount([rows[0]]), 16);
-  assert.equal(maxSessionCount([]), 0);
-
-  const excel = visibleColumns('excel', { sessionCount: 16 });
-  assert.equal(excel.filter((id) => /^s\d+$/.test(id)).length, 16);
-  assert.equal(excel.at(-1), 's16');
-  assert.deepEqual(visibleColumns('compact', { sessionCount: 40 }).filter((id) => /^s\d+$/.test(id)), []);
-  assert.deepEqual(visibleColumns('sessions', { sessionCount: 2 }), ['courseName', 'code', 'instructor', 'status', 's1', 's2']);
+test('the course list has two shapes, and neither of them is a spreadsheet', () => {
+  assert.deepEqual(VIEW_MODES, ['cards', 'list']);
+  assert.equal(resolveViewMode('cards'), 'cards');
+  assert.equal(resolveViewMode('list'), 'list');
+  // Anything left over from the spreadsheet era falls back rather than throwing.
+  assert.equal(resolveViewMode('excel'), 'cards');
+  assert.equal(resolveViewMode(undefined), 'cards');
 });
 
-test('hidden columns disappear, but the frozen course column cannot be hidden', () => {
-  const columns = visibleColumns('excel', { hidden: ['comments', 'courseName', 'dayPart'], sessionCount: 0 });
-  assert.ok(!columns.includes('comments'));
-  assert.ok(!columns.includes('dayPart'));
-  assert.ok(columns.includes('courseName'));
+test('the overview counts real rows and never invents a denominator', () => {
+  const rows = [
+    row(1, { statusCanonical: 'in_progress', traineeCount: 20, capacity: 20 }),
+    row(2, { statusCanonical: 'in_progress', traineeCount: 5, capacity: null }),
+    row(3, { statusCanonical: 'planned', startsAt: '2026-09-25T06:00:00Z', traineeCount: 7, capacity: 50 }),
+    row(4, { statusCanonical: 'finished', traineeCount: 30, capacity: 30 }),
+  ];
+  const stats = overviewStats(rows, NOW);
+
+  assert.equal(stats.active, 2);
+  assert.equal(stats.startingSoon, 1, 'planned and inside the next seven days');
+  // A finished course's trainees are history, not active load.
+  assert.equal(stats.trainees, 32);
+  // Course 2 has no capacity in Odoo, so it cannot be "near capacity" — only 1 is.
+  assert.equal(stats.nearCapacity, 1);
 });
 
-test('grouped headers span their columns in the sheet order', () => {
-  const groups = headerGroups(visibleColumns('excel', { sessionCount: 3 }));
-  assert.deepEqual(
-    groups.map((g) => [g.label, g.span]),
-    [
-      ['Course Info', 5],
-      ['Capacity', 2],
-      ['Schedule', 6],
-      ['Operations', 3],
-      ['Sessions', 3],
-    ]
-  );
+test('today\'s lectures are gathered across every course, in time order', () => {
+  const rows = [
+    row(1, { sessions: [{ id: 11, number: 3, startsAt: '2026-09-22T16:00:00Z' }] }),
+    row(2, { sessions: [{ id: 21, number: 1, startsAt: '2026-09-22T07:00:00Z' }, { id: 22, number: 2, startsAt: '2026-09-29T07:00:00Z' }] }),
+    row(3, { sessions: [{ id: 31, number: 9, startsAt: '2026-09-23T07:00:00Z' }] }),
+  ];
+  const today = todaysSessions(rows, NOW);
+  assert.deepEqual(today.map((entry) => entry.session.id), [21, 11]);
 });
 
-test('English and Webinar tabs get their own sheet layout unless a view is chosen', () => {
-  assert.equal(resolveView('auto', 'english'), 'english');
-  assert.equal(resolveView('auto', 'webinar'), 'webinar');
-  assert.equal(resolveView('auto', 'civil'), 'excel');
-  assert.equal(resolveView('compact', 'english'), 'compact');
-  assert.ok(visibleColumns('english').includes('courseNameCode'));
+test('the department breakdown counts courses, busiest first', () => {
+  const rows = [row(1), row(2), row(3, { department: 'Civil' }), row(4, { department: null })];
+  assert.deepEqual(departmentBreakdown(rows), [
+    { department: 'Mechanical', count: 2 },
+    { department: 'Civil', count: 1 },
+    { department: 'Unclassified', count: 1 },
+  ]);
 });
 
 test('closed courses are hidden from the schedule unless asked for', () => {

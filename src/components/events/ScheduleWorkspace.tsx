@@ -1,44 +1,38 @@
 /**
- * Filters, presets and the grid over one set of rows — shared by the Schedule
+ * Filters and the course list over one set of rows — shared by the Schedule
  * and the Archive, which differ only in how their rows are fetched.
  *
  * Everything here runs in the browser over rows already loaded: switching a
- * department tab, a quick filter or a view never asks Odoo anything. The
- * person's department, view and hidden columns are remembered per browser;
- * that is a convenience, and the page works identically without it.
+ * department, a quick filter or the view never asks Odoo anything. The chosen
+ * department and view are remembered per browser; that is a convenience, and
+ * the page works identically without it.
  */
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { AlertCircle, Inbox, Info } from 'lucide-react';
 import {
   EMPTY_FILTERS,
-  VIEW_PRESETS,
   activeFilterCount,
   applyFilters,
   departmentCounts,
-  departmentPreset,
-  maxSessionCount,
-  resolveView,
+  resolveViewMode,
   sortRows,
-  visibleColumns,
 } from '@shared/eventsSchedule';
 import { agoLabel, type ScheduleMeta, type TrainingScheduleRow } from '../../lib/eventsSchedule';
 import { EmptyState } from '../ui';
-import { ScheduleMobileList } from './ScheduleMobileList';
-import { ScheduleTable, ScheduleTableSkeleton, type SortState } from './ScheduleTable';
+import { CourseCard, CourseListRow } from './CourseCard';
 import {
   ClearFilters,
-  ColumnsMenu,
   DepartmentTabs,
   FilterPanel,
   FiltersButton,
   QuickFilters,
   SearchBox,
-  ViewSwitcher,
+  ViewModeSwitch,
   type ScheduleFilters,
 } from './ScheduleToolbar';
 
-type Saved = { department?: string; view?: string; hidden?: Record<string, string[]> };
+type Saved = { department?: string; view?: string };
 
 function readSaved(key: string): Saved {
   try {
@@ -56,8 +50,9 @@ function writeSaved(key: string, value: Saved) {
   }
 }
 
+/** The compact list needs room for its columns; below this it is cards. */
 function useWideScreen() {
-  const query = '(min-width: 768px)';
+  const query = '(min-width: 640px)';
   const [wide, setWide] = useState(() => typeof window === 'undefined' || window.matchMedia(query).matches);
   useEffect(() => {
     const media = window.matchMedia(query);
@@ -72,6 +67,30 @@ const WARNING_TEXT: Record<string, string> = {
   events_truncated: 'النطاق فيه كورسات أكتر من الحد المسموح في طلب واحد — ضيّق الفترة علشان تشوفهم كلهم.',
   sessions_truncated: 'عدد المحاضرات في النطاق ده كبير، وممكن بعض الكورسات تظهر بمحاضرات ناقصة. ضيّق الفترة.',
 };
+
+export function CourseListSkeleton({ view = 'cards' }: { view?: string }) {
+  if (view === 'list') {
+    return (
+      <div className="overflow-hidden rounded-2xl border border-surface-line bg-white" aria-hidden>
+        {Array.from({ length: 8 }, (_, i) => (
+          <div key={i} className="flex items-center gap-4 border-b border-surface-line px-4 py-3.5 last:border-b-0">
+            <div className="h-3.5 flex-[2.2] animate-pulse rounded bg-surface-sunken" />
+            <div className="hidden h-3 flex-1 animate-pulse rounded bg-surface-sunken sm:block" />
+            <div className="hidden h-3 flex-[1.4] animate-pulse rounded bg-surface-sunken lg:block" />
+            <div className="h-5 w-20 shrink-0 animate-pulse rounded-full bg-surface-sunken" />
+          </div>
+        ))}
+      </div>
+    );
+  }
+  return (
+    <div className="grid min-w-0 gap-3 md:grid-cols-2 2xl:grid-cols-3" aria-hidden>
+      {Array.from({ length: 6 }, (_, i) => (
+        <div key={i} className="h-[232px] animate-pulse rounded-2xl border border-surface-line bg-white" />
+      ))}
+    </div>
+  );
+}
 
 export function ScheduleWorkspace({
   storageKey,
@@ -105,17 +124,15 @@ export function ScheduleWorkspace({
     department: saved.department ?? 'all',
     showClosed: Boolean(archive),
   }));
-  const [view, setView] = useState<string>(saved.view ?? 'auto');
-  const [hiddenByView, setHiddenByView] = useState<Record<string, string[]>>(saved.hidden ?? {});
-  // History reads newest first; the live schedule keeps its status-first order.
-  const [sort, setSort] = useState<SortState>(archive ? { key: 'start', dir: 'desc' } : null);
+  // History is denser and read in bulk, so it opens as a list.
+  const [view, setView] = useState<string>(() => resolveViewMode(saved.view ?? (archive ? 'list' : 'cards')));
   const [filtersOpen, setFiltersOpen] = useState(false);
   const wide = useWideScreen();
   const now = useMemo(() => new Date(), [rows]);
 
   useEffect(() => {
-    writeSaved(storageKey, { department: filters.department, view, hidden: hiddenByView });
-  }, [storageKey, filters.department, view, hiddenByView]);
+    writeSaved(storageKey, { department: filters.department, view });
+  }, [storageKey, filters.department, view]);
 
   useEffect(() => {
     if (!onSearch) return;
@@ -123,18 +140,11 @@ export function ScheduleWorkspace({
     return () => window.clearTimeout(timer);
   }, [filters.search, onSearch]);
 
-  const preset = departmentPreset(filters.department);
-  const activeView = resolveView(view, filters.department);
-  const hidden = hiddenByView[activeView] ?? [];
-
+  const sort = useMemo(() => (archive ? ({ key: 'start', dir: 'desc' } as const) : null), [archive]);
   const filtered = useMemo(() => (rows ? sortRows(applyFilters(rows, filters, now), sort) : []), [rows, filters, sort, now]);
   const counts = useMemo(() => (rows ? departmentCounts(rows, filters, now) : null), [rows, filters, now]);
-  const columns = useMemo(
-    () => visibleColumns(activeView, { hidden, sessionCount: maxSessionCount(filtered) }),
-    [activeView, hidden, filtered]
-  );
+
   const filterCount = activeFilterCount(archive ? { ...filters, showClosed: false } : filters);
-  const coordinatorKnown = Boolean(meta?.discoveredFields?.coordinator);
   const warnings = (meta?.warnings ?? []).filter((warning) => WARNING_TEXT[warning]);
   const schemaNotes = [
     ...(meta?.missingFields?.length ? [`حقول ناقصة في أودو: ${meta.missingFields.join(', ')}`] : []),
@@ -144,10 +154,10 @@ export function ScheduleWorkspace({
   const clear = () => setFilters({ ...EMPTY_FILTERS, department: filters.department, showClosed: Boolean(archive) });
 
   return (
-    <div className="grid gap-3">
+    <div className="grid min-w-0 gap-3">
       <DepartmentTabs value={filters.department} counts={counts} onChange={(department) => setFilters({ ...filters, department })} />
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
         <SearchBox
           value={filters.search}
           onChange={(search) => setFilters({ ...filters, search })}
@@ -155,12 +165,7 @@ export function ScheduleWorkspace({
         />
         {rangeControl}
         <FiltersButton count={filterCount} open={filtersOpen} onToggle={() => setFiltersOpen(!filtersOpen)} />
-        {wide && (
-          <>
-            <ViewSwitcher value={activeView} special={preset.view} onChange={setView} />
-            <ColumnsMenu view={activeView} hidden={hidden} onChange={(next) => setHiddenByView({ ...hiddenByView, [activeView]: next })} />
-          </>
-        )}
+        {wide && <ViewModeSwitch value={view} onChange={setView} />}
       </div>
 
       {filtersOpen && <FilterPanel filters={filters} onChange={setFilters} meta={meta} showStatus />}
@@ -185,7 +190,7 @@ export function ScheduleWorkspace({
         <details className="rounded-xl border border-surface-line bg-white/70 px-3.5 py-2 text-[12px] text-ink-muted">
           <summary className="flex cursor-pointer list-none items-center gap-2 font-semibold [&::-webkit-details-marker]:hidden">
             <Info size={14} className="text-brand-500" />
-            إعداد حقول أودو مش كامل — بعض الأعمدة هتظهر فاضية
+            إعداد حقول أودو مش كامل — بعض البيانات هتظهر ناقصة
           </summary>
           <ul className="mt-1.5 grid gap-0.5 ps-6 font-mono text-[11px]" dir="ltr">
             {schemaNotes.map((note) => (
@@ -211,13 +216,17 @@ export function ScheduleWorkspace({
       </div>
 
       {!rows ? (
-        <ScheduleTableSkeleton />
+        <CourseListSkeleton view={view} />
       ) : filtered.length === 0 ? (
         <div className="card">
           <EmptyState
             icon={<Inbox size={26} />}
             title={rows.length === 0 ? (archive ? 'مفيش كورسات منتهية في الفترة دي' : 'مفيش كورسات في الفترة دي') : 'مفيش كورسات مطابقة للفلاتر'}
-            body={rows.length === 0 ? 'جرّب فترة أوسع.' : 'غيّر القسم أو امسح الفلاتر.'}
+            body={
+              rows.length === 0
+                ? 'جرّب فترة أوسع أو غيّر السنة.'
+                : 'غيّر القسم أو الحالة أو الفترة، أو امسح الفلاتر وابدأ من أول.'
+            }
             action={
               rows.length > 0 ? (
                 <button type="button" className="btn-ghost btn-sm" onClick={clear}>
@@ -227,22 +236,22 @@ export function ScheduleWorkspace({
             }
           />
         </div>
-      ) : wide ? (
-        <ScheduleTable
-          rows={filtered}
-          columns={columns}
-          grouped={Boolean(VIEW_PRESETS[activeView as keyof typeof VIEW_PRESETS]?.grouped)}
-          groupLabel={preset.groupLabel}
-          labels={VIEW_PRESETS[activeView as keyof typeof VIEW_PRESETS]?.labels}
-          sort={sort}
-          onSort={setSort}
-          onOpen={onOpen}
-          now={now}
-          coordinatorKnown={coordinatorKnown}
-          dimmed={loading}
-        />
       ) : (
-        <ScheduleMobileList rows={filtered} onOpen={onOpen} />
+        <div className={loading ? 'opacity-60 transition-opacity' : 'transition-opacity'}>
+          {view === 'list' && wide ? (
+            <div className="overflow-hidden rounded-2xl border border-surface-line bg-white shadow-[0_1px_2px_rgba(11,37,69,0.04)]">
+              {filtered.map((row) => (
+                <CourseListRow key={row.id} row={row} now={now} onOpen={onOpen} />
+              ))}
+            </div>
+          ) : (
+            <div className="grid min-w-0 gap-3 md:grid-cols-2 2xl:grid-cols-3">
+              {filtered.map((row) => (
+                <CourseCard key={row.id} row={row} now={now} onOpen={onOpen} />
+              ))}
+            </div>
+          )}
+        </div>
       )}
       {footer}
     </div>
