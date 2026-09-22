@@ -113,7 +113,37 @@ function sessionEnd(session: TodaySession) {
   return session.endsAt ? new Date(session.endsAt).getTime() : start + (session.durationHours || 1) * 3_600_000;
 }
 
+/**
+ * Lectures grouped under the hour they start, so the day reads as a timeline
+ * rather than a list of equal rows. The hour is the anchor because that is
+ * what somebody is looking for when they open this tab before a lecture.
+ */
 function SessionList({ sessions, now, onOpen }: { sessions: TodaySession[]; now: Date; onOpen: (id: number) => void }) {
+  const hours: Array<{ hour: string; items: TodaySession[] }> = [];
+  for (const session of sessions) {
+    const hour = ksaTime(session.startsAt);
+    const last = hours.at(-1);
+    if (last && last.hour === hour) last.items.push(session);
+    else hours.push({ hour, items: [session] });
+  }
+
+  return (
+    <div className="grid gap-4">
+      {hours.map(({ hour, items }) => (
+        <section key={hour}>
+          <h3 className="mb-2 flex items-center gap-3">
+            <span dir="ltr" className="shrink-0 text-[13px] font-extrabold tabular-nums text-ink">{hour}</span>
+            <span className="text-[10.5px] font-semibold text-ink-faint">KSA</span>
+            <span aria-hidden className="h-px flex-1 bg-surface-line" />
+          </h3>
+          <SessionRows sessions={items} now={now} onOpen={onOpen} />
+        </section>
+      ))}
+    </div>
+  );
+}
+
+function SessionRows({ sessions, now, onOpen }: { sessions: TodaySession[]; now: Date; onOpen: (id: number) => void }) {
   return (
     <ul className="grid gap-2">
       {sessions.map((session) => {

@@ -1,5 +1,5 @@
 /**
- * Everything above the grid: department tabs, search, range, filters, view.
+ * Everything above the course list: departments, search, range, filters, view.
  *
  * Laid out as one primary line (search, range, filters, view) with the filter
  * menus folded away until asked for — a dozen dropdowns open at once is how an
@@ -8,15 +8,14 @@
  */
 
 import { useEffect, useState, type ReactNode } from 'react';
-import { CalendarRange, Columns3, Filter, RotateCcw, Search, X } from 'lucide-react';
+import { CalendarRange, Filter, LayoutGrid, RotateCcw, Rows3, Search, X } from 'lucide-react';
 import {
-  COLUMNS,
   DEPARTMENT_PRESETS,
   EMPTY_FILTERS,
-  GENERAL_VIEWS,
   STATUS_LABELS,
   STATUS_ORDER,
-  VIEW_PRESETS,
+  VIEW_LABELS,
+  VIEW_MODES,
   availableQuickFilters,
 } from '@shared/eventsSchedule';
 import { SCHEDULE_MAX_DAYS, rangeDays, rangeFor, type DateRange, type RangePreset, type ScheduleMeta } from '../../lib/eventsSchedule';
@@ -39,7 +38,7 @@ export function DepartmentTabs({
   onChange: (key: string) => void;
 }) {
   return (
-    <div role="tablist" aria-label="Department" dir="ltr" className="no-scrollbar -mx-1 flex gap-1 overflow-x-auto px-1 pb-0.5">
+    <div role="tablist" aria-label="Department" dir="ltr" className="no-scrollbar -mx-1 flex min-w-0 gap-1 overflow-x-auto px-1 pb-0.5">
       {DEPARTMENT_PRESETS.map((preset) => {
         const active = preset.key === value;
         return (
@@ -72,7 +71,7 @@ export function DepartmentTabs({
 
 export function SearchBox({ value, onChange, placeholder }: { value: string; onChange: (value: string) => void; placeholder: string }) {
   return (
-    <div className="relative min-w-[220px] flex-1">
+    <div className="relative w-full min-w-0 sm:w-auto sm:flex-1 sm:min-w-[220px]">
       <Search size={15} className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-ink-faint" />
       <input
         type="search"
@@ -336,7 +335,7 @@ export function QuickFilters({
   discoveredFields: Record<string, string | null> | undefined;
 }) {
   return (
-    <div dir="ltr" className="no-scrollbar flex gap-1.5 overflow-x-auto" role="group" aria-label="Quick filters">
+    <div dir="ltr" className="no-scrollbar flex min-w-0 gap-1.5 overflow-x-auto" role="group" aria-label="Quick filters">
       {availableQuickFilters(discoveredFields ?? {}).map((filter) => {
         const on = value === filter.key;
         return (
@@ -359,80 +358,39 @@ export function QuickFilters({
   );
 }
 
-/* ── view + columns ──────────────────────────────────────────────── */
+/* ── view mode ───────────────────────────────────────────────────── */
 
-export function ViewSwitcher({ value, special, onChange }: { value: string; special?: string | null; onChange: (view: string) => void }) {
-  const views = special ? [special, ...GENERAL_VIEWS] : GENERAL_VIEWS;
+/**
+ * Cards or a compact list — the only two shapes the course list takes.
+ * There is no "Excel Full", and no per-column visibility: a screen whose first
+ * decision is which of forty columns to hide is a spreadsheet.
+ */
+type ViewMode = keyof typeof VIEW_LABELS;
+
+export function ViewModeSwitch({ value, onChange }: { value: string; onChange: (view: string) => void }) {
   return (
-    <div role="radiogroup" aria-label="Table view" dir="ltr" className="flex rounded-xl border border-surface-line bg-white p-0.5">
-      {views.map((view) => {
-        const on = view === value;
+    <div role="radiogroup" aria-label="View mode" dir="ltr" className="flex rounded-xl border border-surface-line bg-white p-0.5">
+      {(VIEW_MODES as readonly ViewMode[]).map((mode) => {
+        const on = mode === value;
+        const Icon = mode === 'cards' ? LayoutGrid : Rows3;
         return (
           <button
-            key={view}
+            key={mode}
             type="button"
             role="radio"
             aria-checked={on}
-            onClick={() => onChange(view)}
+            title={VIEW_LABELS[mode]}
+            onClick={() => onChange(mode)}
             className={cx(
-              'whitespace-nowrap rounded-lg px-2.5 py-1.5 text-[12px] font-semibold transition-colors',
+              'inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-[12px] font-semibold transition-colors',
               on ? 'bg-navy text-white shadow-sm' : 'text-ink-muted hover:bg-surface-sunken hover:text-ink'
             )}
           >
-            {VIEW_PRESETS[view as keyof typeof VIEW_PRESETS].label}
+            <Icon size={14} />
+            <span className="hidden sm:inline">{VIEW_LABELS[mode]}</span>
           </button>
         );
       })}
     </div>
   );
 }
-
-export function ColumnsMenu({
-  view,
-  hidden,
-  onChange,
-}: {
-  view: string;
-  hidden: string[];
-  onChange: (hidden: string[]) => void;
-}) {
-  const columns = VIEW_PRESETS[view as keyof typeof VIEW_PRESETS]?.columns ?? [];
-  const optional = columns.filter((id) => !COLUMNS[id as keyof typeof COLUMNS]?.sticky);
-  return (
-    <details className="relative">
-      <summary className="btn-ghost btn-sm cursor-pointer list-none gap-1.5 [&::-webkit-details-marker]:hidden" aria-label="Columns">
-        <Columns3 size={14} />
-        <span className="hidden sm:inline">الأعمدة</span>
-        {hidden.filter((id) => optional.includes(id)).length > 0 && (
-          <span className="rounded-full bg-surface-sunken px-1.5 text-[10.5px] tabular-nums text-ink-muted">
-            −{hidden.filter((id) => optional.includes(id)).length}
-          </span>
-        )}
-      </summary>
-      <div dir="ltr" className="absolute end-0 z-40 mt-1.5 w-60 rounded-xl border border-surface-line bg-white p-2 shadow-lift">
-        <p className="px-2 pb-1.5 pt-1 text-[11px] font-bold text-ink-faint">Visible columns</p>
-        <ul className="grid max-h-72 gap-0.5 overflow-y-auto">
-          {optional.map((id) => (
-            <li key={id}>
-              <label className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-[12.5px] hover:bg-surface-sunken">
-                <input
-                  type="checkbox"
-                  className="h-4 w-4 accent-[#0B2545]"
-                  checked={!hidden.includes(id)}
-                  onChange={(event) => onChange(event.target.checked ? hidden.filter((h) => h !== id) : [...hidden, id])}
-                />
-                <bdi dir="auto">{COLUMNS[id as keyof typeof COLUMNS]?.label}</bdi>
-              </label>
-            </li>
-          ))}
-        </ul>
-        {hidden.length > 0 && (
-          <button type="button" className="mt-1 w-full rounded-lg px-2 py-1.5 text-start text-[12px] font-semibold text-brand-600 hover:bg-brand-50" onClick={() => onChange([])}>
-            Show all columns
-          </button>
-        )}
-      </div>
-    </details>
-  );
-}
-

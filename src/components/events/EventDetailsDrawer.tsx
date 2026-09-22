@@ -12,8 +12,8 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { AlertTriangle, ExternalLink, Video, X } from 'lucide-react';
-import { SESSION_GLYPHS, groupOf, sessionState } from '@shared/eventsSchedule';
+import { AlertTriangle, ExternalLink, X } from 'lucide-react';
+import { groupOf } from '@shared/eventsSchedule';
 import { errorMessage } from '../../lib/api';
 import {
   DAY_PART_AR,
@@ -24,15 +24,12 @@ import {
   fetchEventDetail,
   hhmmLabel,
   ksaDate,
-  ksaShortDate,
-  ksaTime,
   placeLabel,
   type DetailResponse,
   type TrainingScheduleRow,
-  type TrainingSession,
 } from '../../lib/eventsSchedule';
-import { cx } from '../../lib/utils';
 import { CapacityCell, Missing, StatusChip, WorkDaysChips } from './ScheduleCells';
+import { SessionTimeline } from './SessionTimeline';
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
@@ -271,17 +268,15 @@ function DrawerBody({ course }: { course: TrainingScheduleRow }) {
       </Section>
 
       <Section title={`Sessions (${course.sessionsTotal})`}>
-        {course.sessions.length === 0 ? (
-          <p dir="rtl" className="text-[12.5px] text-ink-faint">
-            {course.lectureCount ? `الجدول ناقص: مكتوب ${course.lectureCount} محاضرة ومفيش ولا محاضرة متولّدة في أودو.` : 'مفيش محاضرات متسجّلة.'}
-          </p>
-        ) : (
-          <ol className="grid gap-1">
-            {course.sessions.map((session) => (
-              <SessionLine key={session.id} session={session} now={now} online={course.deliveryMode === 'online'} />
-            ))}
-          </ol>
-        )}
+        <SessionTimeline
+          sessions={course.sessions}
+          now={now}
+          emptyLabel={
+            course.lectureCount
+              ? `الجدول ناقص: مكتوب ${course.lectureCount} محاضرة ومفيش ولا محاضرة متولّدة في أودو.`
+              : 'مفيش محاضرات متسجّلة.'
+          }
+        />
       </Section>
 
       <Section title="Registrations">
@@ -322,45 +317,6 @@ function Progress({ course }: { course: TrainingScheduleRow }) {
         <span className="block h-full rounded-full bg-brand-500" style={{ width: `${course.progress}%` }} />
       </span>
     </span>
-  );
-}
-
-function SessionLine({ session, now, online }: { session: TrainingSession; now: Date; online: boolean }) {
-  const state = sessionState(session, now) as 'past' | 'today' | 'upcoming' | 'missing';
-  const future = state === 'today' || state === 'upcoming';
-  return (
-    <li
-      className={cx(
-        'grid grid-cols-[1rem_2.6rem_minmax(0,1fr)_auto] items-center gap-2 rounded-lg px-2 py-1.5 text-[12.5px]',
-        state === 'today' && 'bg-brand-50 ring-1 ring-inset ring-brand-200',
-        state === 'past' && 'text-ink-faint'
-      )}
-    >
-      <span aria-hidden className={cx('text-center', state === 'today' ? 'text-brand-600' : state === 'past' ? 'text-status-ok/80' : 'text-ink-faint')}>
-        {SESSION_GLYPHS[state]}
-      </span>
-      <span className="font-mono font-bold">S{session.number}</span>
-      <span className="truncate tabular-nums" title={session.name ?? undefined}>
-        {state === 'missing' ? (
-          'not scheduled'
-        ) : (
-          <>
-            {state === 'today' ? 'Today' : ksaShortDate(session.startsAt)} · {ksaTime(session.startsAt)}
-            {session.durationHours ? <span className="text-ink-faint"> · {session.durationHours}h</span> : null}
-          </>
-        )}
-        <span className="sr-only"> ({state})</span>
-      </span>
-      {future && session.joinUrl ? (
-        <a href={session.joinUrl} target="_blank" rel="noreferrer noopener" className="inline-flex items-center gap-1 text-[12px] font-bold text-brand-600 hover:underline">
-          <Video size={13} /> Join
-        </a>
-      ) : future && online && session.meetingReady === false ? (
-        <span className="text-[11px] font-semibold text-accent-700">Zoom not created yet</span>
-      ) : (
-        <span />
-      )}
-    </li>
   );
 }
 
