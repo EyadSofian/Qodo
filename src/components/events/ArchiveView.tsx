@@ -80,7 +80,7 @@ export function ArchiveView({
       <label>
         <span className="sr-only">السنة</span>
         <select
-          className="h-10 cursor-pointer rounded-xl border border-surface-line bg-white px-3.5 text-[13px] font-semibold text-ink hover:border-brand-200 focus:outline-none focus:ring-2 focus:ring-brand-100"
+          className="h-10 cursor-pointer rounded-xl border border-slate-200 bg-white px-3.5 text-[13px] font-semibold text-slate-900 hover:border-blue-200 focus:outline-none focus:ring-2 focus:ring-blue-100"
           value={scope.kind === 'year' ? String(scope.year) : 'custom'}
           onChange={(event) =>
             setScope(event.target.value === 'custom' ? { kind: 'range', ...draft } : { kind: 'year', year: Number(event.target.value) })
@@ -103,7 +103,7 @@ export function ArchiveView({
           }}
         >
           <input type="date" aria-label="من" className="field !w-auto !py-1.5 text-[12.5px]" value={draft.from} onChange={(e) => setDraft({ ...draft, from: e.target.value })} />
-          <span className="text-ink-faint">←</span>
+          <span className="text-slate-500">←</span>
           <input type="date" aria-label="إلى" className="field !w-auto !py-1.5 text-[12.5px]" value={draft.to} onChange={(e) => setDraft({ ...draft, to: e.target.value })} />
           <button type="submit" className="btn-navy btn-sm">
             عرض
@@ -116,7 +116,7 @@ export function ArchiveView({
   return (
     <div className="grid gap-3">
       {error && (
-        <p className="flex flex-wrap items-center gap-2 rounded-xl bg-status-badBg px-3.5 py-2.5 text-[12.5px] font-semibold text-status-bad">
+        <p className="flex flex-wrap items-center gap-2 rounded-xl bg-rose-50 px-3.5 py-2.5 text-[12.5px] font-semibold text-rose-700">
           <AlertCircle size={15} />
           {error}
           {!rows && (

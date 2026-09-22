@@ -96,7 +96,7 @@ export function EventsAnalytics({ version, onOpen }: { version: number; onOpen: 
       />
 
       {error && (
-        <p className="flex items-center gap-2 rounded-xl bg-status-badBg px-3 py-2.5 text-[13px] font-semibold text-status-bad">
+        <p className="flex items-center gap-2 rounded-xl bg-rose-50 px-3 py-2.5 text-[13px] font-semibold text-rose-700">
           <AlertCircle size={16} />
           {error}
         </p>
@@ -111,21 +111,21 @@ export function EventsAnalytics({ version, onOpen }: { version: number; onOpen: 
       )}
 
       {data?.stale && (
-        <p className="mb-3 flex items-center gap-2 rounded-xl bg-status-warnBg px-3.5 py-2.5 text-[12.5px] font-semibold text-accent-600">
+        <p className="mb-3 flex items-center gap-2 rounded-xl bg-amber-50 px-3.5 py-2.5 text-[12.5px] font-semibold text-amber-600">
           <AlertCircle size={15} />
           أودو مارِدّش دلوقتي — دي آخر أرقام وصلت {staleLabel(data.fetchedAt)}.
         </p>
       )}
 
       {data && !data.revenueAvailable && (
-        <p className="flex items-center gap-2 rounded-xl bg-status-warnBg px-3.5 py-3 text-[12.5px] leading-relaxed text-accent-600">
+        <p className="flex items-center gap-2 rounded-xl bg-amber-50 px-3.5 py-3 text-[12.5px] leading-relaxed text-amber-600">
           <AlertCircle size={15} />
           Insights Hub مارِدّش، فمش هنعرض رقم تحصيل غير مؤكد. حجوزات وتشغيل أودو ما زالوا ظاهرين تحت.
         </p>
       )}
 
       {data?.revenueStale && (
-        <p className="flex items-center gap-2 rounded-xl bg-status-warnBg px-3.5 py-3 text-[12.5px] leading-relaxed text-accent-600">
+        <p className="flex items-center gap-2 rounded-xl bg-amber-50 px-3.5 py-3 text-[12.5px] leading-relaxed text-amber-600">
           <AlertCircle size={15} />
           رقم التحصيل الظاهر هو آخر رقم صحيح محفوظ من Insights Hub.
         </p>
@@ -134,16 +134,16 @@ export function EventsAnalytics({ version, onOpen }: { version: number; onOpen: 
       {data && current && previous && (
         <div className={cx('grid gap-4 transition-opacity', loading && 'opacity-55')}>
           {data.revenueAvailable && collected && collectedPrevious && data.revenueSource && (
-            <section className="grid gap-3 rounded-2xl border border-brand-100 bg-brand-50/55 p-4 shadow-sm">
+            <section className="grid gap-3 rounded-3xl border border-white/70 bg-gradient-to-br from-emerald-50/80 via-white/70 to-blue-50/80 p-5 shadow-[0_8px_32px_rgba(15,23,42,0.08),inset_0_1px_0_rgba(255,255,255,0.9)] backdrop-blur-xl">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <p className="text-[11px] font-black text-brand-700">البيع المدفوع · Insights Hub · حسب يوم الدفع</p>
-                  <h2 className="mt-1 text-[18px] font-black leading-relaxed text-ink">
+                  <p className="text-[11px] font-black text-blue-700">البيع المدفوع · Insights Hub · حسب يوم الدفع</p>
+                  <h2 className="mt-1 text-[18px] font-black leading-relaxed text-slate-900">
                     {topPaid
                       ? <><bdi dir="auto">«{friendlyEventProduct(topPaid.name)}»</bdi> جاب أعلى تحصيل حضوري في الأيام دي.</>
                       : 'مفيش تحصيل حضوري واضح في الفواتير خلال الأيام دي.'}
                   </h2>
-                  <p className="mt-1 max-w-3xl text-[11.5px] leading-relaxed text-ink-muted">
+                  <p className="mt-1 max-w-3xl text-[11.5px] leading-relaxed text-slate-600">
                     هنا بنحسب سطور الفواتير المدفوعة اللي اسم المنتج فيها مكتوب بوضوح Offline Attendance أو Riyadh.
                     الأونلاين وأي Event نوعه مش واضح مش داخلين في الرقم.
                   </p>
@@ -161,6 +161,7 @@ export function EventsAnalytics({ version, onOpen }: { version: number; onOpen: 
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 <StatTile
                   label="فلوس إيفينتات حضورية"
+                  accent="green"
                   value={formatUsd(collected.amount)}
                   hint={previousDaysHint(collected.amount, collectedPrevious.amount)}
                   explanation="مجموع USD Paid في سطور الفواتير المدفوعة للحضور Offline/Riyadh خلال الأيام المختارة."
@@ -169,6 +170,7 @@ export function EventsAnalytics({ version, onOpen }: { version: number; onOpen: 
                 />
                 <StatTile
                   label="فواتير حضوري مدفوعة"
+                  accent="blue"
                   value={collected.invoices}
                   hint="كل رقم فاتورة بيتحسب مرة واحدة"
                   explanation="عدد الفواتير المختلفة اللي فيها منتج حضور واضح. الفاتورة ممكن يكون جواها أكتر من منتج."
@@ -176,6 +178,7 @@ export function EventsAnalytics({ version, onOpen }: { version: number; onOpen: 
                 />
                 <StatTile
                   label="منتجات حضوري دخل لها فلوس"
+                  accent="violet"
                   value={collected.products.length}
                   hint="حسب اسم المنتج في الفاتورة"
                   explanation="عدد أسماء منتجات الحضور المختلفة اللي ظهر لها تحصيل فعلي. ده مش عدد الإيفينتات اللي بدأت."
@@ -183,6 +186,7 @@ export function EventsAnalytics({ version, onOpen }: { version: number; onOpen: 
                 />
                 <StatTile
                   label="فواتير مش مربوطة بإيفينت"
+                  accent={collected.unassignedInvoices > 0 ? 'amber' : 'slate'}
                   value={collected.unassignedInvoices}
                   hint={collected.unassignedInvoices ? 'تحتاج ربط في المصدر' : 'كل الفواتير مربوطة'}
                   explanation="الفلوس صحيحة، لكن خانة Event في سطر الفاتورة فاضية؛ لذلك ما نقدرش ننسبها لسجل إيفينت بعينه."
@@ -197,26 +201,26 @@ export function EventsAnalytics({ version, onOpen }: { version: number; onOpen: 
               />
 
               {(collected.excludedOnlineInvoices > 0 || collected.excludedUnknownInvoices > 0) && (
-                <p className="rounded-xl bg-white px-3.5 py-3 text-[11.5px] leading-relaxed text-ink-muted">
+                <p className="rounded-xl bg-white px-3.5 py-3 text-[11.5px] leading-relaxed text-slate-600">
                   علشان شاشة الإيفينتات حضوري بس: استبعدنا {collected.excludedOnlineInvoices.toLocaleString('en-US')} فاتورة
                   أونلاين بقيمة {formatUsd(collected.excludedOnlineAmount)}، و{collected.excludedUnknownInvoices.toLocaleString('en-US')} فاتورة
                   Event نوع الحضور فيها مش واضح بقيمة {formatUsd(collected.excludedUnknownAmount)}. ما خمّناش النوع.
                 </p>
               )}
               {collected.authority === 'postgres-last-good' && (
-                <p className="rounded-xl bg-status-warnBg px-3.5 py-3 text-[11.5px] font-semibold leading-relaxed text-accent-600">
+                <p className="rounded-xl bg-amber-50 px-3.5 py-3 text-[11.5px] font-semibold leading-relaxed text-amber-600">
                   المزامنة المباشرة ما اتقبلتش، فـ Insights Hub حافظ على آخر نسخة مالية سليمة بدل ما يعرض
                   رقم ناقص أو متغيّر. اضغط «مزامنة مباشرة» للمحاولة تاني.
                 </p>
               )}
               {collected.authority === 'odoo-direct' && (
-                <p className="rounded-xl bg-status-okBg px-3.5 py-3 text-[11.5px] font-semibold leading-relaxed text-status-ok">
+                <p className="rounded-xl bg-emerald-50 px-3.5 py-3 text-[11.5px] font-semibold leading-relaxed text-emerald-700">
                   التحصيل اتراجع مباشرة من أودو وعدّى فحص اكتمال الفواتير قبل ما يظهر هنا
                   {collected.syncedAt ? ` · آخر مزامنة ${staleLabel(collected.syncedAt)}` : ''}.
                 </p>
               )}
               {collected.authority === 'postgres-live' && (
-                <p className="rounded-xl bg-status-okBg px-3.5 py-3 text-[11.5px] font-semibold leading-relaxed text-status-ok">
+                <p className="rounded-xl bg-emerald-50 px-3.5 py-3 text-[11.5px] font-semibold leading-relaxed text-emerald-700">
                   بيانات التحصيل متزامنة من Odoo عن طريق n8n إلى PostgreSQL
                   {collected.syncedAt ? ` · آخر مزامنة ${staleLabel(collected.syncedAt)}` : ''}.
                 </p>
@@ -232,19 +236,20 @@ export function EventsAnalytics({ version, onOpen }: { version: number; onOpen: 
             />
           )}
 
-          <section className="rounded-2xl border border-surface-line bg-white px-4 py-3.5 shadow-sm">
-            <h2 className="text-[15px] font-black text-ink">التشغيل والحجوزات · أودو · حسب ميعاد بداية الإيفينت</h2>
-            <p className="mt-1 text-[11.5px] leading-relaxed text-ink-muted">
+          <section className="rounded-2xl border border-white/70 bg-white/70 px-5 py-4 shadow-[0_8px_32px_rgba(15,23,42,0.06)] backdrop-blur-xl">
+            <h2 className="flex items-center gap-2 text-[16px] font-black text-slate-900">
+              <span aria-hidden className="h-5 w-1.5 rounded-full bg-gradient-to-b from-blue-500 to-violet-500" />التشغيل والحجوزات · أودو · حسب ميعاد بداية الإيفينت</h2>
+            <p className="mt-1 text-[11.5px] leading-relaxed text-slate-600">
               الجزء اللي تحت مش فلوس ومش فواتير: ده بيجيب الإيفينتات الحضورية اللي بدأت في الأيام المختارة،
               وبعدها يعدّ الأشخاص المسجلين عليها. علشان كده ما ينفعش نقارن الرقم ده مباشرة برقم Insights Hub.
             </p>
           </section>
 
-          <section className="relative overflow-hidden rounded-2xl bg-navy px-5 py-5 text-white shadow-card">
+          <section className="relative overflow-hidden rounded-3xl bg-gradient-to-l from-navy via-blue-900 to-violet-800 px-6 py-6 text-white shadow-[0_20px_50px_-20px_rgba(15,23,42,0.55)]">
             <span className="absolute -end-12 -top-14 h-40 w-40 rounded-full border-[28px] border-white/[0.04]" />
             <div className="relative grid gap-4 lg:grid-cols-[1.3fr_1fr] lg:items-end">
               <div>
-                <p className="text-[11.5px] font-bold text-brand-200">
+                <p className="text-[11.5px] font-bold text-blue-200">
                   قراءة سريعة · {dateRangeLabel(data.period.from, data.period.to)}
                 </p>
                 <h2 className="mt-2 max-w-2xl text-[19px] font-black leading-relaxed sm:text-[22px]">
@@ -267,12 +272,12 @@ export function EventsAnalytics({ version, onOpen }: { version: number; onOpen: 
             </div>
           </section>
 
-          <details className="group rounded-2xl border border-surface-line bg-white px-4 py-3.5">
-            <summary className="cursor-pointer list-none text-[12.5px] font-extrabold text-ink [&::-webkit-details-marker]:hidden">
-              الأرقام دي جاية منين وأتابع الإيفينت فين؟ <span className="text-brand-600 group-open:hidden">＋</span>
-              <span className="hidden text-brand-600 group-open:inline">−</span>
+          <details className="group rounded-2xl border border-slate-200 bg-white px-4 py-3.5">
+            <summary className="cursor-pointer list-none text-[12.5px] font-extrabold text-slate-900 [&::-webkit-details-marker]:hidden">
+              الأرقام دي جاية منين وأتابع الإيفينت فين؟ <span className="text-blue-700 group-open:hidden">＋</span>
+              <span className="hidden text-blue-700 group-open:inline">−</span>
             </summary>
-            <div className="mt-2 grid gap-2 text-[11.5px] leading-relaxed text-ink-muted">
+            <div className="mt-2 grid gap-2 text-[11.5px] leading-relaxed text-slate-600">
               <p>
                 الإيفينت نفسه جاي من أودو، وبنحسب الحضوري بس لو ميعاد بدايته جوه الأيام المختارة. الحجز
                 المؤكد هو الشخص اللي حالته «مفتوح» أو «تم»، و«لسه مش مؤكد» هو اللي حالته مسودة، والملغي
@@ -289,6 +294,7 @@ export function EventsAnalytics({ version, onOpen }: { version: number; onOpen: 
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <StatTile
               label="إيفينتات بدأت في الأيام دي"
+              accent="blue"
               value={current.events}
               hint={previousDaysHint(current.events, previous.events)}
               explanation="عدد الإيفينتات الحضورية اللي ميعاد بدايتها واقع بين التاريخين المختارين."
@@ -296,6 +302,7 @@ export function EventsAnalytics({ version, onOpen }: { version: number; onOpen: 
             />
             <StatTile
               label="ناس حجزت واتأكدت"
+              accent="green"
               value={current.bookings}
               hint={previousDaysHint(current.bookings, previous.bookings)}
               explanation="عدد الأشخاص في أودو وحالة حجزهم مفتوح أو تم، على إيفينتات الأيام المختارة."
@@ -304,6 +311,7 @@ export function EventsAnalytics({ version, onOpen }: { version: number; onOpen: 
             />
             <StatTile
               label="ناس لسه مش مؤكدة"
+              accent="amber"
               value={current.interested}
               hint={previousDaysHint(current.interested, previous.interested)}
               explanation="أشخاص موجودون على الإيفينت لكن حالة تسجيلهم ما زالت مسودة؛ ما بنحسبهمش حجز مؤكد."
@@ -311,6 +319,7 @@ export function EventsAnalytics({ version, onOpen }: { version: number; onOpen: 
             />
             <StatTile
               label="إيفينتات من غير حجز أو اهتمام"
+              accent={current.noDemand > 0 ? 'coral' : 'slate'}
               value={current.noDemand}
               hint={previousDaysHint(current.noDemand, previous.noDemand)}
               explanation="إيفينتات ما عليهاش ولا حجز مؤكد ولا تسجيل مسودة."
@@ -319,6 +328,7 @@ export function EventsAnalytics({ version, onOpen }: { version: number; onOpen: 
             />
             <StatTile
               label="نسبة المقاعد المحجوزة"
+              accent="violet"
               value={current.fillRate === null ? '—' : `${current.fillRate.toLocaleString('en-US')}%`}
               hint={current.seats ? `${current.capacityBookings.toLocaleString('en-US')} حجز من ${current.seats.toLocaleString('en-US')} مقعد` : 'السعة مش مكتوبة في أودو'}
               explanation="الحجوزات المؤكدة مقسومة على عدد المقاعد، للإيفينتات اللي السعة مكتوبة فيها بس."
@@ -327,6 +337,7 @@ export function EventsAnalytics({ version, onOpen }: { version: number; onOpen: 
             />
             <StatTile
               label="ناس حضورها اتسجل"
+              accent="blue"
               value={current.attended}
               hint={previousDaysHint(current.attended, previous.attended)}
               explanation="عدد الأشخاص اللي حالة تسجيلهم في أودو بقت تم."
@@ -334,6 +345,7 @@ export function EventsAnalytics({ version, onOpen }: { version: number; onOpen: 
             />
             <StatTile
               label="حجوزات اتلغت"
+              accent="coral"
               value={current.cancelled}
               hint={previousDaysHint(current.cancelled, previous.cancelled)}
               explanation="عدد تسجيلات الأشخاص اللي حالتها إلغاء في أودو."
@@ -343,7 +355,7 @@ export function EventsAnalytics({ version, onOpen }: { version: number; onOpen: 
           </div>
 
           <div className="grid gap-3 lg:grid-cols-2">
-            <ChartCard title="أكتر إيفينتات عليها حجز" hint="مرتبة بالحجز المؤكد الأول، وبعده اللي لسه مش مؤكد">
+            <ChartCard accent="green" title="أكتر إيفينتات عليها حجز" hint="مرتبة بالحجز المؤكد الأول، وبعده اللي لسه مش مؤكد">
               <DemandRanking
                 rows={data.topDemand.map((event) => ({
                   id: event.id,
@@ -359,7 +371,7 @@ export function EventsAnalytics({ version, onOpen }: { version: number; onOpen: 
               />
             </ChartCard>
 
-            <ChartCard title="إيفينتات محتاجة متابعة" hint="اللي من غير حجز أو اهتمام بتظهر الأول">
+            <ChartCard accent="amber" title="إيفينتات محتاجة متابعة" hint="اللي من غير حجز أو اهتمام بتظهر الأول">
               <DemandRanking
                 rows={data.lowDemand.map((event) => ({
                   id: event.id,
@@ -375,7 +387,7 @@ export function EventsAnalytics({ version, onOpen }: { version: number; onOpen: 
               />
             </ChartCard>
 
-            <ChartCard title="الحجوزات شهر بشهر" hint="كل إيفينت بيتحسب في الشهر اللي بدأ فيه">
+            <ChartCard accent="blue" title="الحجوزات شهر بشهر" hint="كل إيفينت بيتحسب في الشهر اللي بدأ فيه">
               <DemandRanking
                 rows={data.trend.map((point, index) => ({
                   id: index,
@@ -390,15 +402,15 @@ export function EventsAnalytics({ version, onOpen }: { version: number; onOpen: 
               />
             </ChartCard>
 
-            <ChartCard title="أفراد وشركات وخاص" hint="أنواع الإيفينتات الحضورية داخل الفترة">
+            <ChartCard accent="violet" title="أفراد وشركات وخاص" hint="أنواع الإيفينتات الحضورية داخل الفترة">
               <BarList data={data.byKind} />
             </ChartCard>
 
-            <ChartCard title="الإيفينتات وصلت لفين؟" hint="مرحلة كل إيفينت في أودو">
+            <ChartCard accent="slate" title="الإيفينتات وصلت لفين؟" hint="مرحلة كل إيفينت في أودو">
               <BarList data={data.byStage.map((row) => ({ ...row, label: stageLabel(row.label) }))} />
             </ChartCard>
 
-            <ChartCard title="كل مدرّب عنده كام إيفينت؟" hint="عدد الإيفينتات اللي بدأت في الأيام دي">
+            <ChartCard accent="blue" title="كل مدرّب عنده كام إيفينت؟" hint="عدد الإيفينتات اللي بدأت في الأيام دي">
               <BarList data={data.byInstructor} />
             </ChartCard>
           </div>
@@ -417,7 +429,7 @@ function EventRevenueBreakdown({
 }) {
   if (products.length === 0) {
     return (
-      <p className="rounded-xl bg-white px-3 py-6 text-center text-[12px] text-ink-muted">
+      <p className="rounded-xl bg-white px-3 py-6 text-center text-[12px] text-slate-600">
         مفيش منتج حضور واضح دخل له فلوس في الأيام دي.
       </p>
     );
@@ -427,18 +439,18 @@ function EventRevenueBreakdown({
     <div>
       <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
         <div>
-          <h3 className="text-[14px] font-black text-ink">التحصيل حسب منتج الحضور</h3>
-          <p className="text-[10.5px] text-ink-faint">اسم الكورس بالإنجليزي زي ما هو مكتوب في الفاتورة</p>
+          <h3 className="text-[14px] font-black text-slate-900">التحصيل حسب منتج الحضور</h3>
+          <p className="text-[10.5px] text-slate-500">اسم الكورس بالإنجليزي زي ما هو مكتوب في الفاتورة</p>
         </div>
-        <span className="chip bg-white text-ink-muted">المصدر: Paid Invoices</span>
+        <span className="chip bg-white text-slate-600">المصدر: Paid Invoices</span>
       </div>
       <ol className="grid gap-2 md:grid-cols-2">
         {products.map((product, index) => (
           <li
             key={product.key}
-            className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 rounded-xl border border-surface-line bg-white px-3 py-2.5"
+            className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-3 py-2.5"
           >
-            <span className="grid h-7 w-7 place-items-center rounded-lg bg-surface-sunken text-[11px] font-black text-ink-muted">
+            <span className="grid h-7 w-7 place-items-center rounded-lg bg-slate-100 text-[11px] font-black text-slate-600">
               {index + 1}
             </span>
             <div className="min-w-0">
@@ -446,19 +458,19 @@ function EventRevenueBreakdown({
                 href={sourceUrl}
                 target="_blank"
                 rel="noreferrer noopener"
-                className="text-[12.5px] font-bold leading-relaxed text-brand-700 hover:underline"
+                className="text-[12.5px] font-bold leading-relaxed text-blue-700 hover:underline"
                 title="راجع المنتج في Insights Hub"
               >
                 <bdi dir="auto">{friendlyEventProduct(product.name)}</bdi>
               </a>
-              <p className="text-[10.5px] text-ink-faint">
+              <p className="text-[10.5px] text-slate-500">
                 {product.invoices.toLocaleString('en-US')} فاتورة فيها المنتج
                 {product.events.length > 0
                   ? ` · مربوط بـ ${product.events.length.toLocaleString('en-US')} إيفينت`
                   : ' · سطر الفاتورة مش مربوط بإيفينت'}
               </p>
             </div>
-            <strong className="whitespace-nowrap text-[12.5px] font-black tabular-nums text-ink">
+            <strong className="whitespace-nowrap text-[12.5px] font-black tabular-nums text-slate-900">
               {formatUsd(product.amount)}
             </strong>
           </li>

@@ -39,6 +39,20 @@ const westernNumber = (value: number) => value.toLocaleString('en-US');
 /* ── stat tiles ──────────────────────────────────────────────────── */
 
 /**
+ * Optional semantic tints for screens that want each number in its own colour
+ * (the Events dashboard). Without `accent` a tile renders exactly as before.
+ */
+export type ChartAccent = 'blue' | 'green' | 'amber' | 'violet' | 'coral' | 'slate';
+const ACCENT: Record<ChartAccent, { tile: string; icon: string; mark: string }> = {
+  blue: { tile: 'border-blue-200 from-blue-50', icon: 'from-blue-500 to-blue-600 shadow-blue-500/30', mark: 'bg-blue-500' },
+  green: { tile: 'border-emerald-200 from-emerald-50', icon: 'from-emerald-500 to-emerald-600 shadow-emerald-500/30', mark: 'bg-emerald-500' },
+  amber: { tile: 'border-amber-200 from-amber-50', icon: 'from-amber-400 to-amber-500 shadow-amber-500/30', mark: 'bg-amber-500' },
+  violet: { tile: 'border-violet-200 from-violet-50', icon: 'from-violet-500 to-violet-600 shadow-violet-500/30', mark: 'bg-violet-500' },
+  coral: { tile: 'border-rose-200 from-rose-50', icon: 'from-rose-500 to-rose-600 shadow-rose-500/30', mark: 'bg-rose-500' },
+  slate: { tile: 'border-slate-200 from-slate-50', icon: 'from-slate-600 to-slate-700 shadow-slate-500/30', mark: 'bg-slate-500' },
+};
+
+/**
  * A headline number. Deliberately not a one-bar chart: a single current value
  * has no shape to compare, so the number itself is the visualisation.
  */
@@ -49,6 +63,7 @@ export function StatTile({
   explanation,
   icon,
   tone = 'plain',
+  accent,
 }: {
   label: string;
   value: string | number;
@@ -57,16 +72,25 @@ export function StatTile({
   explanation?: string;
   icon?: ReactNode;
   tone?: 'plain' | 'good' | 'warn';
+  accent?: ChartAccent;
 }) {
+  const a = accent ? ACCENT[accent] : null;
   return (
-    <div className="card flex items-start gap-3 p-4">
+    <div
+      className={
+        a
+          ? cx('flex items-start gap-3 rounded-2xl border bg-gradient-to-br via-white to-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_10px_28px_-16px_rgba(15,23,42,0.2)]', a.tile)
+          : 'card flex items-start gap-3 p-4'
+      }
+    >
       {icon && (
         <span
           className={cx(
-            'grid h-9 w-9 shrink-0 place-items-center rounded-xl',
-            tone === 'good' && 'bg-status-okBg text-status-ok',
-            tone === 'warn' && 'bg-status-warnBg text-accent-600',
-            tone === 'plain' && 'bg-brand-50 text-brand-600'
+            'grid shrink-0 place-items-center rounded-xl',
+            a ? cx('h-10 w-10 bg-gradient-to-br text-white shadow-lg', a.icon) : 'h-9 w-9',
+            !a && tone === 'good' && 'bg-status-okBg text-status-ok',
+            !a && tone === 'warn' && 'bg-status-warnBg text-accent-600',
+            !a && tone === 'plain' && 'bg-brand-50 text-brand-600'
           )}
         >
           {icon}
@@ -94,7 +118,7 @@ export function StatTile({
             </details>
           )}
         </div>
-        <p className="mt-0.5 text-[24px] font-extrabold leading-none tabular-nums text-ink">
+        <p className={cx('mt-0.5 font-extrabold leading-none tabular-nums', a ? 'text-[26px] font-black text-slate-900' : 'text-[24px] text-ink')}>
           {typeof value === 'number' ? westernNumber(value) : value}
         </p>
         {hint && <p className="mt-1 truncate text-[11.5px] text-ink-faint">{hint}</p>}
@@ -262,15 +286,25 @@ export function ChartCard({
   title,
   hint,
   children,
+  accent,
 }: {
   title: string;
   hint?: string;
   children: ReactNode;
+  accent?: ChartAccent;
 }) {
+  const a = accent ? ACCENT[accent] : null;
   return (
-    <section className="card p-4">
-      <h3 className="text-[13.5px] font-bold text-ink">{title}</h3>
-      {hint && <p className="mb-3 mt-0.5 text-[11.5px] text-ink-faint">{hint}</p>}
+    <section
+      className={
+        a ? 'rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_12px_32px_-18px_rgba(15,23,42,0.22)]' : 'card p-4'
+      }
+    >
+      <h3 className={cx('flex items-center gap-2 font-bold', a ? 'text-[14.5px] font-extrabold text-slate-900' : 'text-[13.5px] text-ink')}>
+        {a && <span aria-hidden className={cx('h-4 w-1.5 rounded-full', a.mark)} />}
+        {title}
+      </h3>
+      {hint && <p className={cx('mb-3 mt-0.5 text-[11.5px]', a ? 'font-medium text-slate-500' : 'text-ink-faint')}>{hint}</p>}
       <div className={cx(!hint && 'mt-3')}>{children}</div>
     </section>
   );

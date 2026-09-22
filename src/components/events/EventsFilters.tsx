@@ -28,6 +28,7 @@ import {
   type ScheduleMeta,
 } from '../../lib/eventsSchedule';
 import { cx } from '../../lib/utils';
+import { TONE, type Tone } from './tones';
 
 export type ScheduleFilters = typeof EMPTY_FILTERS;
 
@@ -59,11 +60,11 @@ export function DepartmentChips({
             aria-selected={active}
             onClick={() => onChange(preset.key)}
             className={cx(
-              'inline-flex h-9 shrink-0 items-center gap-2 rounded-full border px-4 text-[13px] font-semibold transition-colors',
-              'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-400',
+              'inline-flex h-10 shrink-0 items-center gap-2 rounded-full border px-4 text-[13.5px] font-bold transition-all duration-200',
+              'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500',
               active
-                ? 'border-brand-500 bg-brand-500 text-white shadow-sm'
-                : 'border-surface-line bg-white text-ink hover:border-brand-200 hover:bg-brand-50/40'
+                ? '-translate-y-px border-blue-600 bg-gradient-to-b from-blue-500 to-blue-600 text-white shadow-[0_8px_20px_-8px_rgba(37,99,235,0.7)]'
+                : 'border-slate-200 bg-white text-slate-700 shadow-sm hover:border-blue-300 hover:text-slate-900'
             )}
           >
             {preset.label}
@@ -71,7 +72,7 @@ export function DepartmentChips({
               <span
                 className={cx(
                   'min-w-[1.25rem] rounded-full px-1.5 text-center text-[11px] font-bold tabular-nums',
-                  active ? 'bg-white/20 text-white' : 'bg-surface-sunken text-ink-muted'
+                  active ? 'bg-white/25 text-white' : 'bg-slate-100 text-slate-600'
                 )}
               >
                 {count}
@@ -90,10 +91,10 @@ export function SearchField({ value, onChange }: { value: string; onChange: (val
   const label = 'دوّر بالكورس، المدرّب، أو الكود…';
   return (
     <div className="relative w-full min-w-0 lg:w-auto lg:flex-1 lg:min-w-[260px]">
-      <Search size={16} className="pointer-events-none absolute start-3.5 top-1/2 -translate-y-1/2 text-ink-faint" />
+      <Search size={17} className="pointer-events-none absolute start-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
       <input
         type="search"
-        className="h-10 w-full rounded-xl border border-surface-line bg-white pe-3 ps-10 text-[13.5px] text-ink placeholder:text-ink-faint focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-100"
+        className="h-11 w-full rounded-xl border border-slate-200 bg-white pe-3 ps-10 text-[14px] font-medium text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-blue-400 focus:outline-none focus:ring-4 focus:ring-blue-100"
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={label}
@@ -124,9 +125,9 @@ function PillSelect({
         onChange={(event) => onChange(event.target.value)}
         disabled={options.length === 0}
         className={cx(
-          'h-10 max-w-[14rem] cursor-pointer appearance-none truncate rounded-xl border bg-white pe-8 ps-3.5 text-[13px] font-semibold transition-colors',
-          'focus:outline-none focus:ring-2 focus:ring-brand-100 disabled:cursor-not-allowed disabled:opacity-50',
-          active ? 'border-brand-300 bg-brand-50/60 text-brand-700' : 'border-surface-line text-ink hover:border-brand-200'
+          'h-11 max-w-[14rem] cursor-pointer appearance-none truncate rounded-xl border pe-8 ps-3.5 text-[13.5px] font-bold shadow-sm transition-colors',
+          'focus:outline-none focus:ring-4 focus:ring-blue-100 disabled:cursor-not-allowed disabled:opacity-50',
+          active ? 'border-blue-400 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-700 hover:border-blue-300'
         )}
       >
         <option value="">{label}</option>
@@ -136,7 +137,7 @@ function PillSelect({
           </option>
         ))}
       </select>
-      <svg aria-hidden viewBox="0 0 12 12" className="pointer-events-none absolute end-3 top-1/2 h-3 w-3 -translate-y-1/2 text-ink-faint">
+      <svg aria-hidden viewBox="0 0 12 12" className="pointer-events-none absolute end-3 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-500">
         <path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     </label>
@@ -201,9 +202,9 @@ export function RangePicker({
     <div className="flex flex-wrap items-center gap-2">
       <label className="relative shrink-0">
         <span className="sr-only">الفترة</span>
-        <CalendarRange size={15} className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-ink-faint" />
+        <CalendarRange size={16} className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-blue-500" />
         <select
-          className="h-10 cursor-pointer appearance-none rounded-xl border border-surface-line bg-white pe-3.5 ps-9 text-[13px] font-semibold text-ink hover:border-brand-200 focus:outline-none focus:ring-2 focus:ring-brand-100"
+          className="h-11 cursor-pointer appearance-none rounded-xl border border-slate-200 bg-white pe-3.5 ps-9 text-[13.5px] font-bold text-slate-700 shadow-sm hover:border-blue-300 focus:outline-none focus:ring-4 focus:ring-blue-100"
           value={preset}
           onChange={(event) => {
             const next = event.target.value as RangePreset;
@@ -225,13 +226,13 @@ export function RangePicker({
             if (!invalid && !tooLong) onChange('custom', draft);
           }}
         >
-          <input type="date" aria-label="من" className="field !h-10 !w-auto !py-1.5 text-[12.5px]" value={draft.from} onChange={(e) => setDraft({ ...draft, from: e.target.value })} />
-          <span className="text-ink-faint">←</span>
-          <input type="date" aria-label="إلى" className="field !h-10 !w-auto !py-1.5 text-[12.5px]" value={draft.to} onChange={(e) => setDraft({ ...draft, to: e.target.value })} />
+          <input type="date" aria-label="من" className="field !h-11 !w-auto !py-1.5 text-[12.5px]" value={draft.from} onChange={(e) => setDraft({ ...draft, from: e.target.value })} />
+          <span className="text-slate-500">←</span>
+          <input type="date" aria-label="إلى" className="field !h-11 !w-auto !py-1.5 text-[12.5px]" value={draft.to} onChange={(e) => setDraft({ ...draft, to: e.target.value })} />
           <button type="submit" className="btn-navy btn-sm" disabled={invalid || tooLong || loading}>
             عرض
           </button>
-          {tooLong && <span className="text-[11.5px] font-semibold text-status-bad">أقصى مدة {SCHEDULE_MAX_DAYS} يوم</span>}
+          {tooLong && <span className="text-[11.5px] font-semibold text-rose-700">أقصى مدة {SCHEDULE_MAX_DAYS} يوم</span>}
         </form>
       )}
     </div>
@@ -253,7 +254,7 @@ export function popoverFilterCount(filters: ScheduleFilters, primaryQuick: Set<s
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="grid gap-1.5">
-      <span className="text-[11.5px] font-bold text-ink-muted">{label}</span>
+      <span className="text-[11.5px] font-bold text-slate-600">{label}</span>
       {children}
     </div>
   );
@@ -325,20 +326,20 @@ export function FiltersPopover({
         aria-expanded={open}
         aria-haspopup="dialog"
         className={cx(
-          'inline-flex h-10 items-center gap-2 rounded-xl border px-3.5 text-[13px] font-semibold transition-colors',
-          open || count > 0 ? 'border-brand-300 bg-brand-50/60 text-brand-700' : 'border-surface-line bg-white text-ink hover:border-brand-200'
+          'inline-flex h-11 items-center gap-2 rounded-xl border px-4 text-[13.5px] font-bold shadow-sm transition-colors',
+          open || count > 0 ? 'border-blue-400 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-700 hover:border-blue-300'
         )}
       >
         <SlidersHorizontal size={15} />
         فلاتر
-        {count > 0 && <span className="rounded-full bg-brand-500 px-1.5 text-[11px] font-bold tabular-nums text-white">{count}</span>}
+        {count > 0 && <span className="grid h-5 min-w-[1.25rem] place-items-center rounded-full bg-blue-600 px-1.5 text-[11px] font-bold tabular-nums text-white">{count}</span>}
       </button>
 
       {open && (
         <div
           role="dialog"
           aria-label="فلاتر إضافية"
-          className="absolute end-0 top-full z-40 mt-2 w-[min(92vw,26rem)] rounded-2xl border border-surface-line bg-white p-4 shadow-lift animate-pop-in"
+          className="absolute end-0 top-full z-40 mt-2 w-[min(92vw,26rem)] rounded-2xl border border-slate-200 bg-white p-4 shadow-lift animate-pop-in"
         >
           <div className="grid gap-3.5">
             <div className="grid grid-cols-2 gap-3">
@@ -372,7 +373,7 @@ export function FiltersPopover({
                       onClick={() => set('workDays', toggle(filters.workDays, day))}
                       className={cx(
                         'rounded-lg border px-2.5 py-1 text-[12px] font-semibold',
-                        on ? 'border-brand-500 bg-brand-500 text-white' : 'border-surface-line bg-white text-ink-muted hover:text-ink'
+                        on ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-200 bg-white text-slate-600 hover:text-slate-900'
                       )}
                     >
                       {WEEKDAY_AR[day]}
@@ -395,7 +396,7 @@ export function FiltersPopover({
                         onClick={() => set('quick', on ? '' : alert.key)}
                         className={cx(
                           'rounded-full border px-2.5 py-1 text-[12px] font-semibold',
-                          on ? 'border-brand-300 bg-brand-50 text-brand-700' : 'border-surface-line bg-white text-ink-muted hover:text-ink'
+                          on ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600 hover:text-slate-900'
                         )}
                       >
                         {alert.label}
@@ -407,7 +408,7 @@ export function FiltersPopover({
             )}
 
             {!archive && (
-              <label className="flex cursor-pointer items-center gap-2 text-[12.5px] font-semibold text-ink-muted">
+              <label className="flex cursor-pointer items-center gap-2 text-[12.5px] font-semibold text-slate-600">
                 <input
                   type="checkbox"
                   className="h-4 w-4 accent-[#1D6FB8]"
@@ -419,10 +420,10 @@ export function FiltersPopover({
             )}
           </div>
 
-          <div className="mt-4 flex items-center justify-between border-t border-surface-line pt-3">
+          <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-3">
             <button
               type="button"
-              className="text-[12.5px] font-semibold text-ink-muted hover:text-ink"
+              className="text-[12.5px] font-semibold text-slate-600 hover:text-slate-900"
               onClick={() =>
                 onChange({ ...filters, delivery: '', coordinator: '', group: '', workDays: [], showClosed: Boolean(archive), quick: primary.has(filters.quick) ? filters.quick : '' })
               }
@@ -441,6 +442,16 @@ export function FiltersPopover({
 
 /* ── smart filters + view ────────────────────────────────────────── */
 
+/** The colour each smart filter is keyed with — the same meaning it has everywhere else. */
+const QUICK_TONE: Record<string, Tone> = {
+  running: 'green',
+  startsThisWeek: 'blue',
+  today: 'violet',
+  noRegistrations: 'amber',
+  nearCapacity: 'coral',
+  missingInstructor: 'amber',
+};
+
 export function SmartFilters({
   value,
   onChange,
@@ -456,6 +467,7 @@ export function SmartFilters({
         .filter((filter) => filter.primary)
         .map((filter) => {
           const on = value === filter.key;
+          const tone = TONE[QUICK_TONE[filter.key] ?? 'slate'];
           return (
             <button
               key={filter.key}
@@ -463,10 +475,11 @@ export function SmartFilters({
               aria-pressed={on}
               onClick={() => onChange(on ? '' : filter.key)}
               className={cx(
-                'inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[12.5px] font-medium transition-colors',
-                on ? 'border-brand-300 bg-brand-50 text-brand-700' : 'border-surface-line bg-white/70 text-ink-muted hover:border-brand-200 hover:text-ink'
+                'inline-flex h-9 shrink-0 items-center gap-2 rounded-full border px-3.5 text-[13px] font-bold transition-colors',
+                on ? cx(tone.soft, tone.border, tone.text, 'shadow-sm') : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900'
               )}
             >
+              <span aria-hidden className={cx('h-2 w-2 rounded-full', tone.dot)} />
               {filter.label}
               {on && <X size={12} aria-hidden />}
             </button>
@@ -480,7 +493,7 @@ type ViewMode = keyof typeof VIEW_LABELS;
 
 export function ViewSwitch({ value, onChange }: { value: string; onChange: (view: string) => void }) {
   return (
-    <div role="radiogroup" aria-label="طريقة العرض" className="flex h-10 shrink-0 rounded-xl border border-surface-line bg-white p-1">
+    <div role="radiogroup" aria-label="طريقة العرض" className="flex h-11 shrink-0 rounded-xl border border-slate-200 bg-slate-100/80 p-1">
       {(VIEW_MODES as readonly ViewMode[]).map((mode) => {
         const on = mode === value;
         const Icon = mode === 'cards' ? LayoutGrid : Rows3;
@@ -493,8 +506,8 @@ export function ViewSwitch({ value, onChange }: { value: string; onChange: (view
             title={VIEW_LABELS[mode]}
             onClick={() => onChange(mode)}
             className={cx(
-              'inline-flex items-center gap-1.5 rounded-lg px-3 text-[12.5px] font-semibold transition-colors',
-              on ? 'bg-brand-500 text-white shadow-sm' : 'text-ink-muted hover:text-ink'
+              'inline-flex items-center gap-1.5 rounded-lg px-3.5 text-[13px] font-bold transition-all',
+              on ? 'bg-white text-blue-700 shadow-[0_2px_8px_rgba(15,23,42,0.12)]' : 'text-slate-500 hover:text-slate-800'
             )}
           >
             <Icon size={14} />

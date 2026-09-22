@@ -278,6 +278,20 @@ The workbook defined the fields; the approved dashboard mock defined the page.
 Everything is Arabic and right-to-left; only what Odoo holds (course, package
 and people names, codes) stays in Latin.
 
+**Visual system.** The module has its own semantic palette, defined once in
+`src/components/events/tones.ts` from Tailwind's palettes (no bespoke hexes):
+blue = action and planned, green = running and healthy, amber = attention and
+on hold, violet = upcoming and secondary highlight, coral = alert, cancelled,
+full, slate = finished and neutral. Departments get identity tints used only
+on their chip. Colour is never the only carrier: every status also has a dot
+or icon and a word. Depth comes in layers — a cool backdrop with soft colour,
+frosted glass panels (`GLASS`) for the toolbar, the Today summary and empty
+states, solid cards with a status stripe, and two dark navy anchors (the page
+header and the details-panel header) so the page is never pale from top to
+bottom. Text is slate-900 / 600 / 500; nothing readable uses a lighter grey.
+The shared `StatTile` and `ChartCard` take an optional `accent`; eLearning
+and Profile pass none and render exactly as before.
+
 **Header** — title, the Odoo freshness badge (or the last good sync when Odoo is
 down), the sync button, and the module's four sections as one underline row:
 الكورسات (the dashboard, default) · النهاردة · التحليل · الأرشيف.

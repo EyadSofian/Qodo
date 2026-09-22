@@ -2,7 +2,7 @@
  * Small pieces a course card and the details panel both use.
  */
 
-import { CalendarDays, Clock } from 'lucide-react';
+import { AlertTriangle, CalendarDays, Clock } from 'lucide-react';
 import { ksaDay } from '@shared/eventsSchedule';
 import {
   hhmmLabel,
@@ -14,29 +14,29 @@ import {
   type TrainingSession,
 } from '../../lib/eventsSchedule';
 import { cx } from '../../lib/utils';
+import { TONE, capacityTone } from './tones';
 
 /**
- * "24 / 50 متدرب" over a thin bar. Unknown capacity says "24 متدرب" and draws
- * nothing: a bar against an invented denominator is a lie with a shape.
+ * "24 / 50 متدرب" over a thin bar coloured by how full the course is.
+ * Unknown capacity says "24 متدرب" and draws nothing: a bar against an
+ * invented denominator is a lie with a shape.
  */
 export function CapacityProgress({ count, capacity, className }: { count: number; capacity: number | null; className?: string }) {
   const ratio = capacity ? Math.min(1, count / capacity) : null;
+  const tone = TONE[capacityTone(count, capacity)];
   return (
     <div className={cx('min-w-0', className)}>
-      <p className="whitespace-nowrap text-[13px] text-ink-muted">
-        <span className="font-bold tabular-nums text-ink">{count.toLocaleString('en-US')}</span>
-        {capacity ? <span className="tabular-nums"> / {capacity.toLocaleString('en-US')}</span> : null}
+      <p className="whitespace-nowrap text-[13px] text-slate-600">
+        <span className="text-[15px] font-extrabold tabular-nums text-slate-900">{count.toLocaleString('en-US')}</span>
+        {capacity ? <span className="font-semibold tabular-nums text-slate-500"> / {capacity.toLocaleString('en-US')}</span> : null}
         <span> متدرب</span>
       </p>
       {ratio !== null && (
         <div className="mt-1.5 flex items-center gap-2">
-          <span className="h-1 flex-1 overflow-hidden rounded-full bg-surface-sunken" aria-hidden>
-            <span
-              className={cx('block h-full rounded-full', ratio >= 0.8 ? 'bg-accent-500' : 'bg-brand-500')}
-              style={{ width: `${Math.max(3, ratio * 100)}%` }}
-            />
+          <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100" aria-hidden>
+            <span className={cx('block h-full rounded-full', tone.dot)} style={{ width: `${Math.max(4, ratio * 100)}%` }} />
           </span>
-          <span className="text-[11px] font-semibold tabular-nums text-ink-faint">{Math.round(ratio * 100)}%</span>
+          <span className={cx('text-[11.5px] font-bold tabular-nums', tone.text)}>{Math.round(ratio * 100)}%</span>
         </div>
       )}
     </div>
@@ -69,22 +69,28 @@ export function whenLabel(startsAt: string, now: Date) {
   return ksaDay(startsAt) === ksaDay(now.toISOString()) ? 'النهاردة' : ksaDayLabel(startsAt);
 }
 
-/** The tinted "المحاضرة الجاية" box. */
+/**
+ * The tinted "المحاضرة الجاية" box — its colour says which situation it is:
+ * green today, violet coming up, amber when Odoo has no lectures to show.
+ */
 export function NextSessionBox({ row, now }: { row: TrainingScheduleRow; now: Date }) {
   const pick = currentOrNext(row.sessions, now);
   const total = plannedTotal(row);
 
   if (!pick) {
-    const text =
-      row.sessionsTotal === 0
-        ? row.lectureCount
-          ? `${row.lectureCount} محاضرة مخطّطة ولسه مش متولّدة في أودو`
-          : 'لسه مفيش محاضرات في أودو'
-        : 'مفيش محاضرات جاية';
+    const missing = row.sessionsTotal === 0;
+    const text = missing
+      ? row.lectureCount
+        ? `${row.lectureCount} محاضرة مخطّطة ولسه مش متولّدة في أودو`
+        : 'لسه مفيش محاضرات في أودو'
+      : 'كل المحاضرات خلصت';
     return (
-      <div className="rounded-xl bg-surface-bg px-3.5 py-3">
-        <p className="text-[11.5px] font-semibold text-ink-faint">المحاضرة الجاية</p>
-        <p className="mt-1 text-[13px] text-ink-muted">{text}</p>
+      <div className={cx('rounded-xl border px-3.5 py-3', missing ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-slate-50')}>
+        <p className={cx('text-[11.5px] font-bold', missing ? 'text-amber-800' : 'text-slate-500')}>المحاضرة الجاية</p>
+        <p className={cx('mt-1 flex items-center gap-1.5 text-[13px] font-semibold', missing ? 'text-amber-900' : 'text-slate-600')}>
+          {missing && <AlertTriangle size={14} className="shrink-0" />}
+          {text}
+        </p>
       </div>
     );
   }
@@ -92,14 +98,22 @@ export function NextSessionBox({ row, now }: { row: TrainingScheduleRow; now: Da
   const { session, live } = pick;
   const today = ksaDay(session.startsAt) === ksaDay(now.toISOString());
   return (
-    <div className={cx('rounded-xl px-3.5 py-3', today ? 'bg-brand-50' : 'bg-surface-bg')}>
-      <p className="text-[11.5px] font-semibold text-ink-faint">{live ? 'شغّالة دلوقتي' : 'المحاضرة الجاية'}</p>
-      <p className={cx('mt-1 flex items-center gap-2 text-[14px] font-bold', today ? 'text-brand-700' : 'text-ink')}>
-        <span aria-hidden className={cx('h-2 w-2 shrink-0 rounded-full', today ? 'bg-brand-500' : 'bg-ink-faint')} />
+    <div
+      className={cx(
+        'rounded-xl border px-3.5 py-3',
+        today ? 'border-emerald-200 bg-gradient-to-l from-emerald-50 to-blue-50' : 'border-violet-200 bg-gradient-to-l from-violet-50 to-white'
+      )}
+    >
+      <p className={cx('text-[11.5px] font-bold', today ? 'text-emerald-700' : 'text-violet-700')}>{live ? 'شغّالة دلوقتي' : 'المحاضرة الجاية'}</p>
+      <p className="mt-1 flex items-center gap-2 text-[14.5px] font-extrabold text-slate-900">
+        <span aria-hidden className="relative grid h-2.5 w-2.5 place-items-center">
+          {live && <span className="absolute h-2.5 w-2.5 animate-ping rounded-full bg-emerald-400 opacity-70" />}
+          <span className={cx('relative h-2.5 w-2.5 rounded-full', today ? 'bg-emerald-500' : 'bg-violet-500')} />
+        </span>
         {whenLabel(session.startsAt!, now)}، <span className="tabular-nums">{ksaTime(session.startsAt)}</span>
       </p>
-      <p className="mt-0.5 text-[12.5px] text-ink-muted">
-        محاضرة <span className="tabular-nums">{session.number}</span> من <span className="tabular-nums">{total}</span>
+      <p className="mt-0.5 text-[12.5px] font-medium text-slate-600">
+        محاضرة <span className="font-bold tabular-nums text-slate-800">{session.number}</span> من <span className="tabular-nums">{total}</span>
       </p>
     </div>
   );
@@ -108,30 +122,30 @@ export function NextSessionBox({ row, now }: { row: TrainingScheduleRow; now: Da
 /** "15 أغسطس 2026 ← 12 سبتمبر 2026", each date isolated so RTL never scrambles it. */
 export function DateSpan({ row, withIcon = true }: { row: Pick<TrainingScheduleRow, 'startsAt' | 'endsAt'>; withIcon?: boolean }) {
   return (
-    <p className="flex min-w-0 items-center gap-2 text-[13px] text-ink">
-      {withIcon && <CalendarDays size={15} className="shrink-0 text-ink-faint" />}
+    <p className="flex min-w-0 items-center gap-2 text-[13px] font-medium text-slate-800">
+      {withIcon && <CalendarDays size={15} className="shrink-0 text-blue-500" />}
       {row.startsAt || row.endsAt ? (
         <span className="min-w-0 truncate">
           <bdi>{row.startsAt ? ksaDate(row.startsAt) : '—'}</bdi>
-          <span className="mx-1.5 text-ink-faint">←</span>
+          <span className="mx-1.5 text-slate-400">←</span>
           <bdi>{row.endsAt ? ksaDate(row.endsAt) : '—'}</bdi>
         </span>
       ) : (
-        <span className="text-ink-faint">مفيش تواريخ في أودو</span>
+        <span className="text-slate-500">مفيش تواريخ في أودو</span>
       )}
     </p>
   );
 }
 
-/** "سبت • اتنين • أربع   7:00 م – 10:00 م السعودية". */
+/** "سبت • اتنين • أربع   7:00 م – 10:00 م بتوقيت السعودية". */
 export function DaysAndTime({ row, withIcon = true }: { row: Pick<TrainingScheduleRow, 'workDays' | 'startTimeKsa' | 'endTimeKsa'>; withIcon?: boolean }) {
   const days = row.workDays.map((day) => WEEKDAY_AR[day] ?? day).join(' • ');
   return (
-    <p className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-ink">
-      {withIcon && <Clock size={15} className="shrink-0 text-ink-faint" />}
-      <span className="min-w-0">{days || <span className="text-ink-faint">أيام الدراسة مش معروفة</span>}</span>
+    <p className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-[13px] font-medium text-slate-800">
+      {withIcon && <Clock size={15} className="shrink-0 text-violet-500" />}
+      <span className="min-w-0">{days || <span className="text-slate-500">أيام الدراسة مش معروفة</span>}</span>
       {row.startTimeKsa && (
-        <span className="whitespace-nowrap text-ink-muted">
+        <span className="whitespace-nowrap text-slate-600">
           <span className="tabular-nums">{hhmmLabel(row.startTimeKsa)}</span>
           {row.endTimeKsa ? (
             <>
@@ -139,7 +153,7 @@ export function DaysAndTime({ row, withIcon = true }: { row: Pick<TrainingSchedu
               <span className="tabular-nums">{hhmmLabel(row.endTimeKsa)}</span>
             </>
           ) : null}
-          <span className="ms-1 text-[11.5px] text-ink-faint">بتوقيت السعودية</span>
+          <span className="ms-1 text-[11.5px] font-semibold text-slate-500">بتوقيت السعودية</span>
         </span>
       )}
     </p>

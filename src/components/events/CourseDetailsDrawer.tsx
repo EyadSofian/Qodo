@@ -77,61 +77,71 @@ function Panel({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <header className="shrink-0 px-5 pt-5">
-        <div className="flex items-start gap-3">
+      <header className="relative shrink-0 overflow-hidden bg-gradient-to-l from-navy via-blue-900 to-blue-700 px-5 pb-4 pt-5 text-white">
+        <span aria-hidden className="absolute -top-20 end-[-10%] h-48 w-48 rounded-full bg-violet-500/35 blur-3xl" />
+        <span aria-hidden className="absolute -bottom-24 start-[10%] h-44 w-44 rounded-full bg-sky-400/25 blur-3xl" />
+        <div className="relative flex items-start gap-3">
           <div className="min-w-0 flex-1">
-            <h2 id={titleId} className="flex min-w-0 text-[20px] font-extrabold leading-snug text-ink" title={course?.courseName}>
+            <h2 id={titleId} className="flex min-w-0 text-[21px] font-black leading-snug" title={course?.courseName}>
               <span dir="auto" className="min-w-0 truncate">
                 {course?.courseName ?? (error ? 'الكورس' : 'جارٍ التحميل…')}
               </span>
             </h2>
-            {course?.courseCode && (
-              <p className="mt-0.5 text-[13px] text-ink-muted">
-                كود <bdi className="font-mono font-semibold text-ink">{course.courseCode}</bdi>
+            {course && (
+              <p className="mt-1 flex min-w-0 text-[13px] text-blue-100/85">
+                <span dir="auto" className="min-w-0 truncate">
+                  {[course.courseCode ? `كود ${course.courseCode}` : null, course.package ?? course.section].filter(Boolean).join(' • ')}
+                </span>
               </p>
             )}
           </div>
-          <div className="flex shrink-0 items-center gap-2">
-            {course && <StatusChip status={course.statusCanonical} stage={course.status} size="md" />}
-            <button
-              type="button"
-              data-autofocus={autoFocusClose ? true : undefined}
-              onClick={onClose}
-              aria-label="اقفل التفاصيل"
-              className="grid h-9 w-9 place-items-center rounded-lg text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-400"
-            >
-              <X size={18} />
-            </button>
-          </div>
+          <button
+            type="button"
+            data-autofocus={autoFocusClose ? true : undefined}
+            onClick={onClose}
+            aria-label="اقفل التفاصيل"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-white/20 bg-white/10 text-white backdrop-blur transition-colors hover:bg-white/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
+          >
+            <X size={18} />
+          </button>
         </div>
-
-        <nav role="tablist" aria-label="أقسام تفاصيل الكورس" className="mt-4 flex gap-5 border-b border-surface-line">
-          {TABS.map((item) => {
-            const on = item.key === tab;
-            return (
-              <button
-                key={item.key}
-                type="button"
-                role="tab"
-                aria-selected={on}
-                disabled={!course}
-                onClick={() => setTab(item.key)}
-                className={cx(
-                  '-mb-px border-b-2 pb-2.5 text-[13px] font-semibold transition-colors disabled:opacity-40',
-                  on ? 'border-brand-500 text-brand-700' : 'border-transparent text-ink-muted hover:text-ink'
-                )}
-              >
-                {item.label}
-                {item.key === 'sessions' && course ? <span className="ms-1 tabular-nums text-ink-faint">({course.sessionsTotal})</span> : null}
-              </button>
-            );
-          })}
-        </nav>
+        {course && (
+          <div className="relative mt-3 flex flex-wrap items-center gap-2">
+            <StatusChip status={course.statusCanonical} stage={course.status} size="md" onDark />
+            {course.trainingType && (
+              <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-[12.5px] font-bold backdrop-blur">{course.trainingType}</span>
+            )}
+          </div>
+        )}
       </header>
 
-      <div ref={body} role="tabpanel" className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+      <nav role="tablist" aria-label="أقسام تفاصيل الكورس" className="flex shrink-0 gap-1 border-b border-slate-200 bg-white px-4">
+        {TABS.map((item) => {
+          const on = item.key === tab;
+          return (
+            <button
+              key={item.key}
+              type="button"
+              role="tab"
+              aria-selected={on}
+              disabled={!course}
+              onClick={() => setTab(item.key)}
+              className={cx(
+                'relative px-3 pb-3 pt-3.5 text-[13.5px] font-bold transition-colors disabled:opacity-40',
+                on ? 'text-blue-700' : 'text-slate-500 hover:text-slate-900'
+              )}
+            >
+              {item.label}
+              {item.key === 'sessions' && course ? <span className="ms-1 tabular-nums text-slate-400">({course.sessionsTotal})</span> : null}
+              {on && <span aria-hidden className="absolute inset-x-2 bottom-0 h-[3px] rounded-t-full bg-blue-600" />}
+            </button>
+          );
+        })}
+      </nav>
+
+      <div ref={body} role="tabpanel" className="min-h-0 flex-1 overflow-y-auto bg-gradient-to-b from-slate-50 to-white px-5 py-5">
         {error && (
-          <p className="flex items-center gap-2 rounded-xl bg-status-badBg px-3 py-2.5 text-[13px] font-semibold text-status-bad">
+          <p className="flex items-center gap-2 rounded-xl bg-rose-50 px-3 py-2.5 text-[13px] font-semibold text-rose-700">
             <AlertCircle size={16} />
             {error}
           </p>
@@ -148,13 +158,18 @@ function Panel({
       </div>
 
       {data && (
-        <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-surface-line px-5 py-3 pb-safe sm:pb-3">
-          <p className="min-w-0 text-[11.5px] leading-relaxed text-ink-faint">
+        <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-slate-200 bg-white/80 px-5 py-3 pb-safe backdrop-blur-xl sm:pb-3">
+          <p className="min-w-0 text-[11.5px] font-medium leading-relaxed text-slate-500">
             المصدر: أودو • آخر مزامنة {cairoTime(data.fetchedAt)}
-            {data.stale && <span className="font-semibold text-accent-700"> • آخر مزامنة ناجحة {agoLabel(data.fetchedAt)}</span>}
+            {data.stale && <span className="font-semibold text-amber-800"> • آخر مزامنة ناجحة {agoLabel(data.fetchedAt)}</span>}
           </p>
           {data.odooUrl && (
-            <a href={data.odooUrl} target="_blank" rel="noreferrer noopener" className="btn-navy btn-sm shrink-0 gap-1.5">
+            <a
+              href={data.odooUrl}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-xl bg-slate-900 px-4 text-[13px] font-bold text-white shadow-lg shadow-slate-900/20 hover:bg-slate-800"
+            >
               افتح في أودو
               <ExternalLink size={14} />
             </a>
@@ -210,7 +225,7 @@ export function DockedCourseDetails({ id, version, onClose }: { id: number | nul
           animate={{ opacity: 1, x: 0 }}
           exit={{ opacity: 0, x: 24 }}
           transition={{ duration: 0.2, ease: 'easeOut' }}
-          className="sticky top-20 h-[calc(100dvh-6rem)] w-[35%] min-w-[400px] max-w-[580px] shrink-0 overflow-hidden rounded-[16px] rtl:order-first border border-surface-line bg-white shadow-[0_8px_30px_rgba(11,37,69,0.08)]"
+          className="sticky top-20 h-[calc(100dvh-6rem)] w-[35%] min-w-[400px] max-w-[580px] shrink-0 overflow-hidden rounded-3xl rtl:order-first border border-slate-200/80 bg-white shadow-[0_2px_6px_rgba(15,23,42,0.06),0_30px_60px_-20px_rgba(15,23,42,0.35)]"
         >
           <Panel id={id} version={version} onClose={onClose} titleId={titleId} />
         </motion.aside>

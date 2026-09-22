@@ -21,27 +21,27 @@ const STATE_LABEL: Record<State, string> = {
   missing: 'من غير ميعاد',
 };
 
-function Mark({ state, size = 24 }: { state: State; size?: number }) {
+function Mark({ state, size = 24, inverted }: { state: State; size?: number; inverted?: boolean }) {
   return (
     <span
       aria-hidden
       style={{ width: size, height: size }}
       className={cx(
         'grid shrink-0 place-items-center rounded-full',
-        state === 'past' && 'bg-status-okBg text-status-ok',
-        state === 'today' && 'bg-brand-500 text-white',
-        state === 'upcoming' && 'bg-white text-ink-faint ring-[1.5px] ring-inset ring-surface-line',
-        state === 'missing' && 'bg-surface-sunken text-ink-faint'
+        state === 'past' && 'bg-emerald-500 text-white shadow-sm shadow-emerald-500/40',
+        state === 'today' && (inverted ? 'bg-white text-blue-700' : 'bg-blue-600 text-white ring-4 ring-blue-100'),
+        state === 'upcoming' && 'bg-white text-slate-400 ring-2 ring-inset ring-slate-300',
+        state === 'missing' && 'bg-amber-100 text-amber-700 ring-1 ring-inset ring-amber-300'
       )}
     >
       {state === 'past' ? (
-        <Check size={Math.round(size * 0.5)} strokeWidth={3} />
+        <Check size={Math.round(size * 0.55)} strokeWidth={3} />
       ) : state === 'today' ? (
-        <span className="h-2 w-2 rounded-full bg-white" />
+        <span className={cx('h-2.5 w-2.5 rounded-full', inverted ? 'bg-blue-600' : 'bg-white')} />
       ) : state === 'upcoming' ? (
-        <span className="h-1.5 w-1.5 rounded-full bg-ink-faint/60" />
+        <span className="h-1.5 w-1.5 rounded-full bg-slate-300" />
       ) : (
-        <span className="text-[11px]">—</span>
+        <span className="text-[12px] font-black">!</span>
       )}
     </span>
   );
@@ -73,8 +73,8 @@ export function SessionPreview({
   return (
     <div>
       <div className="mb-2.5 flex items-center justify-between">
-        <h4 className="text-[13px] font-bold text-ink">المحاضرات</h4>
-        <button type="button" onClick={onViewAll} className="text-[12.5px] font-semibold text-brand-600 hover:underline">
+        <h4 className="text-[14px] font-extrabold text-slate-900">المحاضرات</h4>
+        <button type="button" onClick={onViewAll} className="rounded-full bg-blue-50 px-3 py-1 text-[12.5px] font-bold text-blue-700 hover:bg-blue-100">
           اعرض الكل ({sessions.length})
         </button>
       </div>
@@ -85,16 +85,21 @@ export function SessionPreview({
             <li
               key={session.id}
               className={cx(
-                'flex min-w-0 flex-col items-center gap-1 rounded-xl border px-1 py-2.5 text-center',
-                state === 'today' ? 'border-brand-200 bg-brand-50' : 'border-surface-line bg-white'
+                'flex min-w-0 flex-col items-center gap-1 rounded-xl border px-1 py-3 text-center transition-transform',
+                state === 'today' && 'border-blue-600 bg-gradient-to-b from-blue-500 to-blue-700 text-white shadow-lg shadow-blue-600/30',
+                state === 'past' && 'border-emerald-200 bg-emerald-50/70',
+                state === 'upcoming' && 'border-slate-200 bg-white',
+                state === 'missing' && 'border-amber-300 bg-amber-50'
               )}
             >
-              <Mark state={state} size={22} />
-              <bdi className="mt-0.5 block font-mono text-[12px] font-bold text-ink">S{session.number}</bdi>
-              <span className="w-full truncate text-[11px] text-ink-muted">
-                {session.startsAt ? (state === 'today' ? 'النهاردة' : ksaShortDate(session.startsAt)) : '—'}
+              <Mark state={state} size={24} inverted={state === 'today'} />
+              <bdi className={cx('mt-0.5 block font-mono text-[12.5px] font-black', state === 'today' ? 'text-white' : 'text-slate-900')}>S{session.number}</bdi>
+              <span className={cx('w-full truncate text-[11px] font-semibold', state === 'today' ? 'text-blue-50' : 'text-slate-600')}>
+                {session.startsAt ? (state === 'today' ? 'النهاردة' : ksaShortDate(session.startsAt)) : 'من غير ميعاد'}
               </span>
-              <span className="w-full truncate text-[11px] tabular-nums text-ink-faint">{session.startsAt ? ksaTime(session.startsAt) : ''}</span>
+              <span className={cx('w-full truncate text-[11px] tabular-nums', state === 'today' ? 'text-blue-100' : 'text-slate-500')}>
+                {session.startsAt ? ksaTime(session.startsAt) : ''}
+              </span>
               <span className="sr-only">{STATE_LABEL[state]}</span>
             </li>
           );
@@ -117,23 +122,18 @@ export function SessionTimeline({
   emptyLabel: string;
 }) {
   if (sessions.length === 0) {
-    return <p className="rounded-xl bg-surface-bg px-4 py-4 text-[13px] text-ink-muted">{emptyLabel}</p>;
+    return <p className="rounded-xl bg-slate-50 px-4 py-4 text-[13px] text-slate-600">{emptyLabel}</p>;
   }
   const counts = sessionCounts(sessions, now);
 
   return (
     <div>
-      <p className="mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12.5px] text-ink-muted">
-        <span className="font-semibold text-ink">{counts.past} خلصت</span>
-        <span className="text-ink-faint">•</span>
-        <span className={counts.today ? 'font-semibold text-brand-600' : undefined}>{counts.today} النهاردة</span>
-        <span className="text-ink-faint">•</span>
-        <span>{counts.upcoming} جاية</span>
+      <p className="mb-4 flex flex-wrap items-center gap-2 text-[12.5px] font-bold">
+        <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-700 ring-1 ring-inset ring-emerald-200">{counts.past} خلصت</span>
+        <span className="rounded-full bg-blue-50 px-2.5 py-1 text-blue-700 ring-1 ring-inset ring-blue-200">{counts.today} النهاردة</span>
+        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-700 ring-1 ring-inset ring-slate-200">{counts.upcoming} جاية</span>
         {counts.missing > 0 && (
-          <>
-            <span className="text-ink-faint">•</span>
-            <span className="text-accent-700">{counts.missing} من غير ميعاد</span>
-          </>
+          <span className="rounded-full bg-amber-50 px-2.5 py-1 text-amber-800 ring-1 ring-inset ring-amber-300">{counts.missing} من غير ميعاد</span>
         )}
       </p>
 
@@ -143,16 +143,19 @@ export function SessionTimeline({
           const last = index === sessions.length - 1;
           return (
             <li key={session.id} className="relative flex gap-3.5 pb-3">
-              {!last && <span aria-hidden className="absolute start-[11px] top-7 h-[calc(100%-1.25rem)] w-px bg-surface-line" />}
+              {!last && <span aria-hidden className={cx('absolute start-[11px] top-7 h-[calc(100%-1.25rem)] w-0.5 rounded-full', state === 'past' ? 'bg-emerald-300' : 'bg-slate-200')} />}
               <Mark state={state} />
               <div
                 className={cx(
-                  'min-w-0 flex-1 rounded-xl px-3 py-2',
-                  state === 'today' ? 'bg-brand-50 ring-1 ring-inset ring-brand-100' : state === 'past' ? '' : 'bg-white'
+                  'min-w-0 flex-1 rounded-xl border px-3.5 py-2.5',
+                  state === 'today' && 'border-blue-300 bg-blue-50 shadow-sm',
+                  state === 'past' && 'border-transparent',
+                  state === 'upcoming' && 'border-slate-200 bg-white',
+                  state === 'missing' && 'border-amber-200 bg-amber-50'
                 )}
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className={cx('text-[13px] font-bold', state === 'past' ? 'text-ink-muted' : 'text-ink')}>
+                  <p className={cx('text-[13.5px] font-extrabold', state === 'past' ? 'text-slate-500' : 'text-slate-900')}>
                     <bdi className="font-mono">S{session.number}</bdi>
                     <span className="ms-2 font-semibold">
                       {session.startsAt ? (state === 'today' ? 'النهاردة' : ksaDate(session.startsAt)) : 'لسه من غير ميعاد'}
@@ -164,19 +167,19 @@ export function SessionTimeline({
                         href={session.joinUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 rounded-lg bg-brand-500 px-2.5 py-1 text-[12px] font-semibold text-white hover:bg-brand-600"
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-[12.5px] font-bold text-white shadow-md shadow-blue-600/30 hover:bg-blue-700"
                       >
                         <Video size={13} /> ادخل على زووم
                       </a>
                     ) : online ? (
-                      <span className="text-[11.5px] font-semibold text-accent-700">لينك الزووم لسه مااتعملش</span>
+                      <span className="text-[11.5px] font-semibold text-amber-800">لينك الزووم لسه مااتعملش</span>
                     ) : null)}
                 </div>
                 {session.startsAt && (
-                  <p className="mt-0.5 text-[12px] tabular-nums text-ink-muted">
+                  <p className="mt-0.5 text-[12px] tabular-nums text-slate-600">
                     {ksaTime(session.startsAt)}
                     {session.endsAt ? ` – ${ksaTime(session.endsAt)}` : ''}
-                    {session.durationHours ? <span className="text-ink-faint"> • {session.durationHours} ساعة</span> : null}
+                    {session.durationHours ? <span className="text-slate-500"> • {session.durationHours} ساعة</span> : null}
                   </p>
                 )}
                 <span className="sr-only">{STATE_LABEL[state]}</span>

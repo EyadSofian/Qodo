@@ -121,7 +121,16 @@ export function Events() {
   const docksHere = dockable && (section === 'schedule' || section === 'archive');
 
   return (
-    <div className="mx-auto w-full max-w-[1760px] px-4 py-6 sm:px-6 lg:px-8">
+    <div className="relative isolate mx-auto w-full max-w-[1760px] px-4 py-6 sm:px-6 lg:px-8">
+      {/* The page's own backdrop: a cool base with soft colour behind the KPI
+          and filter rows, so the glass surfaces have something to frost and
+          white cards never sit on white. */}
+      <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 overflow-hidden bg-gradient-to-b from-slate-200/80 via-slate-100 to-slate-100">
+        <span className="absolute top-[12%] start-[4%] h-[560px] w-[560px] rounded-full bg-blue-400/35 blur-[110px]" />
+        <span className="absolute top-[22%] end-[0%] h-[520px] w-[520px] rounded-full bg-violet-400/35 blur-[110px]" />
+        <span className="absolute top-[34%] start-[40%] h-[380px] w-[380px] rounded-full bg-emerald-300/30 blur-[100px]" />
+        <span className="absolute bottom-[-10%] end-[25%] h-[420px] w-[420px] rounded-full bg-amber-200/35 blur-[110px]" />
+      </div>
       <EventsHeader
         section={section}
         onSection={setSection}
@@ -138,7 +147,7 @@ export function Events() {
       {ready && section === 'schedule' && (
         <>
           {scheduleError && !schedule ? (
-            <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-status-bad/20 bg-status-badBg px-4 py-3.5 text-[13px] font-semibold text-status-bad">
+            <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3.5 text-[13px] font-semibold text-rose-700">
               <AlertCircle size={16} />
               {scheduleError}
               <button type="button" className="btn-ghost btn-sm ms-auto gap-1.5" onClick={loadSchedule}>
@@ -187,17 +196,17 @@ export function Events() {
 
 function ConnectionProblem({ missing, error }: { missing: string[]; error: string }) {
   return (
-    <div className="rounded-2xl border border-status-warn/30 bg-status-warnBg p-5">
-      <p className="flex items-center gap-2 text-[14px] font-bold text-accent-700">
+    <div className="rounded-2xl border border-amber-300/30 bg-amber-50 p-5">
+      <p className="flex items-center gap-2 text-[14px] font-bold text-amber-800">
         <AlertCircle size={18} />
         {error || 'الاتصال بأودو لسه مش متظبط.'}
       </p>
       {missing.length > 0 && (
         <>
-          <p className="mt-2 text-[13px] leading-relaxed text-ink-muted">محتاج تضيف المتغيرات دي في إعدادات النشر وتعيد التشغيل:</p>
+          <p className="mt-2 text-[13px] leading-relaxed text-slate-600">محتاج تضيف المتغيرات دي في إعدادات النشر وتعيد التشغيل:</p>
           <ul className="mt-2 flex flex-wrap gap-1.5">
             {missing.map((name) => (
-              <li key={name} className="rounded-lg bg-white px-2.5 py-1 font-mono text-[12px] font-bold text-ink">
+              <li key={name} className="rounded-lg bg-white px-2.5 py-1 font-mono text-[12px] font-bold text-slate-900">
                 {name}
               </li>
             ))}

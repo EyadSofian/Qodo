@@ -16,6 +16,7 @@ import { agoLabel, type ScheduleMeta, type TrainingScheduleRow } from '../../lib
 import { CourseCard, CourseCardSkeleton } from './CourseCard';
 import { DockedCourseDetails } from './CourseDetailsDrawer';
 import { CourseListRow, CourseListSkeleton } from './CourseListRow';
+import { GLASS } from './tones';
 import {
   DepartmentChips,
   FiltersPopover,
@@ -139,7 +140,7 @@ export function CourseWorkspace({
 
       <DepartmentChips value={filters.department} counts={counts} onChange={(department) => setFilters({ ...filters, department })} />
 
-      <section aria-label="البحث والفلاتر" className="grid min-w-0 gap-3 rounded-2xl border border-surface-line bg-white/70 p-3 backdrop-blur-sm">
+      <section aria-label="البحث والفلاتر" className={`relative z-20 grid min-w-0 gap-3 rounded-2xl p-3.5 ${GLASS}`}>
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <SearchField value={filters.search} onChange={(search) => setFilters({ ...filters, search })} />
           <StatusSelect filters={filters} onChange={setFilters} />
@@ -157,10 +158,10 @@ export function CourseWorkspace({
               <SmartFilters value={filters.quick} onChange={(quick) => setFilters({ ...filters, quick })} discoveredFields={meta?.discoveredFields} />
             )}
           </div>
-          <p className="shrink-0 text-[12.5px] text-ink-muted">
+          <p className="shrink-0 text-[13px] font-medium text-slate-600">
             {rows ? (
               <>
-                <b className="tabular-nums text-ink">{filtered.length.toLocaleString('en-US')}</b> كورس
+                <b className="tabular-nums text-slate-900">{filtered.length.toLocaleString('en-US')}</b> كورس
                 {filtered.length !== rows.length && <> من {rows.length.toLocaleString('en-US')}</>}
               </>
             ) : (
@@ -168,7 +169,7 @@ export function CourseWorkspace({
             )}
           </p>
           {narrowing > 0 && (
-            <button type="button" onClick={clear} className="shrink-0 text-[12.5px] font-semibold text-brand-600 hover:underline">
+            <button type="button" onClick={clear} className="shrink-0 rounded-full bg-rose-50 px-3 py-1 text-[12.5px] font-bold text-rose-700 hover:bg-rose-100">
               امسح الفلاتر
             </button>
           )}
@@ -176,21 +177,23 @@ export function CourseWorkspace({
       </section>
 
       {stale && rows && (
-        <p role="status" className="flex items-center gap-2 rounded-xl border border-accent-100 bg-status-warnBg px-3.5 py-2.5 text-[12.5px] font-semibold text-accent-700">
-          <AlertCircle size={15} className="shrink-0" />
-          أودو مش متاح دلوقتي — بنعرض آخر مزامنة ناجحة ({agoLabel(fetchedAt)}).
+        <p role="status" className="flex items-center gap-2.5 rounded-2xl border border-amber-300 bg-gradient-to-l from-amber-50 to-orange-50 px-4 py-3 text-[13px] font-bold text-amber-900 shadow-sm">
+          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-amber-500 text-white">
+            <AlertCircle size={16} />
+          </span>
+          أودو مش متاح دلوقتي — بنعرض آخر مزامنة ناجحة من أودو ({agoLabel(fetchedAt)}).
         </p>
       )}
       {warnings.map((warning) => (
-        <p key={warning} className="flex items-center gap-2 rounded-xl bg-status-warnBg px-3.5 py-2 text-[12.5px] font-semibold text-accent-700">
+        <p key={warning} className="flex items-center gap-2 rounded-xl bg-amber-50 px-3.5 py-2 text-[12.5px] font-semibold text-amber-800">
           <AlertCircle size={14} className="shrink-0" />
           {WARNING_TEXT[warning]}
         </p>
       ))}
       {schemaNotes.length > 0 && (
-        <details className="rounded-xl border border-surface-line bg-white/70 px-3.5 py-2 text-[12px] text-ink-muted">
+        <details className="rounded-xl border border-slate-200 bg-white/70 px-3.5 py-2 text-[12px] text-slate-600">
           <summary className="flex cursor-pointer list-none items-center gap-2 font-semibold [&::-webkit-details-marker]:hidden">
-            <Info size={14} className="text-brand-500" />
+            <Info size={14} className="text-blue-600" />
             إعداد حقول أودو مش كامل — بعض البيانات هتظهر ناقصة
           </summary>
           <ul className="mt-1.5 grid gap-0.5 ps-6 font-mono text-[11px]" dir="ltr">
@@ -214,22 +217,24 @@ export function CourseWorkspace({
               </div>
             )
           ) : filtered.length === 0 ? (
-            <div className="grid place-items-center rounded-2xl border border-dashed border-surface-line bg-white/60 px-6 py-16 text-center">
-              <SearchX size={28} className="text-ink-faint" />
-              <h3 className="mt-3 text-[15px] font-bold text-ink">
+            <div className={`grid place-items-center rounded-3xl px-6 py-16 text-center ${GLASS}`}>
+              <span className="grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-blue-500 to-violet-500 text-white shadow-lg shadow-blue-500/30">
+                <SearchX size={26} />
+              </span>
+              <h3 className="mt-4 text-[17px] font-extrabold text-slate-900">
                 {rows.length === 0 ? (archive ? 'مفيش كورسات منتهية في الفترة دي' : 'مفيش كورسات في الفترة دي') : 'مفيش كورسات مطابقة'}
               </h3>
-              <p className="mt-1 max-w-sm text-[13px] text-ink-muted">
+              <p className="mt-1 max-w-sm text-[13px] text-slate-600">
                 {rows.length === 0 ? 'جرّب فترة أوسع.' : 'مفيش كورسات مطابقة للفلاتر اللي اخترتها.'}
               </p>
               {rows.length > 0 && (
-                <button type="button" onClick={clear} className="btn-navy btn-sm mt-4">
+                <button type="button" onClick={clear} className="mt-5 inline-flex h-10 items-center rounded-xl bg-blue-600 px-5 text-[13.5px] font-bold text-white shadow-lg shadow-blue-600/30 hover:bg-blue-700">
                   امسح الفلاتر
                 </button>
               )}
             </div>
           ) : view === 'list' ? (
-            <div className="overflow-hidden rounded-[14px] border border-surface-line bg-white">
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.05),0_12px_32px_-16px_rgba(15,23,42,0.18)]">
               {filtered.map((row) => (
                 <CourseListRow key={row.id} row={row} now={now} selected={row.id === selectedId} onOpen={onOpen} />
               ))}
