@@ -274,11 +274,11 @@ test('canonical status follows the Odoo stage, flags first, cancellation by name
 });
 
 test('training type is normalised from event_type and attendance_method', () => {
-  assert.deepEqual(normalizeType('individual', 'online'), { category: 'group', deliveryMode: 'online', displayLabel: 'Group Online' });
-  assert.deepEqual(normalizeType('individual', 'offline'), { category: 'group', deliveryMode: 'offline', displayLabel: 'Group Offline' });
-  assert.equal(normalizeType('private', 'online').displayLabel, 'Private Online');
-  assert.equal(normalizeType('company', 'offline').displayLabel, 'Company Offline');
-  assert.deepEqual(normalizeType(false, 'online'), { category: null, deliveryMode: 'online', displayLabel: 'Online' });
+  assert.deepEqual(normalizeType('individual', 'online'), { category: 'group', deliveryMode: 'online', displayLabel: 'جروب أونلاين' });
+  assert.deepEqual(normalizeType('individual', 'offline'), { category: 'group', deliveryMode: 'offline', displayLabel: 'جروب حضوري' });
+  assert.equal(normalizeType('private', 'online').displayLabel, 'خاص أونلاين');
+  assert.equal(normalizeType('company', 'offline').displayLabel, 'شركة حضوري');
+  assert.deepEqual(normalizeType(false, 'online'), { category: null, deliveryMode: 'online', displayLabel: 'أونلاين' });
   // An unanticipated value keeps Odoo's own label rather than a guess.
   assert.deepEqual(normalizeType('vip', false, { vip: 'VIP Track' }), { category: null, deliveryMode: null, displayLabel: 'VIP Track' });
   assert.deepEqual(normalizeType(false, false), { category: null, deliveryMode: null, displayLabel: null });
@@ -429,7 +429,7 @@ test('the schedule shows online and offline courses and never reads seats_taken 
   });
   const result = await trainingSchedule({ from: '2026-09-01', to: '2026-09-30' }, { now: NOW, client });
   assert.deepEqual(result.rows.map((row) => row.deliveryMode).sort(), ['offline', 'online']);
-  assert.equal(result.rows.find((row) => row.id === 2).trainingType, 'Company Offline');
+  assert.equal(result.rows.find((row) => row.id === 2).trainingType, 'شركة حضوري');
   assert.equal(result.rows.find((row) => row.id === 2).traineeCount, 7);
 
   const eventRead = client.calls.find((c) => c.kind === 'search_read' && c.model === 'event.event');
@@ -439,7 +439,7 @@ test('the schedule shows online and offline courses and never reads seats_taken 
   const trackRead = client.calls.find((c) => c.kind === 'search_read' && c.model === 'event.track');
   assert.ok(!trackRead.fields.some((f) => f.startsWith('zoom') || f.includes('join')));
   assert.equal(result.meta.from, '2026-09-01');
-  assert.deepEqual(result.meta.availableTypes, ['Company Offline', 'Group Online']);
+  assert.deepEqual(result.meta.availableTypes, ['جروب أونلاين', 'شركة حضوري']);
   assert.equal(result.meta.discoveredFields.coordinator, null);
 
   const before = client.calls.length;

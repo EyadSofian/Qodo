@@ -214,13 +214,13 @@ export function canonicalStatus(stage) {
  * Anything else falls back to Odoo's own label for the value, never a guess.
  */
 const CATEGORY_OF = { individual: 'group', company: 'company', private: 'private', public: 'public' };
-const CATEGORY_LABEL = { group: 'Group', company: 'Company', private: 'Private', public: 'Public' };
+const CATEGORY_LABEL = { group: 'جروب', company: 'شركة', private: 'خاص', public: 'عام' };
 
 export function normalizeType(eventType, attendanceMethod, selectionLabels = {}) {
   const raw = text(eventType);
   const category = raw ? CATEGORY_OF[raw] ?? null : null;
   const deliveryMode = attendanceMethod === 'online' || attendanceMethod === 'offline' ? attendanceMethod : null;
-  const modeLabel = deliveryMode ? (deliveryMode === 'online' ? 'Online' : 'Offline') : null;
+  const modeLabel = deliveryMode ? (deliveryMode === 'online' ? 'أونلاين' : 'حضوري') : null;
   const categoryLabel = category ? CATEGORY_LABEL[category] : raw ? text(selectionLabels[raw]) ?? raw : null;
   const displayLabel = [categoryLabel, modeLabel].filter(Boolean).join(' ') || null;
   return { category, deliveryMode, displayLabel };

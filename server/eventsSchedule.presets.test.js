@@ -6,7 +6,6 @@ import {
   applyFilters,
   availableQuickFilters,
   VIEW_MODES,
-  departmentBreakdown,
   departmentCounts,
   ksaWeek,
   overviewStats,
@@ -14,7 +13,6 @@ import {
   rowMatches,
   sessionState,
   sortRows,
-  todaysSessions,
 } from '../shared/eventsSchedule.js';
 
 const NOW = new Date('2026-09-22T12:00:00Z');
@@ -28,7 +26,7 @@ const row = (id, overrides = {}) => ({
   section: null,
   instructor: 'Micheal Adel',
   coordinator: null,
-  trainingType: 'Group Online',
+  trainingType: 'جروب أونلاين',
   deliveryMode: 'online',
   statusCanonical: 'planned',
   startsAt: '2026-10-01T16:00:00Z',
@@ -72,23 +70,33 @@ test('the overview counts real rows and never invents a denominator', () => {
   assert.equal(stats.nearCapacity, 1);
 });
 
-test('today\'s lectures are gathered across every course, in time order', () => {
+test('the near-capacity KPI and the near-capacity chip count the same courses', () => {
   const rows = [
-    row(1, { sessions: [{ id: 11, number: 3, startsAt: '2026-09-22T16:00:00Z' }] }),
-    row(2, { sessions: [{ id: 21, number: 1, startsAt: '2026-09-22T07:00:00Z' }, { id: 22, number: 2, startsAt: '2026-09-29T07:00:00Z' }] }),
-    row(3, { sessions: [{ id: 31, number: 9, startsAt: '2026-09-23T07:00:00Z' }] }),
+    row(1, { statusCanonical: 'in_progress', traineeCount: 40, capacity: 50 }),
+    row(2, { statusCanonical: 'in_progress', traineeCount: 39, capacity: 50 }),
+    row(3, { statusCanonical: 'planned', traineeCount: 12, capacity: null }),
   ];
-  const today = todaysSessions(rows, NOW);
-  assert.deepEqual(today.map((entry) => entry.session.id), [21, 11]);
+  const chip = applyFilters(rows, { ...EMPTY_FILTERS, quick: 'nearCapacity' }, NOW).map((r) => r.id);
+  assert.deepEqual(chip, [1]);
+  assert.equal(overviewStats(rows, NOW).nearCapacity, chip.length);
 });
 
-test('the department breakdown counts courses, busiest first', () => {
-  const rows = [row(1), row(2), row(3, { department: 'Civil' }), row(4, { department: null })];
-  assert.deepEqual(departmentBreakdown(rows), [
-    { department: 'Mechanical', count: 2 },
-    { department: 'Civil', count: 1 },
-    { department: 'Unclassified', count: 1 },
-  ]);
+test('the "today" chip finds courses with a lecture on today\'s KSA calendar', () => {
+  const rows = [
+    row(1, { sessions: [{ id: 11, number: 3, startsAt: '2026-09-22T16:00:00Z' }] }),
+    row(2, { sessions: [{ id: 21, number: 1, startsAt: '2026-09-23T07:00:00Z' }] }),
+    row(3, { sessions: [] }),
+  ];
+  assert.deepEqual(applyFilters(rows, { ...EMPTY_FILTERS, quick: 'today' }, NOW).map((r) => r.id), [1]);
+});
+
+test('six smart filters lead the row; the rest are still reachable', () => {
+  const all = availableQuickFilters({ coordinator: 'user_id' });
+  assert.deepEqual(
+    all.filter((f) => f.primary).map((f) => f.key),
+    ['running', 'startsThisWeek', 'today', 'noRegistrations', 'nearCapacity', 'missingInstructor']
+  );
+  assert.ok(all.some((f) => !f.primary && f.key === 'scheduleMismatch'));
 });
 
 test('closed courses are hidden from the schedule unless asked for', () => {

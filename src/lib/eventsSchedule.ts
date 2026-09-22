@@ -247,20 +247,10 @@ export function rangeDays(range: DateRange): number {
 export const KSA = 'Asia/Riyadh';
 const CAIRO = 'Africa/Cairo';
 
-const ksaDateFmt = new Intl.DateTimeFormat('en-GB', { timeZone: KSA, day: 'numeric', month: 'short', year: 'numeric' });
-const ksaShortFmt = new Intl.DateTimeFormat('en-GB', { timeZone: KSA, day: 'numeric', month: 'short' });
-const ksaTimeFmt = new Intl.DateTimeFormat('en-US', { timeZone: KSA, hour: 'numeric', minute: '2-digit' });
-const ksaMonthFmt = new Intl.DateTimeFormat('en-GB', { timeZone: KSA, month: 'long', year: 'numeric' });
-const ksaFullFmt = new Intl.DateTimeFormat('en-GB', {
-  timeZone: KSA,
-  weekday: 'short',
-  day: 'numeric',
-  month: 'short',
-  year: 'numeric',
-  hour: 'numeric',
-  minute: '2-digit',
-  hour12: true,
-});
+const ksaDateFmt = new Intl.DateTimeFormat('ar-EG-u-nu-latn', { timeZone: KSA, day: 'numeric', month: 'short', year: 'numeric' });
+const ksaShortFmt = new Intl.DateTimeFormat('ar-EG-u-nu-latn', { timeZone: KSA, day: 'numeric', month: 'short' });
+const ksaTimeFmt = new Intl.DateTimeFormat('ar-EG-u-nu-latn', { timeZone: KSA, hour: 'numeric', minute: '2-digit' });
+const ksaDayLabelFmt = new Intl.DateTimeFormat('ar-EG-u-nu-latn', { timeZone: KSA, weekday: 'long', day: 'numeric', month: 'short' });
 
 const format = (fmt: Intl.DateTimeFormat) => (iso: string | null | undefined) =>
   iso && !Number.isNaN(Date.parse(iso)) ? fmt.format(new Date(iso)) : '';
@@ -271,14 +261,14 @@ export const ksaDate = format(ksaDateFmt);
 export const ksaShortDate = format(ksaShortFmt);
 /** "7:00 PM" on Riyadh's clock. */
 export const ksaTime = format(ksaTimeFmt);
-export const ksaMonth = format(ksaMonthFmt);
-export const ksaFull = format(ksaFullFmt);
+/** "الخميس 24 سبتمبر" — for a lecture that is not today. */
+export const ksaDayLabel = format(ksaDayLabelFmt);
 
-/** "19:00" (the server's KSA wall clock) → "7:00 PM". */
+/** "19:00" (the server's KSA wall clock) → "7:00 م", matching `ksaTime`. */
 export function hhmmLabel(hhmm: string | null): string {
   if (!hhmm) return '';
   const [h, m] = hhmm.split(':').map(Number);
-  const suffix = h >= 12 ? 'PM' : 'AM';
+  const suffix = h >= 12 ? 'م' : 'ص';
   return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${suffix}`;
 }
 
@@ -291,6 +281,20 @@ export const cairoTime = format(cairoTimeFmt);
 export const cairoDay = format(cairoDayFmt);
 
 /* ── words ───────────────────────────────────────────────────────── */
+
+/**
+ * Weekday codes are the API's, not the reader's: rows carry SAT…FRI and the
+ * tests pin them. Only the chip's text is Arabic.
+ */
+export const WEEKDAY_AR: Record<string, string> = {
+  SAT: 'سبت',
+  SUN: 'حد',
+  MON: 'اتنين',
+  TUE: 'تلات',
+  WED: 'أربع',
+  THU: 'خميس',
+  FRI: 'جمعة',
+};
 
 export const DAY_PART_AR: Record<DayPart, string> = {
   morning: 'صباحاً',
@@ -325,7 +329,7 @@ export const DEPARTMENT_SOURCE_AR: Record<DepartmentSource, string> = {
 
 /** Where an in-person course happens, as one phrase instead of three coded fields. */
 export function placeLabel(row: Pick<TrainingScheduleRow, 'deliveryMode' | 'location'>): string | null {
-  if (row.deliveryMode === 'online') return 'Online';
+  if (row.deliveryMode === 'online') return 'أونلاين';
   const loc = row.location;
   if (!loc) return null;
   if (loc.offlineKind === 'in_house') return loc.venue ? `عند العميل — ${loc.venue}` : 'عند العميل';
