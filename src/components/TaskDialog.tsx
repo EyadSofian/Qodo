@@ -15,8 +15,8 @@
  * split is what fixes that.
  */
 
-import { useEffect, useMemo, useState } from 'react';
-import {Archive, CalendarClock, Check, Hourglass, MessageSquare, Send, UserRound} from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {Archive, ArchiveRestore, CalendarClock, Check, Hourglass, MessageSquare, Send, UserRound} from 'lucide-react';
 import { api, errorMessage } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useI18n } from '../lib/i18n';
@@ -31,6 +31,14 @@ import {
   translateStage,
 } from '@shared/departments';
 import {assigneesOf, assignmentRows, isAssignee, isDoer, isReviewer} from '@shared/workflow';
+import {
+  formDraftPayload,
+  formFromTask,
+  mergeServerIntoForm,
+  newTaskDraftId,
+  restoreFormDraft,
+  restoreNewTaskDraft,
+} from '@shared/taskDrafts';
 import { Avatar, Field, Modal, Spinner, useToast } from './ui';
 import { ModuleIcon } from './ModuleIcon';
 import {
@@ -47,6 +55,7 @@ import {
 } from './TaskWorkflow';
 import { DUE_TONE_CLASS, PRIORITY_META, PRIORITY_ORDER, cx, formatDate, timeAgo } from '../lib/utils';
 import { timingRows } from '../lib/taskTiming';
+import { draftStorage, readDraft, removeDraft, useDraftKey, useDraftText, writeDraft } from '../lib/taskDrafts';
 import type {Task, TaskAssignment, TaskAttachment, TaskComment, TaskPriority} from '../lib/types';
 
 export interface TaskDraft {
@@ -101,78 +110,229 @@ export function TaskDialog({
   const { directory } = useWorkspace();
   const { push } = useToast();
 
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [objective, setObjective] = useState('');
-  const [definitionOfDone, setDefinitionOfDone] = useState('');
-  const [notes, setNotes] = useState('');
-  const [department, setDepartment] = useState(defaultDepartment);
-  const [subteam, setSubteam] = useState('');
-  const [stage, setStage] = useState('');
-  const [priority, setPriority] = useState<TaskPriority>('normal');
-  const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
-  const [taskDate, setTaskDate] = useState('');
-  const [dueDate, setDueDate] = useState('');
-  const [effortPoints, setEffortPoints] = useState('');
-  const [progress, setProgress] = useState(0);
+  const [editor, setEditor] = useState<Editor>(() => blankEditor(defaultDepartment));
   const [saving, setSaving] = useState(false);
+  // `saving` disables the button only once React re-renders; a double click or
+  // a second Enter lands before that. The ref refuses the second request now.
+  const savingRef = useRef(false);
   const [error, setError] = useState('');
+  const [draftRestored, setDraftRestored] = useState(false);
 
   const [live, setLive] = useState<Task | null>(task);
   const [attachments, setAttachments] = useState<TaskAttachment[] | null>(null);
   const [canAttach, setCanAttach] = useState(false);
 
-  useEffect(() => {
-    if (!open) return;
+  const {
+    title,
+    description,
+    objective,
+    definitionOfDone,
+    notes,
+    department,
+    subteam,
+    stage,
+    priority,
+    assigneeIds,
+    taskDate,
+    dueDate,
+    effortPoints,
+    progress,
+  } = editor.form;
+  const update = useCallback(
+    (patch: Partial<TaskForm> | ((form: TaskForm) => Partial<TaskForm>)) =>
+      setEditor((current) => ({
+        ...current,
+        form: { ...current.form, ...(typeof patch === 'function' ? patch(current.form) : patch) },
+      })),
+    []
+  );
+  const setTitle = (value: string) => update({ title: value });
+  const setDescription = (value: string) => update({ description: value });
+  const setObjective = (value: string) => update({ objective: value });
+  const setDefinitionOfDone = (value: string) => update({ definitionOfDone: value });
+  const setNotes = (value: string) => update({ notes: value });
+  const setSubteam = (value: string) => update({ subteam: value });
+  const setPriority = (value: TaskPriority) => update({ priority: value });
+  const setAssigneeIds = (next: (current: string[]) => string[]) =>
+    update((form) => ({ assigneeIds: next(form.assigneeIds) }));
+  const setTaskDate = (value: string) => update({ taskDate: value });
+  const setDueDate = (value: string) => update({ dueDate: value });
+  const setEffortPoints = (value: string) => update({ effortPoints: value });
+  const setProgress = (value: number) => update({ progress: value });
+
+  // Which draft slot this opening writes to: the task itself, or — for a task
+  // not created yet — the blank form or the template it started from.
+  const draftId = task ? task.id : newTaskDraftId(prefill);
+  const formDraftKey = useDraftKey(draftId, 'form');
+  const pendingFormDraft = useRef<{ key: string; payload: ReturnType<typeof formDraftPayload> } | null>(null);
+
+  /**
+   * The form is filled once per opening of a given task (or of a blank or
+   * template form) — never again just because a new copy of the same task
+   * arrived. Polling hands this dialog a fresh object every twenty seconds, and
+   * re-filling on each one is what wiped whatever was being typed; fresher
+   * copies are merged below instead.
+   *
+   * This runs during render, not in an effect. An effect runs after the paint,
+   * so for one frame the dialog showed the previous task's form — and a key
+   * pressed in that frame landed on the old title ("Old titleNew text").
+   */
+  const [initializedFor, setInitializedFor] = useState<string | null>(null);
+  const identity = open ? (task ? `task:${task.id}` : draftId) : null;
+  if (identity !== initializedFor) {
+    setInitializedFor(identity);
+    if (identity) initialize();
+  }
+
+  function initialize() {
     setError('');
     setLive(task);
-    const draft = task ? null : prefill;
-    const nextDepartment = task?.department ?? draft?.department ?? defaultDepartment ?? DEFAULT_DEPARTMENT;
-    setTitle(task?.title ?? draft?.title ?? '');
-    setDescription(task?.description ?? draft?.description ?? '');
-    setObjective(task?.objective ?? draft?.objective ?? '');
-    setDefinitionOfDone(task?.definitionOfDone ?? draft?.definitionOfDone ?? '');
-    setNotes(task?.notes ?? draft?.notes ?? '');
-    setDepartment(nextDepartment);
-    setSubteam(task?.subteam ?? draft?.subteam ?? '');
-    setStage(task?.stage ?? draft?.stage ?? defaultStage ?? firstStage(nextDepartment));
-    setPriority(task?.priority ?? draft?.priority ?? 'normal');
-    setAssigneeIds(assigneesOf(task ?? undefined));
-    setTaskDate(task?.taskDate ?? draft?.taskDate ?? new Date().toISOString().slice(0, 10));
-    setDueDate(task?.dueDate ?? draft?.dueDate ?? '');
-    const nextEffort = task?.effortPoints ?? draft?.effortPoints;
-    setEffortPoints(nextEffort ? String(nextEffort) : '');
-    setProgress(task?.progress ?? 0);
-  }, [open, task, prefill, defaultDepartment, defaultStage]);
+
+    if (task) {
+      const server = taskToForm(task);
+      // Whatever was typed and never saved last time comes back — but only
+      // fields whose saved value has not moved since, and only fields this
+      // person may still edit. A newer saved value always beats older unsent text.
+      // An archived task is read-only, so nothing is restored into it — the
+      // draft stays put in case the task is brought back.
+      const archivedNow = Boolean(task.archivedAt);
+      const stored = readDraft(draftStorage(), formDraftKey);
+      const { form, restored } = restoreFormDraft(server, stored?.value, {
+        canEditPlan: !archivedNow && can(PERMISSIONS.TASKS_ASSIGN),
+        canEditWork:
+          !archivedNow &&
+          (can(PERMISSIONS.TASKS_EDIT_ANY) || task.createdBy === user?.id || isAssignee(user, task)),
+      });
+      setEditor({ draftId: task.id, form, base: server });
+      setDraftRestored(restored.length > 0);
+      return;
+    }
+
+    const draft = prefill;
+    const nextDepartment = draft?.department ?? defaultDepartment ?? DEFAULT_DEPARTMENT;
+    const nextEffort = draft?.effortPoints;
+    const form: TaskForm = {
+      title: draft?.title ?? '',
+      description: draft?.description ?? '',
+      objective: draft?.objective ?? '',
+      definitionOfDone: draft?.definitionOfDone ?? '',
+      notes: draft?.notes ?? '',
+      department: nextDepartment,
+      subteam: draft?.subteam ?? '',
+      stage: draft?.stage ?? defaultStage ?? firstStage(nextDepartment),
+      priority: draft?.priority ?? 'normal',
+      assigneeIds: [],
+      taskDate: draft?.taskDate ?? new Date().toISOString().slice(0, 10),
+      dueDate: draft?.dueDate ?? '',
+      effortPoints: nextEffort ? String(nextEffort) : '',
+      progress: 0,
+    };
+    // Nothing is sent anywhere until Add. What was typed into this same blank
+    // form (or this same template) last time and never added comes back.
+    const allowed = (can(PERMISSIONS.TASKS_VIEW_ALL)
+      ? DEPARTMENTS
+      : DEPARTMENTS.filter((item) => item.id === (user?.department ?? DEFAULT_DEPARTMENT))
+    ).map((item) => item.id);
+    const stored = readDraft(draftStorage(), formDraftKey);
+    const restoredDraft = restoreNewTaskDraft(form, stored?.value, { allowedDepartments: allowed });
+    setEditor({ draftId, form: restoredDraft.form as TaskForm, base: form });
+    setDraftRestored(restoredDraft.restored.length > 0);
+  }
+
+  // A fresher copy of the task that is open — the board's poll, or another
+  // person's action. The workflow panels take it whole; the form takes it field
+  // by field, leaving anything being edited exactly as typed.
+  useEffect(() => {
+    if (!open || !task || initializedFor !== `task:${task.id}`) return;
+    setLive((previous) =>
+      !previous || previous.id !== task.id || String(task.updatedAt) > String(previous.updatedAt)
+        ? task
+        : previous
+    );
+  }, [open, task, initializedFor]);
+
+  useEffect(() => {
+    if (!live) return;
+    setEditor((current) =>
+      current.draftId === live.id
+        ? { draftId: live.id, ...mergeServerIntoForm(current, taskToForm(live)) }
+        : current
+    );
+  }, [live]);
+
+  /**
+   * Unsaved edits are mirrored to a private draft, debounced, and written for
+   * certain when the dialog closes — so a stray tap on the backdrop costs
+   * nothing. The server is only written by Save.
+   */
+  const flushFormDraft = useCallback(() => {
+    const pending = pendingFormDraft.current;
+    pendingFormDraft.current = null;
+    if (!pending) return;
+    if (pending.payload) writeDraft(draftStorage(), pending.key, pending.payload);
+    else removeDraft(draftStorage(), pending.key);
+  }, []);
+
+  useEffect(() => {
+    // A draft for a task that has since been archived is left alone: nothing is
+    // editable here, and it comes back if the task is restored.
+    if (!open || !formDraftKey || editor.draftId !== draftId || task?.archivedAt) return;
+    pendingFormDraft.current = { key: formDraftKey, payload: formDraftPayload(editor) };
+    const timer = window.setTimeout(flushFormDraft, 400);
+    return () => window.clearTimeout(timer);
+  }, [editor, open, draftId, formDraftKey, flushFormDraft, task?.archivedAt]);
+
+  useEffect(() => {
+    if (!open) return;
+    return () => flushFormDraft();
+  }, [open, flushFormDraft]);
+
+  const forgetFormDraft = () => {
+    pendingFormDraft.current = null;
+    removeDraft(draftStorage(), formDraftKey);
+  };
+
+  const discardFormDraft = () => {
+    forgetFormDraft();
+    setEditor((current) => ({ ...current, form: { ...current.base } }));
+    setDraftRestored(false);
+  };
 
   // Deliverables are the evidence the review is based on, so they load with the
   // task rather than behind a tab — a reviewer should never have to go looking.
+  // Keyed on the id: a polled copy of the same task is not a reason to refetch.
+  const taskId = task?.id ?? null;
+  const taskArchived = Boolean(task?.archivedAt);
   useEffect(() => {
-    if (!open || !task) {
+    if (!open || !taskId) {
       setAttachments(null);
       return;
     }
     setAttachments(null);
     api
-      .get<{ attachments: TaskAttachment[]; canAttach: boolean }>(`/tasks/${task.id}/attachments`)
+      .get<{ attachments: TaskAttachment[]; canAttach: boolean }>(`/tasks/${taskId}/attachments`)
       .then((data) => {
         setAttachments(data.attachments);
         setCanAttach(data.canAttach);
       })
       .catch(() => setAttachments([]));
-  }, [open, task]);
+  }, [open, taskId, taskArchived]);
 
-  const current = live ?? task;
+  // `live` can briefly hold the previously opened task until the effect above
+  // runs; never let that one stand in for the task that was asked for.
+  const current = task && live?.id === task.id ? live : task;
 
   /**
    * Changing department mid-edit can't keep a stage id that doesn't exist over
    * there, so the stage moves to the closest equivalent instead of resetting.
    */
   const changeDepartment = (next: string) => {
-    setStage((value) => translateStage(department, value, next));
-    setDepartment(next);
-    setSubteam('');
-    setAssigneeIds([]);
+    update((form) => ({
+      stage: translateStage(form.department, form.stage, next),
+      department: next,
+      subteam: '',
+      assigneeIds: [],
+    }));
   };
 
   const subteams = getSubteams(department);
@@ -184,8 +344,13 @@ export function TaskDialog({
       person.department === department && (!subteam || !person.subteam || person.subteam === subteam)
   );
 
+  // Archived work is a record, not work: readable, never editable. The server
+  // refuses every write to it anyway; the form stops offering them.
+  const archived = Boolean(current?.archivedAt);
+
   const editable = useMemo(() => {
     if (!current) return true;
+    if (current.archivedAt) return false;
     if (can(PERMISSIONS.TASKS_EDIT_ANY)) return true;
     return current.createdBy === user?.id || isAssignee(user, current);
   }, [current, can, user]);
@@ -193,25 +358,29 @@ export function TaskDialog({
   // The brief and the plan are the commissioning side of the contract. Having
   // filed the task grants nothing here — only `tasks.assign` does.
   const planEditable = useMemo(
-    () => !current || can(PERMISSIONS.TASKS_ASSIGN),
+    () => !current || (!current.archivedAt && can(PERMISSIONS.TASKS_ASSIGN)),
     [current, can]
   );
 
   // Clearing a task away is archiving, not deleting: the card leaves the board
   // and the record of it stays. Permanent deletion is an administrator's
   // retention decision and does not belong on this dialog at all.
-  const archivable = Boolean(current) && can(PERMISSIONS.TASKS_ARCHIVE);
+  const archivable = Boolean(current) && !archived && can(PERMISSIONS.TASKS_ARCHIVE);
+  const restorable = archived && can(PERMISSIONS.TASKS_ARCHIVE);
 
+  // Every server answer lands here. The merge effect above carries the new
+  // stage (and anything else untouched) into the form.
   const applyTask = (updated: Task) => {
     setLive(updated);
-    setStage(updated.stage);
     onSaved(updated);
   };
 
   const submit = async (event?: React.FormEvent) => {
     event?.preventDefault();
+    if (savingRef.current) return;
     if (!title.trim()) return setError(t('tasks.titleRequired'));
 
+    savingRef.current = true;
     setSaving(true);
     setError('');
     // The server splits the brief from the work, and so does this form: someone
@@ -247,14 +416,35 @@ export function TaskDialog({
       const result = current
         ? await api.patch<{ task: Task }>(`/tasks/${current.id}`, payload)
         : await api.post<{ task: Task }>('/tasks', payload);
-      if (current) applyTask(result.task);
-      else onSaved(result.task);
+      if (current) {
+        // Saved, so there is nothing left to protect. The form is filled from the
+        // server's answer the next time the task opens.
+        forgetFormDraft();
+        setEditor((state) => ({ ...state, base: { ...state.form } }));
+        applyTask(result.task);
+      } else {
+        // Created: the draft has done its job.
+        forgetFormDraft();
+        onSaved(result.task);
+      }
       push(current ? t('tasks.updated') : t('tasks.added'));
       onClose();
     } catch (err) {
       setError(errorMessage(err, lang));
     } finally {
+      savingRef.current = false;
       setSaving(false);
+    }
+  };
+
+  const restore = async () => {
+    if (!current) return;
+    try {
+      const { task: updated } = await api.post<{ task: Task }>(`/tasks/${current.id}/restore`, {});
+      applyTask(updated);
+      push(t('tasks.restored'));
+    } catch (err) {
+      push(errorMessage(err, lang), 'bad');
     }
   };
 
@@ -304,8 +494,8 @@ export function TaskDialog({
                   checked={picked}
                   disabled={!planEditable}
                   onChange={() =>
-                    setAssigneeIds((current) =>
-                      picked ? current.filter((id) => id !== person.id) : [...current, person.id]
+                    setAssigneeIds((list) =>
+                      picked ? list.filter((id) => id !== person.id) : [...list, person.id]
                     )
                   }
                 />
@@ -420,7 +610,7 @@ export function TaskDialog({
             value={subteam}
             onChange={(event) => {
               setSubteam(event.target.value);
-              setAssigneeIds([]);
+              setAssigneeIds(() => []);
             }}
             disabled={!planEditable}
           >
@@ -438,6 +628,18 @@ export function TaskDialog({
           it in, review it — and the tracker above already says where the task
           is. For the person doing the work the dropdown listed exactly one
           option, which is a field that can only ever say what you already know. */}
+    </div>
+  );
+
+  const draftBanner = (
+    <div
+      role="status"
+      className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-brand-200 bg-brand-50 px-3.5 py-2.5 text-[12.5px] font-semibold text-brand-700"
+    >
+      <span>{t(current ? 'drafts.formRestored' : 'drafts.newRestored')}</span>
+      <button type="button" onClick={discardFormDraft} className="btn-quiet btn-sm !min-h-8">
+        {t('drafts.discard')}
+      </button>
     </div>
   );
 
@@ -462,6 +664,12 @@ export function TaskDialog({
             <button type="button" onClick={archive} className="btn-danger btn-sm me-auto">
               <Archive size={15} />
               {t('tasks.archive')}
+            </button>
+          )}
+          {restorable && (
+            <button type="button" onClick={restore} className="btn-ghost btn-sm me-auto">
+              <ArchiveRestore size={15} />
+              {t('tasks.restore')}
             </button>
           )}
           <button type="button" onClick={onClose} className="btn-ghost btn-sm">
@@ -496,8 +704,16 @@ export function TaskDialog({
             onTitle={setTitle}
           />
 
+          {draftRestored && draftBanner}
+
           <div className="min-w-0 rounded-2xl border border-surface-line bg-surface-sunken/40 p-3 sm:p-4">
             <WorkflowTracker task={current} />
+            {archived ? (
+              <p className="mt-4 flex items-center gap-2 rounded-xl bg-surface-sunken px-3.5 py-3 text-[12.5px] font-semibold text-ink-muted">
+                <Archive size={15} />
+                {t('tasks.archivedReadOnly')}
+              </p>
+            ) : (
             <div className="mt-4">
               <WorkflowActions
                 task={current}
@@ -507,6 +723,7 @@ export function TaskDialog({
               <ResetToPendingAction task={current} onChanged={applyTask} />
               <MoveStageAction task={current} onChanged={applyTask} initialStage={moveTo} />
             </div>
+            )}
           </div>
 
           <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_17rem]">
@@ -562,6 +779,13 @@ export function TaskDialog({
                   setLive((value) =>
                     value ? { ...value, attachmentCount: list.length } : value
                   );
+                  // The server recounts on every upload and removal. Taking its
+                  // copy back keeps the board's count in step, and a poll that
+                  // was already in flight cannot put the old number back.
+                  api
+                    .get<{ task: Task }>(`/tasks/${current.id}`)
+                    .then(({ task: fresh }) => applyTask(fresh))
+                    .catch(() => {});
                 }}
               />
 
@@ -577,13 +801,15 @@ export function TaskDialog({
             </aside>
           </div>
 
-          <Comments taskId={current.id} />
+          <Comments taskId={current.id} readOnly={archived} />
         </div>
       ) : (
         <form id="task-form" onSubmit={submit} className="grid gap-3.5">
-          <p className="rounded-xl bg-brand-50 px-3.5 py-2.5 text-[12.5px] leading-relaxed text-brand-700">
-            {t('tasks.newHint')}
-          </p>
+          {draftRestored ? draftBanner : (
+            <p className="rounded-xl bg-brand-50 px-3.5 py-2.5 text-[12.5px] leading-relaxed text-brand-700">
+              {t('tasks.newHint')}
+            </p>
+          )}
 
           <Field label={t('tasks.titleField')} required>
             <input
@@ -639,6 +865,58 @@ export function TaskDialog({
       )}
     </Modal>
   );
+}
+
+/* ── form state ──────────────────────────────────────────────────── */
+
+interface TaskForm {
+  title: string;
+  description: string;
+  objective: string;
+  definitionOfDone: string;
+  notes: string;
+  department: string;
+  subteam: string;
+  stage: string;
+  priority: TaskPriority;
+  assigneeIds: string[];
+  taskDate: string;
+  dueDate: string;
+  effortPoints: string;
+  progress: number;
+}
+
+/** What is on screen, what it started from, and which draft slot it belongs to. */
+interface Editor {
+  draftId: string | null;
+  form: TaskForm;
+  base: TaskForm;
+}
+
+function taskToForm(task: Task): TaskForm {
+  const form = formFromTask(task) as TaskForm;
+  // A row with no business date is given today's, as the form always has.
+  return { ...form, taskDate: form.taskDate || new Date().toISOString().slice(0, 10) };
+}
+
+function blankEditor(department: string): Editor {
+  const form: TaskForm = {
+    title: '',
+    description: '',
+    objective: '',
+    definitionOfDone: '',
+    notes: '',
+    department: department || DEFAULT_DEPARTMENT,
+    subteam: '',
+    stage: '',
+    priority: 'normal',
+    assigneeIds: [],
+    taskDate: '',
+    dueDate: '',
+    effortPoints: '',
+    progress: 0,
+  };
+  return { draftId: null, form, base: form };
 }
 
 /* ── heading ─────────────────────────────────────────────────────── */
@@ -796,14 +1074,28 @@ function Durations({ task }: { task: Task }) {
 
 /* ── Comments ────────────────────────────────────────────────────── */
 
-function Comments({ taskId }: { taskId: string }) {
+/** Must match the server's limit in `POST /tasks/:id/comments`. */
+const MAX_COMMENT_LENGTH = 5000;
+
+function Comments({ taskId, readOnly = false }: { taskId: string; readOnly?: boolean }) {
   const { userById } = useWorkspace();
   const { user } = useAuth();
   const { t, lang } = useI18n();
   const { push } = useToast();
   const [comments, setComments] = useState<TaskComment[] | null>(null);
-  const [body, setBody] = useState('');
+  // An unsent comment is its author's alone, and it outlives a closed dialog.
+  // It is forgotten only once the server has stored the comment.
+  const { text: body, setText: setBody, clear, restored } = useDraftText({
+    taskId,
+    purpose: 'comment',
+  });
   const [sending, setSending] = useState(false);
+  // Enter can fire twice before `sending` — or the cleared box — re-renders,
+  // and that second press still sees the old text. Refs answer immediately: one
+  // request at a time, and never the text that was just sent until the person
+  // types again.
+  const inFlight = useRef(false);
+  const justSent = useRef<string | null>(null);
 
   useEffect(() => {
     setComments(null);
@@ -816,17 +1108,27 @@ function Comments({ taskId }: { taskId: string }) {
   const send = async (event?: React.SyntheticEvent) => {
     event?.preventDefault();
     const text = body.trim();
-    if (!text) return;
+    if (!text || inFlight.current || text === justSent.current) return;
+    inFlight.current = true;
     setSending(true);
     try {
       const { comment } = await api.post<{ comment: TaskComment }>(`/tasks/${taskId}/comments`, {
         body: text,
       });
-      setComments((list) => [...(list ?? []), comment]);
-      setBody('');
+      // Appended from the server's own record — its id, author and time — and
+      // never twice, whatever order a reload and this answer arrive in.
+      setComments((list) =>
+        [...(list ?? []).filter((item) => item.id !== comment.id), comment].sort((a, b) =>
+          a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0
+        )
+      );
+      justSent.current = text;
+      clear();
     } catch (err) {
+      // The text stays in the box and in the draft, ready to try again.
       push(errorMessage(err, lang), 'bad');
     } finally {
+      inFlight.current = false;
       setSending(false);
     }
   };
@@ -875,10 +1177,13 @@ function Comments({ taskId }: { taskId: string }) {
         </ul>
       )}
 
-      <form onSubmit={send} className="mt-3 flex items-end gap-2">
+      {!readOnly && <form onSubmit={send} className="mt-3 flex items-end gap-2">
         <textarea
           value={body}
-          onChange={(event) => setBody(event.target.value)}
+          onChange={(event) => {
+            justSent.current = null;
+            setBody(event.target.value);
+          }}
           onKeyDown={(event) => {
             // Enter sends; Shift+Enter for a new line — the messaging default.
             if (event.key === 'Enter' && !event.shiftKey) {
@@ -887,13 +1192,19 @@ function Comments({ taskId }: { taskId: string }) {
             }
           }}
           rows={1}
+          maxLength={MAX_COMMENT_LENGTH}
           placeholder={t('tasks.commentPlaceholder')}
           className="field max-h-28 min-h-[44px] flex-1 resize-y py-3"
         />
         <button type="submit" className="btn-primary !min-h-[44px] px-3.5" disabled={sending || !body.trim()}>
           {sending ? <Spinner size={16} /> : <Send size={16} />}
         </button>
-      </form>
+      </form>}
+      {!readOnly && restored && (
+        <p role="status" className="mt-1.5 text-[11.5px] font-semibold text-brand-600">
+          {t('drafts.restored')}
+        </p>
+      )}
     </section>
   );
 }

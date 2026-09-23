@@ -1,7 +1,11 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
+  AlertTriangle,
   BarChart3,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   ClipboardCheck,
   Download,
   GripVertical,
@@ -34,6 +38,18 @@ import {
 } from '@shared/departments';
 import { hrTaskCategory, hrTaskFrequency } from '@shared/hrPeriodicTasks';
 import {
+  ALL_HISTORY,
+  byCompletionDesc,
+  currentMonthKey,
+  inDonePeriod,
+  isDoneTask,
+  monthKeyOf,
+  monthStart,
+  shiftMonth,
+  undatedDoneTasks,
+} from '@shared/doneHistory';
+import { mergePolledTasks } from '@shared/taskDrafts';
+import {
   assigneesOf,
   canMoveAnyStage,
   canResetToPending,
@@ -53,6 +69,7 @@ import {
   DUE_TONE_CLASS,
   PRIORITY_META,
   cx,
+  formatDate,
   hexWithAlpha,
   scoreTextTone,
   timeAgo,
@@ -72,6 +89,8 @@ interface Column {
   label: string;
   /** Which tasks belong here, given the current department filter. */
   match: (task: Task) => boolean;
+  /** A finished-work column: narrowed to the Done period, newest completion first. */
+  done: boolean;
 }
 
 /** Where a lifted card would land if it were dropped right now. */
@@ -131,6 +150,8 @@ export function Tasks() {
   const [dialogPrefill, setDialogPrefill] = useState<TaskDraft | null>(null);
   const [mobileColumn, setMobileColumn] = useState(0);
   const [drag, setDrag] = useState<DragState | null>(null);
+  // Finished work is shown one calendar month at a time — this one by default.
+  const [donePeriod, setDonePeriod] = useState<string>(() => currentMonthKey() ?? ALL_HISTORY);
 
   const columnRefs = useRef<Record<string, HTMLElement | null>>({});
   const cardRefs = useRef<Record<string, HTMLElement | null>>({});
@@ -150,9 +171,45 @@ export function Tasks() {
     ? directory.filter((person) => person.department === department)
     : directory;
 
+  /**
+   * Server answers to this page's own writes, stamped with a local counter.
+   *
+   * The board polls, and a poll sent a moment before somebody pressed Submit
+   * answers with the task as it was before the press. Replacing the board with
+   * that answer rolled the task back on screen — the submission note vanished
+   * until the next poll. A poll now keeps any confirmed copy that is newer than
+   * what it brought back, and forgets confirmations it was sent after.
+   */
+  const writeClock = useRef(0);
+  const confirmed = useRef(new Map<string, { task: Task; at: number }>());
+  const removed = useRef(new Map<string, number>());
+  const loadSequence = useRef(0);
+  const appliedLoad = useRef(0);
+
+  const remember = useCallback((task: Task) => {
+    writeClock.current += 1;
+    confirmed.current.set(task.id, { task, at: writeClock.current });
+    removed.current.delete(task.id);
+  }, []);
+
   const load = useCallback(async () => {
+    const sequence = ++loadSequence.current;
+    const sentAt = writeClock.current;
     const data = await api.get<{ tasks: Task[] }>('/tasks');
-    setTasks(data.tasks);
+    // Two polls can overlap; the older one finishing last must not win.
+    if (sequence < appliedLoad.current) return data.tasks;
+    appliedLoad.current = sequence;
+    const newer = new Map<string, Task>();
+    for (const [id, entry] of confirmed.current) {
+      if (entry.at > sentAt) newer.set(id, entry.task);
+      else confirmed.current.delete(id);
+    }
+    const gone = new Set<string>();
+    for (const [id, at] of removed.current) {
+      if (at > sentAt) gone.add(id);
+      else removed.current.delete(id);
+    }
+    setTasks((current) => mergePolledTasks(current, data.tasks, newer, gone) as Task[]);
     // Every mutation on this page ends here, so this is the one place that
     // keeps the nav badge from lagging a minute behind the board.
     reloadTaskCounts().catch(() => {});
@@ -214,12 +271,17 @@ export function Tasks() {
       .get<{ task: Task }>(`/tasks/${encodeURIComponent(deepLink)}`)
       .then(({ task: fresh }) => {
         if (!active) return;
-        setTasks((list) => {
-          const current = list ?? [];
-          return current.some((task) => task.id === fresh.id)
-            ? current.map((task) => (task.id === fresh.id ? fresh : task))
-            : [fresh, ...current];
-        });
+        // An archived task still opens from its link, read-only — but it is not
+        // board work, so it never joins the list.
+        if (!fresh.archivedAt) {
+          remember(fresh);
+          setTasks((list) => {
+            const current = list ?? [];
+            return current.some((task) => task.id === fresh.id)
+              ? current.map((task) => (task.id === fresh.id ? fresh : task))
+              : [fresh, ...current];
+          });
+        }
         setDialogTask(fresh);
         setDialogOpen(true);
       })
@@ -237,7 +299,7 @@ export function Tasks() {
     return () => {
       active = false;
     };
-  }, [deepLink, lang, push, setParams]);
+  }, [deepLink, lang, push, setParams, remember]);
 
   /**
    * Columns follow Odoo's model: pick a department and the board becomes that
@@ -251,12 +313,14 @@ export function Tasks() {
         id: stage.id,
         label: lang === 'en' ? stage.en : stage.ar,
         match: (task) => task.stage === stage.id,
+        done: stage.type === 'done',
       }));
     }
     return (STAGE_TYPES as StageType[]).map((type) => ({
       id: type,
       label: STAGE_TYPE_LABELS[type][lang],
       match: (task: Task) => stageType(task.department ?? DEFAULT_DEPARTMENT, task.stage) === type,
+      done: type === 'done',
     }));
   }, [department, lang]);
 
@@ -268,7 +332,8 @@ export function Tasks() {
     if (view === 'hr' && department !== 'hr') setView('table');
   }, [department, view]);
 
-  const filtered = useMemo(() => {
+  /** Every filter but the Done period — what the period is then applied to. */
+  const scoped = useMemo(() => {
     if (!tasks) return [];
     const term = query.trim().toLowerCase();
     return tasks.filter((task) => {
@@ -291,6 +356,26 @@ export function Tasks() {
     });
   }, [tasks, scope, assignee, query, user, department, reworkOnly]);
 
+  // The same period governs the board and the table, so the two never disagree
+  // about what "done" contains. Open work is never narrowed by it.
+  const filtered = useMemo(
+    () => scoped.filter((task) => inDonePeriod(task, donePeriod)),
+    [scoped, donePeriod]
+  );
+  const undatedDone = useMemo(
+    () => (donePeriod === ALL_HISTORY ? 0 : undatedDoneTasks(scoped).length),
+    [scoped, donePeriod]
+  );
+  /** How far back the month picker needs to reach. */
+  const earliestDone = useMemo(() => {
+    let earliest: string | null = null;
+    for (const task of tasks ?? []) {
+      const key = isDoneTask(task) ? monthKeyOf(task.completedAt) : null;
+      if (key && (!earliest || key < earliest)) earliest = key;
+    }
+    return earliest;
+  }, [tasks]);
+
   const byColumn = useMemo(() => {
     const groups: Record<string, Task[]> = {};
     for (const column of columns) groups[column.id] = [];
@@ -298,9 +383,11 @@ export function Tasks() {
       const column = columns.find((c) => c.match(task));
       if (column) groups[column.id].push(task);
     }
-    for (const key of Object.keys(groups)) {
-      groups[key].sort(
-        (a, b) => a.order - b.order || PRIORITY_META[a.priority].rank - PRIORITY_META[b.priority].rank
+    for (const column of columns) {
+      groups[column.id].sort(
+        column.done
+          ? byCompletionDesc
+          : (a, b) => a.order - b.order || PRIORITY_META[a.priority].rank - PRIORITY_META[b.priority].rank
       );
     }
     return groups;
@@ -368,6 +455,30 @@ export function Tasks() {
         return aActive - bActive || (b.submittedAt ?? '').localeCompare(a.submittedAt ?? '');
       });
   }, [tasks, department]);
+  // The queue itself is never narrowed by the period — work waiting on a
+  // reviewer is waiting whatever month it is. Only closed history is.
+  const awaitingReview = useMemo(
+    () => reviewQueue.filter((task) => stateOf(task) === 'submitted'),
+    [reviewQueue]
+  );
+  // The tab's number is what this reviewer can act on — the same rule as the
+  // nav badge (`awaitingMyReview`): nobody reviews their own hand-in.
+  const actionableReviews = useMemo(
+    () => awaitingReview.filter((task) => !isAssignee(user, task)).length,
+    [awaitingReview, user]
+  );
+  const reviewHistory = useMemo(
+    () =>
+      reviewQueue
+        .filter((task) => stateOf(task) !== 'submitted')
+        .filter((task) =>
+          stateOf(task) === 'signed_off' ||
+          donePeriod === ALL_HISTORY ||
+          monthKeyOf(task.completedAt) === donePeriod
+        )
+        .sort((a, b) => byCompletionDesc(a, b) || (b.reviewedAt ?? '').localeCompare(a.reviewedAt ?? '')),
+    [reviewQueue, donePeriod]
+  );
 
   /**
    * Who may pick a card up at all. For the person doing the work a stage is the
@@ -434,6 +545,7 @@ export function Tasks() {
             `/tasks/${taskId}/reset-to-pending`,
             { order }
           );
+          remember(updated);
           setTasks((list) =>
             (list ?? []).map((item) => (item.id === taskId ? updated : item))
           );
@@ -471,6 +583,7 @@ export function Tasks() {
             stage: targetStage,
             order,
           });
+          remember(updated);
           setTasks((list) => (list ?? []).map((item) => (item.id === taskId ? updated : item)));
           reloadTaskCounts().catch(() => {});
           push(t('flow.moved.toast', { stage }));
@@ -498,13 +611,18 @@ export function Tasks() {
       );
 
       try {
-        await api.patch(`/tasks/${taskId}`, { stage: targetStage, order });
+        const { task: updated } = await api.patch<{ task: Task }>(`/tasks/${taskId}`, {
+          stage: targetStage,
+          order,
+        });
+        remember(updated);
+        setTasks((list) => (list ?? []).map((item) => (item.id === taskId ? updated : item)));
       } catch (err) {
         push(errorMessage(err, lang), 'bad');
         load().catch(() => {});
       }
     },
-    [tasks, department, byColumn, push, lang, load, reloadTaskCounts, user, t, openTask]
+    [tasks, department, byColumn, push, lang, load, reloadTaskCounts, user, t, openTask, remember]
   );
 
   /**
@@ -684,6 +802,8 @@ export function Tasks() {
   const draggedTask = drag ? tasks?.find((t) => t.id === drag.taskId) ?? null : null;
 
   const onSaved = (saved: Task) => {
+    if (saved.archivedAt) return;
+    remember(saved);
     setTasks((list) => {
       const current = list ?? [];
       return current.some((t) => t.id === saved.id)
@@ -692,7 +812,19 @@ export function Tasks() {
     });
   };
 
-  const onDeleted = (id: string) => setTasks((list) => (list ?? []).filter((t) => t.id !== id));
+  const onDeleted = (id: string) => {
+    writeClock.current += 1;
+    confirmed.current.delete(id);
+    removed.current.set(id, writeClock.current);
+    setTasks((list) => (list ?? []).filter((t) => t.id !== id));
+  };
+
+  // The open dialog follows the board's copy of its task, so a manager watching
+  // a task sees the hand-in land without closing it. The dialog merges that copy
+  // without touching anything being typed.
+  const dialogTaskLive = dialogTask
+    ? (tasks?.find((item) => item.id === dialogTask.id) ?? dialogTask)
+    : null;
 
   if (!can(PERMISSIONS.TASKS_VIEW)) {
     return (
@@ -734,7 +866,7 @@ export function Tasks() {
       </header>
 
       <Segmented
-        className="mb-4 w-fit"
+        className="mb-4 w-fit max-w-full"
         value={view}
         onChange={setView}
         options={[
@@ -751,7 +883,7 @@ export function Tasks() {
                   value: 'review' as const,
                   label: t('flow.reviewQueue'),
                   icon: <Inbox size={14} />,
-                  count: reviewQueue.length,
+                  count: actionableReviews,
                 },
               ]
             : []),
@@ -834,6 +966,18 @@ export function Tasks() {
             ))}
           </select>
         )}
+
+        <DonePeriodPicker value={donePeriod} onChange={setDonePeriod} earliest={earliestDone} />
+        {undatedDone > 0 && (
+          <button
+            type="button"
+            onClick={() => setDonePeriod(ALL_HISTORY)}
+            className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11.5px] font-semibold text-accent-600 hover:bg-status-warnBg"
+          >
+            <AlertTriangle size={13} />
+            {t('tasks.undatedDone', { count: undatedDone })}
+          </button>
+        )}
       </div>}
 
       {/* Phone: one column at a time — five side by side would be 60px wide. */}
@@ -881,7 +1025,14 @@ export function Tasks() {
           ))}
         </div>
       ) : view === 'review' ? (
-        <ReviewQueue tasks={reviewQueue} onOpen={openTask} />
+        <ReviewQueue
+          awaiting={awaitingReview}
+          history={reviewHistory}
+          period={donePeriod}
+          onPeriod={setDonePeriod}
+          earliest={earliestDone}
+          onOpen={openTask}
+        />
       ) : view === 'table' ? (
         <TaskTable tasks={filtered} onOpen={openTask} />
       ) : (
@@ -926,6 +1077,11 @@ export function Tasks() {
                   </button>
                 )}
               </header>
+              {column.done && (
+                <p className="-mt-1 mb-2 px-1 text-[11px] font-semibold text-ink-faint">
+                  {periodLabel(donePeriod, lang, t)}
+                </p>
+              )}
 
               <div className="flex flex-col gap-2">
                 {cards.map((task, position) => (
@@ -998,7 +1154,7 @@ export function Tasks() {
       <TaskDialog
         open={dialogOpen}
         onClose={() => setDialogOpen(false)}
-        task={dialogTask}
+        task={dialogTaskLive}
         defaultDepartment={department || user?.department || DEFAULT_DEPARTMENT}
         defaultStage={department ? dialogColumn : null}
         prefill={dialogPrefill}
@@ -1119,6 +1275,11 @@ function TaskTable({ tasks, onOpen }: { tasks: Task[]; onOpen: (task: Task) => v
                     <span className={cx('chip', statusTone(type))}>
                       {stage ? (lang === 'en' ? stage.en : stage.ar) : task.stage}
                     </span>
+                    {type === 'done' && (
+                      <span className="mt-1 block whitespace-nowrap">
+                        <CompletedOn task={task} />
+                      </span>
+                    )}
                     {task.reworkCount > 0 && (
                       <span className="mt-1 block whitespace-nowrap text-[10.5px] text-ink-faint">
                         {returnedLabel(task.reworkCount, t)}
@@ -1155,95 +1316,261 @@ function TaskTable({ tasks, onOpen }: { tasks: Task[]; onOpen: (task: Task) => v
 /**
  * The manager's inbox.
  *
- * Everything handed in, with active reviews first and completed review history
- * kept below them. A reviewer can open a Done card and still read the original
- * submission and their written verdict.
+ * Two lists, deliberately apart. What is waiting on a reviewer comes first and
+ * is never filtered — a month picker must not be able to hide work somebody is
+ * blocked on. Below it, the reviewed history, narrowed to the same Done period
+ * as the board so it stops growing for ever; a reviewer can still open any of
+ * it and read the original submission beside their written verdict.
  */
-function ReviewQueue({ tasks, onOpen }: { tasks: Task[]; onOpen: (task: Task) => void }) {
-  const { t, lang } = useI18n();
-  const { userById } = useWorkspace();
-
-  if (tasks.length === 0) {
-    return (
-      <div className="card">
-        <EmptyState
-          icon={<Inbox size={26} />}
-          title={t('flow.reviewQueueEmpty')}
-          body={t('flow.reviewQueueEmptyBody')}
-        />
-      </div>
-    );
-  }
+function ReviewQueue({
+  awaiting,
+  history,
+  period,
+  onPeriod,
+  earliest,
+  onOpen,
+}: {
+  awaiting: Task[];
+  history: Task[];
+  period: string;
+  onPeriod: (period: string) => void;
+  earliest: string | null;
+  onOpen: (task: Task) => void;
+}) {
+  const { t } = useI18n();
 
   return (
-    <section>
-      <p className="mb-3 text-[12.5px] text-ink-muted">{t('flow.reviewQueueHint')}</p>
-      <ul className="grid gap-2.5">
-        {tasks.map((task) => {
-          const owners: DirectoryUser[] = assigneesOf(task).flatMap((id: string) => {
-            const person = userById(id);
-            return person ? [person] : [];
-          });
-          const department = getDepartment(task.department ?? DEFAULT_DEPARTMENT);
-          const active = stateOf(task) === 'submitted';
-          return (
-            <li key={task.id}>
-              <button
-                type="button"
-                onClick={() => onOpen(task)}
-                className="flex w-full flex-wrap items-center gap-3 rounded-2xl border border-surface-line bg-white px-4 py-3.5 text-start shadow-sm transition-shadow hover:shadow-card"
-                style={{ borderInlineStartWidth: 3, borderInlineStartColor: department.color }}
-              >
-                {owners[0] && (
-                  <Avatar name={owners[0].name} color={owners[0].avatarColor} size={34} />
-                )}
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[13.5px] font-bold text-ink">{task.title}</span>
-                  <span className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11.5px] text-ink-faint">
-                    <span>
-                      {owners.length === 0
-                        ? t('tasks.unassigned')
-                        : owners.map((person: DirectoryUser) => person.name).join('، ')}
-                    </span>
-                    <span style={{ color: department.color }}>
-                      {lang === 'en' ? department.en : department.ar}
-                    </span>
-                    <span>{t(active ? 'flow.waitingSince' : 'flow.reviewedSince', {
-                      when: timeAgo(active ? task.submittedAt : task.reviewedAt, t),
-                    })}</span>
-                  </span>
-                  {(task.submissionNote || task.reviewNote) && (
-                    <span className="mt-2 block truncate text-[12px] leading-relaxed text-ink-muted">
-                      {task.reviewNote || task.submissionNote}
-                    </span>
-                  )}
-                </span>
-                <span className="flex shrink-0 flex-wrap items-center gap-1.5">
-                  <span className={cx(
-                    'chip',
-                    active ? 'bg-status-warnBg text-accent-600' : 'bg-status-okBg text-status-ok'
-                  )}>
-                    {t(active ? 'flow.reviewQueueWaiting' : 'flow.reviewQueueDone')}
-                  </span>
-                  {task.attachmentCount > 0 && (
-                    <span className="chip bg-surface-sunken text-ink-muted">
-                      <Paperclip size={12} />
-                      <span className="ltr tabular-nums">{task.attachmentCount}</span>
-                    </span>
-                  )}
-                  {task.reworkCount > 0 && (
-                    <span className="chip bg-status-warnBg text-accent-600">
-                      {returnedLabel(task.reworkCount, t)}
-                    </span>
-                  )}
-                  <TaskTiming task={task} />
-                </span>
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-    </section>
+    <div className="grid gap-6">
+      <section>
+        {awaiting.length === 0 ? (
+          <div className="card">
+            <EmptyState
+              icon={<Inbox size={26} />}
+              title={t('flow.reviewQueueEmpty')}
+              body={t('flow.reviewQueueEmptyBody')}
+            />
+          </div>
+        ) : (
+          <>
+            <h2 className="mb-1 flex items-center gap-2 text-[14px] font-bold text-ink">
+              <Inbox size={16} className="text-accent-600" />
+              {t('flow.reviewQueueWaiting')}
+              <span className="rounded-full bg-status-warnBg px-2 text-[11px] text-accent-600">
+                {awaiting.length}
+              </span>
+            </h2>
+            <p className="mb-3 text-[12.5px] text-ink-muted">{t('flow.reviewQueueHint')}</p>
+            <ul className="grid gap-2.5">
+              {awaiting.map((task) => (
+                <ReviewRow key={task.id} task={task} onOpen={onOpen} />
+              ))}
+            </ul>
+          </>
+        )}
+      </section>
+
+      <section>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="flex items-center gap-2 text-[14px] font-bold text-ink">
+            <CheckCircle2 size={16} className="text-status-ok" />
+            {t('flow.reviewHistory')}
+            <span className="rounded-full bg-surface-sunken px-2 text-[11px] text-ink-muted">
+              {history.length}
+            </span>
+          </h2>
+          <DonePeriodPicker value={period} onChange={onPeriod} earliest={earliest} />
+        </div>
+        {history.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-surface-line px-3 py-6 text-center text-[12.5px] text-ink-faint">
+            {t('flow.reviewHistoryEmpty')}
+          </p>
+        ) : (
+          <ul className="grid gap-2.5">
+            {history.map((task) => (
+              <ReviewRow key={task.id} task={task} onOpen={onOpen} />
+            ))}
+          </ul>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function ReviewRow({ task, onOpen }: { task: Task; onOpen: (task: Task) => void }) {
+  const { t, lang } = useI18n();
+  const { userById } = useWorkspace();
+  const owners: DirectoryUser[] = assigneesOf(task).flatMap((id: string) => {
+    const person = userById(id);
+    return person ? [person] : [];
+  });
+  const department = getDepartment(task.department ?? DEFAULT_DEPARTMENT);
+  const active = stateOf(task) === 'submitted';
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={() => onOpen(task)}
+        className="flex w-full flex-wrap items-center gap-3 rounded-2xl border border-surface-line bg-white px-4 py-3.5 text-start shadow-sm transition-shadow hover:shadow-card"
+        style={{ borderInlineStartWidth: 3, borderInlineStartColor: department.color }}
+      >
+        {owners[0] && (
+          <Avatar name={owners[0].name} color={owners[0].avatarColor} size={34} />
+        )}
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[13.5px] font-bold text-ink">{task.title}</span>
+          <span className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11.5px] text-ink-faint">
+            <span>
+              {owners.length === 0
+                ? t('tasks.unassigned')
+                : owners.map((person: DirectoryUser) => person.name).join('، ')}
+            </span>
+            <span style={{ color: department.color }}>
+              {lang === 'en' ? department.en : department.ar}
+            </span>
+            <span>{t(active ? 'flow.waitingSince' : 'flow.reviewedSince', {
+              when: timeAgo(active ? task.submittedAt : task.reviewedAt, t),
+            })}</span>
+            {isDoneTask(task) && <CompletedOn task={task} />}
+          </span>
+          {(task.submissionNote || task.reviewNote) && (
+            <span className="mt-2 block truncate text-[12px] leading-relaxed text-ink-muted">
+              {task.reviewNote || task.submissionNote}
+            </span>
+          )}
+        </span>
+        <span className="flex shrink-0 flex-wrap items-center gap-1.5">
+          <span className={cx(
+            'chip',
+            active ? 'bg-status-warnBg text-accent-600' : 'bg-status-okBg text-status-ok'
+          )}>
+            {t(active ? 'flow.reviewQueueWaiting' : 'flow.reviewQueueDone')}
+          </span>
+          {task.attachmentCount > 0 && (
+            <span className="chip bg-surface-sunken text-ink-muted">
+              <Paperclip size={12} />
+              <span className="ltr tabular-nums">{task.attachmentCount}</span>
+            </span>
+          )}
+          {task.reworkCount > 0 && (
+            <span className="chip bg-status-warnBg text-accent-600">
+              {returnedLabel(task.reworkCount, t)}
+            </span>
+          )}
+          <TaskTiming task={task} />
+        </span>
+      </button>
+    </li>
+  );
+}
+
+/* ── the Done period ─────────────────────────────────────────────── */
+
+type Translate = ReturnType<typeof useI18n>['t'];
+
+function monthName(key: string, lang: 'ar' | 'en') {
+  return new Intl.DateTimeFormat(lang === 'en' ? 'en-GB' : 'ar-EG', {
+    month: 'long',
+    year: 'numeric',
+  }).format(monthStart(key));
+}
+
+function periodLabel(period: string, lang: 'ar' | 'en', t: Translate) {
+  return period === ALL_HISTORY ? t('tasks.doneAll') : monthName(period, lang);
+}
+
+/**
+ * ‹ September 2026 › — which month of finished work is on screen. The arrows
+ * step a month, the list jumps to any month back to the first completion, and
+ * "All history" is always the last option, so nothing old is out of reach.
+ */
+function DonePeriodPicker({
+  value,
+  onChange,
+  earliest,
+}: {
+  value: string;
+  onChange: (period: string) => void;
+  earliest: string | null;
+}) {
+  const { t, lang, dir } = useI18n();
+  const now = currentMonthKey() as string;
+  const month = value === ALL_HISTORY ? null : value;
+
+  // Newest first: this month, then back to the oldest completion — never fewer
+  // than twelve, and always including whatever is currently selected.
+  const months: string[] = [];
+  const floor = [earliest ?? now, shiftMonth(now, -11), month ?? now].sort()[0];
+  for (let key: string = now; key >= floor; key = shiftMonth(key, -1)) months.push(key);
+
+  // Arrows point the way time runs on the page, which is leftwards in Arabic.
+  const Back = dir === 'rtl' ? ChevronRight : ChevronLeft;
+  const Forward = dir === 'rtl' ? ChevronLeft : ChevronRight;
+
+  return (
+    <div
+      role="group"
+      aria-label={t('tasks.donePeriod')}
+      className="flex items-center gap-0.5 rounded-xl border border-surface-line bg-white p-1"
+    >
+      <span className="flex items-center gap-1 px-1.5 text-[12px] font-semibold text-ink-muted">
+        <CheckCircle2 size={13} className="text-status-ok" />
+        {t('tasks.donePeriod')}
+      </span>
+      <button
+        type="button"
+        onClick={() => onChange(shiftMonth(month ?? now, -1))}
+        className="btn-quiet !min-h-8 rounded-lg p-1"
+        aria-label={t('tasks.donePrevMonth')}
+      >
+        <Back size={15} />
+      </button>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="field !min-h-8 w-auto border-0 py-1 text-[12.5px] font-semibold"
+        aria-label={t('tasks.donePeriod')}
+      >
+        {months.map((key) => (
+          <option key={key} value={key}>
+            {monthName(key, lang)}
+            {key === now ? ` · ${t('tasks.doneThisMonth')}` : ''}
+          </option>
+        ))}
+        <option value={ALL_HISTORY}>{t('tasks.doneAll')}</option>
+      </select>
+      <button
+        type="button"
+        onClick={() => month && onChange(shiftMonth(month, 1))}
+        disabled={!month || month >= now}
+        className="btn-quiet !min-h-8 rounded-lg p-1 disabled:opacity-30"
+        aria-label={t('tasks.doneNextMonth')}
+      >
+        <Forward size={15} />
+      </button>
+    </div>
+  );
+}
+
+/**
+ * When the work was finished, from `completedAt` alone. A finished task
+ * without one says so plainly rather than borrowing another date — a made-up
+ * completion date would quietly corrupt the month it was filed under.
+ */
+function CompletedOn({ task }: { task: Task }) {
+  const { t, lang } = useI18n();
+  if (!task.completedAt) {
+    return (
+      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-accent-600">
+        <AlertTriangle size={11} />
+        {t('tasks.completedMissing')}
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-status-ok">
+      <CheckCircle2 size={11} />
+      {t('tasks.completedOn', { date: formatDate(task.completedAt, lang) })}
+    </span>
   );
 }
 
@@ -1700,6 +2027,7 @@ function TaskCard({
         {isDone && task.score !== null && task.score !== undefined && (
           <ScoreChip score={task.score} size="sm" />
         )}
+        {isDone && <CompletedOn task={task} />}
         {flagged && <StateBadge task={task} forReviewer={forReviewer} />}
       </div>
     </article>

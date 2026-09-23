@@ -1786,6 +1786,78 @@ test('work with no file to show is handed in on its note alone', async () => {
   assert.equal(scored.data.task.score, 85);
 });
 
+test('nothing the employee saved goes blank when the task moves to the manager', async () => {
+  const { task } = await create(
+    '/tasks',
+    {
+      title: 'حملة الخريف',
+      description: 'ثلاث تصميمات للحملة',
+      objective: 'رفع التسجيل',
+      definitionOfDone: 'ثلاث ملفات معتمدة',
+      department: 'marketing',
+      subteam: 'creative',
+      stage: 'pending',
+      assigneeIds: [creative.user.id],
+    },
+    managerCookie
+  );
+  await request(`/tasks/${task.id}/assignment`, {
+    method: 'POST',
+    cookie: creativeCookie,
+    body: { action: 'accept' },
+  });
+
+  // 1–2. The employee writes their notes and saves them.
+  const noted = await request(`/tasks/${task.id}`, {
+    method: 'PATCH',
+    cookie: creativeCookie,
+    body: { notes: 'المقاسات من قسم المبيعات', progress: 60 },
+  });
+  assert.equal(noted.status, 200, JSON.stringify(noted.data));
+
+  // 3–4. "What you did", handed in.
+  const summary = 'صممت الثلاث بوسترات وراجعت الألوان مع الهوية';
+  const handedIn = await request(`/tasks/${task.id}/submit`, {
+    method: 'POST',
+    cookie: creativeCookie,
+    body: { note: summary },
+  });
+  assert.equal(handedIn.status, 200, JSON.stringify(handedIn.data));
+  assert.equal(handedIn.data.task.submissionNote, summary, 'the submit answer carries the note');
+
+  // 5–6. A comment, and a deliverable.
+  const comment = await create(`/tasks/${task.id}/comments`, { body: 'رفعت الملفات' }, creativeCookie);
+  const file = await upload(task.id, { name: 'autumn.pdf' }, creativeCookie);
+  assert.equal(file.status, 201, JSON.stringify(file.data));
+
+  // 7. The manager opens it — directly, and from the board list.
+  const opened = await request(`/tasks/${task.id}`, { cookie: managerCookie });
+  assert.equal(opened.status, 200);
+  const listed = (await request('/tasks', { cookie: managerCookie })).data.tasks.find(
+    (item) => item.id === task.id
+  );
+  for (const seen of [opened.data.task, listed]) {
+    assert.equal(seen.title, 'حملة الخريف');
+    assert.equal(seen.description, 'ثلاث تصميمات للحملة');
+    assert.equal(seen.objective, 'رفع التسجيل');
+    assert.equal(seen.definitionOfDone, 'ثلاث ملفات معتمدة');
+    assert.equal(seen.notes, 'المقاسات من قسم المبيعات');
+    assert.equal(seen.submissionNote, summary);
+    assert.equal(seen.stage, 'review');
+    assert.ok(seen.submittedAt);
+    assert.equal(seen.submittedBy, creative.user.id);
+    assert.equal(seen.attachmentCount, 1);
+  }
+
+  const comments = (await request(`/tasks/${task.id}/comments`, { cookie: managerCookie })).data.comments;
+  assert.deepEqual(
+    comments.map((item) => [item.id, item.userId, item.body, item.createdAt]),
+    [[comment.comment.id, creative.user.id, 'رفعت الملفات', comment.comment.createdAt]]
+  );
+  const files = (await request(`/tasks/${task.id}/attachments`, { cookie: managerCookie })).data;
+  assert.deepEqual(files.attachments.map((item) => item.name), ['autumn.pdf']);
+});
+
 test('tasks.move_any walks through the gates, and the record follows the card', async () => {
   const { task } = await create(
     '/tasks',

@@ -74,6 +74,7 @@ import {
   timeAgo,
 } from '../lib/utils';
 import { type TimingIcon, timingChips } from '../lib/taskTiming';
+import { useDraftText } from '../lib/taskDrafts';
 import type { StringKey } from '../lib/i18n';
 import type { Task, TaskAttachment, TaskState } from '../lib/types';
 
@@ -654,10 +655,18 @@ function ReworkReasonGate({ task, busy, onCancel, onReturn }: {
   task: Task;
   busy: boolean;
   onCancel: () => void;
-  onReturn: (note: string) => Promise<void>;
+  /** Resolves true once the server has the return, so the draft can go. */
+  onReturn: (note: string) => Promise<boolean>;
 }) {
   const { t } = useI18n();
-  const [note, setNote] = useState('');
+  const { text: note, setText: setNote, clear, restored } = useDraftText({
+    taskId: task.id,
+    purpose: 'return',
+    basis: `${task.stage}:${task.reworkCount ?? 0}`,
+  });
+  const send = async () => {
+    if (await onReturn(note.trim())) clear();
+  };
   return (
     <div className="grid gap-3.5 rounded-xl border border-accent-500/25 bg-status-warnBg/40 p-3.5">
       <h4 className="text-[13px] font-bold text-ink">{t('flow.sendToRework')}</h4>
@@ -673,6 +682,7 @@ function ReworkReasonGate({ task, busy, onCancel, onReturn }: {
           placeholder={t('flow.returnReasonRequired')}
         />
       </Field>
+      {restored && <DraftRestored />}
       <p className="text-[12px] font-semibold text-status-bad">
         {t('flow.returnPenaltyPreview', { percent: Math.min(100, ((task.reworkCount ?? 0) + 1) * 10) })}
       </p>
@@ -680,7 +690,7 @@ function ReworkReasonGate({ task, busy, onCancel, onReturn }: {
         <button type="button" onClick={onCancel} disabled={busy} className="btn-quiet btn-sm">
           {t('common.cancel')}
         </button>
-        <button type="button" onClick={() => onReturn(note.trim())} disabled={busy || !note.trim()} className="btn-primary btn-sm gap-1.5">
+        <button type="button" onClick={send} disabled={busy || !note.trim()} className="btn-primary btn-sm gap-1.5">
           {busy ? <Spinner size={15} /> : <RotateCcw size={15} />}
           {t('flow.requestChanges')}
         </button>
@@ -723,10 +733,16 @@ export function MoveStageAction({
   const department = task.department ?? 'general';
 
   // A drop onto a column is already a choice of stage; re-picking it from the
-  // list would be asking the same question twice.
+  // list would be asking the same question twice. Aimed once per drop — a
+  // polled copy of the task must not close a return reason half-written.
   useEffect(() => {
     setTarget(initialStage && initialStage !== task.stage ? initialStage : '');
-  }, [initialStage, task.id, task.stage]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `task.stage` is read, not watched
+  }, [initialStage, task.id]);
+  // Only a move that has already happened (here or elsewhere) retires the aim.
+  useEffect(() => {
+    setTarget((value) => (value === task.stage ? '' : value));
+  }, [task.stage]);
 
   const canOverride = canMoveAnyStage(user);
   const returning = Boolean(target) && stageWriteVerdict(user, task, department, target) === 'rework';
@@ -739,7 +755,7 @@ export function MoveStageAction({
   const closing = Boolean(target) && stageType(department, target) === 'done';
 
   const move = async (note?: string) => {
-    if (!target || target === task.stage) return;
+    if (!target || target === task.stage) return false;
     const stage = stageLabel(department, target, lang);
     setBusy(true);
     try {
@@ -755,8 +771,10 @@ export function MoveStageAction({
       onChanged(updated);
       setTarget('');
       push(t(returning ? 'flow.returned.toast' : closing ? 'flow.movedClosed.toast' : 'flow.moved.toast', { stage }));
+      return true;
     } catch (err) {
       push(errorMessage(err, lang), 'bad');
+      return false;
     } finally {
       setBusy(false);
     }
@@ -885,10 +903,10 @@ export function WorkflowActions({
   };
 
   const reopen = async (note: string) => {
-    if (await act('reopen', { note })) {
-      setOpen(null);
-      push(t('flow.reopened.toast'));
-    }
+    if (!(await act('reopen', { note }))) return false;
+    setOpen(null);
+    push(t('flow.reopened.toast'));
+    return true;
   };
 
   const publish = async (score: number) => {
@@ -1040,7 +1058,12 @@ function AssignmentGate({
     'decline' | 'request_clarification' | 'propose_due_date' | 'request_reassignment' | null
   >(null);
   const mine = user ? assignmentFor(task, user.id) : null;
-  const [note, setNote] = useState(mine?.note ?? '');
+  const { text: note, setText: setNote, clear, restored } = useDraftText({
+    taskId: task.id,
+    purpose: 'assignment',
+    serverValue: mine?.note ?? '',
+    basis: mine?.status ?? null,
+  });
   const [dueDate, setDueDate] = useState(mine?.proposedDueDate ?? task.dueDate ?? '');
 
   const accept = async () => {
@@ -1059,6 +1082,7 @@ function AssignmentGate({
       ...(mode === 'propose_due_date' ? { dueDate } : {}),
     };
     if (await onAct('assignment', body)) {
+      clear();
       push(t('assignment.sent'));
       setMode(null);
     }
@@ -1098,6 +1122,7 @@ function AssignmentGate({
             autoFocus={mode !== 'propose_due_date'}
           />
         </Field>
+        {restored && <DraftRestored />}
         <div className="flex flex-wrap justify-end gap-2">
           <button type="button" onClick={() => setMode(null)} className="btn-ghost btn-sm">
             {t('common.cancel')}
@@ -1182,13 +1207,25 @@ function SubmitGate({
 }) {
   const { t } = useI18n();
   const { push } = useToast();
-  const [note, setNote] = useState(task.submissionNote ?? '');
+  // The account of the work is usually the longest thing anybody types on a
+  // task, and Cancel or a closed dialog used to throw it away. It is kept as a
+  // private draft until the server has it; a hand-in made since (another tab, a
+  // return that bumped the rework count) makes the draft stale.
+  const { text: note, setText: setNote, clear, restored } = useDraftText({
+    taskId: task.id,
+    purpose: 'submission',
+    serverValue: task.submissionNote ?? '',
+    basis: `${task.reworkCount ?? 0}:${task.submittedAt ?? ''}`,
+  });
 
   const send = async () => {
     // Either is enough; neither is not. See the submit route for why the file
     // stopped being mandatory.
     if (attachmentCount === 0 && !note.trim()) return push(t('flow.needSomething'), 'bad');
-    if (await onSubmit('submit', { note })) push(t('flow.submitted.toast'));
+    if (await onSubmit('submit', { note })) {
+      clear();
+      push(t('flow.submitted.toast'));
+    }
   };
 
   return (
@@ -1207,6 +1244,7 @@ function SubmitGate({
           autoFocus
         />
       </Field>
+      {restored && <DraftRestored />}
 
       {/* A nudge, not a wall. Attaching is still the better hand-in when there
           is something to attach, so it is worth saying — but a task that
@@ -1233,6 +1271,16 @@ function SubmitGate({
         </button>
       </div>
     </div>
+  );
+}
+
+/** Said once, under a field that came back with text its owner never sent. */
+export function DraftRestored() {
+  const { t } = useI18n();
+  return (
+    <p role="status" className="-mt-1.5 text-[11.5px] font-semibold text-brand-600">
+      {t('drafts.restored')}
+    </p>
   );
 }
 
@@ -1377,7 +1425,11 @@ function ReviewGate({
   const { push } = useToast();
   const marketingReview = (task.department ?? 'general') === 'marketing';
   const [score, setScore] = useState(task.score ?? 85);
-  const [note, setNote] = useState('');
+  const { text: note, setText: setNote, clear, restored } = useDraftText({
+    taskId: task.id,
+    purpose: 'review',
+    basis: task.submittedAt ?? null,
+  });
   // The band is read off the score the assignee will actually carry, which is
   // what the rework deduction leaves behind — the same number `ScoreDial` shows.
   const penaltyPercent = Math.min(100, (task.reworkCount ?? 0) * 10);
@@ -1403,6 +1455,7 @@ function ReviewGate({
         ...(marketingReview ? {} : { score }),
       })
     ) {
+      clear();
       push(t(marketingReview ? 'flow.sentToApproval.toast' : 'flow.approved.toast'));
     }
   };
@@ -1410,6 +1463,7 @@ function ReviewGate({
   const sendBack = async () => {
     if (!note.trim()) return push(t('flow.returnReasonRequired'), 'bad');
     if (await onDecide('review', { decision: 'changes_requested', note })) {
+      clear();
       push(t('flow.returned.toast'));
     }
   };
@@ -1446,6 +1500,7 @@ function ReviewGate({
           placeholder={t('flow.reviewNotePlaceholder')}
         />
       </Field>
+      {restored && <DraftRestored />}
 
       {/* Two ways out of review, and the buttons name where the card lands
           rather than what the verdict is called. Which one leads is the score's

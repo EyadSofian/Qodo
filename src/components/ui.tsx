@@ -63,21 +63,41 @@ export function Modal({
   const { lang } = useI18n();
   const panelRef = useRef<HTMLDivElement>(null);
 
+  // Callers pass `onClose` inline, so it is a new function on every render of
+  // the parent — and parents re-render all the time (polling, the notification
+  // context). When it sat in the effect's dependencies, every one of those
+  // renders tore the effect down and ran it again, and running it again meant
+  // `panel.focus()`: the field being typed into lost the caret mid-word. The
+  // latest callback lives in a ref instead, and the effect below belongs to the
+  // modal opening and closing, nothing else.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
   useEffect(() => {
     if (!open) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
+      if (event.key === 'Escape') onCloseRef.current();
     };
     document.addEventListener('keydown', onKey);
     // Stop the page behind from scrolling under the sheet on phones.
     const previous = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    panelRef.current?.focus();
+    // Focus moves into the dialog once, as it opens — unless a field inside has
+    // already claimed it with `autoFocus`, which this used to override too.
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (!panelRef.current?.contains(document.activeElement)) panelRef.current?.focus();
     return () => {
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = previous;
+      // Hand focus back to whatever opened the dialog, so a keyboard user is not
+      // dropped at the top of the page.
+      if (opener && opener.isConnected && !panelRef.current?.contains(opener)) {
+        opener.focus({ preventScroll: true });
+      }
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 

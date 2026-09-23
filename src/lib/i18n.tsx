@@ -328,6 +328,17 @@ const CORE_STRINGS = {
   'tasks.allPeople': { ar: 'جميع الموظفين', en: 'Everyone' },
   'tasks.allDepartments': { ar: 'جميع الأقسام', en: 'All departments' },
   'tasks.emptyColumn': { ar: 'لا شيء هنا', en: 'Nothing here' },
+  'tasks.donePeriod': { ar: 'المنجزة في', en: 'Completed in' },
+  'tasks.doneAll': { ar: 'كل السجل', en: 'All history' },
+  'tasks.doneThisMonth': { ar: 'الشهر الحالي', en: 'This month' },
+  'tasks.donePrevMonth': { ar: 'الشهر السابق', en: 'Previous month' },
+  'tasks.doneNextMonth': { ar: 'الشهر التالي', en: 'Next month' },
+  'tasks.completedOn': { ar: 'اتقفلت {date}', en: 'Completed {date}' },
+  'tasks.completedMissing': { ar: 'تاريخ الإنجاز غير مسجّل', en: 'No completion date' },
+  'tasks.undatedDone': {
+    ar: '{count} منجزة بدون تاريخ إنجاز — تظهر في «كل السجل»',
+    en: '{count} finished without a completion date — shown under All history',
+  },
   'tasks.dragHandle': { ar: 'اسحب لتغيير مكان المهمة', en: 'Drag to move this task' },
   'tasks.noMatch': { ar: 'لا توجد مهام مطابقة', en: 'No matching tasks' },
   'tasks.noMatchSearch': { ar: 'جرّب كلمة بحث أخرى أو أزل عوامل التصفية.', en: 'Try another search term or clear the filters.' },
@@ -380,6 +391,12 @@ const CORE_STRINGS = {
   'tasks.added': { ar: 'تمت إضافة المهمة.', en: 'Task added.' },
   'tasks.updated': { ar: 'تم تحديث المهمة.', en: 'Task updated.' },
   'tasks.archive': { ar: 'أرشفة', en: 'Archive' },
+  'tasks.restore': { ar: 'استرجاع للبورد', en: 'Restore to board' },
+  'tasks.restored': { ar: 'رجعت المهمة للبورد.', en: 'Task restored to the board.' },
+  'tasks.archivedReadOnly': {
+    ar: 'المهمة مؤرشفة — تُقرأ فقط، ولا يمكن تعديلها أو التعليق عليها أو تسليمها.',
+    en: 'This task is archived — read-only. It cannot be edited, commented on or handed in.',
+  },
   'tasks.archived': { ar: 'تمت أرشفة المهمة وسجلها محفوظ.', en: 'Task archived — its record is kept.' },
   // Says what actually happens, because the old wording ("cannot be undone")
   // described a permanent delete that employees never had any business doing.
@@ -719,6 +736,24 @@ const CORE_STRINGS = {
   'flow.reviewedSince': { ar: 'اتراجعت {when}', en: 'Reviewed {when}' },
   'flow.reviewQueueWaiting': { ar: 'بانتظار المراجعة', en: 'Waiting for review' },
   'flow.reviewQueueDone': { ar: 'اتراجعت واتقفلت', en: 'Reviewed & done' },
+  'flow.reviewHistory': { ar: 'سجل المراجعات', en: 'Reviewed history' },
+  'flow.reviewHistoryEmpty': {
+    ar: 'لا توجد مراجعات مقفولة في هذه الفترة.',
+    en: 'No reviewed work closed in this period.',
+  },
+  'drafts.restored': {
+    ar: 'رجّعنا النص اللي كتبته ولسه ما اتبعتش.',
+    en: 'Your unsent text was restored.',
+  },
+  'drafts.formRestored': {
+    ar: 'فيه تعديلات ما اتحفظتش من المرة اللي فاتت ورجّعناها. اضغط «حفظ» عشان تثبّتها.',
+    en: 'Unsaved changes from last time were restored. Press Save to keep them.',
+  },
+  'drafts.discard': { ar: 'تجاهلها', en: 'Discard' },
+  'drafts.newRestored': {
+    ar: 'رجّعنا المهمة اللي كنت بتكتبها ولسه ما اتضافتش. اضغط «إضافة» عشان تنشئها.',
+    en: 'The task you were writing, never added, was restored. Press Add to create it.',
+  },
   'flow.timeline': { ar: 'المسار', en: 'Timeline' },
   'flow.properties': { ar: 'الخصائص', en: 'Properties' },
   'flow.createdOn': { ar: 'أُنشئت', en: 'Created' },
