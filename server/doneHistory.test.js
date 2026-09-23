@@ -4,9 +4,10 @@ import {
   ALL_HISTORY,
   byCompletionDesc,
   currentMonthKey,
-  inDonePeriod,
+  inTaskPeriod,
   monthKeyOf,
   shiftMonth,
+  taskMonthKey,
   undatedDoneTasks,
 } from '../shared/doneHistory.js';
 
@@ -35,18 +36,26 @@ const active = {
   department: 'general',
   stage: 'doing',
   createdAt: at(2025, 1, 1),
+  taskDate: '2026-09-15',
   completedAt: null,
 };
 
 const shown = (period) =>
-  [august, september, active].filter((task) => inDonePeriod(task, period)).map((task) => task.id);
+  [august, september, active].filter((task) => inTaskPeriod(task, period)).map((task) => task.id);
 
-test('September shows only the task completed in September, plus open work', () => {
+test('September shows the task completed in September and the open task dated in September', () => {
   assert.deepEqual(shown('2026-09'), ['sep', 'active']);
 });
 
-test('the previous month shows only its own completions', () => {
-  assert.deepEqual(shown(shiftMonth('2026-09', -1)), ['aug', 'active']);
+test('the previous month shows only its own work', () => {
+  assert.deepEqual(shown(shiftMonth('2026-09', -1)), ['aug']);
+});
+
+test('open work is filed by its task date, and by when it was filed without one', () => {
+  assert.equal(taskMonthKey(active), '2026-09');
+  assert.equal(taskMonthKey({ ...active, taskDate: null }), '2025-01');
+  // The task date is a calendar date already — never shifted by a timezone.
+  assert.equal(taskMonthKey({ ...active, taskDate: '2026-08-31' }), '2026-08');
 });
 
 test('switching back and forth never duplicates or loses a task', () => {
@@ -57,7 +66,7 @@ test('switching back and forth never duplicates or loses a task', () => {
 
 test('the month comes from completedAt, never createdAt or taskDate', () => {
   assert.equal(monthKeyOf(september.completedAt), '2026-09');
-  assert.equal(inDonePeriod(september, '2026-08'), false);
+  assert.equal(inTaskPeriod(september, '2026-08'), false);
 });
 
 test('month arithmetic crosses year boundaries', () => {
@@ -73,8 +82,8 @@ test('newest completion first', () => {
 
 test('a finished task without completedAt is reported, not dated', () => {
   const undated = { ...september, id: 'undated', completedAt: null };
-  assert.equal(inDonePeriod(undated, '2026-09'), false);
-  assert.equal(inDonePeriod(undated, ALL_HISTORY), true);
+  assert.equal(inTaskPeriod(undated, '2026-09'), false);
+  assert.equal(inTaskPeriod(undated, ALL_HISTORY), true);
   assert.deepEqual(undatedDoneTasks([undated, september, active]).map((task) => task.id), ['undated']);
 });
 
@@ -111,7 +120,7 @@ test('month boundaries follow the local calendar, not the UTC date', () => {
     assert.equal(monthKeyOf(lateAugustUtc), '2026-08');
     assert.equal(monthKeyOf(earlySeptemberUtc), '2026-08');
     const task = { department: 'general', stage: 'done', completedAt: earlySeptemberUtc };
-    assert.equal(inDonePeriod(task, '2026-08'), true);
-    assert.equal(inDonePeriod(task, '2026-09'), false);
+    assert.equal(inTaskPeriod(task, '2026-08'), true);
+    assert.equal(inTaskPeriod(task, '2026-09'), false);
   });
 });

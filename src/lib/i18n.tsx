@@ -328,7 +328,11 @@ const CORE_STRINGS = {
   'tasks.allPeople': { ar: 'جميع الموظفين', en: 'Everyone' },
   'tasks.allDepartments': { ar: 'جميع الأقسام', en: 'All departments' },
   'tasks.emptyColumn': { ar: 'لا شيء هنا', en: 'Nothing here' },
-  'tasks.donePeriod': { ar: 'المنجزة في', en: 'Completed in' },
+  'tasks.donePeriod': { ar: 'الشهر', en: 'Month' },
+  'tasks.openElsewhere': {
+    ar: 'مهام مفتوحة في شهور تانية: {count} — اعرض كل السجل',
+    en: '{count} open tasks dated in other months — show all history',
+  },
   'tasks.doneAll': { ar: 'كل السجل', en: 'All history' },
   'tasks.doneThisMonth': { ar: 'الشهر الحالي', en: 'This month' },
   'tasks.donePrevMonth': { ar: 'الشهر السابق', en: 'Previous month' },

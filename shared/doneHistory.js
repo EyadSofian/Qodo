@@ -1,14 +1,22 @@
 /**
- * Which finished work the board shows.
+ * Which month of work the task page shows.
  *
- * The Done column used to hold every task ever closed, so it grew for ever and
- * this month's work sat in one pile with last spring's. It is now a view of one
- * calendar month — the current one by default — with the rest a click away.
+ * The board and table used to hold every task ever filed, so Done grew for ever
+ * and this month's work sat in one pile with last spring's. The page is now a
+ * view of one calendar month — the current one by default — with any other
+ * month, or the whole history, a click away.
  *
- * The month a task belongs to is the month it was *finished*: `completedAt`,
- * never `createdAt` or `taskDate`. Something filed in August and approved in
- * September is September's work. Months are read in the viewer's own calendar,
- * because "September" on screen has to mean the September the viewer lives in.
+ * Every task belongs to exactly one month:
+ *
+ *   finished work  the month it was *finished* — `completedAt`, never
+ *                  `createdAt` or `taskDate`. Filed in August and approved in
+ *                  September is September's work. Read in the viewer's own
+ *                  calendar, because "September" on screen has to mean the
+ *                  September the viewer lives in.
+ *   open work      the month of its business date, `taskDate` — the date the
+ *                  table shows in its first column. It is a calendar date
+ *                  already, so it is read as written, not through a timezone.
+ *                  A row without one falls back to when it was filed.
  *
  * This is a lens, not a migration: nothing here writes, and a task whose
  * `completedAt` is missing is reported as missing rather than given a date.
@@ -59,14 +67,20 @@ export function isDoneTask(task) {
 }
 
 /**
- * Whether a task belongs on screen under the chosen period. Open work always
- * does — the period narrows finished work only. A finished task without a
- * `completedAt` has no month to belong to, so only the full history shows it.
+ * The month a task is filed under, or null when it cannot be placed — a
+ * finished task without a `completedAt`, which only the full history shows.
+ * @returns {string | null}
  */
-export function inDonePeriod(task, period) {
-  if (!isDoneTask(task)) return true;
-  if (period === ALL_HISTORY) return true;
-  return monthKeyOf(task.completedAt) === period;
+export function taskMonthKey(task) {
+  if (isDoneTask(task)) return monthKeyOf(task.completedAt);
+  const date = String(task.taskDate ?? '');
+  if (/^\d{4}-\d{2}/.test(date)) return date.slice(0, 7);
+  return monthKeyOf(task.createdAt);
+}
+
+/** Whether a task is on screen under the chosen period. */
+export function inTaskPeriod(task, period) {
+  return period === ALL_HISTORY || taskMonthKey(task) === period;
 }
 
 /** Newest completion first; undated rows sink to the bottom. */

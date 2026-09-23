@@ -41,11 +41,12 @@ import {
   ALL_HISTORY,
   byCompletionDesc,
   currentMonthKey,
-  inDonePeriod,
+  inTaskPeriod,
   isDoneTask,
   monthKeyOf,
   monthStart,
   shiftMonth,
+  taskMonthKey,
   undatedDoneTasks,
 } from '@shared/doneHistory';
 import { mergePolledTasks } from '@shared/taskDrafts';
@@ -356,24 +357,37 @@ export function Tasks() {
     });
   }, [tasks, scope, assignee, query, user, department, reworkOnly]);
 
-  // The same period governs the board and the table, so the two never disagree
-  // about what "done" contains. Open work is never narrowed by it.
+  // One month of work on screen: finished tasks by when they were finished,
+  // open ones by their task date. The same period governs the board and the
+  // table, so the two never disagree.
   const filtered = useMemo(
-    () => scoped.filter((task) => inDonePeriod(task, donePeriod)),
+    () => scoped.filter((task) => inTaskPeriod(task, donePeriod)),
     [scoped, donePeriod]
   );
   const undatedDone = useMemo(
     () => (donePeriod === ALL_HISTORY ? 0 : undatedDoneTasks(scoped).length),
     [scoped, donePeriod]
   );
-  /** How far back the month picker needs to reach. */
-  const earliestDone = useMemo(() => {
+  // Open work dated in another month is still work — say how much is out of
+  // view, so a month filter never quietly hides a late task.
+  const openElsewhere = useMemo(
+    () =>
+      donePeriod === ALL_HISTORY
+        ? 0
+        : scoped.filter((task) => !isDoneTask(task) && taskMonthKey(task) !== donePeriod).length,
+    [scoped, donePeriod]
+  );
+  /** How far back — and, for work planned ahead, forward — the picker reaches. */
+  const monthRange = useMemo(() => {
     let earliest: string | null = null;
+    let latest: string | null = null;
     for (const task of tasks ?? []) {
-      const key = isDoneTask(task) ? monthKeyOf(task.completedAt) : null;
-      if (key && (!earliest || key < earliest)) earliest = key;
+      const key = taskMonthKey(task);
+      if (!key) continue;
+      if (!earliest || key < earliest) earliest = key;
+      if (!latest || key > latest) latest = key;
     }
-    return earliest;
+    return { earliest, latest };
   }, [tasks]);
 
   const byColumn = useMemo(() => {
@@ -967,7 +981,16 @@ export function Tasks() {
           </select>
         )}
 
-        <DonePeriodPicker value={donePeriod} onChange={setDonePeriod} earliest={earliestDone} />
+        <DonePeriodPicker value={donePeriod} onChange={setDonePeriod} range={monthRange} />
+        {openElsewhere > 0 && (
+          <button
+            type="button"
+            onClick={() => setDonePeriod(ALL_HISTORY)}
+            className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11.5px] font-semibold text-ink-muted hover:bg-surface-sunken"
+          >
+            {t('tasks.openElsewhere', { count: openElsewhere })}
+          </button>
+        )}
         {undatedDone > 0 && (
           <button
             type="button"
@@ -1030,7 +1053,7 @@ export function Tasks() {
           history={reviewHistory}
           period={donePeriod}
           onPeriod={setDonePeriod}
-          earliest={earliestDone}
+          range={monthRange}
           onOpen={openTask}
         />
       ) : view === 'table' ? (
@@ -1327,14 +1350,14 @@ function ReviewQueue({
   history,
   period,
   onPeriod,
-  earliest,
+  range,
   onOpen,
 }: {
   awaiting: Task[];
   history: Task[];
   period: string;
   onPeriod: (period: string) => void;
-  earliest: string | null;
+  range: { earliest: string | null; latest: string | null };
   onOpen: (task: Task) => void;
 }) {
   const { t } = useI18n();
@@ -1378,7 +1401,7 @@ function ReviewQueue({
               {history.length}
             </span>
           </h2>
-          <DonePeriodPicker value={period} onChange={onPeriod} earliest={earliest} />
+          <DonePeriodPicker value={period} onChange={onPeriod} range={range} />
         </div>
         {history.length === 0 ? (
           <p className="rounded-xl border border-dashed border-surface-line px-3 py-6 text-center text-[12.5px] text-ink-faint">
@@ -1479,28 +1502,31 @@ function periodLabel(period: string, lang: 'ar' | 'en', t: Translate) {
 }
 
 /**
- * ‹ September 2026 › — which month of finished work is on screen. The arrows
- * step a month, the list jumps to any month back to the first completion, and
- * "All history" is always the last option, so nothing old is out of reach.
+ * ‹ September 2026 › — which month of work is on screen. The arrows step a
+ * month, the list jumps to any month that has work in it, and "All history" is
+ * always the last option, so nothing is out of reach.
  */
 function DonePeriodPicker({
   value,
   onChange,
-  earliest,
+  range,
 }: {
   value: string;
   onChange: (period: string) => void;
-  earliest: string | null;
+  range: { earliest: string | null; latest: string | null };
 }) {
   const { t, lang, dir } = useI18n();
   const now = currentMonthKey() as string;
   const month = value === ALL_HISTORY ? null : value;
 
-  // Newest first: this month, then back to the oldest completion — never fewer
-  // than twelve, and always including whatever is currently selected.
+  // Newest first, from the last month anything is planned for (never before
+  // this one) back to the oldest work — never fewer than twelve months, and
+  // always including whatever is selected. Nothing past the newest work, so
+  // the arrows cannot walk into an endless run of empty months.
+  const top = [now, range.latest ?? now, month ?? now].sort().at(-1) as string;
+  const floor = [range.earliest ?? now, shiftMonth(now, -11), month ?? now].sort()[0];
   const months: string[] = [];
-  const floor = [earliest ?? now, shiftMonth(now, -11), month ?? now].sort()[0];
-  for (let key: string = now; key >= floor; key = shiftMonth(key, -1)) months.push(key);
+  for (let key: string = top; key >= floor; key = shiftMonth(key, -1)) months.push(key);
 
   // Arrows point the way time runs on the page, which is leftwards in Arabic.
   const Back = dir === 'rtl' ? ChevronRight : ChevronLeft;
@@ -1541,7 +1567,7 @@ function DonePeriodPicker({
       <button
         type="button"
         onClick={() => month && onChange(shiftMonth(month, 1))}
-        disabled={!month || month >= now}
+        disabled={!month || month >= top}
         className="btn-quiet !min-h-8 rounded-lg p-1 disabled:opacity-30"
         aria-label={t('tasks.doneNextMonth')}
       >
