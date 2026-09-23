@@ -955,6 +955,10 @@ const CORE_STRINGS = {
   'perm.hr.payroll': { ar: 'رؤية وتعديل الرواتب والتأمينات', en: 'View and edit payroll and insurance' },
   'perm.users.view': { ar: 'رؤية المستخدمين', en: 'View users' },
   'perm.users.manage': { ar: 'إضافة المستخدمين وتعديلهم', en: 'Add and edit users' },
+  'perm.events.manage_layout': {
+    ar: 'ترتيب جدول الإيفينتات (الباقات والمستويات)',
+    en: 'Arrange the Events schedule (packages and levels)',
+  },
   'perm.settings.manage': { ar: 'الدخول لإعدادات المساحة', en: 'Access workspace settings' },
   'perm.elearning_production.view': { ar: 'إنتاج المحتوى: رؤية كل الكورسات', en: 'E-Learning Production: see every course' },
   'perm.elearning_production.course.create': { ar: 'إنتاج المحتوى: إنشاء كورس', en: 'E-Learning Production: create courses' },

@@ -17,6 +17,7 @@ import {
   placeLabel,
   type TrainingScheduleRow,
 } from '../../lib/eventsSchedule';
+import type { Placement } from '../../lib/eventsLayout';
 import { cx } from '../../lib/utils';
 import { CapacityProgress, DateSpan, DaysAndTime, currentOrNext, plannedTotal, whenLabel } from './CourseBits';
 import { Person } from './CourseCard';
@@ -46,7 +47,18 @@ function Heading({ children }: { children: ReactNode }) {
 
 /* ── overview ────────────────────────────────────────────────────── */
 
-export function OverviewPane({ course, now, onTab }: { course: TrainingScheduleRow; now: Date; onTab: (tab: DetailsTab) => void }) {
+export function OverviewPane({
+  course,
+  now,
+  onTab,
+  placement = null,
+}: {
+  course: TrainingScheduleRow;
+  now: Date;
+  onTab: (tab: DetailsTab) => void;
+  /** Where the schedule layout files it; wins over the Odoo-derived values. */
+  placement?: Placement | null;
+}) {
   const counts = sessionCounts(course.sessions, now);
   const pick = currentOrNext(course.sessions, now);
   const total = plannedTotal(course);
@@ -67,8 +79,13 @@ export function OverviewPane({ course, now, onTab }: { course: TrainingScheduleR
       )}
 
       <div className="grid grid-cols-3 gap-2">
-        <Block value={departmentLabel(course.department)} label="القسم" tone="blue" icon={<Building2 size={15} />} />
-        <Block value={course.package ?? course.section} label="الباقة" tone="orange" icon={<Layers size={15} />} />
+        <Block value={departmentLabel(placement?.department ?? course.department)} label="القسم" tone="blue" icon={<Building2 size={15} />} />
+        <Block
+          value={placement ? [placement.packageLabel, placement.groupLabel].filter(Boolean).join(' · ') : course.package ?? course.section}
+          label={placement?.groupLabel ? 'الباقة · المستوى' : 'الباقة'}
+          tone="orange"
+          icon={<Layers size={15} />}
+        />
         <Block value={course.trainingType} label="النوع" tone="violet" icon={<MonitorPlay size={15} />} />
       </div>
 

@@ -105,7 +105,7 @@ export function SearchField({ value, onChange }: { value: string; onChange: (val
 }
 
 /** A select that reads as a filter pill: its name when empty, its value when set. */
-function PillSelect({
+export function PillSelect({
   label,
   value,
   options,

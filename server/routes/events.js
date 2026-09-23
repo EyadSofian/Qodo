@@ -1,16 +1,18 @@
 /**
  * The Events (training schedule) and eLearning HTTP surface.
  *
- * Read-only, and gated on the app tile rather than a new permission: an
+ * Read-only towards Odoo, and gated on the app tile rather than a new permission: an
  * administrator already decides who sees "الإيفينتات" from the Allowed apps
  * checkboxes on the user form, and inventing a second place to answer the same
  * question is how the two end up disagreeing. The one exception is schema
  * diagnostics, which describes the integration rather than the courses and is
- * for whoever administers the workspace.
+ * for whoever administers the workspace — and the schedule layout, which is
+ * Qodo configuration (never Odoo data) and changes only with
+ * `events.manage_layout`.
  */
 
 import { Router } from 'express';
-import { requireAuth } from '../auth.js';
+import { logActivity, requireAuth } from '../auth.js';
 import { PERMISSIONS, can, canOpenApp } from '../../shared/permissions.js';
 import { clearEventsCache, eventsAnalytics } from '../events.js';
 import {
@@ -26,6 +28,8 @@ import {
   elearningOverview,
 } from '../elearning.js';
 import { OdooError, odooConfigured, odooMissingConfig } from '../odoo.js';
+import { LayoutConflictError, LayoutRequestError, readLayout, resetLayout, saveLayout, searchLayoutCourses, staleReferences } from '../events/layout.js';
+import { LayoutValidationError, arrangeSchedule } from '../../shared/eventsLayout.js';
 import { refreshInsightsRevenueSource } from '../insightsRevenue.js';
 
 const router = Router();
@@ -166,6 +170,98 @@ router.get('/diagnostics', (req, res, next) => {
   if (!can(req.user, PERMISSIONS.SETTINGS_MANAGE)) return res.status(403).json({ error: 'forbidden' });
   next();
 }, handle(() => scheduleDiagnostics()));
+
+/* ── schedule layout ─────────────────────────────────────────────── */
+
+/**
+ * How Qodo arranges Odoo's courses into packages and levels. Everybody with the
+ * Events tile reads it; only `events.manage_layout` changes it, and the check
+ * is here, not just a hidden button. None of these routes write to Odoo.
+ */
+const manageLayout = (req, res, next) => {
+  if (!can(req.user, PERMISSIONS.EVENTS_MANAGE_LAYOUT)) {
+    return res.status(403).json({ error: 'forbidden', missing: PERMISSIONS.EVENTS_MANAGE_LAYOUT });
+  }
+  next();
+};
+
+function failLayout(res, error) {
+  if (error instanceof LayoutConflictError) return res.status(409).json({ error: 'layout_conflict', current: error.current });
+  if (error instanceof LayoutValidationError || error instanceof LayoutRequestError) {
+    return res.status(400).json({ error: error.message, detail: error.detail ?? null });
+  }
+  return fail(res, error);
+}
+
+const auditLayout = (req) => ({ organizationId, revision, departments, reset }) =>
+  logActivity({
+    actorId: req.user.id,
+    organizationId,
+    action: 'events.layout_updated',
+    subject: 'eventLayout',
+    subjectId: `${organizationId}:schedule`,
+    meta: { revision, departments, reset },
+  });
+
+router.get('/layout', async (req, res) => {
+  try {
+    const layout = await readLayout(req.user);
+    res.json({ ...layout, canManage: can(req.user, PERMISSIONS.EVENTS_MANAGE_LAYOUT) });
+  } catch (error) {
+    failLayout(res, error);
+  }
+});
+
+/** Body: `{ layout, expectedRevision }`. 409 with `current` when somebody saved in between. */
+router.put('/layout', manageLayout, async (req, res) => {
+  try {
+    res.json(await saveLayout(req.user, req.body, { audit: auditLayout(req) }));
+  } catch (error) {
+    failLayout(res, error);
+  }
+});
+
+/** Body: `{ expectedRevision }`. Restores the workbook structure; Odoo is untouched. */
+router.post('/layout/reset', manageLayout, async (req, res) => {
+  try {
+    res.json(await resetLayout(req.user, req.body, { audit: auditLayout(req) }));
+  } catch (error) {
+    failLayout(res, error);
+  }
+});
+
+/** Layout references Odoo no longer has — shown as "Unavailable in Odoo" in the editor. */
+router.get('/layout/references', manageLayout, handle((req) => staleReferences(req.user)));
+
+/** The course picker, beyond the loaded date range: `?q=` name or code. */
+router.get('/layout/search', manageLayout, handle((req) => searchLayoutCourses(req.query.q)));
+
+/** Courses in `?from&to` that the layout does not place yet (new in Odoo, or removed from a package). */
+router.get(
+  '/layout/unassigned',
+  manageLayout,
+  handle(async (req) => {
+    const [schedule, { layout }] = await Promise.all([
+      trainingSchedule({ from: req.query.from, to: req.query.to }),
+      readLayout(req.user),
+    ]);
+    const { unassigned } = arrangeSchedule(schedule.rows, layout);
+    return {
+      rows: unassigned.map(({ id, courseName, courseCode, instructor, department, trainingType, startsAt, endsAt, statusCanonical }) => ({
+        id,
+        courseName,
+        courseCode,
+        instructor,
+        department,
+        trainingType,
+        startsAt,
+        endsAt,
+        statusCanonical,
+      })),
+      fetchedAt: schedule.fetchedAt,
+    };
+  })
+);
 
 router.get('/:id', handle((req) => eventDetail(req.params.id)));
 

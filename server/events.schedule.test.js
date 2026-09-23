@@ -27,6 +27,12 @@ import {
   zonedDayBounds,
 } from './events/schedule.js';
 import { failureFor } from './routes/events.js';
+import { buildDefaultLayout, isHiddenInSchedule, updatePackage } from '../shared/eventsLayout.js';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 /* ── a fake Odoo that counts what it is asked ────────────────────── */
 
@@ -513,6 +519,43 @@ test('today lists every lecture of the Cairo day with its place in the course', 
   assert.equal(online.joinUrl, 'https://zoom.us/j/9');
   assert.equal(online.zoomExpected, true);
   assert.equal(today.sessions.find((s) => s.id === 3).zoomExpected, false);
+});
+
+/* ── the Schedule layout never reaches operational views ─────────── */
+
+test('3–4, 7. a package hidden from the Schedule keeps its lectures in Today and its course in Analytics', async () => {
+  // Course 2 sits in a package a layout manager hid from the Schedule.
+  const seed = {
+    departments: [
+      { department: 'Mechanical', sheet: 'Mechanical', packages: [{ id: 'seed:m:p1', label: 'Automotive Package Offline', accent: 'green', courses: [{ code: '5502' }], groups: [] }] },
+    ],
+  };
+  let { layout } = buildDefaultLayout(seed, (code) => (code === '5502' ? [{ id: 2, dateBegin: null }] : []));
+  layout = updatePackage(layout, 'seed:m:p1', { hiddenInSchedule: true });
+  assert.equal(isHiddenInSchedule(layout, 2), true);
+
+  clearScheduleCaches();
+  const events = [event(1, { attendance_method: 'online' }), event(2, { attendance_method: 'offline' })];
+  const client = fakeOdoo({ events, tracks: [track(1, 1, '2026-09-22 16:00:00'), track(2, 2, '2026-09-22 06:00:00')] });
+  const today = await todaySessions({ now: NOW, client });
+  assert.deepEqual(today.sessions.map((session) => session.event.id).sort(), [1, 2], 'Today still lists the hidden package course');
+  // Only reads ever reached Odoo.
+  assert.ok(client.calls.every((call) => ['search_read', 'read_group', 'fields_get'].includes(call.kind)));
+
+  const snapshot = buildEventsSnapshot(
+    [{ id: 2, name: 'Automotive', date_begin: '2026-09-02 10:00:00', attendance_method: 'offline', seats_max: 10 }],
+    [{ event_id: [2, 'Automotive'], state: 'open', __count: 7 }]
+  );
+  assert.equal(snapshot.totals.events, 1, 'Analytics input is unaffected');
+  assert.equal(snapshot.totals.bookings, 7);
+
+  // And structurally: Today and Analytics do not read the layout at all.
+  const sources = await Promise.all(
+    ['server/events.js', 'server/events/schedule.js', 'src/components/events/TodaySessions.tsx', 'src/components/events/EventsAnalytics.tsx'].map((file) =>
+      fs.readFile(path.join(ROOT, file), 'utf8')
+    )
+  );
+  for (const source of sources) assert.doesNotMatch(source, /eventsLayout|hiddenInSchedule|layout\.js/);
 });
 
 test('the archive is year-bounded, closed-or-ended only, and paged', async () => {

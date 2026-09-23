@@ -39,6 +39,7 @@ export function rowMatches(row, query) {
   return matches(
     query,
     row.courseName,
+    row.odooName,
     row.courseCode,
     row.instructor,
     row.package,
@@ -46,7 +47,10 @@ export function rowMatches(row, query) {
     row.department,
     row.coordinator,
     row.location?.venue,
-    row.trainingType
+    row.trainingType,
+    row.placement?.packageLabel,
+    row.placement?.groupLabel,
+    row.placement?.badge
   );
 }
 

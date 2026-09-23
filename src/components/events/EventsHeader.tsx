@@ -9,10 +9,11 @@ import { agoLabel, cairoTime, type ScheduleResponse } from '../../lib/eventsSche
 import { cx } from '../../lib/utils';
 import { Spinner } from '../ui';
 
-export type EventsSection = 'schedule' | 'today' | 'analytics' | 'archive';
+export type EventsSection = 'schedule' | 'month' | 'today' | 'analytics' | 'archive';
 
 const SECTIONS: Array<{ key: EventsSection; label: string }> = [
   { key: 'schedule', label: 'الكورسات' },
+  { key: 'month', label: 'هذا الشهر' },
   { key: 'today', label: 'النهاردة' },
   { key: 'analytics', label: 'التحليل' },
   { key: 'archive', label: 'الأرشيف' },

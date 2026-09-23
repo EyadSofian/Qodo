@@ -13,7 +13,8 @@ the card; everything else is one click away.
 **Odoo is the only source of truth.** The workbook defined what operations
 people expect to *see*; Odoo supplies every value. Nothing here writes to Odoo,
 nothing reads the workbook at runtime, and every course links back to its Odoo
-record.
+record. The one thing Qodo stores is the **schedule layout** — how courses are
+arranged into packages and levels (see the last section).
 
 ```
 Events
@@ -22,6 +23,7 @@ Events
 │              date range (≤ 186 days), online + offline
 │   ├── departments: All · Arch & Decor · Mechanical · Electrical · Civil · Development · English · Webinar
 │   └── views: Cards · List
+├── This month a concise table of every course overlapping one KSA calendar month
 ├── Today      every lecture on today's Cairo calendar, with Zoom links
 ├── Analytics  unchanged: in-person demand, capacity, Insights Hub paid revenue
 └── Archive    finished / cancelled / refused / hold / ended, one year per request, paged
@@ -343,3 +345,118 @@ its end, even inside an Arabic card.
 Effects that call `scrollTo` use a block body: Chromium's `scrollTo()` now
 returns a Promise, and an arrow that returned it hands React a Promise as the
 effect's cleanup — which crashed the page on the first tab switch.
+
+## Schedule layout (packages, levels, order)
+
+The Courses tab is drawn as **Department → Package → optional Level → Course**,
+in the business order of the workbook. The layout is Qodo configuration, not
+Odoo data: it stores references (`eventId`) and display metadata only — never
+a date, instructor, status or head count.
+
+```
+shared/eventsLayoutSeed.js   GENERATED from the workbook (scripts/generate-events-layout-seed.mjs)
+shared/eventsLayout.js       pure model: default build, placement index, editing ops, validation
+shared/eventsMonth.js        This month: overlap rule, buckets, ordering, summary
+server/events/layout.js      persistence (collection `eventLayouts`), default resolution, save/reset
+src/components/events/ScheduleBoard.tsx, LayoutDialogs.tsx, useLayoutEditor.ts   board + editor
+src/components/events/ThisMonth.tsx                                              month table
+```
+
+### How the default was derived from the workbook
+
+`node scripts/generate-events-layout-seed.mjs "SCHEDULE REPORT - 2026.xlsx"`
+reads the Arch & Decor, Mechanical, Electrical, Civil and Development sheets in
+sheet order:
+
+- A merged orange band (the course-name cell repeats the first cell) opens a
+  **package**.
+- A course row whose first cell contains "Level" goes into a **level group**. A
+  run of rows with the same label is one group; the same label again after a
+  different one is a *new* group (the next cohort). Two "Basic Level" groups
+  keep two ids and are never merged.
+- Any other first-cell label puts the course directly in the package. When that
+  label names something other than the package ("Mechanical Package" under
+  Companies Courses) it is kept as the course's badge.
+- A blank first cell continues the previous label.
+- Rows without a course code are skipped and listed in `skipped` (five Arch &
+  Decor rows — the fourth online Advanced Level cohort).
+
+English and Webinar carry no codes and seed nothing; their courses start
+unassigned. Result: 135 coded courses in 16 packages.
+
+At runtime the seed's codes are resolved to Odoo ids with **one**
+`search_read` (`code in […]`). Odoo writes "E05592" for the workbook's "5592";
+both are compared as digits. A code on several events goes to the run starting
+nearest the workbook date. Checked read-only against production on 2026-09-23:
+135 of 135 codes found, none ambiguous. The workbook is never read at runtime.
+
+### Storage, API, permission
+
+One document per organization in `eventLayouts` (the JSON/Postgres document
+store): `{ layout, revision, updatedAt, updatedBy }`. Until the first save the
+layout *is* the resolved default (cached 6 h); if Odoo cannot be reached for it,
+every course simply shows as unassigned.
+
+| Endpoint | Who | |
+|---|---|---|
+| `GET /api/events/layout` | Events tile | layout, revision, updatedAt, updatedBy, isDefault, canManage |
+| `PUT /api/events/layout` | `events.manage_layout` | body `{ layout, expectedRevision }` |
+| `POST /api/events/layout/reset` | `events.manage_layout` | body `{ expectedRevision }`; the workbook default as a new revision |
+| `GET /api/events/layout/references` | `events.manage_layout` | layout ids Odoo no longer has |
+| `GET /api/events/layout/search?q=` | `events.manage_layout` | course picker beyond the loaded range (name/code) |
+| `GET /api/events/layout/unassigned?from&to` | `events.manage_layout` | loaded courses the layout does not place |
+
+`events.manage_layout` is granted per person (admins hold it); no role carries
+it. The server rebuilds every saved layout through `validateLayout`: known
+departments only, unique package/group ids, length-limited strings, integer
+event ids, **one placement per event across the whole layout**, fixed depth (no
+cycles). Ids a save *introduces* must exist in Odoo; ids already there that
+Odoo has lost are kept and shown as "Unavailable in Odoo" for a manager to
+remove.
+
+Saves carry `expectedRevision`; a mismatch is **409 `layout_conflict`** naming
+who saved in between, and saves are serialised in the process so the check and
+the write cannot interleave. Every save or reset writes an
+`events.layout_updated` activity row with the revision, the changed departments
+and whether it was a reset — never the layout itself. Layout writes do not
+touch any Odoo cache, and Sync never touches the layout: new Odoo events are
+simply unassigned.
+
+### Editing
+
+"تخصيص الترتيب" (managers only) enters an explicit edit mode with a banner
+(Undo, + Package, Reset to default, Cancel, Save). Everything edits a local
+draft; nothing is saved per drag.
+
+- Packages, levels and courses reorder by drag handle (never the whole card)
+  and by menu (up/down, move to package / level) for keyboards and touch.
+- Courses can be added from Odoo (searchable picker), moved, removed from their
+  package (→ **unassigned**, still visible), hidden from the Schedule, and
+  given a display name, badge or note. Odoo's
+  name is untouched; "رجّع اسم أودو" clears the override.
+- Packages can be added, renamed, recoloured, hidden from the Schedule and
+  removed; a removed package's courses go to another package or back to
+  unassigned.
+- **Hiding is Schedule presentation only** (`hiddenInSchedule` on a package, and
+  the `hiddenInSchedule` list of course ids). A hidden package does not render
+  as a Schedule section and a hidden course is skipped there, but both stay in
+  This month, Today and Analytics — those show real Odoo activity, and the
+  layout never decides whether a course exists. Edit mode shows hidden items
+  (dimmed, labelled) so they can be restored. There is deliberately no
+  "hide everywhere" setting.
+- Ctrl/⌘+Z undoes. Leaving with unsaved changes asks first.
+- Package collapse state is per browser (localStorage), not configuration.
+
+### This month
+
+A course is in a month when `start ≤ monthEnd AND end ≥ monthStart` on the KSA
+calendar, so courses running over from last month and ones finishing early in
+the month are included. Rows come from `GET /schedule` for that month.
+Unassigned courses show "مش في باقة"; courses hidden from the Schedule (by
+themselves or with their package) are listed as usual.
+
+Order: a lecture today, running, upcoming, finished this month (then hold,
+cancelled), each by its next relevant moment. Columns: Course (name + code),
+Package (+ level), Instructor, Type, Schedule, Days, Time (KSA), Status,
+Trainees, Next lecture. There are no session columns and no comments. Phones
+get the same rows as stacked cards.

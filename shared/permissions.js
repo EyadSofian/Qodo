@@ -31,6 +31,9 @@ export const PERMISSIONS = {
   MANAGEMENT_MANAGE: 'management.manage',
   // Reading the seating plan needs no key at all — see the note below.
   OFFICES_MANAGE: 'offices.manage',
+  // Arranging the Events schedule into packages and levels. Reading it needs
+  // only the Events tile; this key never reaches Odoo — it edits Qodo's layout.
+  EVENTS_MANAGE_LAYOUT: 'events.manage_layout',
   BOOKING_MANAGE: 'calendar.booking',
   USERS_VIEW: 'users.view',
   USERS_MANAGE: 'users.manage',

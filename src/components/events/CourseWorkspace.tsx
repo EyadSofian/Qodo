@@ -10,13 +10,17 @@
  */
 
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
-import { AlertCircle, Info, SearchX } from 'lucide-react';
-import { EMPTY_FILTERS, activeFilterCount, applyFilters, departmentCounts, resolveViewMode, sortRows } from '@shared/eventsSchedule';
+import { AlertCircle, Info, LayoutDashboard, SearchX } from 'lucide-react';
+import { EMPTY_FILTERS, activeFilterCount, applyFilters, departmentCounts, departmentPreset, resolveViewMode, sortRows } from '@shared/eventsSchedule';
+import { decorateRows } from '@shared/eventsLayout';
+import type { PlacedRow } from '../../lib/eventsLayout';
 import { agoLabel, type ScheduleMeta, type TrainingScheduleRow } from '../../lib/eventsSchedule';
 import { CourseCard, CourseCardSkeleton } from './CourseCard';
 import { DockedCourseDetails } from './CourseDetailsDrawer';
 import { CourseListRow, CourseListSkeleton } from './CourseListRow';
 import { GLASS } from './tones';
+import { ScheduleBoard } from './ScheduleBoard';
+import type { LayoutEditor } from './useLayoutEditor';
 import {
   DepartmentChips,
   FiltersPopover,
@@ -82,6 +86,7 @@ export function CourseWorkspace({
   archive,
   onSearch,
   footer,
+  layoutEditor,
 }: {
   storageKey: string;
   rows: TrainingScheduleRow[] | null;
@@ -101,6 +106,11 @@ export function CourseWorkspace({
   archive?: boolean;
   onSearch?: (query: string) => void;
   footer?: ReactNode;
+  /**
+   * The live schedule: courses drawn inside the package layout, and — for a
+   * layout manager — the editor. The archive passes none and stays a flat list.
+   */
+  layoutEditor?: LayoutEditor;
 }) {
   const saved = useMemo(() => readSaved(storageKey), [storageKey]);
   const [filters, setFilters] = useState<ScheduleFilters>(() => ({
@@ -121,9 +131,26 @@ export function CourseWorkspace({
     return () => window.clearTimeout(timer);
   }, [filters.search, onSearch]);
 
+  const layout = layoutEditor?.layout ?? null;
+  const editing = Boolean(layoutEditor?.editing);
+  // Rows carry their place in the layout; a course (or package) hidden from the
+  // Schedule is left out of this view for everybody, except while editing.
+  const placed = useMemo<PlacedRow[] | null>(() => {
+    if (!rows) return null;
+    if (!layout) return rows;
+    const decorated = decorateRows(rows, layout) as PlacedRow[];
+    return editing ? decorated : decorated.filter((row) => !row.hiddenInSchedule);
+  }, [rows, layout, editing]);
+  // Editing arranges the whole structure: only the department and search narrow it.
+  const effective = useMemo(
+    () => (editing ? { ...EMPTY_FILTERS, department: filters.department, search: filters.search, showClosed: true } : filters),
+    [editing, filters]
+  );
+
   const sort = useMemo(() => (archive ? ({ key: 'start', dir: 'desc' } as const) : null), [archive]);
-  const filtered = useMemo(() => (rows ? sortRows(applyFilters(rows, filters, now), sort) : []), [rows, filters, sort, now]);
-  const counts = useMemo(() => (rows ? departmentCounts(rows, filters, now) : null), [rows, filters, now]);
+  const filtered = useMemo(() => (placed ? (sortRows(applyFilters(placed, effective, now), sort) as PlacedRow[]) : []), [placed, effective, sort, now]);
+  const counts = useMemo(() => (placed ? departmentCounts(placed, effective, now) : null), [placed, effective, now]);
+  const boardDepartment = departmentPreset(filters.department).department;
 
   const narrowing = activeFilterCount(archive ? { ...filters, showClosed: false } : filters) + (filters.search ? 1 : 0);
   const warnings = (meta?.warnings ?? []).filter((warning) => WARNING_TEXT[warning]);
@@ -132,6 +159,7 @@ export function CourseWorkspace({
     ...(meta?.warnings ?? []).filter((warning) => !WARNING_TEXT[warning]),
   ];
   const panelOpen = docked && selectedId !== null;
+  const columns = gridColumns(panelOpen ? 2 : 3, panelOpen ? 340 : 440);
   const clear = () => setFilters({ ...EMPTY_FILTERS, department: filters.department, showClosed: Boolean(archive) });
 
   return (
@@ -143,16 +171,37 @@ export function CourseWorkspace({
       <section aria-label="البحث والفلاتر" className={`relative z-20 grid min-w-0 gap-3 rounded-2xl p-3.5 ${GLASS}`}>
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <SearchField value={filters.search} onChange={(search) => setFilters({ ...filters, search })} />
-          <StatusSelect filters={filters} onChange={setFilters} />
-          <TypeSelect filters={filters} onChange={setFilters} meta={meta} />
-          <InstructorSelect filters={filters} onChange={setFilters} meta={meta} />
-          {dateControl}
-          <FiltersPopover filters={filters} onChange={setFilters} meta={meta} archive={archive} />
-          <div className="ms-auto">
+          {editing ? (
+            <p className="text-[12.5px] font-semibold text-violet-800">أثناء التعديل كل الكورسات ظاهرة (حتى المخفية والمنتهية) — القسم والبحث بس اللي بيضيّقوا.</p>
+          ) : (
+            <>
+              <StatusSelect filters={filters} onChange={setFilters} />
+              <TypeSelect filters={filters} onChange={setFilters} meta={meta} />
+              <InstructorSelect filters={filters} onChange={setFilters} meta={meta} />
+              {dateControl}
+              <FiltersPopover filters={filters} onChange={setFilters} meta={meta} archive={archive} />
+            </>
+          )}
+          <div className="ms-auto flex items-center gap-2">
+            {layoutEditor?.canManage && !editing && (
+              <button
+                type="button"
+                onClick={layoutEditor.begin}
+                disabled={!layoutEditor.saved}
+                className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-gradient-to-l from-violet-600 to-indigo-600 px-3.5 text-[13px] font-bold text-white shadow-lg shadow-violet-600/25 hover:from-violet-700 hover:to-indigo-700 disabled:opacity-50"
+              >
+                <LayoutDashboard size={16} /> تخصيص الترتيب
+              </button>
+            )}
             <ViewSwitch value={view} onChange={setView} />
           </div>
         </div>
-        <div className="flex min-w-0 items-center gap-3">
+        {layoutEditor?.justSaved && layoutEditor.saved?.updatedBy && !editing && (
+          <p className="text-[12px] font-medium text-slate-600">
+            آخر تعديل للترتيب: <b className="text-slate-900">{layoutEditor.saved.updatedBy.name}</b> · {agoLabel(layoutEditor.saved.updatedAt)}
+          </p>
+        )}
+        <div className={editing ? 'hidden' : 'flex min-w-0 items-center gap-3'}>
           <div className="min-w-0 flex-1">
             {!archive && (
               <SmartFilters value={filters.quick} onChange={(quick) => setFilters({ ...filters, quick })} discoveredFields={meta?.discoveredFields} />
@@ -210,12 +259,25 @@ export function CourseWorkspace({
             view === 'list' ? (
               <CourseListSkeleton />
             ) : (
-              <div className="grid" style={gridColumns(panelOpen ? 2 : 3, panelOpen ? 340 : 440)}>
+              <div className="grid" style={columns}>
                 {Array.from({ length: 6 }, (_, i) => (
                   <CourseCardSkeleton key={i} />
                 ))}
               </div>
             )
+          ) : layoutEditor && layout && (editing || filtered.length > 0) ? (
+            <ScheduleBoard
+              rows={filtered}
+              allRows={placed ?? []}
+              layout={layout}
+              departments={boardDepartment ? [boardDepartment] : null}
+              editor={layoutEditor}
+              view={view}
+              now={now}
+              selectedId={selectedId}
+              onOpen={onOpen}
+              columns={columns}
+            />
           ) : filtered.length === 0 ? (
             <div className={`grid place-items-center rounded-3xl px-6 py-16 text-center ${GLASS}`}>
               <span className="grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-blue-500 to-violet-500 text-white shadow-lg shadow-blue-500/30">
@@ -240,7 +302,7 @@ export function CourseWorkspace({
               ))}
             </div>
           ) : (
-            <div className="grid" style={gridColumns(panelOpen ? 2 : 3, panelOpen ? 340 : 440)}>
+            <div className="grid" style={columns}>
               {filtered.map((row) => (
                 <CourseCard key={row.id} row={row} now={now} selected={row.id === selectedId} onOpen={onOpen} />
               ))}

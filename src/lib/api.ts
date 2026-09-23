@@ -307,6 +307,21 @@ const ERRORS: Record<string, { ar: string; en: string }> = {
     en: 'Odoo returned an error. The details were logged on the server.',
   },
   invalid_course: { ar: 'رقم الكورس مش صحيح.', en: 'That course id is not valid.' },
+  layout_conflict: {
+    ar: 'حد تاني عدّل ترتيب الجدول. حمّل آخر نسخة قبل ما تحفظ.',
+    en: 'This layout was changed by another user. Reload the latest version before saving.',
+  },
+  layout_invalid: { ar: 'ترتيب الجدول فيه بيانات مش سليمة.', en: 'The schedule layout contains invalid data.' },
+  layout_duplicate_placement: {
+    ar: 'نفس الكورس موجود في مكانين. الكورس الواحد يظهر مرة واحدة بس.',
+    en: 'The same course is placed twice. A course can appear only once.',
+  },
+  layout_duplicate_id: { ar: 'فيه باقتين أو مستويين بنفس المعرّف.', en: 'Two packages or groups share an id.' },
+  layout_unknown_event: {
+    ar: 'فيه كورس مش موجود في أودو. شيله وجرّب تاني.',
+    en: 'A course in the layout does not exist in Odoo. Remove it and try again.',
+  },
+  layout_revision_required: { ar: 'نسخة الترتيب ناقصة. حمّل الصفحة من جديد.', en: 'The layout revision is missing. Reload the page.' },
   course_not_found: {
     ar: 'الكورس ده مش موجود في أودو أو اتمسح.',
     en: 'That course does not exist in Odoo, or was deleted.',

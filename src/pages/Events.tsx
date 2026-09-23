@@ -9,7 +9,7 @@
  * not a second steering wheel. Every course links back to its Odoo record.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AlertCircle, RefreshCw } from 'lucide-react';
 import { errorMessage } from '../lib/api';
@@ -23,9 +23,15 @@ import { RangePicker } from '../components/events/EventsFilters';
 import { EventsHeader, type EventsSection } from '../components/events/EventsHeader';
 import { EventsKpis } from '../components/events/EventsKpis';
 import { TodaySessions } from '../components/events/TodaySessions';
+import { ThisMonth } from '../components/events/ThisMonth';
+import { ConfirmDialog } from '../components/events/LayoutDialogs';
+import { PlacementContext } from '../components/events/layoutContext';
+import { useLayoutEditor } from '../components/events/useLayoutEditor';
+import { placementIndex } from '@shared/eventsLayout';
+import type { Placement } from '../lib/eventsLayout';
 import { useToast } from '../components/ui';
 
-const SECTIONS: EventsSection[] = ['schedule', 'today', 'analytics', 'archive'];
+const SECTIONS: EventsSection[] = ['schedule', 'month', 'today', 'analytics', 'archive'];
 
 /** Wide enough to hold the cards and the details panel side by side. */
 function useDockable() {
@@ -62,7 +68,7 @@ export function Events() {
   const closeDetails = useCallback(() => setOpenId(null), []);
   const dockable = useDockable();
 
-  const setSection = (next: EventsSection) => {
+  const goTo = (next: EventsSection) => {
     setOpenId(null);
     setParams(next === 'schedule' ? {} : { tab: next }, { replace: true });
   };
@@ -73,6 +79,24 @@ export function Events() {
       .catch((err) => setConnection({ checked: true, missing: [], error: errorMessage(err, 'ar') }));
   }, []);
   const ready = connection.checked && connection.missing.length === 0 && !connection.error;
+
+  // The package layout: read by everybody, edited as a draft by a layout manager.
+  const layoutEditor = useLayoutEditor(ready);
+  const [leaving, setLeaving] = useState<EventsSection | null>(null);
+  // The drawer and the month table follow the *saved* layout, never a draft.
+  const savedLayout = layoutEditor.saved?.layout ?? null;
+  const placements = useMemo(() => placementIndex(savedLayout) as Map<number, Placement>, [savedLayout]);
+
+  /** Leaving the schedule while editing: unsaved changes ask first. */
+  const setSection = (next: EventsSection) => {
+    if (next === section) return;
+    if (layoutEditor.dirty) {
+      setLeaving(next);
+      return;
+    }
+    if (layoutEditor.editing) layoutEditor.cancel();
+    goTo(next);
+  };
 
   const loadSchedule = useCallback(() => {
     let cancelled = false;
@@ -121,76 +145,96 @@ export function Events() {
   const docksHere = dockable && (section === 'schedule' || section === 'archive');
 
   return (
-    <div className="relative isolate mx-auto w-full max-w-[1760px] px-4 py-6 sm:px-6 lg:px-8">
-      {/* The page's own backdrop: a cool base with soft colour behind the KPI
-          and filter rows, so the glass surfaces have something to frost and
-          white cards never sit on white. */}
-      <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 overflow-hidden bg-gradient-to-b from-slate-200/80 via-slate-100 to-slate-100">
-        <span className="absolute top-[12%] start-[4%] h-[560px] w-[560px] rounded-full bg-blue-400/35 blur-[110px]" />
-        <span className="absolute top-[22%] end-[0%] h-[520px] w-[520px] rounded-full bg-violet-400/35 blur-[110px]" />
-        <span className="absolute top-[34%] start-[40%] h-[380px] w-[380px] rounded-full bg-emerald-300/30 blur-[100px]" />
-        <span className="absolute bottom-[-10%] end-[25%] h-[420px] w-[420px] rounded-full bg-amber-200/35 blur-[110px]" />
+    <PlacementContext.Provider value={placements}>
+      <div className="relative isolate mx-auto w-full max-w-[1760px] px-4 py-6 sm:px-6 lg:px-8">
+        {/* The page's own backdrop: a cool base with soft colour behind the KPI
+            and filter rows, so the glass surfaces have something to frost and
+            white cards never sit on white. */}
+        <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 overflow-hidden bg-gradient-to-b from-slate-200/80 via-slate-100 to-slate-100">
+          <span className="absolute top-[12%] start-[4%] h-[560px] w-[560px] rounded-full bg-blue-400/35 blur-[110px]" />
+          <span className="absolute top-[22%] end-[0%] h-[520px] w-[520px] rounded-full bg-violet-400/35 blur-[110px]" />
+          <span className="absolute top-[34%] start-[40%] h-[380px] w-[380px] rounded-full bg-emerald-300/30 blur-[100px]" />
+          <span className="absolute bottom-[-10%] end-[25%] h-[420px] w-[420px] rounded-full bg-amber-200/35 blur-[110px]" />
+        </div>
+        <EventsHeader
+          section={section}
+          onSection={setSection}
+          schedule={schedule}
+          loading={loading}
+          ready={ready}
+          syncing={syncing}
+          onSync={sync}
+        />
+
+        {connection.checked && !ready && <ConnectionProblem missing={connection.missing} error={connection.error} />}
+        {!connection.checked && <div className="skeleton h-[420px] rounded-2xl" aria-busy="true" />}
+
+        {ready && section === 'schedule' && (
+          <>
+            {scheduleError && !schedule ? (
+              <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3.5 text-[13px] font-semibold text-rose-700">
+                <AlertCircle size={16} />
+                {scheduleError}
+                <button type="button" className="btn-ghost btn-sm ms-auto gap-1.5" onClick={loadSchedule}>
+                  <RefreshCw size={14} /> جرّب تاني
+                </button>
+              </div>
+            ) : (
+              <CourseWorkspace
+                storageKey="qodo.events.courses.v2"
+                rows={schedule?.rows ?? null}
+                meta={schedule?.meta ?? null}
+                loading={loading}
+                stale={schedule?.stale}
+                fetchedAt={schedule?.fetchedAt}
+                selectedId={openId}
+                onOpen={setOpenId}
+                onClose={closeDetails}
+                docked={dockable}
+                version={version}
+                layoutEditor={layoutEditor}
+                kpis={<EventsKpis rows={schedule?.rows ?? null} now={new Date()} />}
+                dateControl={
+                  <RangePicker
+                    preset={rangePreset}
+                    range={range}
+                    loading={loading}
+                    onChange={(preset, next) => {
+                      setRangePreset(preset);
+                      setRange(next);
+                    }}
+                  />
+                }
+              />
+            )}
+          </>
+        )}
+        {ready && section === 'month' && <ThisMonth version={version} layout={savedLayout} selectedId={openId} onOpen={setOpenId} />}
+        {ready && section === 'today' && <TodaySessions version={version} onOpen={setOpenId} />}
+        {ready && section === 'analytics' && <EventsAnalytics version={version} onOpen={setOpenId} />}
+        {ready && section === 'archive' && (
+          <ArchiveView version={version} selectedId={openId} onOpen={setOpenId} onClose={closeDetails} docked={dockable} />
+        )}
+
+        <OverlayCourseDetails id={docksHere ? null : openId} version={version} onClose={closeDetails} />
+
+        <ConfirmDialog
+          open={leaving !== null}
+          title="عندك تغييرات مش محفوظة"
+          body="عندك تغييرات على ترتيب الجدول مااتحفظتش. لو خرجت هتضيع."
+          confirm="تجاهل التغييرات"
+          cancel="كمّل تعديل"
+          danger
+          onClose={() => setLeaving(null)}
+          onConfirm={() => {
+            const next = leaving;
+            setLeaving(null);
+            layoutEditor.cancel();
+            if (next) goTo(next);
+          }}
+        />
       </div>
-      <EventsHeader
-        section={section}
-        onSection={setSection}
-        schedule={schedule}
-        loading={loading}
-        ready={ready}
-        syncing={syncing}
-        onSync={sync}
-      />
-
-      {connection.checked && !ready && <ConnectionProblem missing={connection.missing} error={connection.error} />}
-      {!connection.checked && <div className="skeleton h-[420px] rounded-2xl" aria-busy="true" />}
-
-      {ready && section === 'schedule' && (
-        <>
-          {scheduleError && !schedule ? (
-            <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3.5 text-[13px] font-semibold text-rose-700">
-              <AlertCircle size={16} />
-              {scheduleError}
-              <button type="button" className="btn-ghost btn-sm ms-auto gap-1.5" onClick={loadSchedule}>
-                <RefreshCw size={14} /> جرّب تاني
-              </button>
-            </div>
-          ) : (
-            <CourseWorkspace
-              storageKey="qodo.events.courses.v2"
-              rows={schedule?.rows ?? null}
-              meta={schedule?.meta ?? null}
-              loading={loading}
-              stale={schedule?.stale}
-              fetchedAt={schedule?.fetchedAt}
-              selectedId={openId}
-              onOpen={setOpenId}
-              onClose={closeDetails}
-              docked={dockable}
-              version={version}
-              kpis={<EventsKpis rows={schedule?.rows ?? null} now={new Date()} />}
-              dateControl={
-                <RangePicker
-                  preset={rangePreset}
-                  range={range}
-                  loading={loading}
-                  onChange={(preset, next) => {
-                    setRangePreset(preset);
-                    setRange(next);
-                  }}
-                />
-              }
-            />
-          )}
-        </>
-      )}
-      {ready && section === 'today' && <TodaySessions version={version} onOpen={setOpenId} />}
-      {ready && section === 'analytics' && <EventsAnalytics version={version} onOpen={setOpenId} />}
-      {ready && section === 'archive' && (
-        <ArchiveView version={version} selectedId={openId} onOpen={setOpenId} onClose={closeDetails} docked={dockable} />
-      )}
-
-      <OverlayCourseDetails id={docksHere ? null : openId} version={version} onClose={closeDetails} />
-    </div>
+    </PlacementContext.Provider>
   );
 }
 

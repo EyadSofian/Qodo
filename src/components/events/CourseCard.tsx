@@ -14,6 +14,7 @@
 import { ArrowLeft, MapPin, Video } from 'lucide-react';
 import { departmentLabel } from '@shared/eventsSchedule';
 import { placeLabel, type TrainingScheduleRow } from '../../lib/eventsSchedule';
+import type { PlacedRow } from '../../lib/eventsLayout';
 import { cx } from '../../lib/utils';
 import { Avatar } from '../ui';
 import { CapacityProgress, DateSpan, DaysAndTime, NextSessionBox } from './CourseBits';
@@ -72,12 +73,15 @@ export function CourseCard({
   selected,
   onOpen,
 }: {
-  row: TrainingScheduleRow;
+  row: PlacedRow;
   now: Date;
   selected: boolean;
   onOpen: (id: number) => void;
 }) {
-  const context = [row.courseCode ? `كود ${row.courseCode}` : null, row.package ?? row.section].filter(Boolean).join(' • ');
+  // Inside a package section the package is already the heading; a badge
+  // ("BIM MEP" on a company course) is what is left to say.
+  const grouping = row.placement ? row.placement.badge : row.package ?? row.section;
+  const context = [row.courseCode ? `كود ${row.courseCode}` : null, grouping].filter(Boolean).join(' • ');
   const stripe = TONE[row.statusCanonical ? STATUS_TONE[row.statusCanonical] : 'slate'].stripe;
 
   return (

@@ -13,12 +13,14 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { AlertCircle, ExternalLink, X } from 'lucide-react';
+import { AlertCircle, ChevronLeft, ExternalLink, X } from 'lucide-react';
 import { errorMessage } from '../../lib/api';
 import { agoLabel, cairoTime, fetchEventDetail, type DetailResponse } from '../../lib/eventsSchedule';
 import { cx } from '../../lib/utils';
 import { DetailsPane, OverviewPane, SessionsPane, TraineesPane, type DetailsTab } from './CourseDetailsTabs';
 import { StatusChip } from './EventStatusBadge';
+import { usePlacement } from './layoutContext';
+import { departmentLabel } from '@shared/eventsSchedule';
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
@@ -65,6 +67,10 @@ function Panel({
   const body = useRef<HTMLDivElement>(null);
   const course = data?.course;
   const now = new Date();
+  // Where Qodo's layout files this course. The name shown may be a display
+  // override; Odoo's own name stays on the Details tab.
+  const placement = usePlacement(id);
+  const title = placement?.customLabel || course?.courseName;
 
   useEffect(() => {
     setTab('overview');
@@ -82,9 +88,9 @@ function Panel({
         <span aria-hidden className="absolute -bottom-24 start-[10%] h-44 w-44 rounded-full bg-sky-400/25 blur-3xl" />
         <div className="relative flex items-start gap-3">
           <div className="min-w-0 flex-1">
-            <h2 id={titleId} className="flex min-w-0 text-[21px] font-black leading-snug" title={course?.courseName}>
+            <h2 id={titleId} className="flex min-w-0 text-[21px] font-black leading-snug" title={title}>
               <span dir="auto" className="min-w-0 truncate">
-                {course?.courseName ?? (error ? 'الكورس' : 'جارٍ التحميل…')}
+                {title ?? (error ? 'الكورس' : 'جارٍ التحميل…')}
               </span>
             </h2>
             {course && (
@@ -112,6 +118,19 @@ function Panel({
               <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-[12.5px] font-bold backdrop-blur">{course.trainingType}</span>
             )}
           </div>
+        )}
+        {course && placement && (
+          <p className="relative mt-3 flex min-w-0 flex-wrap items-center gap-1 text-[12.5px] font-semibold text-blue-100" aria-label="مكان الكورس في الجدول">
+            <span>{departmentLabel(placement.department)}</span>
+            <ChevronLeft size={13} className="shrink-0 opacity-60 ltr:rotate-180" aria-hidden />
+            <bdi dir="auto" className="min-w-0 truncate text-white">{placement.packageLabel}</bdi>
+            {placement.groupLabel && (
+              <>
+                <ChevronLeft size={13} className="shrink-0 opacity-60 ltr:rotate-180" aria-hidden />
+                <bdi dir="auto" className="min-w-0 truncate">{placement.groupLabel}</bdi>
+              </>
+            )}
+          </p>
         )}
       </header>
 
@@ -149,7 +168,7 @@ function Panel({
         {!course && !error && <PanelSkeleton />}
         {course && (
           <motion.div key={tab} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.16 }}>
-            {tab === 'overview' && <OverviewPane course={course} now={now} onTab={setTab} />}
+            {tab === 'overview' && <OverviewPane course={course} now={now} onTab={setTab} placement={placement} />}
             {tab === 'sessions' && <SessionsPane course={course} now={now} />}
             {tab === 'trainees' && <TraineesPane course={course} />}
             {tab === 'details' && <DetailsPane course={course} />}

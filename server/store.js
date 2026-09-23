@@ -95,6 +95,11 @@ export const COLLECTIONS = [
   'managementItems',
   'managementIngest',
   'managementMembers',
+  // How the Events schedule arranges Odoo's courses into packages and levels —
+  // references to Odoo event ids plus display labels, never course data. One
+  // document per organization, revisioned so two editors cannot overwrite
+  // each other.
+  'eventLayouts',
 ];
 
 export const newId = () => crypto.randomUUID();
