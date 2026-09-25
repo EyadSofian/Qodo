@@ -197,10 +197,27 @@ const PRESENTATIONS: Record<string, NotificationPresentation> = {
   },
 };
 
+/** Recruitment alerts that mean a deadline or a critical seat is already lost. */
+const URGENT_RECRUITMENT_ALERTS = new Set(["sla_overdue", "critical_unassigned"]);
+
 export function notificationPresentation(
   type: string,
 ): NotificationPresentation {
-  return PRESENTATIONS[type] ?? info;
+  if (PRESENTATIONS[type]) return PRESENTATIONS[type];
+  // HR V2 sends families of types (`recruitment.alert.sla_overdue`,
+  // `recruitment.approved`, `personnel.onboarding`…); each family reads as one.
+  if (type.startsWith("recruitment.alert.")) {
+    return URGENT_RECRUITMENT_ALERTS.has(type.slice("recruitment.alert.".length))
+      ? { ...danger, icon: AlarmClock, label: { ar: "توظيف عاجل", en: "Urgent recruitment" } }
+      : { ...warning, icon: AlarmClock, label: { ar: "تنبيه توظيف", en: "Recruitment alert" } };
+  }
+  if (type.startsWith("recruitment.")) {
+    return { ...info, icon: ClipboardList, label: { ar: "التوظيف", en: "Recruitment" } };
+  }
+  if (type.startsWith("personnel.")) {
+    return { ...info, icon: UserPlus, label: { ar: "شئون العاملين", en: "Personnel" } };
+  }
+  return info;
 }
 
 /** Arabic management cards keep one readable date style in either UI locale. */

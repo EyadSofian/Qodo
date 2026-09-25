@@ -151,7 +151,11 @@ export function IncomingNotificationPopup() {
                 ? lang === "ar"
                   ? "فتح لوحة التحليلات"
                   : "Open Insights Hub"
-                : t("shell.openNotification")
+                : notification.type.startsWith("recruitment.") || notification.type.startsWith("personnel.")
+                  ? lang === "ar"
+                    ? "فتح في الموارد البشرية"
+                    : "Open in HR"
+                  : t("shell.openNotification")
           }
           closeLabel={t("common.close")}
           lang={

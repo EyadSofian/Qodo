@@ -58,33 +58,6 @@ export interface HREmployeeSummary {
   totalSalary?: number | null;
 }
 
-export interface HRRecruitmentRequest {
-  id: string;
-  sequence: string;
-  role: string;
-  numberNeeded: number;
-  accepted: number;
-  feedback: string;
-  department: string;
-  vacancyReason: string;
-  status: string;
-  priority: string;
-  seniority: string;
-  location: string;
-  assignedTo: string[];
-  hiringPeriodDays: number | null;
-  activeDate: string | null;
-  dueDate: string | null;
-  actualHiringDate: string | null;
-  receivedRequirements: string;
-  published: string;
-  receivedCandidates: string;
-  salaryRange: string;
-  actualSalary: string;
-  interviewer: string;
-  validation: string;
-}
-
 export interface HROrganizationPosition {
   id: string;
   managerPositionId: string | null;
@@ -143,72 +116,6 @@ export interface HRPayrollAnalytics {
   ranking: Array<{ employeeCode: string; name: string; department: string; totalEgp: number; totalUsd: number }>;
 }
 
-export interface HRRecruitmentAnalytics {
-  total: number;
-  active: number;
-  hold: number;
-  done: number;
-  totalNeeded: number;
-  totalAccepted: number;
-  openSeats: number;
-  fillRate: number;
-  overdue: number;
-  dueSoon: number;
-  averagePlannedDays: number | null;
-  averageActualDays: number | null;
-  funnel: { requirements: number; published: number; candidates: number; accepted: number; total: number };
-}
-
-export interface HROdooRecruitmentMatch {
-  jobId: number;
-  name: string;
-  active: boolean;
-  expectedEmployees: number;
-  department: string;
-  openedDate: string | null;
-  publishedDate: string | null;
-  applicantCount: number | null;
-  stages: Array<{ stage: string; count: number }>;
-  confidence: number;
-  matchType: 'automatic' | 'manual';
-  url: string;
-}
-
-export interface HROdooRecruitmentJobOption {
-  jobId: number;
-  name: string;
-  active: boolean;
-  department: string;
-  applicantCount: number | null;
-  suggestionScore?: number;
-}
-
-export interface HROdooRecruitmentData {
-  configured: boolean;
-  connected: boolean;
-  applicantsAvailable: boolean;
-  summary: {
-    matched: number;
-    total: number;
-    unmatched: number;
-    manualMatched: number;
-    automaticMatched: number;
-    invalidManualLinks: number;
-    linkedJobs: number;
-    staleActive: number;
-    candidateTotal: number | null;
-    activeCandidateTotal: number | null;
-    linkedCandidateTotal: number | null;
-    odooJobs: number;
-    activeOdooJobs: number;
-    stageTotals: Array<{ stage: string; count: number }>;
-  };
-  matches: Record<string, HROdooRecruitmentMatch>;
-  jobOptions: HROdooRecruitmentJobOption[];
-  suggestions: Record<string, HROdooRecruitmentJobOption[]>;
-  manualLinks: Record<string, number>;
-}
-
 export interface HRDashboardData {
   permissions: {
     canViewPeople: boolean;
@@ -233,7 +140,6 @@ export interface HRDashboardData {
   analytics: null | {
     workforce: HRWorkforceAnalytics;
     payroll: HRPayrollAnalytics | null;
-    recruitment: HRRecruitmentAnalytics;
     organization: { total: number; matched: number; vacant: number; unmatched: number; departments: number };
     leave: {
       year: number;
@@ -246,7 +152,6 @@ export interface HRDashboardData {
     };
   };
   employees: HREmployeeSummary[];
-  recruitment: HRRecruitmentRequest[];
   organization: HROrganizationPosition[];
   leaveBalances: HRLeaveBalance[];
   datasets: HRDatasetMeta[];
@@ -295,49 +200,6 @@ export interface HREmployeeProfile extends HREmployeeSummary {
   organizationPosition: HROrganizationPosition | null;
   leave: HRLeaveBalance | null;
   sources: Record<string, boolean>;
+  /** Someone Odoo has and the HR file does not yet. */
+  odooOnly?: boolean;
 }
-
-export const HR_SOURCE_LABELS: Record<HRSource, { ar: string; en: string; hintAr: string; hintEn: string }> = {
-  master: {
-    ar: 'قاعدة الموظفين',
-    en: 'Employee database',
-    hintAr: 'البيانات الشخصية والوظيفية والمستندات',
-    hintEn: 'Personal, employment, and document data',
-  },
-  payroll: {
-    ar: 'الرواتب',
-    en: 'Payroll',
-    hintAr: 'المرتب الأساسي وKPI والإجمالي الشهري',
-    hintEn: 'Base, KPI, and monthly total',
-  },
-  insurance: {
-    ar: 'التأمينات والضرائب',
-    en: 'Insurance & tax',
-    hintAr: 'الاشتراكات والوعاء والضريبة',
-    hintEn: 'Contributions, taxable base, and tax',
-  },
-  recruitment: {
-    ar: 'طلبات التوظيف',
-    en: 'Recruitment',
-    hintAr: 'الاحتياجات والحالة والزمن المستهدف',
-    hintEn: 'Demand, status, and hiring timeline',
-  },
-  organization: {
-    ar: 'الهيكل التنظيمي',
-    en: 'Organization',
-    hintAr: 'المناصب والمدير المباشر والشواغر',
-    hintEn: 'Positions, reporting lines, and vacancies',
-  },
-  leave: {
-    ar: 'الإجازات والأرصدة',
-    en: 'Leave & balances',
-    hintAr: 'الرصيد السنوي والمرضي وسجل الإجازات لعام 2026',
-    hintEn: 'Annual and sick balances with 2026 leave history',
-  },
-  offices: {
-    ar: 'توزيع المكاتب',
-    en: 'Office distribution',
-    hintAr: 'الغرف والسعة والأسماء ومواقع الجلوس الحالية',
-    hintEn: 'Rooms, capacity, occupants, and current seating',
-  },
-};

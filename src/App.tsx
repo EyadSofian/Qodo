@@ -1,5 +1,5 @@
 import { Suspense, lazy, type ReactNode } from 'react';
-import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom';
 import { AuthProvider, useAuth } from './lib/auth';
 import { I18nProvider } from './lib/i18n';
 import { WorkspaceProvider } from './lib/workspace';
@@ -20,7 +20,6 @@ import { Settings } from './pages/Settings';
 import { Mail } from './pages/Mail';
 import { Calendar } from './pages/Calendar';
 import { Book } from './pages/Book';
-import { HR, HREmployee } from './pages/HR';
 import { Prices } from './pages/Prices';
 
 /**
@@ -76,6 +75,40 @@ const ProjectMembers = lazy(() =>
 const ProjectActivity = lazy(() =>
   import('./pages/projects/tabs/ProjectActivity').then((module) => ({ default: module.ProjectActivity }))
 );
+
+/**
+ * HR V2, on demand. The module is large and most people never open it, so it
+ * is its own set of chunks; the shell loads first and each area as it is
+ * visited. See docs/HR_V2_ARCHITECTURE.md.
+ */
+const hrPage = <K extends string>(loader: () => Promise<Record<K, React.ComponentType>>, name: K) =>
+  lazy(() => loader().then((module) => ({ default: module[name] })));
+const HRLayout = hrPage(() => import('./features/hr/shell/HRLayout'), 'HRLayout');
+const HRHome = hrPage(() => import('./features/hr/home/HRHome'), 'HRHome');
+const RecruitmentLayout = hrPage(() => import('./features/hr/recruitment/RecruitmentLayout'), 'RecruitmentLayout');
+const RecruitmentOverview = hrPage(() => import('./features/hr/recruitment/pages/RecruitmentOverview'), 'RecruitmentOverview');
+const JobRequests = hrPage(() => import('./features/hr/recruitment/pages/JobRequests'), 'JobRequests');
+const NewJobRequest = hrPage(() => import('./features/hr/recruitment/pages/NewJobRequest'), 'NewJobRequest');
+const JobRequestDetail = hrPage(() => import('./features/hr/recruitment/pages/JobRequestDetail'), 'JobRequestDetail');
+const ActiveHiring = hrPage(() => import('./features/hr/recruitment/pages/ActiveHiring'), 'ActiveHiring');
+const RecruitmentCapacity = hrPage(() => import('./features/hr/recruitment/pages/RecruitmentCapacity'), 'RecruitmentCapacity');
+const RecruitmentKPI = hrPage(() => import('./features/hr/recruitment/pages/RecruitmentKPI'), 'RecruitmentKPI');
+const RecruitmentRewards = hrPage(() => import('./features/hr/recruitment/pages/RecruitmentRewards'), 'RecruitmentRewards');
+const PeopleDirectory = hrPage(() => import('./features/hr/people/PeopleDirectory'), 'PeopleDirectory');
+const EmployeeProfile = hrPage(() => import('./features/hr/people/EmployeeProfile'), 'EmployeeProfile');
+const personnelPages = () => import('./features/hr/personnel/PersonnelPages');
+const PersonnelLayout = hrPage(personnelPages, 'PersonnelLayout');
+const PersonnelOverview = hrPage(personnelPages, 'PersonnelOverview');
+const PersonnelRequests = hrPage(personnelPages, 'PersonnelRequests');
+const PersonnelOnboarding = hrPage(personnelPages, 'PersonnelOnboarding');
+const PersonnelLeave = hrPage(personnelPages, 'PersonnelLeave');
+const PersonnelClearance = hrPage(personnelPages, 'PersonnelClearance');
+const PayrollPage = hrPage(() => import('./features/hr/payroll/PayrollPage'), 'PayrollPage');
+const PerformancePage = hrPage(() => import('./features/hr/performance/PerformancePage'), 'PerformancePage');
+const OrganizationPage = hrPage(() => import('./features/hr/organization/OrganizationPage'), 'OrganizationPage');
+const ReportsPage = hrPage(() => import('./features/hr/reports/ReportsPage'), 'ReportsPage');
+const SettingsPage = hrPage(() => import('./features/hr/settings/SettingsPage'), 'SettingsPage');
+const PublicNewEmployeeForm = hrPage(() => import('./features/hr/PublicNewEmployeeForm'), 'PublicNewEmployeeForm');
 
 /**
  * E-Learning Production, also on demand — pdf.js and the review tools only
@@ -144,6 +177,16 @@ function Gate() {
       <Routes>
         <Route path="/book/manage/:token" element={<Book manage />} />
         <Route path="/book/:slug" element={<Book />} />
+      </Routes>
+    );
+  }
+
+  // The New Employee Form is opened by someone who has no account yet; like a
+  // booking page it renders outside the shell and before the session check.
+  if (location.pathname.startsWith('/hr-form/')) {
+    return (
+      <Routes>
+        <Route path="/hr-form/:token" element={<Suspended><PublicNewEmployeeForm /></Suspended>} />
       </Routes>
     );
   }
@@ -232,9 +275,36 @@ function Gate() {
         </Route>
         <Route path="/mail" element={<Mail />} />
         <Route path="/calendar" element={<Calendar />} />
-        <Route path="/offices" element={<Navigate to="/hr?tab=offices" replace />} />
-        <Route path="/hr" element={<HR />} />
-        <Route path="/hr/employees/:employeeCode" element={<HREmployee />} />
+        <Route path="/offices" element={<Navigate to="/hr/organization?view=offices" replace />} />
+        <Route path="/hr" element={<Suspended><HRLayout /></Suspended>}>
+          <Route index element={<Suspended><HRHome /></Suspended>} />
+          <Route path="recruitment" element={<Suspended><RecruitmentLayout /></Suspended>}>
+            <Route index element={<Suspended><RecruitmentOverview /></Suspended>} />
+            <Route path="requests" element={<Suspended><JobRequests /></Suspended>} />
+            <Route path="requests/new" element={<Suspended><NewJobRequest /></Suspended>} />
+            <Route path="requests/:id" element={<Suspended><JobRequestDetail /></Suspended>} />
+            <Route path="hiring" element={<Suspended><ActiveHiring /></Suspended>} />
+            <Route path="capacity" element={<Suspended><RecruitmentCapacity /></Suspended>} />
+            <Route path="kpi" element={<Suspended><RecruitmentKPI /></Suspended>} />
+            <Route path="rewards" element={<Suspended><RecruitmentRewards /></Suspended>} />
+          </Route>
+          <Route path="people" element={<Suspended><PeopleDirectory /></Suspended>} />
+          <Route path="people/:employeeCode" element={<Suspended><EmployeeProfile /></Suspended>} />
+          <Route path="personnel" element={<Suspended><PersonnelLayout /></Suspended>}>
+            <Route index element={<Suspended><PersonnelOverview /></Suspended>} />
+            <Route path="requests" element={<Suspended><PersonnelRequests /></Suspended>} />
+            <Route path="onboarding" element={<Suspended><PersonnelOnboarding /></Suspended>} />
+            <Route path="leave" element={<Suspended><PersonnelLeave /></Suspended>} />
+            <Route path="clearance" element={<Suspended><PersonnelClearance /></Suspended>} />
+          </Route>
+          <Route path="payroll" element={<Suspended><PayrollPage /></Suspended>} />
+          <Route path="performance" element={<Suspended><PerformancePage /></Suspended>} />
+          <Route path="organization" element={<Suspended><OrganizationPage /></Suspended>} />
+          <Route path="reports" element={<Suspended><ReportsPage /></Suspended>} />
+          <Route path="settings" element={<Suspended><SettingsPage /></Suspended>} />
+          <Route path="employees/:employeeCode" element={<LegacyEmployeeRedirect />} />
+          <Route path="*" element={<Navigate to="/hr" replace />} />
+        </Route>
         <Route path="/prices" element={<Prices />} />
         {/* The route exists for everybody; the API is what refuses. Hiding it
             from the router instead would mean a bookmarked link lands on the
@@ -251,6 +321,12 @@ function Gate() {
       </Routes>
     </Shell>
   );
+}
+
+/** `/hr/employees/:code` was the old profile address; it lives under People now. */
+function LegacyEmployeeRedirect() {
+  const { employeeCode = '' } = useParams();
+  return <Navigate to={`/hr/people/${encodeURIComponent(employeeCode)}`} replace />;
 }
 
 /**

@@ -27,6 +27,25 @@ export const PERMISSIONS = {
   HR_VIEW: 'hr.view',
   HR_MANAGE: 'hr.manage',
   HR_PAYROLL: 'hr.payroll',
+  // HR V2 — recruitment is its own desk with its own chain of authority. The
+  // request is written by a manager, reviewed by that department's manager,
+  // approved by the final approver, and only then staffed and timed. Each of
+  // those is a separate key so that no one of them implies another.
+  HR_RECRUITMENT_VIEW: 'hr.recruitment.view',
+  HR_RECRUITMENT_REQUEST: 'hr.recruitment.request',
+  HR_RECRUITMENT_REVIEW: 'hr.recruitment.review',
+  HR_RECRUITMENT_APPROVE: 'hr.recruitment.approve',
+  HR_RECRUITMENT_ASSIGN: 'hr.recruitment.assign',
+  // Moving a deadline is not an edit. It belongs to the final approver alone,
+  // and every use leaves an immutable extension record.
+  HR_RECRUITMENT_EXTEND: 'hr.recruitment.extend',
+  HR_RECRUITMENT_OVERRIDE_CAPACITY: 'hr.recruitment.override_capacity',
+  HR_RECRUITMENT_KPI_REVIEW: 'hr.recruitment.kpi.review',
+  HR_RECRUITMENT_REWARDS_MANAGE: 'hr.recruitment.rewards.manage',
+  HR_PERSONNEL_VIEW: 'hr.personnel.view',
+  HR_PERSONNEL_MANAGE: 'hr.personnel.manage',
+  HR_PERFORMANCE_REVIEW: 'hr.performance.review',
+  HR_SETTINGS_MANAGE: 'hr.settings.manage',
   MANAGEMENT_VIEW: 'management.view',
   MANAGEMENT_MANAGE: 'management.manage',
   // Reading the seating plan needs no key at all — see the note below.
@@ -158,6 +177,11 @@ export const ROLES = {
       PERMISSIONS.ELEARNING_PRODUCTION_VIEW,
       PERMISSIONS.ELEARNING_PRODUCTION_COURSE_CREATE,
       PERMISSIONS.ELEARNING_PRODUCTION_REPORT_VIEW,
+      // Asking for a hire and reviewing your own department's requests is what
+      // a department manager does. It opens their own requests only; the
+      // recruitment desk itself stays behind `hr.recruitment.view`.
+      PERMISSIONS.HR_RECRUITMENT_REQUEST,
+      PERMISSIONS.HR_RECRUITMENT_REVIEW,
     ],
     defaultVisibility: 'department',
   },
@@ -254,7 +278,53 @@ function deriveLegacyAuthority(permissions) {
   ) {
     derived = [...derived, PERMISSIONS.TASKS_ARCHIVE];
   }
-  return derived;
+  return deriveHRAuthority(derived);
+}
+
+/** Every key HR V2 introduced. An array carrying any of them was saved after the split. */
+export const HR_V2_PERMISSIONS = [
+  PERMISSIONS.HR_RECRUITMENT_VIEW,
+  PERMISSIONS.HR_RECRUITMENT_REQUEST,
+  PERMISSIONS.HR_RECRUITMENT_REVIEW,
+  PERMISSIONS.HR_RECRUITMENT_APPROVE,
+  PERMISSIONS.HR_RECRUITMENT_ASSIGN,
+  PERMISSIONS.HR_RECRUITMENT_EXTEND,
+  PERMISSIONS.HR_RECRUITMENT_OVERRIDE_CAPACITY,
+  PERMISSIONS.HR_RECRUITMENT_KPI_REVIEW,
+  PERMISSIONS.HR_RECRUITMENT_REWARDS_MANAGE,
+  PERMISSIONS.HR_PERSONNEL_VIEW,
+  PERMISSIONS.HR_PERSONNEL_MANAGE,
+  PERMISSIONS.HR_PERFORMANCE_REVIEW,
+  PERMISSIONS.HR_SETTINGS_MANAGE,
+];
+
+/**
+ * HR V2 split `hr.view` and `hr.manage` the same way `tasks.edit_any` was
+ * split above, and the same trap applies: HR staff carry frozen permission
+ * arrays, so without this the people who run HR today would open HR V2 to an
+ * empty desk. An array that carries the old keys and none of the new ones is
+ * read as still meaning what it meant.
+ *
+ * Only the operational keys are derived. Department review, final approval,
+ * Extend, capacity override, reward approval and HR settings are decisions of
+ * authority, not of running HR day to day — they are never implied by
+ * `hr.manage` and are granted one person at a time.
+ */
+function deriveHRAuthority(permissions) {
+  if (permissions.some((permission) => HR_V2_PERMISSIONS.includes(permission))) return permissions;
+  const derived = new Set(permissions);
+  if (permissions.includes(PERMISSIONS.HR_VIEW) || permissions.includes(PERMISSIONS.HR_MANAGE)) {
+    derived.add(PERMISSIONS.HR_RECRUITMENT_VIEW);
+    derived.add(PERMISSIONS.HR_PERSONNEL_VIEW);
+  }
+  if (permissions.includes(PERMISSIONS.HR_MANAGE)) {
+    derived.add(PERMISSIONS.HR_RECRUITMENT_REQUEST);
+    derived.add(PERMISSIONS.HR_RECRUITMENT_ASSIGN);
+    derived.add(PERMISSIONS.HR_RECRUITMENT_KPI_REVIEW);
+    derived.add(PERMISSIONS.HR_PERSONNEL_MANAGE);
+    derived.add(PERMISSIONS.HR_PERFORMANCE_REVIEW);
+  }
+  return derived.size === permissions.length ? permissions : [...derived];
 }
 
 export function can(user, permission) {

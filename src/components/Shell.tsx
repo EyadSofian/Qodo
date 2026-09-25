@@ -141,6 +141,8 @@ export function Shell({ children }: { children: ReactNode }) {
   // app — kept as a second flag rather than folded into `isFramed` so that
   // name keeps meaning only "/app/*".
   const isLearningProduction = location.pathname.startsWith('/learning-production');
+  // HR V2 carries its own phone navigation for its nine areas.
+  const isHR = location.pathname === '/hr' || location.pathname.startsWith('/hr/');
   const isFullHeight = isFramed || isLearningProduction || location.pathname.startsWith('/mail');
   // On iPhone, web push only exists once the site is on the home screen — so a
   // plain Safari tab reports unsupported and the row is hidden rather than
@@ -194,10 +196,10 @@ export function Shell({ children }: { children: ReactNode }) {
           <button
             type="button"
             onClick={() => setSearchOpen(true)}
-            className="hidden h-10 flex-1 items-center gap-2 rounded-xl border border-surface-line bg-white/70 px-3 text-start text-[13px] text-ink-faint transition-colors hover:border-brand-200 hover:bg-white md:flex"
+            className="hidden h-10 min-w-0 flex-1 items-center gap-2 rounded-xl border border-surface-line bg-white/70 px-3 text-start text-[13px] text-ink-faint transition-colors hover:border-brand-200 hover:bg-white md:flex"
           >
-            <Search size={16} />
-            <span className="flex-1">{t('shell.searchPlaceholder')}</span>
+            <Search size={16} className="shrink-0" />
+            <span className="min-w-0 flex-1 truncate">{t('shell.searchPlaceholder')}</span>
             <kbd className="ltr rounded border border-surface-line bg-surface-sunken px-1.5 py-0.5 text-[10px] font-semibold">
               Ctrl K
             </kbd>
@@ -332,7 +334,7 @@ export function Shell({ children }: { children: ReactNode }) {
               aria-label={t('shell.account')}
             >
               <Avatar name={user?.name ?? '?'} color={user?.avatarColor} size={32} />
-              <span className="hidden text-start lg:block">
+              <span className="hidden text-start xl:block">
                 <span className="block max-w-[9rem] truncate text-[13px] font-bold leading-tight text-ink">
                   {user?.name}
                 </span>
@@ -440,13 +442,13 @@ export function Shell({ children }: { children: ReactNode }) {
       </header>
 
       {/* A framed app manages its own height; normal pages scroll the document. */}
-      <main className={cx('flex-1', isFullHeight ? 'flex min-h-0 flex-col' : 'pb-24 md:pb-10')}>
+      <main className={cx('flex-1', isFullHeight ? 'flex min-h-0 flex-col' : isHR ? '' : 'pb-24 md:pb-10')}>
         {children}
       </main>
 
       {/* The module's own mobile drawer (its Layout) replaces this with all
           five destinations, so the global bar would only duplicate it. */}
-      {!isFramed && !isLearningProduction && <BottomNav onOpenSwitcher={() => setSwitcherOpen(true)} />}
+      {!isFramed && !isLearningProduction && !isHR && <BottomNav onOpenSwitcher={() => setSwitcherOpen(true)} />}
 
       <SearchPalette open={searchOpen} onClose={() => setSearchOpen(false)} />
       <ChangePasswordModal open={passwordOpen} onClose={() => setPasswordOpen(false)} />

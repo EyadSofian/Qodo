@@ -33,71 +33,6 @@
     unicode-bidi: isolate;
   }
 
-  /* ── HR module ────────────────────────────────────────────────────
-     Every HR screen sits under `.hr-suite`, so the module reads the
-     Engosoft ramp from one place and nothing outside HR is touched. The
-     values are the same ones tailwind.config.js already publishes; they
-     are repeated as custom properties only so the HR surfaces below can
-     mix them into rgba() glass without a build-time helper. */
-  .hr-suite {
-    /* Cairo, which the rest of the workspace already loads. Its Arabic and
-       Latin were drawn to align stroke for stroke, and — checked against
-       the shipped font, not assumed — its figures are already monospaced
-       at 560 units, so a payroll column lines up without needing a `tnum`
-       feature the family does not carry. */
-    font-family: 'Cairo', 'Tajawal', ui-sans-serif, system-ui, sans-serif;
-    --hr-navy: 11 37 69;
-    --hr-blue: 29 111 184;
-    --hr-line: #E1E9F2;
-    --hr-line-soft: #EAF0F7;
-    --hr-sunken: #F1F5FA;
-    /* 5.38:1 on white. The old --ink-faint (#94A3B8) is 2.56:1 and was
-       carrying most of the module's explanatory text. */
-    --hr-muted: #5A6C82;
-    --hr-ground: #E9EFF6;
-
-    /* The scale had 89 declarations at or under 12px, 23 between 13 and 16,
-       and then nothing but numerals until 26px. Every subhead in the module
-       was competing with its own labels. --t-sub is the missing step. */
-    --t-micro: 0.75rem;
-    --t-label: 0.8125rem;
-    --t-body: 0.9375rem;
-    --t-sub: 1.25rem;
-    position: relative;
-  }
-
-  /* Glass needs something behind it, and the first attempt at this did not
-     supply one: all three fields were centred off-canvas and reached their
-     transparent stop before the middle of the viewport, so every panel sat
-     over flat #F6F8FB and composited to a 1.04:1 white-on-white box.
-     Blurring a constant field returns the constant field.
-
-     Two fixes. The fields now sit inside the viewport, so the middle of the
-     page is actually tinted. And the grid is the part that matters: a 40px
-     blur smearing a 32px rule is what the eye reads as glass — a gradient
-     alone has no high-frequency content to bend. */
-  .hr-suite::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    z-index: -1;
-    pointer-events: none;
-    background:
-      radial-gradient(1100px 820px at 26% 22%, rgba(29, 111, 184, 0.3), transparent 76%),
-      radial-gradient(900px 700px at 82% 68%, rgba(11, 37, 69, 0.24), transparent 74%),
-      radial-gradient(620px 460px at 58% 4%, rgba(245, 130, 31, 0.07), transparent 70%),
-      repeating-linear-gradient(0deg, rgba(11, 37, 69, 0.045) 0 1px, transparent 1px 32px),
-      repeating-linear-gradient(90deg, rgba(11, 37, 69, 0.045) 0 1px, transparent 1px 32px),
-      var(--hr-ground);
-  }
-
-  /* Arabic sets tighter than Latin at the same size and never takes
-     letter-spacing or uppercasing well, so the Arabic side gets a little
-     more leading and none of the Latin eyebrow treatment. */
-  html[dir='rtl'] .hr-suite {
-    line-height: 1.6;
-  }
-
   :focus-visible {
     @apply outline-none ring-2 ring-brand-500 ring-offset-2 ring-offset-surface-bg;
   }
@@ -180,83 +115,56 @@
   }
 
   /* ── HR surfaces ─────────────────────────────────────────────────
-     One material for the whole module. What makes it read as glass is not
-     the blur on its own — it is the lit top edge and the shadow underneath,
-     which is what tells the eye the sheet is floating above the wash rather
-     than painted onto it. */
-  .hr-panel {
-    @apply rounded-[20px] border backdrop-blur-2xl backdrop-saturate-150;
-    border-color: rgb(255 255 255 / 0.78);
+     HR V2 is glass on colour: an aurora backdrop, frosted white sheets,
+     gradient actions that take each area's colours. Everything below is
+     scoped to `body.hr-theme`, which the HR layout sets while it is on
+     screen, so no other module changes — and dialogs and drawers, which
+     portal to <body>, are covered too. `--hr-a1` / `--hr-a2` are the
+     current area's gradient (set from the route, see ui/theme.ts). */
+  body.hr-theme {
+    --hr-a1: 79 70 229;
+    --hr-a2: 37 99 235;
+    --hr-glass: rgb(255 255 255 / 0.74);
+    --hr-glass-strong: rgb(255 255 255 / 0.9);
+    --hr-glass-line: rgb(255 255 255 / 0.75);
+  }
+
+  .hr-glass {
+    @apply border backdrop-blur-xl;
+    background-color: var(--hr-glass, rgb(255 255 255 / 0.74));
+    border-color: var(--hr-glass-line, rgb(255 255 255 / 0.75));
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.9),
+      0 1px 2px rgb(15 23 42 / 0.04),
+      0 18px 40px -26px rgb(30 41 99 / 0.45);
+  }
+
+  /* A name or title straight from the data, in whichever script it came: it
+     truncates at its own end ("Hassan Omar Fa…", not "…san Omar Fathy") and
+     still sits on the page's start edge. Never for Arabic UI labels that open
+     with a Latin word ("KPI التوظيف") — those must keep the page's direction. */
+  .hr-bidi {
+    unicode-bidi: plaintext;
+    text-align: left;
+  }
+  :where([dir='rtl']) .hr-bidi {
+    text-align: right;
+  }
+
+  /* The shared KPI scorecard desk wears the same glass inside HR. */
+  .hr-panel,
+  body.hr-theme .card {
+    @apply rounded-3xl border backdrop-blur-xl;
     background-color: rgb(255 255 255 / 0.74);
-    box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.95),
-      0 8px 24px -14px rgb(var(--hr-navy, 11 37 69) / 0.2),
-      0 32px 64px -34px rgb(var(--hr-navy, 11 37 69) / 0.34);
-  }
-
-  /* Denser sheet for anything holding a table or a long scrolling body,
-     where text has to win over atmosphere. */
-  .hr-panel-solid {
-    @apply rounded-[20px] border backdrop-blur-2xl backdrop-saturate-150;
-    border-color: rgb(255 255 255 / 0.82);
-    background-color: rgb(255 255 255 / 0.92);
-    box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.95),
-      0 8px 24px -14px rgb(var(--hr-navy, 11 37 69) / 0.2),
-      0 32px 64px -34px rgb(var(--hr-navy, 11 37 69) / 0.34);
-  }
-
-  /* A single figure and its label. These float with a gap between them
-     instead of sharing hairlines in a ruled grid — the ruled version read
-     as a spreadsheet, which is the look this module was trying to leave. */
-  .hr-stat {
-    @apply rounded-2xl border backdrop-blur-xl backdrop-saturate-150 transition-shadow;
-    border-color: rgb(255 255 255 / 0.78);
-    background-color: rgb(255 255 255 / 0.76);
+    border-color: rgb(255 255 255 / 0.75);
     box-shadow:
       inset 0 1px 0 rgb(255 255 255 / 0.9),
-      0 6px 16px -10px rgb(var(--hr-navy, 11 37 69) / 0.26);
-  }
-  .hr-stat:hover {
-    box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.9),
-      0 12px 28px -14px rgb(var(--hr-navy, 11 37 69) / 0.3);
-  }
-
-  /* The one dark surface in the module, and it earns it: it holds the
-     figure the screen is opened for. A gradient rather than a flat fill so
-     it reads as a lit object rather than the header slab this module used
-     to wear across the top. */
-  .hr-hero-card {
-    @apply overflow-hidden rounded-[20px];
-    background: linear-gradient(155deg, #0b2545 0%, #14497f 100%);
-    box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.1),
-      0 20px 44px -26px rgb(var(--hr-navy, 11 37 69) / 0.6);
-  }
-
-  .hr-head {
-    @apply flex flex-wrap items-end justify-between gap-3 border-b px-5 py-4;
-    border-color: rgb(var(--hr-navy, 11 37 69) / 0.07);
-  }
-
-  /* The tab rail is the one surface content scrolls *underneath*, so it
-     cannot use the panel's translucency — at 74% the row behind it showed
-     through and read as a rendering fault. Near-opaque, and its own rule
-     rather than `.hr-panel` plus two !important overrides. */
-  .hr-rail {
-    @apply rounded-2xl border backdrop-blur-xl backdrop-saturate-150;
-    border-color: rgb(255 255 255 / 0.8);
-    background-color: rgb(255 255 255 / 0.96);
-    box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.95),
-      0 8px 24px -14px rgb(var(--hr-navy, 11 37 69) / 0.28);
+      0 18px 40px -26px rgb(30 41 99 / 0.45);
   }
 
   /* Section kicker. Latin gets the small-caps treatment; Arabic does not. */
   .hr-eyebrow {
-    @apply text-[11px] font-semibold uppercase tracking-[0.12em];
-    color: rgb(var(--hr-blue, 29 111 184));
+    @apply text-[11px] font-semibold uppercase tracking-[0.12em] text-brand-600;
   }
   html[dir='rtl'] .hr-eyebrow {
     @apply text-[12px] tracking-normal;
@@ -264,10 +172,7 @@
   }
 
   .hr-title {
-    font-size: var(--t-sub);
-    line-height: 1.35;
-    font-weight: 600;
-    color: rgb(var(--hr-navy, 11 37 69));
+    @apply text-[17px] font-bold leading-snug text-navy;
   }
 
   /* Figures: aligned, and isolated from the surrounding bidi run so an
@@ -277,63 +182,230 @@
     unicode-bidi: isolate;
   }
 
-  /* One meter for the whole module. There were five: three track colours
-     and three heights describing the same relationship. Square ends on a
-     3px rule read as a measurement; a 6px rounded pill reads as Bootstrap. */
   .hr-meter {
-    @apply h-[3px] w-full overflow-hidden;
-    background: rgb(var(--hr-navy, 11 37 69) / 0.1);
+    @apply h-1.5 w-full overflow-hidden rounded-full bg-slate-200/70;
   }
   .hr-meter > span {
-    @apply block h-full;
-    background: rgb(var(--hr-blue, 29 111 184));
+    @apply block h-full rounded-full;
+    background-image: linear-gradient(90deg, rgb(var(--hr-a1, 29 111 184)), rgb(var(--hr-a2, 29 111 184)));
   }
   .hr-meter > span[data-tone='navy'] {
-    background: rgb(var(--hr-navy, 11 37 69));
+    @apply bg-navy;
   }
 
-  /* Segmented filters — one control shared by People, Payroll and
-     Recruitment so the three tabs never disagree about what a filter is. */
-  .hr-seg {
-    @apply inline-flex overflow-hidden rounded-xl border backdrop-blur;
-    border-color: rgb(255 255 255 / 0.8);
-    background-color: rgb(255 255 255 / 0.6);
-    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.9);
+  /* Actions. Primary takes the area gradient, glows, and a light sheen
+     crosses it on hover; everything presses in slightly on click. */
+  body.hr-theme .btn {
+    transition:
+      transform 0.18s cubic-bezier(0.22, 1, 0.36, 1),
+      box-shadow 0.25s ease,
+      background-color 0.2s ease,
+      border-color 0.2s ease,
+      color 0.2s ease,
+      filter 0.2s ease;
   }
-  .hr-seg-btn {
-    @apply min-h-10 px-3 text-xs font-semibold transition-colors;
-    color: var(--hr-muted, #5A6C82);
+  body.hr-theme .btn:active:not(:disabled) {
+    transform: scale(0.97);
   }
-  .hr-seg-btn + .hr-seg-btn {
-    border-inline-start: 1px solid rgb(var(--hr-navy, 11 37 69) / 0.08);
-  }
-  .hr-seg-btn:hover {
-    background: rgb(255 255 255 / 0.7);
-    color: rgb(var(--hr-navy, 11 37 69));
-  }
-  .hr-seg-btn[aria-pressed='true'],
-  .hr-seg-btn[aria-pressed='true']:hover {
-    background: rgb(var(--hr-navy, 11 37 69));
+  body.hr-theme .btn-primary,
+  body.hr-theme .btn-navy {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    border: 0;
     color: #fff;
+    background-color: rgb(var(--hr-a1));
+    background-image: linear-gradient(135deg, rgb(var(--hr-a1)), rgb(var(--hr-a2)));
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.28),
+      0 12px 26px -14px rgb(var(--hr-a1) / 0.85);
+  }
+  body.hr-theme .btn-navy {
+    background-image: linear-gradient(135deg, #0b2545, rgb(var(--hr-a1)));
+  }
+  body.hr-theme .btn-primary::after,
+  body.hr-theme .btn-navy::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: linear-gradient(115deg, transparent 30%, rgb(255 255 255 / 0.38) 50%, transparent 70%);
+    transform: translateX(-130%);
+    transition: transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  body.hr-theme .btn-primary:hover:not(:disabled),
+  body.hr-theme .btn-navy:hover:not(:disabled) {
+    transform: translateY(-1px);
+    filter: saturate(1.12);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.3),
+      0 16px 32px -14px rgb(var(--hr-a1) / 0.95);
+  }
+  body.hr-theme .btn-primary:hover:not(:disabled)::after,
+  body.hr-theme .btn-navy:hover:not(:disabled)::after {
+    transform: translateX(130%);
+  }
+  body.hr-theme .btn-ghost {
+    @apply backdrop-blur;
+    color: #0b2545;
+    background-color: rgb(255 255 255 / 0.78);
+    border-color: rgb(var(--hr-a1) / 0.22);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.9), 0 6px 16px -12px rgb(30 41 99 / 0.45);
+  }
+  body.hr-theme .btn-ghost:hover:not(:disabled) {
+    transform: translateY(-1px);
+    background-color: #fff;
+    border-color: rgb(var(--hr-a1) / 0.5);
+    color: rgb(var(--hr-a1));
+    box-shadow: 0 12px 24px -14px rgb(var(--hr-a1) / 0.6);
+  }
+  body.hr-theme .btn-quiet:hover:not(:disabled) {
+    color: rgb(var(--hr-a1));
+    background-color: rgb(var(--hr-a1) / 0.08);
   }
 
-  /* The KPI tab is a shared component that renders inside `.hr-suite`;
-     pulling `.card` onto the same glass keeps it in the module's material
-     without editing the component or its behaviour. Modals portal to
-     <body>, so editors stay solid white where forms need the contrast. */
-  .hr-suite .card {
-    @apply rounded-2xl border backdrop-blur-xl backdrop-saturate-150;
+  /* On a coloured hero, actions turn white and glassy. */
+  body.hr-theme .hr-on-color .btn-primary,
+  body.hr-theme .hr-on-color .btn-navy {
+    background-image: none;
+    background-color: #fff;
+    color: rgb(var(--hr-a1));
+    box-shadow: 0 12px 26px -14px rgb(15 23 42 / 0.6);
+  }
+  body.hr-theme .hr-on-color .btn-primary::after,
+  body.hr-theme .hr-on-color .btn-navy::after {
+    background: linear-gradient(115deg, transparent 30%, rgb(var(--hr-a1) / 0.14) 50%, transparent 70%);
+  }
+  body.hr-theme .hr-on-color .btn-ghost {
+    color: #fff;
+    background-color: rgb(255 255 255 / 0.16);
+    border-color: rgb(255 255 255 / 0.4);
+  }
+  body.hr-theme .hr-on-color .btn-ghost:hover:not(:disabled) {
+    color: #fff;
+    background-color: rgb(255 255 255 / 0.26);
     border-color: rgb(255 255 255 / 0.7);
-    background-color: rgb(255 255 255 / 0.62);
+  }
+
+  body.hr-theme .field {
+    @apply backdrop-blur;
+    background-color: rgb(255 255 255 / 0.82);
+    border-color: rgb(148 163 184 / 0.4);
+  }
+  body.hr-theme .field:focus {
+    border-color: rgb(var(--hr-a1) / 0.65);
+    box-shadow: 0 0 0 4px rgb(var(--hr-a1) / 0.14);
+  }
+
+  /* Dialogs and side sheets: frosted, with a lit edge. */
+  body.hr-theme [role='dialog'][aria-modal='true'] {
+    background-color: rgb(255 255 255 / 0.9);
+    backdrop-filter: blur(24px) saturate(1.4);
+    -webkit-backdrop-filter: blur(24px) saturate(1.4);
+    border: 1px solid rgb(255 255 255 / 0.8);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.95),
+      0 30px 80px -30px rgb(30 41 99 / 0.55);
+  }
+
+  /* Things arrive: lists and grids rise in, one after another. */
+  .hr-stagger > * {
+    animation: hr-rise 0.46s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .hr-stagger > *:nth-child(2) { animation-delay: 40ms; }
+  .hr-stagger > *:nth-child(3) { animation-delay: 80ms; }
+  .hr-stagger > *:nth-child(4) { animation-delay: 120ms; }
+  .hr-stagger > *:nth-child(5) { animation-delay: 160ms; }
+  .hr-stagger > *:nth-child(6) { animation-delay: 200ms; }
+  .hr-stagger > *:nth-child(7) { animation-delay: 240ms; }
+  .hr-stagger > *:nth-child(8) { animation-delay: 280ms; }
+  .hr-stagger > *:nth-child(n + 9) { animation-delay: 320ms; }
+
+  /* Interactive sheets lift towards the pointer. */
+  .hr-lift {
+    transition:
+      transform 0.25s cubic-bezier(0.22, 1, 0.36, 1),
+      box-shadow 0.25s ease,
+      border-color 0.2s ease;
+  }
+  .hr-lift:hover {
+    transform: translateY(-3px);
     box-shadow:
       inset 0 1px 0 rgb(255 255 255 / 0.9),
-      0 8px 24px -14px rgb(var(--hr-navy, 11 37 69) / 0.2);
+      0 26px 46px -24px rgb(var(--hr-a1, 79 70 229) / 0.55);
+    border-color: rgb(var(--hr-a1, 79 70 229) / 0.35);
   }
 
-  .hr-suite .field {
-    @apply rounded-xl border backdrop-blur;
-    border-color: rgb(255 255 255 / 0.85);
-    background-color: rgb(255 255 255 / 0.78);
+  .hr-float {
+    animation: hr-float 7s ease-in-out infinite;
+  }
+  .hr-float-slow {
+    animation: hr-float 11s ease-in-out infinite;
+  }
+
+  .hr-aurora-blob {
+    animation: hr-drift 24s ease-in-out infinite alternate;
+  }
+
+  @keyframes hr-rise {
+    from {
+      opacity: 0;
+      transform: translateY(12px) scale(0.985);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes hr-float {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-8px);
+    }
+  }
+  @keyframes hr-drift {
+    0% {
+      transform: translate3d(0, 0, 0) scale(1);
+    }
+    50% {
+      transform: translate3d(4%, -3%, 0) scale(1.08);
+    }
+    100% {
+      transform: translate3d(-3%, 4%, 0) scale(0.96);
+    }
+  }
+  @keyframes hr-pulse-ring {
+    0% {
+      box-shadow: 0 0 0 0 rgb(var(--hr-a1, 79 70 229) / 0.45);
+    }
+    100% {
+      box-shadow: 0 0 0 10px rgb(var(--hr-a1, 79 70 229) / 0);
+    }
+  }
+  .hr-pulse {
+    animation: hr-pulse-ring 1.8s ease-out infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .hr-stagger > *,
+    .hr-float,
+    .hr-float-slow,
+    .hr-aurora-blob,
+    .hr-pulse {
+      animation: none !important;
+    }
+    .hr-lift:hover,
+    body.hr-theme .btn:hover,
+    body.hr-theme .btn:active {
+      transform: none !important;
+    }
+    body.hr-theme .btn-primary::after,
+    body.hr-theme .btn-navy::after {
+      display: none;
+    }
   }
 
   /* ── Projects surfaces ───────────────────────────────────────────

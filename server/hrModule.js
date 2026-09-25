@@ -3,12 +3,10 @@ import { can, PERMISSIONS } from '../shared/permissions.js';
 import { organizationOf } from '../shared/organization.js';
 import { HR_IMPORT_SOURCES, HRWorkbookError, parseHRWorkbook } from './hrWorkbook.js';
 import { usdEgpRate } from './hrFx.js';
-import { odooRecruitmentJob, odooRecruitmentMatches } from './hrRecruitmentOdoo.js';
 import { officeId, seatId } from '../shared/officeInventory.js';
 
 const datasetId = (organizationId, source) => `hr-dataset:${organizationId}:${source}`;
 const linkDocumentId = (organizationId) => `hr-links:${organizationId}`;
-const recruitmentLinkDocumentId = (organizationId) => `hr-recruitment-links:${organizationId}`;
 
 const SOURCE_LABELS = {
   master: { ar: 'قاعدة الموظفين', en: 'Employee database' },
@@ -246,7 +244,7 @@ function applyUserLinks(profiles, users, linkDocument) {
   }
 }
 
-function employeeSummary(profile, includePayroll) {
+export function employeeSummary(profile, includePayroll) {
   return {
     employeeCode: profile.employeeCode,
     nameEnglish: profile.nameEnglish,
@@ -269,20 +267,20 @@ function employeeSummary(profile, includePayroll) {
   };
 }
 
-function cairoDay() {
+export function cairoDay() {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Africa/Cairo', year: 'numeric', month: '2-digit', day: '2-digit',
   }).format(new Date());
 }
 
-function genderKey(value) {
+export function genderKey(value) {
   const key = String(value || '').trim().toLowerCase();
   if (['male', 'm', 'ذكر', 'رجل'].includes(key)) return 'male';
   if (['female', 'f', 'أنثى', 'انثى', 'سيدة'].includes(key)) return 'female';
   return 'unspecified';
 }
 
-function ageOn(birthDate, today) {
+export function ageOn(birthDate, today) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(birthDate || ''))) return null;
   const [year, month, day] = birthDate.split('-').map(Number);
   const [currentYear, currentMonth, currentDay] = today.split('-').map(Number);
@@ -301,7 +299,7 @@ function departmentBreakdown(profiles) {
     .sort((left, right) => right.employees - left.employees || left.department.localeCompare(right.department, 'ar'));
 }
 
-function workforceAnalytics(profiles, insured) {
+export function workforceAnalytics(profiles, insured) {
   const today = cairoDay();
   const period = today.slice(0, 7);
   const active = profiles.filter((profile) => profile.status === 'active' && profile.sources.master);
@@ -336,7 +334,7 @@ function workforceAnalytics(profiles, insured) {
   };
 }
 
-function payrollAnalytics(profiles, fx) {
+export function payrollAnalytics(profiles, fx) {
   const paid = profiles.filter((profile) => profile.sources.payroll && Number.isFinite(Number(profile.payroll?.totalSalary)));
   const byDepartment = new Map();
   let totalEgp = 0;
@@ -374,52 +372,7 @@ function payrollAnalytics(profiles, fx) {
   };
 }
 
-function daysBetween(from, to) {
-  const start = Date.parse(`${from}T12:00:00Z`);
-  const end = Date.parse(`${to}T12:00:00Z`);
-  return Number.isFinite(start) && Number.isFinite(end) ? Math.round((end - start) / 86_400_000) : null;
-}
-
-function recruitmentAnalytics(requests) {
-  const today = cairoDay();
-  const active = requests.filter((request) => request.status === 'active');
-  const plannedDays = requests
-    .map((request) => request.activeDate && request.dueDate ? daysBetween(request.activeDate, request.dueDate) : null)
-    .filter((value) => value !== null && value >= 0);
-  const actualDays = requests
-    .map((request) => request.activeDate && request.actualHiringDate ? daysBetween(request.activeDate, request.actualHiringDate) : null)
-    .filter((value) => value !== null && value >= 0);
-  const totalNeeded = requests.reduce((sum, request) => sum + Math.max(0, request.numberNeeded), 0);
-  const totalAccepted = requests.reduce((sum, request) => sum + Math.max(0, request.accepted), 0);
-  const openSeats = active.reduce((sum, request) => sum + Math.max(0, request.numberNeeded - request.accepted), 0);
-  return {
-    total: requests.length,
-    active: active.length,
-    hold: requests.filter((request) => request.status === 'hold').length,
-    done: requests.filter((request) => request.status === 'done').length,
-    totalNeeded,
-    totalAccepted,
-    openSeats,
-    fillRate: totalNeeded ? Math.round((totalAccepted / totalNeeded) * 100) : 0,
-    overdue: active.filter((request) => request.dueDate && request.dueDate < today && request.accepted < request.numberNeeded).length,
-    dueSoon: active.filter((request) => {
-      if (!request.dueDate || request.dueDate < today) return false;
-      const days = daysBetween(today, request.dueDate);
-      return days !== null && days <= 14;
-    }).length,
-    averagePlannedDays: plannedDays.length ? Math.round(plannedDays.reduce((sum, value) => sum + value, 0) / plannedDays.length) : null,
-    averageActualDays: actualDays.length ? Math.round(actualDays.reduce((sum, value) => sum + value, 0) / actualDays.length) : null,
-    funnel: {
-      requirements: active.filter((request) => request.receivedRequirements === 'done').length,
-      published: active.filter((request) => request.published === 'done').length,
-      candidates: active.filter((request) => request.receivedCandidates === 'done').length,
-      accepted: active.filter((request) => request.accepted > 0).length,
-      total: active.length,
-    },
-  };
-}
-
-function organizationAnalytics(positions) {
+export function organizationAnalytics(positions) {
   const matched = positions.filter((position) => position.matchState === 'matched').length;
   const vacant = positions.filter((position) => position.matchState === 'vacant').length;
   const unmatched = positions.filter((position) => position.matchState === 'unmatched').length;
@@ -427,7 +380,7 @@ function organizationAnalytics(positions) {
   return { total: positions.length, matched, vacant, unmatched, departments: departments.size };
 }
 
-function leaveAnalytics(dataset) {
+export function leaveAnalytics(dataset) {
   const balances = dataset?.payload?.balances ?? [];
   const records = dataset?.payload?.records ?? [];
   const active = balances.filter((balance) => balance.status === 'active');
@@ -448,7 +401,7 @@ function leaveAnalytics(dataset) {
   };
 }
 
-function reconciliation(profiles, positions) {
+export function reconciliation(profiles, positions) {
   const list = [...profiles.values()];
   const active = list.filter((profile) => profile.status === 'active');
   const masterCodes = new Set(list.filter((profile) => profile.sources.master).map((profile) => profile.employeeCode));
@@ -461,7 +414,7 @@ function reconciliation(profiles, positions) {
   };
 }
 
-async function organizationState(organizationId) {
+export async function organizationState(organizationId) {
   const [datasets, users, linkDocument] = await Promise.all([
     find('hrDatasets', (dataset) => dataset.organizationId === organizationId),
     find('users', (user) => organizationOf(user) === organizationId),
@@ -470,6 +423,20 @@ async function organizationState(organizationId) {
   const state = employeeMapFromDatasets(datasets);
   applyUserLinks(state.profiles, users, linkDocument);
   return { ...state, datasets, users, linkDocument };
+}
+
+/**
+ * Open recruitment for the headline figures, read from Qodo's own requests —
+ * the workbook is history now, not the live count.
+ */
+async function openRecruitmentSummary(organizationId) {
+  const requests = await find('recruitmentRequests', (request) => organizationOf(request) === organizationId);
+  const live = requests.filter((request) => ['hiring', 'on_hold'].includes(request.status));
+  return {
+    total: requests.length,
+    requests: live.length,
+    seats: live.reduce((sum, request) => sum + Math.max(0, (Number(request.headcount) || 0) - (Number(request.accepted) || 0)), 0),
+  };
 }
 
 export async function hrDashboardFor(user) {
@@ -483,12 +450,11 @@ export async function hrDashboardFor(user) {
   const visibleProfiles = canViewPeople
     ? allProfiles
     : allProfiles.filter((profile) => profile.linkedUserId === user.id);
-  const recruitment = state.bySource.recruitment?.payload?.requests ?? [];
+  const openRecruitment = canViewPeople ? await openRecruitmentSummary(organizationId) : { requests: 0, seats: 0 };
   const active = allProfiles.filter((profile) => profile.status === 'active');
   const payroll = allProfiles.filter((profile) => profile.sources.payroll);
   const insuranceRecords = allProfiles.filter((profile) => profile.sources.insurance);
   const insured = insuranceRecords.filter((profile) => profile.insurance?.insuranceNumber);
-  const activeRecruitment = recruitment.filter((request) => request.status === 'active');
   const fx = await fxPromise;
 
   const summary = canViewPeople
@@ -498,12 +464,9 @@ export async function hrDashboardFor(user) {
         payroll: payroll.length,
         insured: insured.length,
         insuranceRecords: insuranceRecords.length,
-        recruitmentRequests: recruitment.length,
-        openRecruitmentRequests: activeRecruitment.length,
-        openPositions: activeRecruitment.reduce(
-          (sum, request) => sum + Math.max(0, request.numberNeeded - request.accepted),
-          0
-        ),
+        recruitmentRequests: openRecruitment.total,
+        openRecruitmentRequests: openRecruitment.requests,
+        openPositions: openRecruitment.seats,
         organizationPositions: state.positions.length,
         organizationVacancies: state.positions.filter((position) => position.matchState === 'vacant').length,
         leaveEmployees: state.bySource.leave?.payload?.balances?.length ?? 0,
@@ -536,7 +499,6 @@ export async function hrDashboardFor(user) {
       ? {
           workforce: workforceAnalytics(allProfiles, insured),
           payroll: canViewPayroll ? payrollAnalytics(allProfiles, fx) : null,
-          recruitment: recruitmentAnalytics(recruitment),
           organization: organizationAnalytics(state.positions),
           leave: leaveAnalytics(state.bySource.leave),
         }
@@ -547,7 +509,6 @@ export async function hrDashboardFor(user) {
         (left.status === 'active' ? 0 : 1) - (right.status === 'active' ? 0 : 1)
         || (left.nameArabic || left.nameEnglish).localeCompare(right.nameArabic || right.nameEnglish, 'ar')
       ),
-    recruitment: canViewPeople ? recruitment : [],
     organization: canViewPeople ? state.positions : [],
     leaveBalances: canViewPeople
       ? (state.bySource.leave?.payload?.balances ?? [])
@@ -567,53 +528,31 @@ export async function hrDashboardFor(user) {
         })
       : [],
     reconciliation: canManage ? reconciliation(state.profiles, state.positions) : null,
-    telegram: canManage
-      ? {
-          enabled: Boolean(
-            (process.env.HR_TELEGRAM_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN)
-            && process.env.HR_TELEGRAM_WEBHOOK_SECRET
-            && String(process.env.HR_TELEGRAM_CHAT_IDS || '').trim()
-          ),
-          restricted: Boolean(String(process.env.HR_TELEGRAM_CHAT_IDS || '').trim()),
-        }
-      : null,
+    telegram: canManage ? telegramStatus() : null,
   };
 }
 
-export async function hrRecruitmentOdooFor(user, { forceRefresh = false } = {}) {
-  if (!can(user, PERMISSIONS.HR_VIEW)) throw new HRWorkbookError('forbidden', 403);
-  const organizationId = organizationOf(user);
-  const [state, linkDocument] = await Promise.all([
-    organizationState(organizationId),
-    findOne('hrRecruitmentLinks', (document) => document.id === recruitmentLinkDocumentId(organizationId)),
-  ]);
-  return odooRecruitmentMatches(state.bySource.recruitment?.payload?.requests ?? [], {
-    manualLinks: linkDocument?.links ?? {},
-    includeJobs: can(user, PERMISSIONS.HR_MANAGE),
-    forceRefresh,
-  });
+/** Whether the Telegram payroll channel is set up — two booleans, never a value. */
+export function telegramStatus() {
+  return {
+    enabled: Boolean(
+      (process.env.HR_TELEGRAM_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN)
+      && process.env.HR_TELEGRAM_WEBHOOK_SECRET
+      && String(process.env.HR_TELEGRAM_CHAT_IDS || '').trim()
+    ),
+    restricted: Boolean(String(process.env.HR_TELEGRAM_CHAT_IDS || '').trim()),
+  };
 }
 
-export async function setRecruitmentOdooLink({ organizationId, requestId, jobId, actorId }) {
+/** Every import source with its latest upload (or its empty slot), for HR Settings → Imports. */
+export async function hrDatasetOverview(organizationId) {
   const state = await organizationState(organizationId);
-  const requests = state.bySource.recruitment?.payload?.requests ?? [];
-  if (!requests.some((request) => request.id === requestId)) {
-    throw new HRWorkbookError('hr_recruitment_not_found', 404);
-  }
-  if (jobId !== null) {
-    if (!Number.isInteger(jobId) || jobId <= 0) throw new HRWorkbookError('hr_odoo_job_invalid');
-    if (!await odooRecruitmentJob(jobId)) throw new HRWorkbookError('hr_odoo_job_not_found', 404);
-  }
-
-  const id = recruitmentLinkDocumentId(organizationId);
-  const current = await findOne('hrRecruitmentLinks', (document) => document.id === id);
-  const links = { ...(current?.links ?? {}) };
-  if (jobId === null) delete links[requestId];
-  else links[requestId] = jobId;
-  const patch = { organizationId, links, updatedBy: actorId };
-  if (current) await (await getStore()).update('hrRecruitmentLinks', id, patch);
-  else await create('hrRecruitmentLinks', { id, ...patch });
-  return { requestId, jobId, linksCount: Object.keys(links).length };
+  return HR_IMPORT_SOURCES.map((source) => {
+    const dataset = state.bySource[source];
+    return dataset
+      ? publicDataset(dataset)
+      : { source, label: SOURCE_LABELS[source], importedAt: null, summary: null, warnings: [] };
+  });
 }
 
 function stripSensitive(profile, includeSensitive, includePayroll) {
@@ -785,6 +724,11 @@ export async function importHRDataset({
   const dataset = existing ? await store.update('hrDatasets', id, document) : await create('hrDatasets', { id, ...document });
   const state = await organizationState(organizationId);
   const quality = reconciliation(state.profiles, state.positions);
+  // The recruitment workbook is now a historical import: new rows become Qodo
+  // requests once, and nothing already in Qodo is overwritten by the sheet.
+  const migration = parsed.source === 'recruitment'
+    ? await (await import('./hr/recruitment/migration.js')).migrateLegacyRecruitment(organizationId)
+    : null;
   const run = await create('hrImportRuns', {
     organizationId,
     source: parsed.source,
@@ -795,8 +739,9 @@ export async function importHRDataset({
     warnings: parsed.warnings,
     quality: Object.fromEntries(Object.entries(quality).map(([key, value]) => [key, value.length])),
     status: 'completed',
+    migration,
   });
-  return { dataset: publicDataset(dataset), run, reconciliation: quality };
+  return { dataset: publicDataset(dataset), run, reconciliation: quality, migration };
 }
 
 const MASTER_FIELDS = new Set([
@@ -859,32 +804,6 @@ export async function updateHREmployee({ organizationId, employeeCode, section, 
     lastEditedBy: actorId,
   });
   return hrEmployeeFor({ id: actorId, organizationId, role: 'admin', status: 'active', permissions: null }, employeeCode);
-}
-
-const RECRUITMENT_FIELDS = new Set([
-  'role', 'numberNeeded', 'accepted', 'feedback', 'department', 'vacancyReason', 'status',
-  'priority', 'seniority', 'location', 'assignedTo', 'hiringPeriodDays', 'activeDate', 'dueDate',
-  'actualHiringDate', 'receivedRequirements', 'published', 'receivedCandidates', 'salaryRange',
-  'actualSalary', 'interviewer', 'validation',
-]);
-
-export async function updateRecruitmentRequest({ organizationId, requestId, patch, actorId }) {
-  const updates = cleanPatch(patch, RECRUITMENT_FIELDS);
-  const id = datasetId(organizationId, 'recruitment');
-  const dataset = await findOne('hrDatasets', (document) => document.id === id);
-  if (!dataset) throw new HRWorkbookError('hr_dataset_missing', 409, { source: 'recruitment' });
-  const payload = structuredClone(dataset.payload);
-  const index = payload.requests.findIndex((request) => request.id === requestId);
-  if (index < 0) throw new HRWorkbookError('hr_recruitment_not_found', 404);
-  payload.requests[index] = { ...payload.requests[index], ...updates, id: requestId };
-  if (
-    Number(payload.requests[index].numberNeeded) > 0
-    && Number(payload.requests[index].accepted) >= Number(payload.requests[index].numberNeeded)
-  ) {
-    payload.requests[index].status = 'done';
-  }
-  await (await getStore()).update('hrDatasets', id, { payload, lastEditedAt: now(), lastEditedBy: actorId });
-  return payload.requests[index];
 }
 
 export async function linkHREmployee({ organizationId, employeeCode, userId, actorId }) {

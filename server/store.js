@@ -52,6 +52,27 @@ export const COLLECTIONS = [
   // are stored; the grade is derived on read, so a corrected band never leaves
   // stale scores behind.
   'kpiScorecards',
+  // HR V2 — recruitment operations live here, not in a workbook payload. The
+  // request is the one mutable document; approvals, assignments, extensions,
+  // KPI events and activity are append-only rows beside it, so the history of a
+  // job can be audited and never quietly rewritten. See docs/HR_V2_ARCHITECTURE.md.
+  'recruitmentRequests',
+  'recruitmentApprovals',
+  'recruitmentAssignments',
+  'recruitmentExtensions',
+  'recruitmentKpiEvents',
+  'recruitmentRewardRules',
+  'recruitmentRewardBatches',
+  'recruitmentActivity',
+  'recruitmentOdooLinks',
+  // Personnel cases (onboarding, leave, clearance, salary increase, documents,
+  // insurance) and the one-time secure forms a new hire fills in.
+  'personnelRequests',
+  'personnelForms',
+  'performanceReviews',
+  // One revisioned policy document per organization: SLA bands, capacity,
+  // classifications, KPI rules, checklists. Reward rules are versioned apart.
+  'hrSettings',
   'taskAssignments',
   'comments',
   'attachments',

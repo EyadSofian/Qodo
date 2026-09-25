@@ -1275,7 +1275,7 @@ function SeatPanel({
             </span>
             {seat.employeeCode ? (
               <Link
-                to={`/hr/employees/${seat.employeeCode}`}
+                to={`/hr/people/${encodeURIComponent(seat.employeeCode)}`}
                 className="text-[12px] text-brand-500 hover:underline"
               >
                 {t('offices.openProfile')}

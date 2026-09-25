@@ -30,6 +30,9 @@ import * as learningProductionStorage from './learningProduction/db.js';
 import { DEFAULT_ORGANIZATION_ID } from '../shared/organization.js';
 import hrOperationsRoutes from './routes/hrOperations.js';
 import hrRoutes from './routes/hr.js';
+import hrFormRoutes from './routes/hrForms.js';
+import { bootRecruitment } from './hr/recruitment/clock.js';
+import { odooEmployeeIndex } from './hr/odooPeople.js';
 import kpiRoutes from './routes/kpi.js';
 import notificationRoutes from './routes/notifications.js';
 import searchRoutes from './routes/search.js';
@@ -85,6 +88,9 @@ app.use('/api/projects', projectRoutes);
 app.use('/api/learning-production', learningProductionRoutes);
 app.use('/api/hr-operations', hrOperationsRoutes);
 app.use('/api/hr', hrRoutes);
+// The New Employee Form — a one-time token link for somebody who has no
+// account yet. Throttled, hashed and single-use; see routes/hrForms.js.
+app.use('/api/hr-forms', hrFormRoutes);
 app.use('/api/kpi', kpiRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/search', searchRoutes);
@@ -182,6 +188,12 @@ if (learningProductionStorage.isAvailable()) {
     console.error('[learning-production] storage unavailable —', error.message);
   }
 }
+
+// Recruitment moved off the workbook: bring any rows not yet in Qodo across.
+// Idempotent by construction, so every deploy may run it.
+await bootRecruitment();
+// Warm the Odoo employee index (photos, departments) without holding the boot.
+void odooEmployeeIndex({ wait: false });
 
 await initPush();
 startScheduler();

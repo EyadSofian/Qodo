@@ -65,7 +65,7 @@ function confidentMatchScore(role, jobName) {
     : 0;
 }
 
-function bestJob(role, jobs) {
+export function bestJob(role, jobs) {
   const ranked = jobs
     .map((job) => ({ job, score: confidentMatchScore(role, job.name) }))
     .sort((left, right) => right.score - left.score || right.job.id - left.job.id);
@@ -78,7 +78,7 @@ function relationId(value) {
   return Array.isArray(value) ? Number(value[0]) : null;
 }
 
-async function readOdooState(forceRefresh = false) {
+export async function readOdooState(forceRefresh = false) {
   if (!odooConfigured()) {
     return { configured: false, jobs: [], applicantByJob: new Map(), stagesByJob: new Map(), applicantsAvailable: false };
   }
@@ -87,7 +87,7 @@ async function readOdooState(forceRefresh = false) {
   const jobs = await searchRead(
     'hr.job',
     [],
-    ['name', 'active', 'expected_employees', 'department_id', 'published_date', 'job_open_date'],
+    ['name', 'active', 'expected_employees', 'no_of_recruitment', 'user_id', 'department_id', 'published_date', 'job_open_date'],
     { limit: 600, order: 'id desc', context: { active_test: false } }
   );
 
@@ -138,7 +138,7 @@ async function readOdooState(forceRefresh = false) {
   return value;
 }
 
-function jobOption(job, state) {
+export function jobOption(job, state) {
   return {
     jobId: job.id,
     name: String(job.name || ''),
@@ -148,7 +148,7 @@ function jobOption(job, state) {
   };
 }
 
-function suggestedJobs(role, jobs, state) {
+export function suggestedJobs(role, jobs, state) {
   return jobs
     .map((job) => ({ job, suggestionScore: similarity(role, job.name) }))
     .filter((item) => item.suggestionScore >= 0.2)

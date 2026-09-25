@@ -41,6 +41,7 @@ import { organizationOf } from "../shared/organization.js";
 import { remindDueSoon } from "./management.js";
 import { remindUpcomingEvents } from "./calendar.js";
 import { generateHROperations } from "./hrOperations.js";
+import { runRecruitmentClock } from "./hr/recruitment/clock.js";
 import {
   buildInsightsBriefNotifications,
   fetchInsightsBriefData,
@@ -649,6 +650,7 @@ export function startScheduler() {
   );
 
   let lastInsightsCheck = 0;
+  let lastRecruitmentClock = 0;
 
   const tick = async () => {
     try {
@@ -669,6 +671,23 @@ export function startScheduler() {
         // how a person learns to ignore both.
         const late = await remindOverdue();
         if (late) console.log(`[scheduler] ${late} overdue notice(s) sent`);
+      }
+
+      // Recruitment: reward batches, alert pushes and the daily automatic KPI
+      // checks. Every ten minutes is fresh enough for SLA alerts measured in
+      // working days, and each step is idempotent, so a restart can re-run it.
+      if (Date.now() - lastRecruitmentClock >= 10 * 60 * 1000) {
+        lastRecruitmentClock = Date.now();
+        for (const organization of await find("organizations")) {
+          try {
+            const result = await runRecruitmentClock(organization.id);
+            if (result && (result.batches || result.alerts || result.kpiEvents)) {
+              console.log(`[scheduler] recruitment ${organization.id}: ${result.batches} reward batch(es), ${result.alerts} alert(s), ${result.kpiEvents} KPI finding(s)`);
+            }
+          } catch (error) {
+            console.error("[scheduler] recruitment clock failed", error);
+          }
+        }
       }
 
       if (Date.now() - lastInsightsCheck >= INSIGHTS_POLL_MINUTES * 60 * 1000) {

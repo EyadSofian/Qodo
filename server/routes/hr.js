@@ -8,26 +8,43 @@ import {
   hrDashboardFor,
   hrEmployeeFor,
   hrImportHistory,
-  hrRecruitmentOdooFor,
   importHRDataset,
   linkHREmployee,
-  setRecruitmentOdooLink,
+  organizationState,
   updateHREmployee,
-  updateRecruitmentRequest,
 } from '../hrModule.js';
 import { HRWorkbookError, MAX_HR_WORKBOOK_BYTES } from '../hrWorkbook.js';
+import { fail as failWith, handle } from './hrFail.js';
+import recruitmentRoutes from './hrRecruitment.js';
+import { employeeOdoo, hrAccess, hrHome, odooOnlyProfile, organizationOverview, payrollOverview, peopleDirectory } from '../hr/workspace.js';
+import { performanceOverview, reviewFor, saveReview } from '../hr/performance.js';
+import { buildReport, reportsFor } from '../hr/reports.js';
+import { auditLog, reconciliationView, saveSettings, settingsView } from '../hr/admin.js';
+import { saveRewardRules } from '../hr/recruitment/rewards.js';
+import { migrateLegacyRecruitment } from '../hr/recruitment/migration.js';
+import {
+  createFormLink,
+  createPersonnelCase,
+  leaveOverview,
+  listPersonnel,
+  personnelCase,
+  tickChecklist,
+  updatePersonnelCase,
+} from '../hr/personnel.js';
+import { odooEmployeeByKey, odooEmployeeFor, odooEmployeeIndex, odooPhoto } from '../hr/odooPeople.js';
 
 const router = Router();
 const uploadBody = express.raw({ type: () => true, limit: MAX_HR_WORKBOOK_BYTES });
 
 function fail(res, error) {
+  // Workbook errors keep their historical `details` envelope — the import
+  // screen reads it — everything else answers through the shared HR shape.
   if (error instanceof HRWorkbookError) {
     return res.status(error.status).json({ error: error.code, details: error.details ?? undefined });
   }
-  if (error?.type === 'entity.too.large') return res.status(413).json({ error: 'hr_file_too_large' });
-  console.error('[hr]', error);
-  return res.status(500).json({ error: 'server_error' });
+  return failWith(res, error);
 }
+const h = (fn) => handle(fn, 'hr');
 
 function decodedFileName(header) {
   const raw = String(header || 'workbook.xlsx');
@@ -162,42 +179,20 @@ router.get('/employees/:employeeCode', async (req, res) => {
   try {
     res.json({ employee: await hrEmployeeFor(req.user, req.params.employeeCode) });
   } catch (error) {
+    // Someone Odoo has and the HR file does not still opens, for HR viewers.
+    if (error?.code === 'hr_employee_not_found') {
+      try {
+        const employee = await odooOnlyProfile(req.user, req.params.employeeCode);
+        if (employee) return res.json({ employee });
+      } catch (fallbackError) {
+        return fail(res, fallbackError);
+      }
+    }
     fail(res, error);
   }
 });
 
-router.get('/recruitment/odoo', requirePermission(PERMISSIONS.HR_VIEW), async (req, res) => {
-  try {
-    res.json(await hrRecruitmentOdooFor(req.user, {
-      forceRefresh: req.query.refresh === '1' && can(req.user, PERMISSIONS.HR_MANAGE),
-    }));
-  } catch (error) {
-    fail(res, error);
-  }
-});
-
-router.put('/recruitment/:requestId/odoo-link', requirePermission(PERMISSIONS.HR_MANAGE), async (req, res) => {
-  try {
-    const rawJobId = req.body?.jobId;
-    const jobId = rawJobId === null ? null : Number(rawJobId);
-    const link = await setRecruitmentOdooLink({
-      organizationId: organizationOf(req.user),
-      requestId: req.params.requestId,
-      jobId,
-      actorId: req.user.id,
-    });
-    await logActivity({
-      actorId: req.user.id,
-      action: jobId === null ? 'hr.recruitment.odoo.unlink' : 'hr.recruitment.odoo.link',
-      subject: 'hrRecruitment',
-      subjectId: req.params.requestId,
-      meta: { jobId },
-    });
-    res.json({ link });
-  } catch (error) {
-    fail(res, error);
-  }
-});
+router.get('/employees/:employeeCode/odoo', h((req) => employeeOdoo(req.user, req.params.employeeCode)));
 
 router.get('/imports', requirePermission(PERMISSIONS.HR_MANAGE), async (req, res) => {
   try {
@@ -260,27 +255,6 @@ router.patch('/employees/:employeeCode/:section', requirePermission(PERMISSIONS.
   }
 });
 
-router.patch('/recruitment/:requestId', requirePermission(PERMISSIONS.HR_MANAGE), async (req, res) => {
-  try {
-    const request = await updateRecruitmentRequest({
-      organizationId: organizationOf(req.user),
-      requestId: req.params.requestId,
-      patch: req.body,
-      actorId: req.user.id,
-    });
-    await logActivity({
-      actorId: req.user.id,
-      action: 'hr.recruitment.update',
-      subject: 'hrRecruitment',
-      subjectId: req.params.requestId,
-      meta: { fields: Object.keys(req.body ?? {}) },
-    });
-    res.json({ request });
-  } catch (error) {
-    fail(res, error);
-  }
-});
-
 router.put('/employees/:employeeCode/link', requirePermission(PERMISSIONS.HR_MANAGE), async (req, res) => {
   try {
     const link = await linkHREmployee({
@@ -301,5 +275,85 @@ router.put('/employees/:employeeCode/link', requirePermission(PERMISSIONS.HR_MAN
     fail(res, error);
   }
 });
+
+/* ── HR V2 ─────────────────────────────────────────────────────── */
+
+router.get('/access', h(async (req) => ({ access: await hrAccess(req.user) })));
+router.get('/overview', h((req) => hrHome(req.user)));
+router.get('/people', h((req) => peopleDirectory(req.user)));
+
+/**
+ * A real employee photo, read from Odoo `hr.employee.image_128` and never a
+ * generated placeholder. Anyone who may see the person's HR record may see
+ * their photo; a missing photo is a 404 and the page shows initials instead.
+ */
+router.get('/people/:employeeCode/photo', async (req, res) => {
+  try {
+    const user = req.user;
+    const state = await organizationState(organizationOf(user));
+    const profile = state.profiles.get(String(req.params.employeeCode)) ?? null;
+    const staff = can(user, PERMISSIONS.HR_VIEW)
+      || can(user, PERMISSIONS.HR_RECRUITMENT_VIEW)
+      || can(user, PERMISSIONS.HR_RECRUITMENT_ASSIGN)
+      || can(user, PERMISSIONS.HR_RECRUITMENT_APPROVE)
+      || can(user, PERMISSIONS.HR_PERSONNEL_VIEW);
+    if (!staff && !(profile && profile.linkedUserId === user.id)) return res.status(403).end();
+    const index = await odooEmployeeIndex({ timeoutMs: 8000 });
+    // The HR file's person first; someone only Odoo has, by `o<id>` or their Odoo code.
+    const odoo = profile ? odooEmployeeFor(profile, index) : odooEmployeeByKey(req.params.employeeCode, index);
+    if (!odoo) return res.status(404).end();
+    const photo = await odooPhoto(odoo.id, { size: req.query.size === '512' ? 512 : 128 });
+    if (!photo) return res.status(404).end();
+    res.setHeader('Content-Type', photo.type);
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    res.setHeader('Content-Disposition', 'inline');
+    res.send(photo.bytes);
+  } catch (error) {
+    console.warn('[hr] photo unavailable:', error?.message ?? error);
+    res.status(404).end();
+  }
+});
+
+router.get('/payroll', h((req) => payrollOverview(req.user)));
+router.get('/organization', h((req) => organizationOverview(req.user)));
+
+router.get('/performance', h((req) => performanceOverview(req.user, { period: req.query.period, quarter: req.query.quarter })));
+router.get('/performance/reviews/:employeeCode/:quarter', h((req) => reviewFor(req.user, req.params.employeeCode, req.params.quarter)));
+router.put('/performance/reviews/:employeeCode/:quarter', h((req) => saveReview(req.user, req.params.employeeCode, req.params.quarter, req.body ?? {})));
+
+router.get('/reports', h((req) => ({ reports: reportsFor(req.user) })));
+router.get('/reports/:id', h((req) => buildReport(req.user, req.params.id, req.query)));
+
+router.get('/settings', h((req) => settingsView(req.user)));
+// Policy changes land in the audit trail with who made them and what they touched.
+router.patch('/settings', h(async (req) => {
+  const result = await saveSettings(req.user, { patch: req.body?.patch, revision: req.body?.revision });
+  await logActivity({ actorId: req.user.id, action: 'hr.settings.update', subject: 'hrSettings', subjectId: `r${result.revision}`, meta: { sections: Object.keys(req.body?.patch ?? {}), revision: result.revision } });
+  return result;
+}));
+router.post('/settings/reward-rules', h(async (req, res) => {
+  const rules = await saveRewardRules(req.user, req.body ?? {});
+  await logActivity({ actorId: req.user.id, action: 'hr.rewards.rules', subject: 'recruitmentRewardRules', subjectId: `v${rules.version}`, meta: { version: rules.version, note: rules.note } });
+  res.status(201).json({ rules });
+}));
+router.post('/settings/migration', requirePermission(PERMISSIONS.HR_SETTINGS_MANAGE), h(async (req) => {
+  const migration = await migrateLegacyRecruitment(organizationOf(req.user));
+  await logActivity({ actorId: req.user.id, action: 'hr.recruitment.migration', subject: 'recruitmentRequests', subjectId: 'legacy_workbook', meta: migration });
+  return { migration };
+}));
+router.get('/settings/reconciliation', h((req) => reconciliationView(req.user)));
+router.get('/settings/audit', h((req) => auditLog(req.user, { limit: req.query.limit })));
+
+router.get('/personnel', h((req) => listPersonnel(req.user, { type: req.query.type, status: req.query.status })));
+router.post('/personnel', h(async (req, res) => {
+  res.status(201).json(await createPersonnelCase(req.user, req.body ?? {}));
+}));
+router.get('/personnel/leave', h((req) => leaveOverview(req.user)));
+router.get('/personnel/:id', h((req) => personnelCase(req.user, req.params.id)));
+router.patch('/personnel/:id', h((req) => updatePersonnelCase(req.user, req.params.id, req.body ?? {})));
+router.post('/personnel/:id/checklist/:itemId', h((req) => tickChecklist(req.user, req.params.id, req.params.itemId, { done: req.body?.done === true })));
+router.post('/personnel/:id/form', h((req) => createFormLink(req.user, req.params.id)));
+
+router.use('/recruitment', recruitmentRoutes);
 
 export default router;

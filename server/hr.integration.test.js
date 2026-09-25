@@ -202,7 +202,8 @@ test('HR imports reconcile on employee code and preserve least-privilege profile
   assert.equal(selfDashboard.data.permissions.selfOnly, true);
   assert.deepEqual(selfDashboard.data.employees.map((row) => row.employeeCode), ['611']);
   assert.equal(selfDashboard.data.summary.employees, 1);
-  assert.deepEqual(selfDashboard.data.recruitment, []);
+  assert.equal(Object.hasOwn(selfDashboard.data, 'recruitment'), false);
+  assert.equal(selfDashboard.data.summary.openRecruitmentRequests, 0);
 
   const ownProfile = await request('/hr/employees/611', { cookie: employeeCookie });
   assert.equal(ownProfile.status, 200);
@@ -276,46 +277,52 @@ test('organization, leave, and office workbooks become one linked employee profi
   );
 });
 
-test('recruitment imports expose cycle analytics and auto-close filled requests', async () => {
+test('a recruitment workbook becomes Qodo requests that auto-close when filled', async () => {
   const recruitment = await request('/hr/imports/recruitment', {
     method: 'POST', cookie: adminCookie, body: await workbookBuffer('recruitment'), raw: true,
     headers: { 'X-File-Name': encodeURIComponent('recruitment-2026-08.xlsx') },
   });
   assert.equal(recruitment.status, 200, JSON.stringify(recruitment.data));
   assert.equal(recruitment.data.dataset.summary.rows, 1);
+  assert.equal(recruitment.data.migration.created, 1);
 
   const before = await request('/hr/dashboard', { cookie: payrollCookie });
-  assert.equal(before.data.analytics.recruitment.active, 1);
-  assert.equal(before.data.analytics.recruitment.averagePlannedDays, 15);
-  assert.equal(before.data.recruitment[0].role, 'Video LMS Team Leader');
-  assert.equal(before.data.recruitment[0].receivedCandidates, 'wait');
+  assert.equal(before.data.summary.openRecruitmentRequests, 1);
+  assert.equal(before.data.summary.openPositions, 1);
+  assert.equal(Object.hasOwn(before.data, 'recruitment'), false, 'recruitment is no longer served from the workbook payload');
 
-  const observerCannotMap = await request(`/hr/recruitment/${encodeURIComponent(before.data.recruitment[0].id)}/odoo-link`, {
+  const list = await request('/hr/recruitment/requests', { cookie: payrollCookie });
+  assert.equal(list.status, 200, JSON.stringify(list.data));
+  const job = list.data.requests[0];
+  assert.equal(job.title, 'Video LMS Team Leader');
+  assert.equal(job.status, 'hiring');
+  assert.equal(job.legacy.stages.receivedCandidates, 'wait');
+
+  const observerCannotMap = await request(`/hr/recruitment/requests/${encodeURIComponent(job.id)}/odoo-link`, {
     method: 'PUT', cookie: observerCookie, body: { jobId: null },
   });
   assert.equal(observerCannotMap.status, 403);
 
-  const clearedManualLink = await request(`/hr/recruitment/${encodeURIComponent(before.data.recruitment[0].id)}/odoo-link`, {
+  const clearedManualLink = await request(`/hr/recruitment/${encodeURIComponent(job.id)}/odoo-link`, {
     method: 'PUT', cookie: payrollCookie, body: { jobId: null },
   });
   assert.equal(clearedManualLink.status, 200, JSON.stringify(clearedManualLink.data));
-  assert.equal(clearedManualLink.data.link.linksCount, 0);
+  assert.equal(clearedManualLink.data.link, null);
 
-  const missingOdooJob = await request(`/hr/recruitment/${encodeURIComponent(before.data.recruitment[0].id)}/odoo-link`, {
+  const missingOdooJob = await request(`/hr/recruitment/requests/${encodeURIComponent(job.id)}/odoo-link`, {
     method: 'PUT', cookie: payrollCookie, body: { jobId: 999_999_999 },
   });
   assert.equal(missingOdooJob.status, 404);
   assert.equal(missingOdooJob.data.error, 'hr_odoo_job_not_found');
 
-  const filled = await request(`/hr/recruitment/${encodeURIComponent(before.data.recruitment[0].id)}`, {
-    method: 'PATCH', cookie: payrollCookie, body: { accepted: 1 },
+  const filled = await request(`/hr/recruitment/requests/${encodeURIComponent(job.id)}/accepted`, {
+    method: 'POST', cookie: payrollCookie, body: { accepted: 1 },
   });
   assert.equal(filled.status, 200, JSON.stringify(filled.data));
-  assert.equal(filled.data.request.status, 'done');
+  assert.equal(filled.data.request.status, 'completed');
 
   const after = await request('/hr/dashboard', { cookie: payrollCookie });
-  assert.equal(after.data.analytics.recruitment.active, 0);
-  assert.equal(after.data.analytics.recruitment.done, 1);
+  assert.equal(after.data.summary.openRecruitmentRequests, 0);
 });
 
 test('the Telegram endpoint rejects unauthorised webhook calls before downloading files', async () => {
