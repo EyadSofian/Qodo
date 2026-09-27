@@ -174,6 +174,17 @@ export function readableOn(hex: string) {
   return luminance > 0.45 ? '#0B2545' : '#FFFFFF';
 }
 
+/** The same hue, darker — `factor` is how much of each channel survives. */
+export function shadeHex(hex: string, factor: number) {
+  const clean = hex.replace('#', '');
+  if (clean.length !== 6) return hex;
+  const channel = (i: number) =>
+    Math.round(parseInt(clean.slice(i, i + 2), 16) * factor)
+      .toString(16)
+      .padStart(2, '0');
+  return `#${channel(0)}${channel(2)}${channel(4)}`;
+}
+
 export function hexWithAlpha(hex: string, alpha: number) {
   const clean = hex.replace('#', '');
   if (clean.length !== 6) return hex;

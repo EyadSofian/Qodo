@@ -3,17 +3,20 @@ import { Link, useLocation, useParams } from "react-router-dom";
 import {
   ArrowLeft,
   ArrowRight,
+  ArrowUpRight,
   ExternalLink,
   Github,
   RotateCw,
   ShieldAlert,
 } from "lucide-react";
 import { api } from "../lib/api";
+import { useAuth } from "../lib/auth";
+import { PERMISSIONS } from "@shared/permissions";
 import { useI18n } from "../lib/i18n";
 import { useWorkspace } from "../lib/workspace";
 import { ModuleIcon } from "../components/ModuleIcon";
 import { Spinner } from "../components/ui";
-import { cx } from "../lib/utils";
+import { cx, hexWithAlpha, shadeHex } from "../lib/utils";
 import {
   INSIGHTS_NEXUS_ACK,
   INSIGHTS_NEXUS_READY,
@@ -40,6 +43,10 @@ export function AppFrame() {
   const location = useLocation();
   const { apps, loading, notifications } = useWorkspace();
   const { t, lang, dir } = useI18n();
+  const { can } = useAuth();
+  // The repo link and the raw host are for whoever maintains the apps; to
+  // everybody else they are noise next to the one action that matters.
+  const isMaintainer = can(PERMISSIONS.APPS_MANAGE);
   const app = apps.find((a) => a.id === appId);
 
   const [check, setCheck] = useState<EmbedCheck | null>(null);
@@ -202,31 +209,45 @@ export function AppFrame() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex items-center gap-2 border-b border-surface-line bg-white/85 px-3 py-2 backdrop-blur sm:px-5">
+      <div className="flex items-center gap-2 border-b border-slate-200/70 bg-white/90 px-3 py-2 backdrop-blur sm:gap-3 sm:px-5">
         <Link
           to="/"
-          className="btn-quiet !min-h-9 rounded-lg px-2"
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-slate-100 text-navy transition-colors hover:bg-navy hover:text-white"
           aria-label={t("common.back")}
         >
-          <BackIcon size={18} />
+          <BackIcon size={17} />
         </Link>
 
-        <ModuleIcon name={app.icon} color={app.color} size={30} />
+        <ModuleIcon name={app.icon} color={app.color} size={34} variant="solid" />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[13.5px] font-bold leading-tight text-ink">
+          <p className="truncate font-display text-[14px] font-semibold leading-tight text-navy">
             {appName}
           </p>
-          <p className="ltr truncate text-[11px] leading-tight text-ink-faint">
-            {new URL(app.url).host}
+          <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11.5px] leading-tight text-ink-faint">
+            <span
+              className={cx(
+                "h-1.5 w-1.5 shrink-0 rounded-full",
+                blocked ? "bg-amber-400" : frameLoaded ? "bg-emerald-500" : "animate-pulse bg-slate-300",
+              )}
+            />
+            <span className="truncate">
+              {blocked ? t("frame.ownTab") : frameLoaded ? t("frame.live") : t("frame.loading")}
+            </span>
+            {isMaintainer && (
+              <span className="hidden min-w-0 items-center gap-1.5 md:flex">
+                <span aria-hidden="true">·</span>
+                <span className="ltr truncate text-ink-faint/80">{new URL(app.url).host}</span>
+              </span>
+            )}
           </p>
         </div>
 
-        {app.repo && (
+        {isMaintainer && app.repo && (
           <a
             href={app.repo}
             target="_blank"
             rel="noopener noreferrer"
-            className="btn-quiet !min-h-9 hidden rounded-lg px-2 sm:inline-flex"
+            className="hidden h-9 w-9 shrink-0 place-items-center rounded-xl text-ink-muted transition-colors hover:bg-slate-100 hover:text-navy sm:grid"
             aria-label={t("frame.repo")}
             title={t("frame.repo")}
           >
@@ -241,21 +262,27 @@ export function AppFrame() {
               setSlow(false);
               setNonce((n) => n + 1);
             }}
-            className="btn-quiet !min-h-9 rounded-lg px-2"
+            className="group grid h-9 w-9 shrink-0 place-items-center rounded-xl text-ink-muted transition-colors hover:bg-slate-100 hover:text-navy"
             aria-label={t("common.refresh")}
             title={t("common.refresh")}
           >
-            <RotateCw size={16} />
+            <RotateCw size={16} className="transition-transform duration-500 group-hover:rotate-180" />
           </button>
         )}
         <a
           href={frameUrl || app.url}
           target="_blank"
           rel="noopener noreferrer"
-          className="btn-ghost btn-sm !min-h-9 gap-1.5"
+          className="af-open"
+          style={{
+            backgroundImage: `linear-gradient(135deg, ${app.color}, ${shadeHex(app.color, 0.62)})`,
+            boxShadow: `inset 0 1px 0 rgba(255,255,255,0.28), 0 10px 22px -12px ${hexWithAlpha(app.color, 0.9)}`,
+          }}
+          aria-label={t("common.openNewTab")}
+          title={t("common.openNewTab")}
         >
-          <ExternalLink size={15} />
           <span className="hidden sm:inline">{t("common.openNewTab")}</span>
+          <ArrowUpRight size={16} className="af-open-arrow" />
         </a>
       </div>
 

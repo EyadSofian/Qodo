@@ -9,7 +9,7 @@
  */
 
 import type { ReactElement } from 'react';
-import { hexWithAlpha } from '../lib/utils';
+import { hexWithAlpha, shadeHex } from '../lib/utils';
 
 export const ICON_KEYS = [
   'gauge', 'funnel', 'people', 'chat', 'headset', 'mail', 'kanban',
@@ -46,7 +46,7 @@ export function ModuleIcon({ name, color, size = 56, variant = 'tile', className
           borderRadius: size * 0.3,
           display: 'inline-grid',
           placeItems: 'center',
-          background: `radial-gradient(120% 90% at 20% 0%, rgba(255,255,255,0.38), transparent 55%), linear-gradient(145deg, ${color}, ${shade(color, 0.62)})`,
+          background: `radial-gradient(120% 90% at 20% 0%, rgba(255,255,255,0.38), transparent 55%), linear-gradient(145deg, ${color}, ${shadeHex(color, 0.62)})`,
           boxShadow: `inset 0 1px 0 rgba(255,255,255,0.35), inset 0 -2px 0 rgba(0,0,0,0.12), 0 10px 20px -10px ${hexWithAlpha(color, 0.85)}`,
           flexShrink: 0,
         }}
@@ -92,17 +92,6 @@ export function ModuleIcon({ name, color, size = 56, variant = 'tile', className
       </svg>
     </span>
   );
-}
-
-/** The same hue, darker — `factor` is how much of each channel survives. */
-function shade(hex: string, factor: number) {
-  const clean = hex.replace('#', '');
-  if (clean.length !== 6) return hex;
-  const channel = (i: number) =>
-    Math.round(parseInt(clean.slice(i, i + 2), 16) * factor)
-      .toString(16)
-      .padStart(2, '0');
-  return `#${channel(0)}${channel(2)}${channel(4)}`;
 }
 
 type Glyph = (solid: string, soft: string) => ReactElement;

@@ -332,6 +332,9 @@ const CORE_STRINGS = {
     en: 'It may have been removed, or you do not have permission to open it.',
   },
   'frame.repo': { ar: 'الشيفرة على GitHub', en: 'Source on GitHub' },
+  'frame.live': { ar: 'يعمل داخل مساحة العمل', en: 'Running inside the workspace' },
+  'frame.loading': { ar: 'جارٍ التحميل…', en: 'Loading…' },
+  'frame.ownTab': { ar: 'يُفتح في تبويب منفصل', en: 'Opens in its own tab' },
 
   /* ── tasks ───────────────────────────────────────────────── */
   'tasks.title': { ar: 'المهام', en: 'Tasks' },

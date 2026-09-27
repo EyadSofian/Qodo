@@ -800,6 +800,34 @@
     }
   }
 
+  /* A framed app's "open in a new tab": the app's own colour, a sheen that
+     crosses it on hover, and an arrow that leans out towards the new tab. */
+  .af-open {
+    @apply relative isolate inline-flex h-9 shrink-0 items-center gap-2 overflow-hidden rounded-xl px-2.5 font-display text-[13px] font-medium text-white transition-all duration-200 sm:px-3.5;
+  }
+  .af-open::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: linear-gradient(115deg, transparent 30%, rgb(255 255 255 / 0.35) 50%, transparent 70%);
+    transform: translateX(-130%);
+    transition: transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .af-open:hover {
+    transform: translateY(-1px);
+    filter: saturate(1.15);
+  }
+  .af-open:hover::after {
+    transform: translateX(130%);
+  }
+  .af-open-arrow {
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .af-open:hover .af-open-arrow {
+    transform: translate(2px, -2px);
+  }
+
   /* Loading placeholder that doesn't flash — used while the grid resolves. */
   .skeleton {
     @apply relative overflow-hidden rounded-xl bg-slate-200/70;
