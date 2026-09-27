@@ -464,9 +464,12 @@ function AppCard({
 
   const style = {
     '--lx-c': app.color,
-    '--lx-glow': hexWithAlpha(app.color, 0.13),
-    '--lx-line': hexWithAlpha(app.color, 0.38),
+    '--lx-glow': hexWithAlpha(app.color, 0.16),
+    '--lx-line': hexWithAlpha(app.color, 0.55),
     '--lx-shadow': hexWithAlpha(app.color, 0.6),
+    '--lx-tint': hexWithAlpha(app.color, 0.2),
+    '--lx-tint-soft': hexWithAlpha(app.color, 0.08),
+    '--lx-edge': hexWithAlpha(app.color, 0.3),
   } as CSSProperties;
 
   const track = (event: PointerEvent<HTMLButtonElement>) => {
@@ -488,6 +491,8 @@ function AppCard({
       style={style}
       title={external ? t('launcher.externalApp') : undefined}
     >
+      <ModuleIcon name={app.icon} color={app.color} size={96} variant="plain" className="lx-card-mark" />
+
       <span className="relative flex items-start justify-between gap-2">
         <span className="relative">
           <ModuleIcon name={app.icon} color={app.color} size={46} variant="solid" className="lx-card-icon" />
@@ -503,13 +508,18 @@ function AppCard({
           {name}
         </span>
         {description && (
-          <span className="mt-1 hidden text-[12.5px] leading-relaxed text-ink-muted sm:line-clamp-2">{description}</span>
+          <span className="mt-1 hidden text-[12.5px] leading-relaxed text-slate-600 sm:line-clamp-2">{description}</span>
         )}
       </span>
 
-      <span className="relative mt-auto flex items-center gap-1.5 pt-3 text-[11px] font-medium text-ink-faint">
-        <span className="h-1.5 w-1.5 rounded-full" style={{ background: app.color }} />
-        {external ? t('launcher.external') : t('launcher.internal')}
+      <span className="relative mt-auto pt-3">
+        <span
+          className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold text-slate-700"
+          style={{ background: hexWithAlpha(app.color, 0.12) }}
+        >
+          <span className="h-1.5 w-1.5 rounded-full" style={{ background: app.color }} />
+          {external ? t('launcher.external') : t('launcher.internal')}
+        </span>
       </span>
     </motion.button>
   );
