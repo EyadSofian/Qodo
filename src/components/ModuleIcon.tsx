@@ -22,15 +22,41 @@ interface Props {
   name: string;
   color: string;
   size?: number;
-  /** `plain` drops the tile — for dense lists where the glyph alone is enough. */
-  variant?: 'tile' | 'plain';
+  /**
+   * `plain` drops the tile — for dense lists where the glyph alone is enough.
+   * `solid` is the lit squircle of the home screen: the module's colour as a
+   * gradient fill, the glyph in white, and a glow underneath.
+   */
+  variant?: 'tile' | 'plain' | 'solid';
   className?: string;
 }
 
 export function ModuleIcon({ name, color, size = 56, variant = 'tile', className }: Props) {
   const glyph = GLYPHS[name as IconKey] ?? GLYPHS.grid;
   const soft = hexWithAlpha(color, 0.4);
-  const inner = Math.round(size * (variant === 'tile' ? 0.58 : 1));
+  const inner = Math.round(size * (variant === 'plain' ? 1 : variant === 'solid' ? 0.54 : 0.58));
+
+  if (variant === 'solid') {
+    return (
+      <span
+        className={className}
+        style={{
+          width: size,
+          height: size,
+          borderRadius: size * 0.3,
+          display: 'inline-grid',
+          placeItems: 'center',
+          background: `radial-gradient(120% 90% at 20% 0%, rgba(255,255,255,0.38), transparent 55%), linear-gradient(145deg, ${color}, ${shade(color, 0.62)})`,
+          boxShadow: `inset 0 1px 0 rgba(255,255,255,0.35), inset 0 -2px 0 rgba(0,0,0,0.12), 0 10px 20px -10px ${hexWithAlpha(color, 0.85)}`,
+          flexShrink: 0,
+        }}
+      >
+        <svg width={inner} height={inner} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          {glyph('#FFFFFF', 'rgba(255,255,255,0.55)')}
+        </svg>
+      </span>
+    );
+  }
 
   if (variant === 'plain') {
     return (
@@ -66,6 +92,17 @@ export function ModuleIcon({ name, color, size = 56, variant = 'tile', className
       </svg>
     </span>
   );
+}
+
+/** The same hue, darker — `factor` is how much of each channel survives. */
+function shade(hex: string, factor: number) {
+  const clean = hex.replace('#', '');
+  if (clean.length !== 6) return hex;
+  const channel = (i: number) =>
+    Math.round(parseInt(clean.slice(i, i + 2), 16) * factor)
+      .toString(16)
+      .padStart(2, '0');
+  return `#${channel(0)}${channel(2)}${channel(4)}`;
 }
 
 type Glyph = (solid: string, soft: string) => ReactElement;

@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
+import type { LucideIcon } from 'lucide-react';
 import {
   Bell,
   BellRing,
-  Bot,
   Briefcase,
   CalendarDays,
-  ChevronDown,
   Home,
   KeyRound,
   Languages,
@@ -17,6 +17,7 @@ import {
   Search,
   Send,
   Settings2,
+  Sparkles,
   ShieldCheck,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth';
@@ -161,16 +162,20 @@ export function Shell({ children }: { children: ReactNode }) {
       {/*
         No backdrop-filter here on purpose: an element with one becomes the
         containing block for its `position: fixed` descendants, which would trap
-        the app-switcher and notification sheets inside the 60px-tall bar on
-        phones. The bottom nav can keep its blur — nothing fixed lives in it.
+        the app-switcher and notification sheets inside the bar on phones. The
+        bar is an opaque gradient, so it has no need of one.
       */}
-      <header className="sticky top-0 z-30 border-b border-surface-line bg-white/95 pt-safe">
+      <header className="sh-bar sticky top-0 z-30 pt-safe">
         <div className="mx-auto flex h-[var(--topbar-h)] w-full max-w-[1600px] items-center gap-2 px-3 sm:gap-3 sm:px-5">
           <Link to="/" className="flex shrink-0 items-center rounded-lg px-1 py-1" aria-label={t('common.home')}>
-            <Logo height={26} className="sm:!h-[30px]" />
+            <Logo tone="white" height={26} className="sm:!h-[30px]" />
           </Link>
 
-          <div className="relative">
+          <span className="hidden h-7 w-px shrink-0 bg-white/10 md:block" aria-hidden="true" />
+
+          {/* The wrapper stays on phones: the tab bar opens the same switcher,
+              which renders as a bottom sheet there. */}
+          <div className="relative shrink-0">
             <button
               type="button"
               data-app-switcher-trigger
@@ -179,126 +184,72 @@ export function Shell({ children }: { children: ReactNode }) {
                 setBellOpen(false);
               }}
               aria-expanded={switcherOpen}
-              className={cx(
-                'btn !min-h-10 gap-1.5 rounded-xl px-2.5 text-[13px] font-semibold sm:px-3',
-                switcherOpen ? 'bg-navy text-white' : 'text-ink-muted hover:bg-surface-sunken hover:text-ink'
-              )}
+              aria-label={t('shell.apps')}
+              title={t('shell.apps')}
+              className="sh-icon-btn !hidden md:!inline-grid"
             >
-              <LayoutGrid size={17} />
-              <span className="hidden sm:inline">{t('shell.apps')}</span>
-              <ChevronDown size={14} className={cx('transition-transform', switcherOpen && 'rotate-180')} />
+              <LayoutGrid size={18} className={cx('transition-transform duration-300', switcherOpen && 'rotate-45')} />
             </button>
             <AppSwitcher open={switcherOpen} onClose={() => setSwitcherOpen(false)} onOpenApp={openApp} />
           </div>
+
+          <nav className="sh-dock hidden md:flex" aria-label={t('shell.apps')}>
+            <DockLink to="/" end icon={Home} label={t('common.home')} accent="#2AA7F0" />
+            {can(PERMISSIONS.TASKS_VIEW) && (
+              <DockLink
+                to="/tasks"
+                icon={ListChecks}
+                label={t('tasks.title')}
+                accent="#16A34A"
+                badge={taskCounts.mine + taskCounts.awaitingMyReview}
+                urgent={taskCounts.overdue > 0}
+              />
+            )}
+            <DockLink to="/mail" icon={Mail} label={t('mail.title')} accent="#1D6FB8" />
+            {/* No permission gate: everybody has a calendar. What an entry
+                reaches is decided on the entry, not on the person opening it. */}
+            <DockLink to="/calendar" icon={CalendarDays} label={t('calendar.title')} accent="#7C3AED" />
+            {/* Only the people actually on the management desk ever see this —
+                no role carries the key, it is granted one person at a time. */}
+            {can(PERMISSIONS.MANAGEMENT_VIEW) && (
+              <DockLink to="/management" icon={Briefcase} label={t('management.title')} accent="#F5821F" />
+            )}
+          </nav>
+
+          <div className="min-w-0 flex-1" />
 
           {/* Desktop gets a real search field; the phone gets an icon that opens
               the same sheet, because a text input here would crowd the bar. */}
           <button
             type="button"
             onClick={() => setSearchOpen(true)}
-            className="hidden h-10 min-w-0 flex-1 items-center gap-2 rounded-xl border border-surface-line bg-white/70 px-3 text-start text-[13px] text-ink-faint transition-colors hover:border-brand-200 hover:bg-white md:flex"
+            className="sh-search hidden w-52 md:flex lg:w-64 xl:w-80"
           >
             <Search size={16} className="shrink-0" />
             <span className="min-w-0 flex-1 truncate">{t('shell.searchPlaceholder')}</span>
-            <kbd className="ltr rounded border border-surface-line bg-surface-sunken px-1.5 py-0.5 text-[10px] font-semibold">
+            <kbd className="ltr hidden rounded-md bg-white/10 px-1.5 py-0.5 font-display text-[10px] font-medium text-white/60 lg:inline">
               Ctrl K
             </kbd>
           </button>
 
-          <div className="flex-1 md:hidden" />
-
           <button
             type="button"
             onClick={() => setSearchOpen(true)}
-            className="btn-quiet !min-h-10 rounded-xl px-2.5 md:hidden"
+            className="sh-icon-btn md:hidden"
             aria-label={t('common.search')}
           >
             <Search size={19} />
           </button>
 
-          {/* The phone reaches the board from the tab bar; on desktop there was
-              no way in but the launcher grid, which is where the badge belongs
-              least — you see it once, on the way somewhere else. */}
-          {can(PERMISSIONS.TASKS_VIEW) && (
-            <NavLink
-              to="/tasks"
-              className={({ isActive }) =>
-                cx(
-                  'btn !min-h-10 relative hidden shrink-0 gap-1.5 rounded-xl px-2.5 text-[13px] font-semibold md:flex',
-                  isActive ? 'bg-navy text-white' : 'text-ink-muted hover:bg-surface-sunken hover:text-ink'
-                )
-              }
-            >
-              <span className="relative">
-                <ListChecks size={18} />
-                {taskCounts.mine + taskCounts.awaitingMyReview > 0 && (
-                  <CountBadge
-                    value={taskCounts.mine + taskCounts.awaitingMyReview}
-                    urgent={taskCounts.overdue > 0}
-                  />
-                )}
-              </span>
-              <span className="hidden lg:inline">{t('tasks.title')}</span>
-            </NavLink>
-          )}
-
-          <NavLink
-            to="/mail"
-            className={({ isActive }) =>
-              cx(
-                'btn !min-h-10 hidden shrink-0 gap-1.5 rounded-xl px-2.5 text-[13px] font-semibold md:flex',
-                isActive ? 'bg-[#1D6FB8] text-white' : 'text-ink-muted hover:bg-surface-sunken hover:text-ink'
-              )
-            }
-          >
-            <Mail size={18} />
-            <span className="hidden lg:inline">{t('mail.title')}</span>
-          </NavLink>
-
-          {/* No permission gate: everybody has a calendar. What an entry
-              reaches is decided on the entry, not on the person opening it.
-              Phones reach it from the launcher tile — the tab bar is already
-              at its useful width. */}
-          <NavLink
-            to="/calendar"
-            className={({ isActive }) =>
-              cx(
-                'btn !min-h-10 hidden shrink-0 gap-1.5 rounded-xl px-2.5 text-[13px] font-semibold md:flex',
-                isActive ? 'bg-[#7C3AED] text-white' : 'text-ink-muted hover:bg-surface-sunken hover:text-ink'
-              )
-            }
-          >
-            <CalendarDays size={18} />
-            <span className="hidden lg:inline">{t('calendar.title')}</span>
-          </NavLink>
-
-          {/* Only the people actually on the management desk ever see this —
-              no role carries the key, it is granted one person at a time. */}
-          {can(PERMISSIONS.MANAGEMENT_VIEW) && (
-            <NavLink
-              to="/management"
-              className={({ isActive }) =>
-                cx(
-                  'btn !min-h-10 hidden shrink-0 gap-1.5 rounded-xl px-2.5 text-[13px] font-semibold md:flex',
-                  isActive ? 'bg-navy text-white' : 'text-ink-muted hover:bg-surface-sunken hover:text-ink'
-                )
-              }
-            >
-              <Briefcase size={18} />
-              <span className="hidden lg:inline">{t('management.title')}</span>
-            </NavLink>
-          )}
-
           <button
             type="button"
             onClick={() => setAssistantOpen(true)}
-            className="btn !min-h-10 shrink-0 gap-1.5 rounded-xl bg-brand-50 px-2.5 text-[13px] font-semibold text-brand-600 hover:bg-brand-100 sm:px-3"
+            className="sh-ai max-sm:w-10 max-sm:justify-center max-sm:px-0"
             aria-label={t('shell.assistant')}
           >
-            <Bot size={18} />
-            <span className="hidden lg:inline">{t('shell.assistant')}</span>
+            <Sparkles size={16} className="text-sky-300" />
+            <span className="hidden sm:inline">{t('shell.assistant')}</span>
           </button>
-
           <div className="relative shrink-0">
             <button
               type="button"
@@ -308,11 +259,12 @@ export function Shell({ children }: { children: ReactNode }) {
                 setSwitcherOpen(false);
               }}
               aria-label={unread > 0 ? t('shell.notificationsWithCount', { n: unread }) : t('shell.notifications')}
-              className={cx('btn-quiet relative !min-h-10 rounded-xl px-2.5', bellOpen && 'bg-surface-sunken text-ink')}
+              aria-expanded={bellOpen}
+              className="sh-icon-btn"
             >
-              <Bell size={19} />
+              <Bell size={19} className={cx(unread > 0 && 'origin-top animate-[sh-ring_2.4s_ease-in-out_infinite]')} />
               {unread > 0 && (
-                <span className="absolute end-1.5 top-1.5 grid min-w-[16px] place-items-center rounded-full bg-accent-500 px-1 text-[10px] font-bold leading-4 text-white">
+                <span className="absolute end-1 top-1 grid min-w-[17px] place-items-center rounded-full bg-accent-500 px-1 text-[10px] font-bold leading-[17px] text-white ring-2 ring-navy">
                   {unread > 9 ? '9+' : unread}
                 </span>
               )}
@@ -330,15 +282,19 @@ export function Shell({ children }: { children: ReactNode }) {
               type="button"
               data-account-trigger
               onClick={() => setMenuOpen((v) => !v)}
-              className="flex items-center gap-2 rounded-xl p-1 transition-colors hover:bg-surface-sunken"
+              className="flex items-center gap-2.5 rounded-xl p-1 transition-colors hover:bg-white/10"
               aria-label={t('shell.account')}
             >
-              <Avatar name={user?.name ?? '?'} color={user?.avatarColor} size={32} />
+              <span className="rounded-full bg-gradient-to-br from-sky-400 via-brand-500 to-accent-500 p-[2px]">
+                <span className="block rounded-full ring-2 ring-navy">
+                  <Avatar name={user?.name ?? '?'} color={user?.avatarColor} size={30} />
+                </span>
+              </span>
               <span className="hidden text-start xl:block">
-                <span className="block max-w-[9rem] truncate text-[13px] font-bold leading-tight text-ink">
+                <span className="block max-w-[9rem] truncate font-display text-[13px] font-medium leading-tight text-white">
                   {user?.name}
                 </span>
-                <span className="block text-[11px] leading-tight text-ink-faint">
+                <span className="block text-[11px] leading-tight text-white/50">
                   {t(`role.${user?.role ?? 'member'}` as 'role.member')}
                 </span>
               </span>
@@ -442,7 +398,7 @@ export function Shell({ children }: { children: ReactNode }) {
       </header>
 
       {/* A framed app manages its own height; normal pages scroll the document. */}
-      <main className={cx('flex-1', isFullHeight ? 'flex min-h-0 flex-col' : isHR ? '' : 'pb-24 md:pb-10')}>
+      <main className={cx('flex-1', isFullHeight ? 'flex min-h-0 flex-col' : isHR ? '' : 'pb-28 md:pb-10')}>
         {children}
       </main>
 
@@ -461,15 +417,70 @@ export function Shell({ children }: { children: ReactNode }) {
 }
 
 /**
+ * One stop on the desktop dock. The lit pill is shared across every stop
+ * (`layoutId`), so moving between them slides it rather than blinking it.
+ */
+function DockLink({
+  to,
+  end = false,
+  icon: Icon,
+  label,
+  accent,
+  badge = 0,
+  urgent = false,
+}: {
+  to: string;
+  end?: boolean;
+  icon: LucideIcon;
+  label: string;
+  accent: string;
+  badge?: number;
+  urgent?: boolean;
+}) {
+  return (
+    <NavLink to={to} end={end} className="sh-dock-item" title={label}>
+      {({ isActive }) => (
+        <>
+          {isActive && (
+            <motion.span
+              layoutId="sh-dock-pill"
+              className="sh-dock-pill"
+              transition={{ type: 'spring', stiffness: 460, damping: 36 }}
+            />
+          )}
+          <span className="relative z-10 flex items-center gap-2">
+            <span className="relative">
+              <Icon size={17} style={isActive ? { color: accent } : undefined} />
+              {badge > 0 && <CountBadge value={badge} urgent={urgent} onDark={!isActive} />}
+            </span>
+            <span className="hidden lg:inline">{label}</span>
+          </span>
+        </>
+      )}
+    </NavLink>
+  );
+}
+
+/**
  * The count that rides on an icon. Capped at 99 — past that the exact figure
  * stops being information and the badge just needs to say "a lot".
  */
-export function CountBadge({ value, urgent = false }: { value: number; urgent?: boolean }) {
+export function CountBadge({
+  value,
+  urgent = false,
+  onDark = false,
+}: {
+  value: number;
+  urgent?: boolean;
+  /** Rings the badge in navy instead of white, for the command bar. */
+  onDark?: boolean;
+}) {
   return (
     <span
       className={cx(
         'absolute -end-1.5 -top-1.5 grid h-[17px] min-w-[17px] place-items-center rounded-full',
-        'px-1 text-[10px] font-extrabold leading-none tabular-nums text-white ring-2 ring-white',
+        'px-1 text-[10px] font-extrabold leading-none tabular-nums text-white ring-2',
+        onDark ? 'ring-navy' : 'ring-white',
         urgent ? 'bg-status-bad' : 'bg-brand-500'
       )}
     >
@@ -478,7 +489,7 @@ export function CountBadge({ value, urgent = false }: { value: number; urgent?: 
   );
 }
 
-/** Phone-only tab bar — the workspace should feel like an app, not a website. */
+/** Phone-only tab bar — a floating dock, so the workspace feels like an app. */
 function BottomNav({ onOpenSwitcher }: { onOpenSwitcher: () => void }) {
   const { can } = useAuth();
   const { t } = useI18n();
@@ -486,7 +497,7 @@ function BottomNav({ onOpenSwitcher }: { onOpenSwitcher: () => void }) {
   const taskBadge = taskCounts.mine + taskCounts.awaitingMyReview;
 
   const items = [
-    { to: '/', label: t('common.home'), icon: Home, end: true, badge: 0, urgent: false },
+    { to: '/', label: t('shell.homeShort'), icon: Home, end: true, badge: 0, urgent: false },
     { to: '/mail', label: t('mail.title'), icon: Mail, end: false, badge: 0, urgent: false },
     ...(can(PERMISSIONS.TASKS_VIEW)
       ? [
@@ -527,36 +538,45 @@ function BottomNav({ onOpenSwitcher }: { onOpenSwitcher: () => void }) {
   ];
 
   return (
-    <nav className="surface-blur fixed inset-x-0 bottom-0 z-30 border-b-0 border-t pb-safe md:hidden">
-      <div className="flex items-stretch justify-around px-2">
-        {items.map(({ to, label, icon: Icon, end, badge, urgent }) => (
-          <NavLink
-            key={to}
-            to={to}
-            end={end}
-            className={({ isActive }) =>
-              cx(
-                'flex flex-1 flex-col items-center gap-1 rounded-xl py-2 text-[11px] font-semibold transition-colors',
-                isActive ? 'text-brand-500' : 'text-ink-faint'
-              )
-            }
-          >
-            <span className="relative">
-              <Icon size={20} />
-              {badge > 0 && <CountBadge value={badge} urgent={urgent} />}
-            </span>
-            {label}
-          </NavLink>
-        ))}
-        <button
-          type="button"
-          onClick={onOpenSwitcher}
-          className="flex flex-1 flex-col items-center gap-1 rounded-xl py-2 text-[11px] font-semibold text-ink-faint"
+    <nav className="sh-tabbar">
+      {items.map(({ to, label, icon: Icon, end, badge, urgent }) => (
+        <NavLink
+          key={to}
+          to={to}
+          end={end}
+          className={({ isActive }) =>
+            cx(
+              'relative flex min-w-0 flex-1 flex-col items-center gap-1 rounded-2xl py-2 font-display text-[10.5px] font-medium transition-colors',
+              isActive ? 'text-navy' : 'text-white/55'
+            )
+          }
         >
-          <LayoutGrid size={20} />
-          {t('shell.apps')}
-        </button>
-      </div>
+          {({ isActive }) => (
+            <>
+              {isActive && (
+                <motion.span
+                  layoutId="sh-tab-pill"
+                  className="absolute inset-0 rounded-2xl bg-white shadow-[0_8px_20px_-10px_rgb(42_167_240/0.9)]"
+                  transition={{ type: 'spring', stiffness: 460, damping: 36 }}
+                />
+              )}
+              <span className="relative">
+                <Icon size={19} className={isActive ? 'text-brand-500' : undefined} />
+                {badge > 0 && <CountBadge value={badge} urgent={urgent} onDark={!isActive} />}
+              </span>
+              <span className="relative max-w-full truncate px-0.5">{label}</span>
+            </>
+          )}
+        </NavLink>
+      ))}
+      <button
+        type="button"
+        onClick={onOpenSwitcher}
+        className="flex min-w-0 flex-1 flex-col items-center gap-1 rounded-2xl py-2 font-display text-[10.5px] font-medium text-white/55"
+      >
+        <LayoutGrid size={19} />
+        <span className="max-w-full truncate px-0.5">{t('shell.apps')}</span>
+      </button>
     </nav>
   );
 }

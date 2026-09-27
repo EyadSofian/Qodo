@@ -69,19 +69,19 @@ export function AppSwitcher({
         role="menu"
         aria-label={t('shell.allApps')}
         className={cx(
-          'fixed inset-x-0 bottom-0 z-50 max-h-[78dvh] overflow-y-auto overscroll-contain rounded-t-3xl bg-white p-4 pb-safe shadow-panel animate-fade-up',
-          'sm:absolute sm:inset-x-auto sm:bottom-auto sm:start-0 sm:top-[calc(100%+10px)] sm:w-[26rem] sm:max-w-[calc(100vw-1.5rem)] sm:max-h-[calc(100dvh-var(--topbar-h)-var(--sat)-1rem)] sm:rounded-2xl sm:border sm:border-surface-line sm:p-3'
+          'fixed inset-x-0 bottom-0 z-50 max-h-[78dvh] overflow-y-auto overscroll-contain rounded-t-[28px] bg-white p-4 pb-safe text-ink shadow-panel animate-fade-up',
+          'sm:absolute sm:inset-x-auto sm:bottom-auto sm:start-0 sm:top-[calc(100%+12px)] sm:w-[27rem] sm:max-w-[calc(100vw-1.5rem)] sm:max-h-[calc(100dvh-var(--topbar-h)-var(--sat)-1rem)] sm:rounded-3xl sm:border sm:border-slate-200/80 sm:p-3.5'
         )}
       >
         <div className="mb-3 flex items-center justify-between px-1">
-          <h3 className="text-sm font-bold text-ink">{t('shell.allApps')}</h3>
+          <h3 className="font-display text-[15px] font-semibold text-navy">{t('shell.allApps')}</h3>
           <button
             type="button"
             onClick={() => {
               onClose();
               navigate('/');
             }}
-            className="text-[12px] font-semibold text-brand-500 hover:underline"
+            className="rounded-lg bg-slate-100 px-2.5 py-1 font-display text-[12px] font-medium text-navy transition-colors hover:bg-navy hover:text-white"
           >
             {t('common.home')}
           </button>
@@ -94,10 +94,10 @@ export function AppSwitcher({
               type="button"
               role="menuitem"
               onClick={() => handle(app)}
-              className="group flex flex-col items-center gap-2 rounded-xl px-1 py-3 text-center transition-colors hover:bg-surface-sunken"
+              className="group flex flex-col items-center gap-2 rounded-2xl px-1 py-3 text-center transition-colors hover:bg-slate-50"
             >
-              <span className="relative">
-                <ModuleIcon name={app.icon} color={app.color} size={44} />
+              <span className="relative transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:scale-105">
+                <ModuleIcon name={app.icon} color={app.color} size={44} variant="solid" />
                 {app.kind === 'external' && (
                   <ArrowUpRight
                     size={11}
@@ -105,7 +105,7 @@ export function AppSwitcher({
                   />
                 )}
               </span>
-              <span className="line-clamp-2 text-[11.5px] font-semibold leading-tight text-ink">
+              <span className="line-clamp-2 font-display text-[11.5px] font-medium leading-tight text-ink">
                 {nameOf(app)}
               </span>
             </button>

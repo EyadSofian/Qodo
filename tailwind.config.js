@@ -74,6 +74,9 @@ export default {
       },
       fontFamily: {
         sans: ['Cairo', 'Tajawal', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
+        // The workspace chrome and the home screen: a geometric face with a
+        // real Arabic cut, so the command layer reads as its own product.
+        display: ['"Readex Pro"', 'Cairo', 'system-ui', 'sans-serif'],
       },
       boxShadow: {
         card: '0 1px 2px rgba(11,37,69,0.04), 0 10px 28px -14px rgba(11,37,69,0.16)',
