@@ -568,6 +568,27 @@
     9% { transform: rotate(6deg); }
   }
 
+  /* Full-screen framed app: all that is left of the bar is a small tab
+     hanging from the top edge, which opens up when the pointer finds it. */
+  .sh-peek {
+    @apply fixed left-1/2 z-40 flex h-5 -translate-x-1/2 items-center gap-1 rounded-b-xl px-3 font-display text-[11px] font-medium text-white/80 transition-all duration-200;
+    top: var(--sat);
+    background: rgb(11 37 69 / 0.78);
+    box-shadow: 0 8px 18px -10px rgb(11 37 69 / 0.8);
+  }
+  .sh-peek:hover,
+  .sh-peek:focus-visible {
+    @apply h-7 text-white;
+    background: #0b2545;
+  }
+  .sh-peek-label {
+    @apply max-w-0 overflow-hidden whitespace-nowrap opacity-0 transition-all duration-200;
+  }
+  .sh-peek:hover .sh-peek-label,
+  .sh-peek:focus-visible .sh-peek-label {
+    @apply max-w-[10rem] opacity-100;
+  }
+
   /* Phone tab bar: a floating dark dock above the home indicator. */
   .sh-tabbar {
     @apply fixed inset-x-3 z-30 flex items-stretch rounded-[22px] p-1.5 md:hidden;

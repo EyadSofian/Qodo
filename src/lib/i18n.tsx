@@ -231,6 +231,8 @@ const CORE_STRINGS = {
   'shell.assistant': { ar: 'Qodo AI', en: 'Qodo AI' },
   'shell.team': { ar: 'الفريق', en: 'Team' },
   'shell.homeShort': { ar: 'الرئيسية', en: 'Home' },
+  'shell.focusMode': { ar: 'ملء الشاشة للتطبيق', en: 'Give the app the full screen' },
+  'shell.showBar': { ar: 'إظهار الشريط', en: 'Show the bar' },
   'shell.noAppsForYou': { ar: 'لا توجد تطبيقات متاحة لحسابك.', en: 'No apps are available to your account.' },
   'shell.language': { ar: 'اللغة', en: 'Language' },
   // Deliberately "this device": a push subscription belongs to one browser on

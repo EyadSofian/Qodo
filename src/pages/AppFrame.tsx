@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link, useLocation, useParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -15,6 +16,7 @@ import { PERMISSIONS } from "@shared/permissions";
 import { useI18n } from "../lib/i18n";
 import { useWorkspace } from "../lib/workspace";
 import { ModuleIcon } from "../components/ModuleIcon";
+import { useShellSlot } from "../components/Shell";
 import { Spinner } from "../components/ui";
 import { cx, hexWithAlpha, shadeHex } from "../lib/utils";
 import {
@@ -47,6 +49,7 @@ export function AppFrame() {
   // The repo link and the raw host are for whoever maintains the apps; to
   // everybody else they are noise next to the one action that matters.
   const isMaintainer = can(PERMISSIONS.APPS_MANAGE);
+  const slot = useShellSlot();
   const app = apps.find((a) => a.id === appId);
 
   const [check, setCheck] = useState<EmbedCheck | null>(null);
@@ -209,82 +212,88 @@ export function AppFrame() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex items-center gap-2 border-b border-slate-200/70 bg-white/90 px-3 py-2 backdrop-blur sm:gap-3 sm:px-5">
-        <Link
-          to="/"
-          className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-slate-100 text-navy transition-colors hover:bg-navy hover:text-white"
-          aria-label={t("common.back")}
-        >
-          <BackIcon size={17} />
-        </Link>
+      {slot &&
+        createPortal(
+          <>
+            <span className="hidden h-7 w-px shrink-0 bg-white/10 md:block" aria-hidden="true" />
+            <Link
+              to="/"
+              className="sh-icon-btn !h-9 !w-9 bg-white/[0.06]"
+              aria-label={t("common.back")}
+              title={t("common.back")}
+            >
+              <BackIcon size={17} />
+            </Link>
 
-        <ModuleIcon name={app.icon} color={app.color} size={34} variant="solid" />
-        <div className="min-w-0 flex-1">
-          <p className="truncate font-display text-[14px] font-semibold leading-tight text-navy">
-            {appName}
-          </p>
-          <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11.5px] leading-tight text-ink-faint">
-            <span
-              className={cx(
-                "h-1.5 w-1.5 shrink-0 rounded-full",
-                blocked ? "bg-amber-400" : frameLoaded ? "bg-emerald-500" : "animate-pulse bg-slate-300",
-              )}
-            />
-            <span className="truncate">
-              {blocked ? t("frame.ownTab") : frameLoaded ? t("frame.live") : t("frame.loading")}
-            </span>
-            {isMaintainer && (
-              <span className="hidden min-w-0 items-center gap-1.5 md:flex">
-                <span aria-hidden="true">·</span>
-                <span className="ltr truncate text-ink-faint/80">{new URL(app.url).host}</span>
-              </span>
+            <ModuleIcon name={app.icon} color={app.color} size={30} variant="solid" />
+            <div className="min-w-0 flex-1">
+              <p className="truncate font-display text-[13.5px] font-medium leading-tight text-white">
+                {appName}
+              </p>
+              <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] leading-tight text-white/50">
+                <span
+                  className={cx(
+                    "h-1.5 w-1.5 shrink-0 rounded-full",
+                    blocked ? "bg-amber-400" : frameLoaded ? "bg-emerald-400" : "animate-pulse bg-white/40",
+                  )}
+                />
+                <span className="truncate">
+                  {blocked ? t("frame.ownTab") : frameLoaded ? t("frame.live") : t("frame.loading")}
+                </span>
+                {isMaintainer && (
+                  <span className="hidden min-w-0 items-center gap-1.5 lg:flex">
+                    <span aria-hidden="true">·</span>
+                    <span className="ltr truncate text-white/40">{new URL(app.url).host}</span>
+                  </span>
+                )}
+              </p>
+            </div>
+
+            {isMaintainer && app.repo && (
+              <a
+                href={app.repo}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="sh-icon-btn max-sm:!hidden"
+                aria-label={t("frame.repo")}
+                title={t("frame.repo")}
+              >
+                <Github size={16} />
+              </a>
             )}
-          </p>
-        </div>
-
-        {isMaintainer && app.repo && (
-          <a
-            href={app.repo}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hidden h-9 w-9 shrink-0 place-items-center rounded-xl text-ink-muted transition-colors hover:bg-slate-100 hover:text-navy sm:grid"
-            aria-label={t("frame.repo")}
-            title={t("frame.repo")}
-          >
-            <Github size={16} />
-          </a>
+            {!blocked && (
+              <button
+                type="button"
+                onClick={() => {
+                  setFrameLoaded(false);
+                  setSlow(false);
+                  setNonce((n) => n + 1);
+                }}
+                className="group sh-icon-btn max-sm:!hidden"
+                aria-label={t("common.refresh")}
+                title={t("common.refresh")}
+              >
+                <RotateCw size={16} className="transition-transform duration-500 group-hover:rotate-180" />
+              </button>
+            )}
+            <a
+              href={frameUrl || app.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="af-open"
+              style={{
+                backgroundImage: `linear-gradient(135deg, ${app.color}, ${shadeHex(app.color, 0.62)})`,
+                boxShadow: `inset 0 1px 0 rgba(255,255,255,0.28), 0 10px 22px -12px ${hexWithAlpha(app.color, 0.9)}`,
+              }}
+              aria-label={t("common.openNewTab")}
+              title={t("common.openNewTab")}
+            >
+              <span className="hidden lg:inline">{t("common.openNewTab")}</span>
+              <ArrowUpRight size={16} className="af-open-arrow" />
+            </a>
+          </>,
+          slot,
         )}
-        {!blocked && (
-          <button
-            type="button"
-            onClick={() => {
-              setFrameLoaded(false);
-              setSlow(false);
-              setNonce((n) => n + 1);
-            }}
-            className="group grid h-9 w-9 shrink-0 place-items-center rounded-xl text-ink-muted transition-colors hover:bg-slate-100 hover:text-navy"
-            aria-label={t("common.refresh")}
-            title={t("common.refresh")}
-          >
-            <RotateCw size={16} className="transition-transform duration-500 group-hover:rotate-180" />
-          </button>
-        )}
-        <a
-          href={frameUrl || app.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="af-open"
-          style={{
-            backgroundImage: `linear-gradient(135deg, ${app.color}, ${shadeHex(app.color, 0.62)})`,
-            boxShadow: `inset 0 1px 0 rgba(255,255,255,0.28), 0 10px 22px -12px ${hexWithAlpha(app.color, 0.9)}`,
-          }}
-          aria-label={t("common.openNewTab")}
-          title={t("common.openNewTab")}
-        >
-          <span className="hidden sm:inline">{t("common.openNewTab")}</span>
-          <ArrowUpRight size={16} className="af-open-arrow" />
-        </a>
-      </div>
 
       {blocked ? (
         <div className="grid flex-1 place-items-center px-5 py-14">

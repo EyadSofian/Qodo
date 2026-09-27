@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import type { LucideIcon } from 'lucide-react';
@@ -7,12 +7,14 @@ import {
   BellRing,
   Briefcase,
   CalendarDays,
+  ChevronDown,
   Home,
   KeyRound,
   Languages,
   LayoutGrid,
   ListChecks,
   LogOut,
+  Maximize2,
   Mail,
   Search,
   Send,
@@ -35,7 +37,7 @@ import {
   type PushState,
 } from '../lib/push';
 import { PERMISSIONS } from '@shared/permissions';
-import { Logo } from './Brand';
+import { Logo, LogoMark } from './Brand';
 import { AppSwitcher } from './AppSwitcher';
 import { NotificationsMenu } from './NotificationsMenu';
 import { SearchPalette } from './SearchPalette';
@@ -45,6 +47,24 @@ import { TaskSummaryPopup } from './TaskSummaryPopup';
 import { IncomingNotificationPopup } from './IncomingNotificationPopup';
 import { ReworkGuard } from './ReworkGuard';
 import { Avatar, useToast } from './ui';
+
+/**
+ * A framed app puts its own controls (back, name, refresh, open in a tab)
+ * into the command bar instead of stacking a second bar under it — this is
+ * the element they are portalled into, or null outside a framed app.
+ */
+const ShellSlotContext = createContext<HTMLElement | null>(null);
+export const useShellSlot = () => useContext(ShellSlotContext);
+
+const IMMERSIVE_KEY = 'engosoft.frameImmersive';
+
+function readImmersive() {
+  try {
+    return localStorage.getItem(IMMERSIVE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
 
 /**
  * The chrome every screen sits in: brand, app switcher, search, bell, account.
@@ -59,6 +79,8 @@ export function Shell({ children }: { children: ReactNode }) {
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [push, setPush] = useState<PushState>('unsupported');
+  const [slot, setSlot] = useState<HTMLElement | null>(null);
+  const [immersiveChoice, setImmersiveChoice] = useState(readImmersive);
 
   const { user, signOut, can } = useAuth();
   const { t, lang, setLang } = useI18n();
@@ -144,6 +166,17 @@ export function Shell({ children }: { children: ReactNode }) {
   const isLearningProduction = location.pathname.startsWith('/learning-production');
   // HR V2 carries its own phone navigation for its nine areas.
   const isHR = location.pathname === '/hr' || location.pathname.startsWith('/hr/');
+  // A framed app brings its own header, so ours shrinks to one compact bar —
+  // or, in full-screen mode, gets out of the way entirely until asked back.
+  const immersive = isFramed && immersiveChoice;
+  const setImmersive = (next: boolean) => {
+    setImmersiveChoice(next);
+    try {
+      localStorage.setItem(IMMERSIVE_KEY, next ? '1' : '0');
+    } catch {
+      // Private mode: the choice just lasts for this visit.
+    }
+  };
   const isFullHeight = isFramed || isLearningProduction || location.pathname.startsWith('/mail');
   // On iPhone, web push only exists once the site is on the home screen — so a
   // plain Safari tab reports unsupported and the row is hidden rather than
@@ -158,17 +191,34 @@ export function Shell({ children }: { children: ReactNode }) {
   const showPushMissingKeys = push === 'unconfigured' && can(PERMISSIONS.SETTINGS_MANAGE);
 
   return (
-    <div className="flex min-h-[100dvh] flex-col">
+    <ShellSlotContext.Provider value={isFramed ? slot : null}>
+    <div
+      className="flex min-h-[100dvh] flex-col"
+      style={isFramed ? ({ '--topbar-h': immersive ? '0px' : '52px' } as CSSProperties) : undefined}
+    >
       {/*
         No backdrop-filter here on purpose: an element with one becomes the
         containing block for its `position: fixed` descendants, which would trap
         the app-switcher and notification sheets inside the bar on phones. The
         bar is an opaque gradient, so it has no need of one.
       */}
-      <header className="sh-bar sticky top-0 z-30 pt-safe">
-        <div className="mx-auto flex h-[var(--topbar-h)] w-full max-w-[1600px] items-center gap-2 px-3 sm:gap-3 sm:px-5">
-          <Link to="/" className="flex shrink-0 items-center rounded-lg px-1 py-1" aria-label={t('common.home')}>
-            <Logo tone="white" height={26} className="sm:!h-[30px]" />
+      <header className={cx('sh-bar sticky top-0 z-30 pt-safe', immersive && 'hidden')}>
+        <div
+          className={cx(
+            'mx-auto flex h-[var(--topbar-h)] w-full items-center gap-2 px-3 sm:gap-3 sm:px-5',
+            isFramed ? 'max-w-none sm:!gap-2' : 'max-w-[1600px]'
+          )}
+        >
+          <Link
+            to="/"
+            className={cx('flex shrink-0 items-center rounded-lg px-1 py-1', isFramed && 'max-md:hidden')}
+            aria-label={t('common.home')}
+          >
+            {isFramed ? (
+              <LogoMark size={30} className="rounded-lg ring-1 ring-white/15" />
+            ) : (
+              <Logo tone="white" height={26} className="sm:!h-[30px]" />
+            )}
           </Link>
 
           <span className="hidden h-7 w-px shrink-0 bg-white/10 md:block" aria-hidden="true" />
@@ -193,7 +243,9 @@ export function Shell({ children }: { children: ReactNode }) {
             <AppSwitcher open={switcherOpen} onClose={() => setSwitcherOpen(false)} onOpenApp={openApp} />
           </div>
 
-          <nav className="sh-dock hidden md:flex" aria-label={t('shell.apps')}>
+          {isFramed && <div ref={setSlot} className="flex min-w-0 flex-1 items-center gap-1.5 sm:gap-2" />}
+
+          <nav className={cx('sh-dock hidden', !isFramed && 'md:flex')} aria-label={t('shell.apps')}>
             <DockLink to="/" end icon={Home} label={t('common.home')} accent="#2AA7F0" />
             {can(PERMISSIONS.TASKS_VIEW) && (
               <DockLink
@@ -216,14 +268,14 @@ export function Shell({ children }: { children: ReactNode }) {
             )}
           </nav>
 
-          <div className="min-w-0 flex-1" />
+          {!isFramed && <div className="min-w-0 flex-1" />}
 
           {/* Desktop gets a real search field; the phone gets an icon that opens
               the same sheet, because a text input here would crowd the bar. */}
           <button
             type="button"
             onClick={() => setSearchOpen(true)}
-            className="sh-search hidden w-52 md:flex lg:w-64 xl:w-80"
+            className={cx('sh-search hidden w-52 md:flex lg:w-64 xl:w-80', isFramed && '!hidden')}
           >
             <Search size={16} className="shrink-0" />
             <span className="min-w-0 flex-1 truncate">{t('shell.searchPlaceholder')}</span>
@@ -235,7 +287,7 @@ export function Shell({ children }: { children: ReactNode }) {
           <button
             type="button"
             onClick={() => setSearchOpen(true)}
-            className="sh-icon-btn md:hidden"
+            className={cx('sh-icon-btn', isFramed ? 'max-md:!hidden' : 'md:hidden')}
             aria-label={t('common.search')}
           >
             <Search size={19} />
@@ -244,12 +296,28 @@ export function Shell({ children }: { children: ReactNode }) {
           <button
             type="button"
             onClick={() => setAssistantOpen(true)}
-            className="sh-ai max-sm:w-10 max-sm:justify-center max-sm:px-0"
+            className={cx(
+              'sh-ai max-sm:w-10 max-sm:justify-center max-sm:px-0',
+              isFramed && 'w-10 justify-center !px-0 max-md:!hidden'
+            )}
             aria-label={t('shell.assistant')}
+            title={t('shell.assistant')}
           >
             <Sparkles size={16} className="text-sky-300" />
-            <span className="hidden sm:inline">{t('shell.assistant')}</span>
+            <span className={cx('hidden', !isFramed && 'sm:inline')}>{t('shell.assistant')}</span>
           </button>
+
+          {isFramed && (
+            <button
+              type="button"
+              onClick={() => setImmersive(true)}
+              className="sh-icon-btn"
+              aria-label={t('shell.focusMode')}
+              title={t('shell.focusMode')}
+            >
+              <Maximize2 size={17} />
+            </button>
+          )}
           <div className="relative shrink-0">
             <button
               type="button"
@@ -290,7 +358,7 @@ export function Shell({ children }: { children: ReactNode }) {
                   <Avatar name={user?.name ?? '?'} color={user?.avatarColor} size={30} />
                 </span>
               </span>
-              <span className="hidden text-start xl:block">
+              <span className={cx('hidden text-start', !isFramed && 'xl:block')}>
                 <span className="block max-w-[9rem] truncate font-display text-[13px] font-medium leading-tight text-white">
                   {user?.name}
                 </span>
@@ -406,6 +474,13 @@ export function Shell({ children }: { children: ReactNode }) {
           five destinations, so the global bar would only duplicate it. */}
       {!isFramed && !isLearningProduction && !isHR && <BottomNav onOpenSwitcher={() => setSwitcherOpen(true)} />}
 
+      {immersive && (
+        <button type="button" onClick={() => setImmersive(false)} className="sh-peek">
+          <ChevronDown size={14} />
+          <span className="sh-peek-label">{t('shell.showBar')}</span>
+        </button>
+      )}
+
       <SearchPalette open={searchOpen} onClose={() => setSearchOpen(false)} />
       <ChangePasswordModal open={passwordOpen} onClose={() => setPasswordOpen(false)} />
       <Assistant open={assistantOpen} onClose={() => setAssistantOpen(false)} />
@@ -413,6 +488,7 @@ export function Shell({ children }: { children: ReactNode }) {
       <IncomingNotificationPopup />
       <ReworkGuard />
     </div>
+    </ShellSlotContext.Provider>
   );
 }
 
