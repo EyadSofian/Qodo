@@ -11,10 +11,11 @@ import { ASSET_TYPES, OUTLINE_SECTIONS } from '../../../shared/learningProductio
 import { LP_PERMISSIONS as P } from '../../../shared/learningProduction/permissions.js';
 import { currentStage, lessonProgress, lessonState } from '../../../shared/learningProduction/workflow.js';
 import { MAX_IMPORT_LESSONS } from '../../../shared/learningProduction/lessonImport.js';
-import { SCHEMA as S, direct, transaction } from '../db.js';
+import { SCHEMA as S, direct } from '../db.js';
 import { courseCapabilities, courseContext, requireGrant } from '../access.js';
 import { record } from '../activity.js';
-import { WINDOW, assetLink, flush } from '../notifications.js';
+import { WINDOW, assetLink, transactionWithOutbox } from '../notifications.js';
+import { syncCourseRun } from '../runSync.js';
 import { badRequest, notFound, validation } from '../errors.js';
 import { mapLesson, mapModule } from '../mappers.js';
 import { assertAssignable, peopleFor, userIdField, userIdsIn } from '../people.js';
@@ -49,6 +50,13 @@ async function usableDefaults(defaults) {
  */
 export async function insertLessonsWithAssets(tx, ctx, lessons) {
   const defaults = await usableDefaults(ctx.course.productionDefaults);
+  // The run in flight decides which assets a lesson gets; a course with no
+  // run (or a legacy one) keeps all five, as it always did.
+  const run = await tx.row(
+    `SELECT lesson_asset_types FROM ${S}.learning_production_runs WHERE course_id = $1 AND status IN ('ACTIVE', 'ON_HOLD')`,
+    [ctx.course.id]
+  );
+  const types = ASSET_TYPES.filter((type) => (run?.lesson_asset_types ?? ASSET_TYPES).includes(type));
   const created = [];
 
   for (const lesson of lessons) {
@@ -86,9 +94,9 @@ export async function insertLessonsWithAssets(tx, ctx, lessons) {
         ctx.organizationId,
         ctx.course.id,
         inserted.id,
-        ASSET_TYPES,
-        ASSET_TYPES.map((type) => defaults[type].assigneeUserId),
-        ASSET_TYPES.map((type) => defaults[type].reviewerUserId),
+        types,
+        types.map((type) => defaults[type].assigneeUserId),
+        types.map((type) => defaults[type].reviewerUserId),
       ]
     );
 
@@ -236,7 +244,7 @@ export async function createLessons(actor, courseId, input) {
   if (items.length === 0) throw validation('items', 'required');
 
   const outbox = [];
-  const created = await transaction(async (tx) => {
+  const created = await transactionWithOutbox(outbox, async (tx) => {
     const modules = await tx.rows(
       `SELECT id, name, sort_order FROM ${S}.learning_course_modules WHERE course_id = $1 AND archived_at IS NULL`,
       [courseId]
@@ -277,10 +285,10 @@ export async function createLessons(actor, courseId, input) {
     const result = await insertLessonsWithAssets(tx, ctx, lessons);
     await recordLessonsCreated(tx, ctx, result);
     outbox.push(...defaultAssignmentOutbox(ctx, result));
+    await syncCourseRun(tx, courseId, { actorId: ctx.userId, outbox });
     return result;
   });
 
-  await flush(outbox);
   return { lessons: created.map(({ lesson }) => mapLesson(lesson)) };
 }
 
@@ -305,7 +313,7 @@ export async function createModule(actor, courseId, input) {
   const name = text(body.name, 'name', { required: true, max: 200 });
   const description = text(body.description, 'description', { max: 2000 }) ?? '';
 
-  return transaction(async (tx) => {
+  return transactionWithOutbox([], async (tx) => {
     const { next } = await tx.row(
       `SELECT coalesce(max(sort_order) + 1, 0) AS next FROM ${S}.learning_course_modules
         WHERE course_id = $1 AND archived_at IS NULL`,
@@ -334,7 +342,7 @@ export async function updateModule(actor, moduleId, input) {
   const name = 'name' in body ? text(body.name, 'name', { required: true, max: 200 }) : ctx.module.name;
   const description = 'description' in body ? text(body.description, 'description', { max: 2000 }) ?? '' : ctx.module.description;
 
-  return transaction(async (tx) => {
+  return transactionWithOutbox([], async (tx) => {
     const module = await tx.row(
       `UPDATE ${S}.learning_course_modules SET name = $2, description = $3 WHERE id = $1 RETURNING *`,
       [moduleId, name, description]
@@ -355,7 +363,7 @@ export async function archiveModule(actor, moduleId) {
   const ctx = await moduleContext(actor, moduleId);
   requireGrant(ctx, P.LESSON_EDIT);
 
-  return transaction(async (tx) => {
+  return transactionWithOutbox([], async (tx) => {
     const { count } = await tx.row(
       `SELECT count(*)::int AS count FROM ${S}.learning_lessons WHERE module_id = $1 AND archived_at IS NULL`,
       [moduleId]
@@ -386,7 +394,7 @@ export async function reorderModules(actor, courseId, input) {
   requireGrant(ctx, P.LESSON_EDIT);
   const ids = idList(body.moduleIds, 'moduleIds', 200);
 
-  return transaction(async (tx) => {
+  return transactionWithOutbox([], async (tx) => {
     const updated = await tx.rows(
       `UPDATE ${S}.learning_course_modules m SET sort_order = t.position - 1
          FROM unnest($1::uuid[]) WITH ORDINALITY AS t(id, position)
@@ -428,11 +436,13 @@ export async function getLesson(actor, lessonId) {
   const ctx = await courseContext(actor, lesson.course_id);
   const assets = await direct.rows(`${ASSET_ROWS_SQL} WHERE a.lesson_id = $1`, [lessonId]);
 
-  const statuses = Object.fromEntries(assets.map((asset) => [asset.asset_type, asset.status]));
+  const applicable = assets.filter((asset) => asset.applicable);
+  const statuses = Object.fromEntries(applicable.map((asset) => [asset.asset_type, asset.status]));
+  const applicableTypes = applicable.map((asset) => asset.asset_type);
   const day = today();
   const summaries = ASSET_TYPES.map((type) => assets.find((asset) => asset.asset_type === type))
     .filter(Boolean)
-    .map((asset) => assetSummary(asset, statuses, ctx.settings, day));
+    .map((asset) => assetSummary(asset, statuses, ctx.settings, day, applicableTypes));
   const mapped = { ...mapLesson(lesson), moduleName: lesson.module_name ?? null };
 
   return {
@@ -545,7 +555,9 @@ export async function assetBoard(actor, lessonId) {
 
   const versionOf = new Map(versions.map((version) => [version.id, version]));
   const versionCount = new Map(counts.map((entry) => [entry.asset_id, entry.n]));
-  const statuses = Object.fromEntries(assets.map((asset) => [asset.asset_type, asset.status]));
+  const applicable = assets.filter((asset) => asset.applicable);
+  const statuses = Object.fromEntries(applicable.map((asset) => [asset.asset_type, asset.status]));
+  const applicableTypes = applicable.map((asset) => asset.asset_type);
   const day = today();
 
   const board = ASSET_TYPES.map((type) => assets.find((asset) => asset.asset_type === type))
@@ -553,7 +565,7 @@ export async function assetBoard(actor, lessonId) {
     .map((asset) => {
       const version = asset.current_version_id ? versionOf.get(asset.current_version_id) ?? null : null;
       return {
-        ...assetSummary(asset, statuses, ctx.settings, day),
+        ...assetSummary(asset, statuses, ctx.settings, day, applicableTypes),
         versionCount: versionCount.get(asset.id) ?? 0,
         versionNotes: version?.version_notes ?? '',
         versionCreatedAt: version?.created_at ? new Date(version.created_at).toISOString() : null,
@@ -584,7 +596,7 @@ export async function assetBoard(actor, lessonId) {
  */
 export async function productionMatrix(actor, courseId) {
   const ctx = await courseContext(actor, courseId);
-  const [modules, found] = await Promise.all([
+  const [modules, found, openRun] = await Promise.all([
     direct.rows(
       `SELECT * FROM ${S}.learning_course_modules
         WHERE course_id = $1 AND organization_id = $2 AND archived_at IS NULL
@@ -594,12 +606,12 @@ export async function productionMatrix(actor, courseId) {
     direct.rows(
       `SELECT l.id AS lesson_id, l.name AS lesson_name, l.module_id, l.sort_order, l.owner_user_id, l.target_date,
               l.estimated_duration_minutes, l.created_at AS lesson_created_at,
-              a.id, a.asset_type, a.status, a.priority, a.assignee_user_id, a.reviewer_user_id, a.due_date,
-              a.updated_at, a.submitted_at, a.dependency_override_at,
+              a.id, a.asset_type, a.status, a.applicable, a.not_applicable_reason, a.priority, a.assignee_user_id,
+              a.reviewer_user_id, a.due_date, a.updated_at, a.submitted_at, a.dependency_override_at,
               v.version_number AS current_version_number,
               coalesce(oc.n, 0) AS open_comments
          FROM ${S}.learning_lessons l
-         JOIN ${S}.learning_assets a ON a.lesson_id = l.id
+         LEFT JOIN ${S}.learning_assets a ON a.lesson_id = l.id
          LEFT JOIN ${S}.learning_asset_versions v ON v.id = a.current_version_id
          LEFT JOIN (
            SELECT cm.asset_id, count(*)::int AS n
@@ -611,6 +623,10 @@ export async function productionMatrix(actor, courseId) {
         WHERE l.course_id = $1 AND l.organization_id = $2 AND l.archived_at IS NULL
         ORDER BY l.sort_order, l.created_at`,
       [courseId, ctx.organizationId]
+    ),
+    direct.row(
+      `SELECT id, scenario, lesson_asset_types FROM ${S}.learning_production_runs WHERE course_id = $1 AND status IN ('ACTIVE', 'ON_HOLD')`,
+      [courseId]
     ),
   ]);
 
@@ -630,16 +646,18 @@ export async function productionMatrix(actor, courseId) {
       };
       lessons.set(r.lesson_id, lesson);
     }
-    lesson.rows.push(r);
+    if (r.id) lesson.rows.push(r);
   }
 
   const day = today();
   const moduleOrder = new Map(modules.map((module, index) => [module.id, index]));
   const result = [...lessons.values()]
     .map(({ rows: assetRows, ...lesson }) => {
-      const statuses = Object.fromEntries(assetRows.map((r) => [r.asset_type, r.status]));
+      const live = assetRows.filter((r) => r.applicable);
+      const statuses = Object.fromEntries(live.map((r) => [r.asset_type, r.status]));
+      const applicableTypes = live.map((r) => r.asset_type);
       const assets = {};
-      for (const r of assetRows) assets[r.asset_type] = assetSummary(r, statuses, ctx.settings, day);
+      for (const r of assetRows) assets[r.asset_type] = assetSummary(r, statuses, ctx.settings, day, applicableTypes);
       return {
         ...lesson,
         assets,
@@ -660,6 +678,12 @@ export async function productionMatrix(actor, courseId) {
     lessons: result,
     capabilities: courseCapabilities(ctx),
     settings: { enforceDependencies: ctx.settings.enforceDependencies },
+    // The columns to draw: the run's asset types, plus any a lesson still has
+    // from before (legacy lessons keep all five).
+    assetTypes: ASSET_TYPES.filter(
+      (type) => (openRun?.lesson_asset_types ?? ASSET_TYPES).includes(type) || result.some((lesson) => lesson.assets[type])
+    ),
+    run: openRun ? { id: openRun.id, scenario: openRun.scenario, lessonAssetTypes: openRun.lesson_asset_types } : null,
     today: day,
     people: await peopleFor(userIdsIn(result)),
   };
@@ -696,7 +720,7 @@ export async function updateLesson(actor, lessonId, input) {
   };
   if (next.ownerUserId !== lesson.owner_user_id) await assertAssignable(actor, next.ownerUserId, 'ownerUserId');
 
-  return transaction(async (tx) => {
+  return transactionWithOutbox([], async (tx) => {
     if (next.moduleId && next.moduleId !== lesson.module_id) {
       const module = await tx.row(
         `SELECT id FROM ${S}.learning_course_modules WHERE id = $1 AND course_id = $2 AND archived_at IS NULL`,
@@ -744,7 +768,7 @@ export async function reorderLessons(actor, courseId, input) {
   const moduleId = bodyId(body.moduleId, 'moduleId');
   const ids = idList(body.lessonIds, 'lessonIds');
 
-  return transaction(async (tx) => {
+  return transactionWithOutbox([], async (tx) => {
     if (moduleId) {
       const module = await tx.row(
         `SELECT id FROM ${S}.learning_course_modules WHERE id = $1 AND course_id = $2 AND archived_at IS NULL`,
@@ -772,7 +796,7 @@ export async function moveLessons(actor, courseId, input) {
   const moduleId = bodyId(body.moduleId, 'moduleId');
   const ids = idList(body.lessonIds, 'lessonIds');
 
-  return transaction(async (tx) => {
+  return transactionWithOutbox([], async (tx) => {
     if (moduleId) {
       const module = await tx.row(
         `SELECT id FROM ${S}.learning_course_modules WHERE id = $1 AND course_id = $2 AND archived_at IS NULL`,
@@ -807,7 +831,7 @@ export async function duplicateLesson(actor, lessonId, input) {
   const name = text(body.name, 'name', { max: 200 }) || `${source.name} (2)`;
 
   const outbox = [];
-  const created = await transaction(async (tx) => {
+  const created = await transactionWithOutbox(outbox, async (tx) => {
     await tx.query(
       `UPDATE ${S}.learning_lessons SET sort_order = sort_order + 1
         WHERE course_id = $1 AND module_id IS NOT DISTINCT FROM $2 AND sort_order > $3 AND archived_at IS NULL`,
@@ -824,10 +848,10 @@ export async function duplicateLesson(actor, lessonId, input) {
     ]);
     await recordLessonsCreated(tx, ctx, result);
     outbox.push(...defaultAssignmentOutbox(ctx, result));
+    await syncCourseRun(tx, ctx.course.id, { actorId: ctx.userId, outbox });
     return result[0].lesson;
   });
 
-  await flush(outbox);
   return { lesson: mapLesson(created) };
 }
 
@@ -837,7 +861,7 @@ export async function archiveLessons(actor, courseId, input) {
   requireGrant(ctx, P.LESSON_EDIT);
   const ids = idList(body.lessonIds, 'lessonIds');
 
-  return transaction(async (tx) => {
+  return transactionWithOutbox([], async (tx) => {
     const archived = await tx.rows(
       `UPDATE ${S}.learning_lessons SET archived_at = now(), archived_by = $3
         WHERE id = ANY($1::uuid[]) AND course_id = $2 AND archived_at IS NULL
@@ -864,6 +888,7 @@ export async function archiveLessons(actor, courseId, input) {
         metadata: { count: archived.length, names: archived.slice(0, 5).map((lesson) => lesson.name) },
       });
     }
+    await syncCourseRun(tx, courseId, { actorId: ctx.userId });
     return { archived: archived.length };
   });
 }
@@ -880,7 +905,7 @@ export async function restoreLesson(actor, lessonId) {
   const ctx = await courseContext(actor, lesson.course_id);
   requireGrant(ctx, P.LESSON_EDIT);
 
-  return transaction(async (tx) => {
+  return transactionWithOutbox([], async (tx) => {
     // A lesson whose module was archived in the meantime comes back without one,
     // rather than into a module nobody can see.
     const moduleId = lesson.module_id && !lesson.module_archived_at ? lesson.module_id : null;
@@ -898,6 +923,7 @@ export async function restoreLesson(actor, lessonId) {
       eventType: 'LESSON_RESTORED',
       metadata: { name: lesson.name },
     });
+    await syncCourseRun(tx, ctx.course.id, { actorId: ctx.userId });
     return { lesson: mapLesson(restored) };
   });
 }

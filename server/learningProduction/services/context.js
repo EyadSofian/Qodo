@@ -32,9 +32,11 @@ export async function assetContext(actor, assetId, { db = direct, lock = false }
   if (!found || found.lesson_archived_at) throw notFound();
 
   const ctx = await courseContext(actor, found.course_id, { db });
-  const siblings = await db.rows(`SELECT id, asset_type, status FROM ${S}.learning_assets WHERE lesson_id = $1`, [
+  const siblings = await db.rows(`SELECT id, asset_type, status, applicable FROM ${S}.learning_assets WHERE lesson_id = $1`, [
     found.lesson_id,
   ]);
+  // Only the assets that apply take part in dependencies and progress.
+  const applicable = siblings.filter((s) => s.applicable);
 
   return {
     ...ctx,
@@ -45,8 +47,10 @@ export async function assetContext(actor, assetId, { db = direct, lock = false }
       moduleId: found.lesson_module_id ?? null,
       moduleName: found.module_name ?? null,
     },
-    siblingStatuses: Object.fromEntries(siblings.map((s) => [s.asset_type, s.status])),
+    siblingStatuses: Object.fromEntries(applicable.map((s) => [s.asset_type, s.status])),
     siblingIds: Object.fromEntries(siblings.map((s) => [s.asset_type, s.id])),
+    applicableTypes: applicable.map((s) => s.asset_type),
+    presentTypes: siblings.map((s) => s.asset_type),
   };
 }
 
@@ -114,6 +118,7 @@ export function evaluate(actx, state) {
     userId: actx.userId,
     hasContent: state.hasContent,
     versionSinceChanges: state.versionSinceChanges,
+    applicableTypes: actx.applicableTypes,
   });
 }
 
@@ -125,5 +130,6 @@ export function canResolveComments(actx) {
     settings: actx.settings,
     grants: actx.grants,
     userId: actx.userId,
+    applicableTypes: actx.applicableTypes,
   }).canResolveComments;
 }

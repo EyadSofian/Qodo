@@ -59,6 +59,13 @@ export function visibleCourseCondition(actor, params, alias = 'c') {
     OR EXISTS (SELECT 1 FROM ${S}.learning_course_members vm WHERE vm.course_id = ${alias}.id AND vm.user_id = ${me})
     OR EXISTS (SELECT 1 FROM ${S}.learning_assets va
                 WHERE va.course_id = ${alias}.id AND (va.assignee_user_id = ${me} OR va.reviewer_user_id = ${me}))
+    OR EXISTS (SELECT 1 FROM ${S}.learning_production_runs vr
+                WHERE vr.course_id = ${alias}.id AND (
+                  vr.manager_user_id = ${me}
+                  OR EXISTS (SELECT 1 FROM ${S}.learning_run_members vrm WHERE vrm.run_id = vr.id AND vrm.user_id = ${me})
+                  OR EXISTS (SELECT 1 FROM ${S}.learning_task_instances vt
+                              WHERE vt.run_id = vr.id AND (vt.assignee_user_id = ${me} OR vt.reviewer_user_id = ${me}))
+                  OR EXISTS (SELECT 1 FROM ${S}.learning_run_issues vi WHERE vi.run_id = vr.id AND vi.owner_user_id = ${me})))
   )`;
 }
 
@@ -70,9 +77,24 @@ export async function courseContext(actor, courseId, { includeArchived = false, 
   const found = await db.row(
     `SELECT c.*, m.roles AS member_roles,
             EXISTS (SELECT 1 FROM ${S}.learning_assets a
-                     WHERE a.course_id = c.id AND (a.assignee_user_id = $3 OR a.reviewer_user_id = $3)) AS has_assignment
+                     WHERE a.course_id = c.id AND (a.assignee_user_id = $3 OR a.reviewer_user_id = $3)) AS has_assignment,
+            open_run.id AS open_run_id, open_run.manager_user_id AS open_run_manager,
+            rm.roles AS run_roles,
+            EXISTS (SELECT 1 FROM ${S}.learning_production_runs r
+                      JOIN ${S}.learning_task_instances t ON t.run_id = r.id
+                     WHERE r.course_id = c.id AND (t.assignee_user_id = $3 OR t.reviewer_user_id = $3)) AS has_task,
+            EXISTS (SELECT 1 FROM ${S}.learning_production_runs r
+                     WHERE r.course_id = c.id AND r.manager_user_id = $3) AS manages_run,
+            EXISTS (SELECT 1 FROM ${S}.learning_production_runs r
+                      JOIN ${S}.learning_run_members x ON x.run_id = r.id AND x.user_id = $3
+                     WHERE r.course_id = c.id) AS run_member,
+            EXISTS (SELECT 1 FROM ${S}.learning_production_runs r
+                      JOIN ${S}.learning_run_issues i ON i.run_id = r.id AND i.owner_user_id = $3
+                     WHERE r.course_id = c.id) AS owns_issue
        FROM ${S}.learning_courses c
        LEFT JOIN ${S}.learning_course_members m ON m.course_id = c.id AND m.user_id = $3
+       LEFT JOIN ${S}.learning_production_runs open_run ON open_run.course_id = c.id AND open_run.status IN ('ACTIVE', 'ON_HOLD')
+       LEFT JOIN ${S}.learning_run_members rm ON rm.run_id = open_run.id AND rm.user_id = $3
       WHERE c.id = $1 AND c.organization_id = $2
       ${lock ? 'FOR UPDATE OF c' : ''}`,
     [courseId, actor.organizationId, actor.userId]
@@ -80,9 +102,20 @@ export async function courseContext(actor, courseId, { includeArchived = false, 
   if (!found) throw notFound();
   if (found.archived_at && !includeArchived) throw notFound();
 
-  const roles = found.member_roles ?? [];
+  const courseRoles = found.member_roles ?? [];
+  // Roles on the run in flight count only there — a closed run takes no more
+  // actions, so its roles would add nothing. The open run's manager manages it.
+  const runRoles = [...(found.run_roles ?? []), ...(found.open_run_manager === actor.userId ? ['PRODUCTION_MANAGER'] : [])];
+  const roles = [...new Set([...courseRoles, ...runRoles])];
   const visible =
-    seesEveryCourse(actor) || roles.length > 0 || found.has_assignment || found.manager_user_id === actor.userId;
+    seesEveryCourse(actor) ||
+    roles.length > 0 ||
+    found.has_assignment ||
+    found.has_task ||
+    found.manages_run ||
+    found.run_member ||
+    found.owns_issue ||
+    found.manager_user_id === actor.userId;
   if (!visible) throw notFound();
 
   return {
@@ -91,6 +124,9 @@ export async function courseContext(actor, courseId, { includeArchived = false, 
     rawSettings: found.settings_json ?? {},
     settings: normalizeSettings(found.settings_json),
     roles,
+    courseRoles,
+    runRoles,
+    openRunId: found.open_run_id ?? null,
     grants: buildGrants({ orgPermissions: actor.orgPermissions, roles }),
   };
 }
@@ -113,9 +149,23 @@ export function courseCapabilities(ctx) {
     viewReports: ctx.grants.has(P.REPORT_VIEW),
     assign,
     assignAny: Object.values(assign).some(Boolean),
+    manageRuns: ctx.grants.has(P.RUN_MANAGE),
+    assignTasks: ctx.grants.has(P.TASK_ASSIGN),
+    signoffReleases: ctx.grants.has(P.RELEASE_SIGNOFF),
+    publishReleases: ctx.grants.has(P.RELEASE_PUBLISH),
+    seeSensitive: canSeeSensitive(ctx),
     roles: ctx.roles,
     isAdmin: ctx.grants.isAdmin,
   };
+}
+
+/**
+ * Candidate records, CVs, assessments and contracts. Narrower than seeing the
+ * course: the coordinator, the production manager, administrators and holders
+ * of the organization-wide key. A course manager does not qualify.
+ */
+export function canSeeSensitive(ctx) {
+  return ctx.grants.has(P.EXPERTS_SENSITIVE, 'EXPERT_ACQUISITION');
 }
 
 /**
@@ -138,7 +188,12 @@ export function canComment(ctx, asset) {
  * picker. A designer has no reason to list every colleague in the company.
  */
 export async function assignsAnywhere(actor) {
-  if ([P.ASSET_ASSIGN, P.TEAM_MANAGE, P.COURSE_CREATE].some((key) => actor.grants.has(key))) return true;
+  if ([P.ASSET_ASSIGN, P.TASK_ASSIGN, P.TEAM_MANAGE, P.COURSE_CREATE].some((key) => actor.grants.has(key))) return true;
+  const runManager = await direct.row(
+    `SELECT 1 FROM ${S}.learning_production_runs WHERE organization_id = $1 AND manager_user_id = $2 AND status IN ('ACTIVE', 'ON_HOLD') LIMIT 1`,
+    [actor.organizationId, actor.userId]
+  );
+  if (runManager) return true;
   const found = await direct.row(
     `SELECT 1 FROM ${S}.learning_course_members m
        JOIN ${S}.learning_courses c ON c.id = m.course_id AND c.archived_at IS NULL

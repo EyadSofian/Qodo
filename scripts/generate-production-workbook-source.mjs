@@ -1,0 +1,157 @@
+#!/usr/bin/env node
+/**
+ * Generates shared/learningProduction/workbookSource.js from the business's
+ * "Content Development Checklists.xlsx".
+ *
+ * The workbook is the source of the production workflow, but it is never read
+ * at runtime: this script copies every populated cell — visible and hidden —
+ * into a plain module that the workflow templates cite row by row, and that
+ * the traceability test walks to prove no row was silently dropped.
+ *
+ *   node scripts/generate-production-workbook-source.mjs "/path/to/Content Development Checklists.xlsx"
+ *
+ * Regenerate when the workbook changes; never edit the output by hand.
+ *
+ * What it records, and what it deliberately does not:
+ *   - A row whose A and B cells are merged is a heading. Headings are recorded
+ *     as HEADING, never as work that exists or is done.
+ *   - "Activity ID" and "Checklist" rows are sheet furniture (META / HEADER).
+ *   - B cells holding FALSE are checkbox leftovers in hidden legacy blocks.
+ *     They are recorded as `checkboxCell: true` and never read as status.
+ *   - Hidden rows keep `hidden: true`. They are reference material: the
+ *     templates decide, explicitly and per block, which of them become work.
+ */
+
+import crypto from 'node:crypto';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import ExcelJS from 'exceljs';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const OUTPUT = path.join(here, '..', 'shared', 'learningProduction', 'workbookSource.js');
+
+const source = process.argv[2];
+if (!source) {
+  console.error('usage: node scripts/generate-production-workbook-source.mjs <workbook.xlsx>');
+  process.exit(1);
+}
+
+const bytes = await fs.readFile(source);
+const checksum = crypto.createHash('sha256').update(bytes).digest('hex');
+const workbook = new ExcelJS.Workbook();
+await workbook.xlsx.load(bytes);
+
+function cellText(cell) {
+  let value = cell?.value;
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'object') {
+    if (value.richText) value = value.richText.map((part) => part.text).join('');
+    else if ('result' in value) value = value.result;
+    else if (value.text) value = value.text;
+    else value = JSON.stringify(value);
+  }
+  if (typeof value === 'boolean') return value;
+  const text = String(value).replace(/\r\n/g, '\n');
+  return text.trim() === '' ? null : text;
+}
+
+function mergedRows(sheet) {
+  const rows = new Set();
+  for (const range of sheet.model.merges ?? []) {
+    const match = /^A(\d+):B(\d+)$/.exec(range);
+    if (match && match[1] === match[2]) rows.add(Number(match[1]));
+  }
+  return rows;
+}
+
+const MASTER = 'Content Development Activities';
+const master = [];
+const sheets = [];
+
+for (const sheet of workbook.worksheets) {
+  if (sheet.name === MASTER) {
+    // Three paths side by side: new program (A/B), revamp (D/E), AI (G/H).
+    const paths = [
+      { path: 'NEW_PROGRAM', idColumn: 'A', labelColumn: 'B' },
+      { path: 'REVAMP', idColumn: 'D', labelColumn: 'E' },
+      { path: 'AI_NEW_PROGRAM', idColumn: 'G', labelColumn: 'H' },
+    ];
+    sheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+      for (const entry of paths) {
+        const activityId = cellText(row.getCell(entry.idColumn));
+        const label = cellText(row.getCell(entry.labelColumn));
+        if (activityId === null && label === null) continue;
+        master.push({
+          path: entry.path,
+          row: rowNumber,
+          cells: `${entry.idColumn}${rowNumber}:${entry.labelColumn}${rowNumber}`,
+          activityId: typeof activityId === 'string' ? activityId : null,
+          label: typeof label === 'string' ? label : null,
+          hidden: Boolean(row.hidden),
+        });
+      }
+    });
+    continue;
+  }
+
+  const merged = mergedRows(sheet);
+  const rows = [];
+  sheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+    const a = cellText(row.getCell('A'));
+    const b = cellText(row.getCell('B'));
+    const extra = [];
+    row.eachCell({ includeEmpty: false }, (cell, column) => {
+      if (column > 2) extra.push({ address: cell.address, value: cellText(cell) });
+    });
+    if (a === null && b === null && extra.length === 0) return;
+
+    let kind = 'ITEM';
+    if (a === 'Activity ID') kind = 'META';
+    else if (a === 'Checklist') kind = 'HEADER';
+    else if (merged.has(rowNumber)) kind = 'HEADING';
+
+    rows.push({
+      row: rowNumber,
+      kind,
+      text: typeof a === 'string' ? a : null,
+      ...(kind === 'META' ? { activityId: typeof b === 'string' ? b : null } : {}),
+      ...(typeof b === 'boolean' ? { checkboxCell: true } : {}),
+      hidden: Boolean(row.hidden),
+      outlineLevel: row.outlineLevel ?? 0,
+      ...(extra.length ? { extraCells: extra } : {}),
+    });
+  });
+  sheets.push({ name: sheet.name, state: sheet.state ?? 'visible', rows });
+}
+
+const header = `/**
+ * GENERATED by scripts/generate-production-workbook-source.mjs — do not edit.
+ *
+ * Every populated row of "Content Development Checklists.xlsx", visible and
+ * hidden, as recorded on generation. The workflow templates in
+ * workflowTemplates.js cite these rows by sheet and row number, and
+ * server/learningProduction.templates.test.js fails if any populated row is
+ * neither used by a template nor explicitly classified in traceability.js.
+ *
+ * Source checksum (sha256): ${checksum}
+ */
+
+`;
+
+const body =
+  `export const WORKBOOK_CHECKSUM = ${JSON.stringify(checksum)};\n\n` +
+  `/** The master sheet: one entry per populated cell pair in each of the three paths. */\n` +
+  `export const MASTER_SHEET = ${JSON.stringify(MASTER)};\n\n` +
+  `export const MASTER_ACTIVITIES = ${JSON.stringify(master, null, 2)};\n\n` +
+  `/** The detail sheets, in workbook order. */\n` +
+  `export const DETAIL_SHEETS = ${JSON.stringify(sheets, null, 2)};\n\n` +
+  `/** One detail row by sheet name and row number, or null. */\n` +
+  `export function workbookRow(sheet, row) {\n` +
+  `  return DETAIL_SHEETS.find((entry) => entry.name === sheet)?.rows.find((entry) => entry.row === row) ?? null;\n` +
+  `}\n`;
+
+await fs.writeFile(OUTPUT, header + body);
+const rowCount = sheets.reduce((sum, sheet) => sum + sheet.rows.length, 0);
+const hiddenCount = sheets.reduce((sum, sheet) => sum + sheet.rows.filter((row) => row.hidden).length, 0);
+console.log(`wrote ${path.relative(process.cwd(), OUTPUT)}: ${master.length} master cells, ${sheets.length} sheets, ${rowCount} rows (${hiddenCount} hidden)`);

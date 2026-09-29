@@ -22,6 +22,14 @@ import * as comments from '../../learningProduction/services/commentService.js';
 import * as tools from '../../learningProduction/services/reviewToolsService.js';
 import * as team from '../../learningProduction/services/teamService.js';
 import * as insights from '../../learningProduction/services/insightsService.js';
+import * as templates from '../../learningProduction/services/templateService.js';
+import * as runs from '../../learningProduction/services/runService.js';
+import * as tasks from '../../learningProduction/services/taskService.js';
+import * as issues from '../../learningProduction/services/issueService.js';
+import * as releases from '../../learningProduction/services/releaseService.js';
+import * as impact from '../../learningProduction/services/impactService.js';
+import * as experts from '../../learningProduction/services/expertService.js';
+import * as work from '../../learningProduction/services/workService.js';
 
 const router = Router();
 
@@ -60,6 +68,7 @@ export function learningProductionBodyErrors(error, req, res, _next) {
 
 const rawUpload = express.raw({ type: 'application/octet-stream', limit: largestUploadLimit() });
 const rawCover = express.raw({ type: 'application/octet-stream', limit: uploadLimit('COVER') });
+const rawEvidence = express.raw({ type: 'application/octet-stream', limit: uploadLimit('EVIDENCE') });
 
 function headerText(req, name) {
   const value = req.get(name);
@@ -77,7 +86,23 @@ function fileInput(req) {
     fileName: headerText(req, 'x-file-name') ?? 'file',
     notes: headerText(req, 'x-version-notes'),
     durationSeconds: req.get('x-duration-seconds'),
+    aiAssisted: req.get('x-ai-assisted'),
+    aiTool: headerText(req, 'x-ai-tool'),
   };
+}
+
+/** Send a stored file after the service authorized it. Documents download; media plays in place. */
+function sendFile(res, file, { download = false } = {}) {
+  const inline = !download && /^(application\/pdf$|audio\/|video\/|image\/(png|jpeg|webp)$)/.test(file.mimeType ?? '');
+  res.set({
+    'Content-Type': inline ? file.mimeType : 'application/octet-stream',
+    'Content-Disposition': `${inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(file.fileName ?? 'file')}`,
+    'Cache-Control': 'private, max-age=300',
+    'X-Content-Type-Options': 'nosniff',
+    'Content-Security-Policy': "default-src 'none'; sandbox",
+    'Content-Length': String(file.bytes.length),
+  });
+  res.end(file.bytes);
 }
 
 function userParam(value) {
@@ -228,7 +253,13 @@ router.post(
         id(req, 'assetId'),
         Buffer.isBuffer(req.body)
           ? fileInput(req)
-          : { externalUrl: req.body?.externalUrl, notes: req.body?.notes, durationSeconds: req.body?.durationSeconds }
+          : {
+              externalUrl: req.body?.externalUrl,
+              notes: req.body?.notes,
+              durationSeconds: req.body?.durationSeconds,
+              aiAssisted: req.body?.aiAssisted,
+              aiTool: req.body?.aiTool,
+            }
       ),
     201
   )
@@ -306,6 +337,110 @@ router.patch('/comments/:commentId', json((req) => comments.editComment(req.acto
 router.post('/comments/:commentId/resolve', json((req) => comments.resolveComment(req.actor, id(req, 'commentId'))));
 router.post('/comments/:commentId/reopen', json((req) => comments.reopenComment(req.actor, id(req, 'commentId'))));
 router.post('/comments/:commentId/apply-suggestion', json((req) => comments.applySuggestion(req.actor, id(req, 'commentId'))));
+
+/* ── production runs ──────────────────────────────────────────────── */
+
+router.get('/work', json((req) => work.myWork(req.actor)));
+router.get('/review-queue', json((req) => work.reviews(req.actor, req.query)));
+router.get('/portfolio', json((req) => work.portfolio(req.actor)));
+router.get('/notification-preferences', json((req) => work.getPreferences(req.actor)));
+router.put('/notification-preferences', json((req) => work.savePreferences(req.actor, req.body)));
+
+router.get('/templates', json((req) => templates.listTemplates(req.actor)));
+router.post('/templates/preview', json((req) => templates.previewTemplate(req.actor, req.body)));
+router.post('/templates/versions', json((req) => templates.publishTemplateVersion(req.actor, req.body), 201));
+router.get('/templates/versions/:versionId', json((req) => templates.getTemplateVersion(req.actor, id(req, 'versionId'))));
+router.get('/traceability', json(() => templates.traceability()));
+
+router.post('/runs', json((req) => runs.createRun(req.actor, req.body), 201));
+router.get('/courses/:courseId/runs', json((req) => runs.listRuns(req.actor, id(req, 'courseId'))));
+router.get('/runs/:runId', json((req) => runs.getRun(req.actor, id(req, 'runId'))));
+router.patch('/runs/:runId', json((req) => runs.updateRun(req.actor, id(req, 'runId'), req.body)));
+router.post('/runs/:runId/adopt', json((req) => runs.adoptTemplate(req.actor, id(req, 'runId'), req.body)));
+router.get('/runs/:runId/team', json((req) => runs.listRunTeam(req.actor, id(req, 'runId'))));
+router.put('/runs/:runId/team/:userId', json((req) => runs.saveRunMember(req.actor, id(req, 'runId'), userParam(req.params.userId), req.body)));
+router.delete('/runs/:runId/team/:userId', json((req) => runs.removeRunMember(req.actor, id(req, 'runId'), userParam(req.params.userId))));
+router.post('/stages/:stageId/skip', json((req) => runs.skipStage(req.actor, id(req, 'stageId'), req.body)));
+router.post('/stages/:stageId/unskip', json((req) => runs.unskipStage(req.actor, id(req, 'stageId'))));
+
+router.get('/tasks/:taskId', json((req) => tasks.getTask(req.actor, id(req, 'taskId'))));
+router.patch('/tasks/:taskId', json((req) => tasks.assignTask(req.actor, id(req, 'taskId'), req.body)));
+router.post('/tasks/:taskId/start', json((req) => tasks.startTask(req.actor, id(req, 'taskId'))));
+router.post('/tasks/:taskId/submit', json((req) => tasks.submitTask(req.actor, id(req, 'taskId'), req.body)));
+router.post('/tasks/:taskId/complete', json((req) => tasks.completeTask(req.actor, id(req, 'taskId'), req.body)));
+router.post('/tasks/:taskId/start-review', json((req) => tasks.startTaskReview(req.actor, id(req, 'taskId'))));
+router.post('/tasks/:taskId/request-changes', json((req) => tasks.requestTaskChanges(req.actor, id(req, 'taskId'), req.body)));
+router.post('/tasks/:taskId/approve', json((req) => tasks.approveTask(req.actor, id(req, 'taskId'), req.body)));
+router.post('/tasks/:taskId/waive', json((req) => tasks.waiveTask(req.actor, id(req, 'taskId'), req.body)));
+router.post('/tasks/:taskId/reopen', json((req) => tasks.reopenTask(req.actor, id(req, 'taskId'), req.body)));
+router.post('/tasks/:taskId/override-dependency', json((req) => tasks.overrideTaskDependency(req.actor, id(req, 'taskId'), req.body)));
+router.post('/tasks/:taskId/comments', json((req) => tasks.addTaskComment(req.actor, id(req, 'taskId'), req.body), 201));
+/** Evidence: a file (raw bytes, name and note in headers) or a link or note (JSON). Never replaces earlier evidence. */
+router.post(
+  '/tasks/:taskId/evidence',
+  rawEvidence,
+  json(
+    (req) =>
+      tasks.addEvidence(
+        req.actor,
+        id(req, 'taskId'),
+        Buffer.isBuffer(req.body)
+          ? { bytes: req.body, fileName: headerText(req, 'x-file-name') ?? 'file', note: headerText(req, 'x-evidence-note') }
+          : { url: req.body?.url, note: req.body?.note }
+      ),
+    201
+  )
+);
+router.post('/evidence/:evidenceId/withdraw', json((req) => tasks.withdrawEvidence(req.actor, id(req, 'evidenceId'), req.body)));
+router.get(
+  '/evidence/:evidenceId/file',
+  handler(async (req, res) => sendFile(res, await tasks.evidenceFile(req.actor, id(req, 'evidenceId')), { download: req.query.download === '1' }))
+);
+router.patch('/task-checklist-items/:itemId', json((req) => tasks.updateChecklistItem(req.actor, id(req, 'itemId'), req.body)));
+
+router.get('/runs/:runId/issues', json((req) => issues.listIssues(req.actor, id(req, 'runId'), req.query)));
+router.post('/runs/:runId/issues', json((req) => issues.createIssue(req.actor, id(req, 'runId'), req.body), 201));
+router.get('/issues/:issueId', json((req) => issues.getIssue(req.actor, id(req, 'issueId'))));
+router.patch('/issues/:issueId', json((req) => issues.updateIssue(req.actor, id(req, 'issueId'), req.body)));
+for (const action of ['start', 'fix', 'verify', 'reopen', 'wont-fix']) {
+  router.post(`/issues/:issueId/${action}`, json((req) => issues.transitionIssue(req.actor, id(req, 'issueId'), action, req.body)));
+}
+
+router.get('/courses/:courseId/releases', json((req) => releases.listReleases(req.actor, id(req, 'courseId'))));
+router.post('/runs/:runId/releases', json((req) => releases.prepareRelease(req.actor, id(req, 'runId'), req.body), 201));
+router.get('/releases/:releaseId', json((req) => releases.getRelease(req.actor, id(req, 'releaseId'))));
+router.post('/releases/:releaseId/signoff', json((req) => releases.signoffRelease(req.actor, id(req, 'releaseId'), req.body)));
+router.post('/releases/:releaseId/publish', json((req) => releases.publishRelease(req.actor, id(req, 'releaseId'), req.body)));
+router.post('/releases/:releaseId/withdraw', json((req) => releases.withdrawRelease(req.actor, id(req, 'releaseId'), req.body)));
+router.post('/releases/:releaseId/rollback', json((req) => releases.rollbackRelease(req.actor, id(req, 'releaseId'), req.body)));
+
+router.get('/runs/:runId/impact', json((req) => impact.getImpact(req.actor, id(req, 'runId'))));
+router.put('/runs/:runId/impact', json((req) => impact.saveImpact(req.actor, id(req, 'runId'), req.body)));
+router.post('/runs/:runId/impact/apply', json((req) => impact.applyImpact(req.actor, id(req, 'runId'))));
+
+router.get('/runs/:runId/candidates', json((req) => experts.listCandidates(req.actor, id(req, 'runId'))));
+router.post('/runs/:runId/candidates', json((req) => experts.createCandidate(req.actor, id(req, 'runId'), req.body), 201));
+router.patch('/candidates/:candidateId', json((req) => experts.updateCandidate(req.actor, id(req, 'candidateId'), req.body)));
+router.post(
+  '/candidates/:candidateId/files',
+  rawEvidence,
+  json(
+    (req) =>
+      experts.addCandidateFile(req.actor, id(req, 'candidateId'), {
+        bytes: Buffer.isBuffer(req.body) ? req.body : null,
+        fileName: headerText(req, 'x-file-name') ?? 'file',
+        kind: req.get('x-file-kind'),
+      }),
+    201
+  )
+);
+router.get(
+  '/candidate-files/:fileId',
+  handler(async (req, res) => sendFile(res, await experts.candidateFile(req.actor, id(req, 'fileId')), { download: req.query.download === '1' }))
+);
+
+router.post('/lessons/:lessonId/assets', json((req) => assets.addLessonAsset(req.actor, id(req, 'lessonId'), req.body), 201));
+router.post('/assets/:assetId/applicability', json((req) => assets.setApplicability(req.actor, id(req, 'assetId'), req.body)));
 
 /* ── the rest ─────────────────────────────────────────────────────── */
 

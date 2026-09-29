@@ -19,7 +19,7 @@
  * returns with each asset — it never computes them.
  */
 
-import { ASSET_TYPES } from './constants.js';
+import { ASSET_TYPES, STAGE_KEYS } from './constants.js';
 
 export const LP_PERMISSIONS = /** @type {const} */ ({
   VIEW: 'elearning_production.view',
@@ -39,12 +39,29 @@ export const LP_PERMISSIONS = /** @type {const} */ ({
   TEAM_MANAGE: 'elearning_production.team.manage',
   REPORT_VIEW: 'elearning_production.report.view',
   ADMIN: 'elearning_production.admin',
+  // Production runs. Task keys are scoped to stage keys the way asset keys
+  // are scoped to asset types. Holding a task's named role (its "role" or
+  // "reviewerRole") also lets a person work on or review that one task — see
+  // evaluateTask in runs.js.
+  RUN_MANAGE: 'elearning_production.run.manage',
+  TASK_WORK: 'elearning_production.task.work',
+  TASK_ASSIGN: 'elearning_production.task.assign',
+  TASK_REVIEW: 'elearning_production.task.review',
+  TASK_APPROVE: 'elearning_production.task.approve',
+  TASK_WAIVE: 'elearning_production.task.waive',
+  TASK_REOPEN: 'elearning_production.task.reopen',
+  RELEASE_SIGNOFF: 'elearning_production.release.signoff',
+  RELEASE_PUBLISH: 'elearning_production.release.publish',
+  TEMPLATE_ADMIN: 'elearning_production.template.admin',
+  // Candidate CVs, assessments and contracts. Narrower than seeing the course.
+  EXPERTS_SENSITIVE: 'elearning_production.experts.sensitive',
 });
 
 export const LP_PERMISSION_LIST = Object.values(LP_PERMISSIONS);
 
 const P = LP_PERMISSIONS;
-const ALL = ASSET_TYPES;
+/** Every scope: the five asset types and every stage key. */
+const ALL = [...ASSET_TYPES, ...STAGE_KEYS];
 
 /**
  * What each course role grants, as `{ permission: stages }`.
@@ -69,6 +86,16 @@ export const ROLE_GRANTS = /** @type {Record<string, Record<string, readonly str
     [P.DEPENDENCY_OVERRIDE]: ALL,
     [P.TEAM_MANAGE]: ALL,
     [P.REPORT_VIEW]: ALL,
+    [P.RUN_MANAGE]: ALL,
+    [P.TASK_WORK]: ALL,
+    [P.TASK_ASSIGN]: ALL,
+    [P.TASK_REVIEW]: ALL,
+    [P.TASK_APPROVE]: ALL,
+    [P.TASK_WAIVE]: ALL,
+    [P.TASK_REOPEN]: ALL,
+    [P.RELEASE_SIGNOFF]: ALL,
+    [P.RELEASE_PUBLISH]: ALL,
+    [P.EXPERTS_SENSITIVE]: ALL,
   },
   COURSE_MANAGER: {
     [P.COURSE_EDIT]: ALL,
@@ -82,6 +109,16 @@ export const ROLE_GRANTS = /** @type {Record<string, Record<string, readonly str
     [P.DEPENDENCY_OVERRIDE]: ALL,
     [P.TEAM_MANAGE]: ALL,
     [P.REPORT_VIEW]: ALL,
+    // Plans, assigns, reviews and releases — but does not see candidate
+    // records: that stays with the coordinator and the production manager.
+    [P.RUN_MANAGE]: ALL,
+    [P.TASK_ASSIGN]: ALL,
+    [P.TASK_REVIEW]: ALL,
+    [P.TASK_APPROVE]: ALL,
+    [P.TASK_WAIVE]: ALL,
+    [P.TASK_REOPEN]: ALL,
+    [P.RELEASE_SIGNOFF]: ALL,
+    [P.RELEASE_PUBLISH]: ALL,
   },
   SUBJECT_MATTER_EXPERT: {
     [P.ASSET_REVIEW]: ['OUTLINE', 'PPT', 'SCRIPT', 'VIDEO'],
@@ -98,7 +135,28 @@ export const ROLE_GRANTS = /** @type {Record<string, Record<string, readonly str
   VOICE_OVER_ARTIST: { [P.ASSET_EDIT]: ['VOICE_OVER'], [P.ASSET_SUBMIT]: ['VOICE_OVER'] },
   AUDIO_REVIEWER: { [P.ASSET_REVIEW]: ['VOICE_OVER'], [P.ASSET_APPROVE]: ['VOICE_OVER'] },
   VIDEO_EDITOR: { [P.ASSET_EDIT]: ['VIDEO'], [P.ASSET_SUBMIT]: ['VIDEO'] },
-  QUALITY_REVIEWER: { [P.ASSET_REVIEW]: ALL, [P.ASSET_APPROVE]: ALL },
+  QUALITY_REVIEWER: { [P.ASSET_REVIEW]: ASSET_TYPES, [P.ASSET_APPROVE]: ASSET_TYPES },
+  // The roles below work mostly through tasks that name them. What they get
+  // here is what reaches beyond one named task.
+  RESEARCHER: {},
+  EXPERT_COORDINATOR: {
+    [P.TASK_WORK]: ['EXPERT_ACQUISITION'],
+    [P.TASK_ASSIGN]: ['EXPERT_ACQUISITION'],
+    [P.EXPERTS_SENSITIVE]: ['EXPERT_ACQUISITION'],
+  },
+  TECHNICAL_PM: {},
+  DELIVERY_PM: {},
+  TECHNICAL_CONSULTANT: {
+    [P.ASSET_REVIEW]: ['OUTLINE', 'PPT', 'SCRIPT'],
+  },
+  LEARNING_OPERATIONS: {},
+  MARKETING: {},
+  UAT_COORDINATOR: {
+    [P.TASK_ASSIGN]: ['UAT'],
+    [P.TASK_REVIEW]: ['UAT'],
+  },
+  // Testers record scenario results and log issues on the UAT run.
+  UAT_TESTER: { [P.TASK_WORK]: ['UAT'] },
   VIEWER: {},
 });
 

@@ -19,7 +19,8 @@ import { SCRIPT_BLOCK_FIELDS, annotationGeometryError, locateQuote, normalizeCon
 import { SCHEMA as S, direct, transaction } from '../db.js';
 import { canComment } from '../access.js';
 import { record } from '../activity.js';
-import { WINDOW, assetLink, flush } from '../notifications.js';
+import { WINDOW, assetLink, transactionWithOutbox } from '../notifications.js';
+import { syncCourseRun } from '../runSync.js';
 import { conflict, forbidden, notFound, validation, workflowRefusal } from '../errors.js';
 import { mapComment } from '../mappers.js';
 import { peopleFor, userIdsIn } from '../people.js';
@@ -137,7 +138,7 @@ export async function createComment(actor, assetId, input) {
   const body = plainObject(input, 'body');
   const outbox = [];
 
-  const commentId = await transaction(async (tx) => {
+  const commentId = await transactionWithOutbox(outbox, async (tx) => {
     const actx = await assetContext(actor, assetId, { db: tx });
     const asset = actx.asset;
     if (asset.status === 'LOCKED') throw workflowRefusal('ASSET_LOCKED');
@@ -320,10 +321,11 @@ export async function createComment(actor, assetId, input) {
       link: assetLink({ courseId: actx.course.id, lessonId: actx.lesson.id, assetType: asset.assetType }),
       data: { courseName: actx.course.name, lessonName: actx.lesson.name, assetType: asset.assetType },
     });
+    // Open feedback holds automatic gates ("every comment addressed") shut.
+    await syncCourseRun(tx, actx.course.id, { actorId: actx.userId, outbox });
     return inserted.id;
   });
 
-  await flush(outbox);
   const comment = await readComment(direct, commentId, actor.organizationId);
   return { comment, people: await peopleFor(userIdsIn([comment])) };
 }
@@ -351,7 +353,8 @@ export async function editComment(actor, commentId, input) {
 }
 
 async function setResolution(actor, commentId, resolved) {
-  await transaction(async (tx) => {
+  const outbox = [];
+  await transactionWithOutbox(outbox, async (tx) => {
     const { comment, actx } = await lockedComment(tx, actor, commentId);
     if (comment.parent_comment_id) throw validation('commentId', 'reply_cannot_be_resolved');
     if (actx.asset.status === 'LOCKED') throw workflowRefusal('ASSET_LOCKED');
@@ -380,6 +383,7 @@ async function setResolution(actor, commentId, resolved) {
       eventType: resolved ? 'COMMENT_RESOLVED' : 'COMMENT_REOPENED',
       metadata: { commentType: comment.comment_type, excerpt: comment.body.slice(0, 140) },
     });
+    await syncCourseRun(tx, actx.course.id, { actorId: actor.userId, outbox });
   });
   return { comment: await readComment(direct, commentId, actor.organizationId) };
 }
@@ -450,6 +454,7 @@ export async function applySuggestion(actor, commentId) {
       eventType: 'SUGGESTION_APPLIED',
       metadata: { excerpt: String(anchor.quote ?? '').slice(0, 140) },
     });
+    await syncCourseRun(tx, actx.course.id, { actorId: actor.userId });
     return { revision: saved.revision, content };
   });
 }
@@ -497,12 +502,13 @@ export async function updateAnnotation(actor, annotationId, input) {
 /** Archive a shape and the comment it carried. Only its author, and only while the comment is open. */
 export async function deleteAnnotation(actor, annotationId) {
   await transaction(async (tx) => {
-    const { annotation } = await lockedAnnotation(tx, actor, annotationId);
+    const { annotation, actx } = await lockedAnnotation(tx, actor, annotationId);
     await tx.query(`UPDATE ${S}.learning_annotations SET deleted_at = now(), deleted_by = $2 WHERE id = $1`, [annotationId, actor.userId]);
     await tx.query(`UPDATE ${S}.learning_comments SET deleted_at = now(), deleted_by = $2 WHERE id = $1`, [
       annotation.comment_id,
       actor.userId,
     ]);
+    await syncCourseRun(tx, actx.course.id, { actorId: actor.userId });
   });
   return { deleted: true };
 }

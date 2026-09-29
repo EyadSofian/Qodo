@@ -15,6 +15,8 @@
 export const KINDS = {
   pdf: { mime: 'application/pdf', label: 'PDF' },
   pptx: { mime: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', label: 'PPTX' },
+  docx: { mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', label: 'DOCX' },
+  xlsx: { mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', label: 'XLSX' },
   ppt: { mime: 'application/vnd.ms-powerpoint', label: 'PPT' },
   mp3: { mime: 'audio/mpeg', label: 'MP3' },
   wav: { mime: 'audio/wav', label: 'WAV' },
@@ -36,6 +38,9 @@ export const ACCEPTED = {
   VOICE_OVER: ['mp3', 'wav', 'm4a', 'ogg', 'weba'],
   VIDEO: ['mp4', 'mov', 'webm'],
   COVER: ['png', 'jpeg', 'webp'],
+  // Task evidence and candidate files: documents, sheets, decks, images and
+  // short recordings — a research document, a signed SOW, a test report.
+  EVIDENCE: ['pdf', 'docx', 'xlsx', 'pptx', 'png', 'jpeg', 'webp', 'mp3', 'wav', 'm4a', 'mp4', 'mov', 'webm'],
 };
 
 /** Types a browser may play or show in place. Everything else downloads. */
@@ -59,6 +64,8 @@ export function uploadLimit(target) {
       return envMegabytes('LEARNING_PRODUCTION_MAX_VIDEO_MB', 300);
     case 'COVER':
       return 5 * MB;
+    case 'EVIDENCE':
+      return envMegabytes('LEARNING_PRODUCTION_MAX_EVIDENCE_MB', 50);
     default:
       return 0;
   }
@@ -90,7 +97,14 @@ export function detectKind(buffer, fileName, target) {
   if (startsWith(buffer, [0x25, 0x50, 0x44, 0x46, 0x2d])) return 'pdf';
 
   if (startsWith(buffer, [0x50, 0x4b, 0x03, 0x04])) {
-    return buffer.includes('ppt/presentation.xml') ? 'pptx' : null;
+    // An Office file is a ZIP; its part names say which one. Anything else
+    // zipped is refused rather than guessed.
+    // Documents and sheets are named only where they are welcome: a Word file
+    // sent as slides is not "a DOCX", it is not slides.
+    if (buffer.includes('ppt/presentation.xml')) return 'pptx';
+    if (buffer.includes('word/document.xml')) return ACCEPTED[target]?.includes('docx') ? 'docx' : null;
+    if (buffer.includes('xl/workbook.xml')) return ACCEPTED[target]?.includes('xlsx') ? 'xlsx' : null;
+    return null;
   }
 
   if (startsWith(buffer, [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1])) {

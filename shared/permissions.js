@@ -77,6 +77,19 @@ export const PERMISSIONS = {
   ELEARNING_PRODUCTION_TEAM_MANAGE: 'elearning_production.team.manage',
   ELEARNING_PRODUCTION_REPORT_VIEW: 'elearning_production.report.view',
   ELEARNING_PRODUCTION_ADMIN: 'elearning_production.admin',
+  ELEARNING_PRODUCTION_RUN_MANAGE: 'elearning_production.run.manage',
+  ELEARNING_PRODUCTION_TASK_WORK: 'elearning_production.task.work',
+  ELEARNING_PRODUCTION_TASK_ASSIGN: 'elearning_production.task.assign',
+  ELEARNING_PRODUCTION_TASK_REVIEW: 'elearning_production.task.review',
+  ELEARNING_PRODUCTION_TASK_APPROVE: 'elearning_production.task.approve',
+  ELEARNING_PRODUCTION_TASK_WAIVE: 'elearning_production.task.waive',
+  ELEARNING_PRODUCTION_TASK_REOPEN: 'elearning_production.task.reopen',
+  ELEARNING_PRODUCTION_RELEASE_SIGNOFF: 'elearning_production.release.signoff',
+  ELEARNING_PRODUCTION_RELEASE_PUBLISH: 'elearning_production.release.publish',
+  ELEARNING_PRODUCTION_TEMPLATE_ADMIN: 'elearning_production.template.admin',
+  // Candidate CVs, assessments and contracts. Granted one person at a time,
+  // like the management desk: seeing every course does not include it.
+  ELEARNING_PRODUCTION_EXPERTS_SENSITIVE: 'elearning_production.experts.sensitive',
 };
 
 export const ALL_PERMISSIONS = Object.values(PERMISSIONS);

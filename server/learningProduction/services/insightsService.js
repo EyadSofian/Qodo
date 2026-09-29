@@ -48,6 +48,8 @@ export async function me(actor) {
     isAdmin: actor.grants.isAdmin,
     seesEveryCourse: seesEveryCourse(actor),
     canCreateCourse: actor.grants.has(P.COURSE_CREATE),
+    canCreateRun: actor.grants.has(P.COURSE_CREATE),
+    canManageTemplates: actor.grants.has(P.TEMPLATE_ADMIN),
     canViewReports: actor.grants.has(P.REPORT_VIEW) || reportCourses.n > 0,
     managesWork: manages,
     visibleCourses: visible.n,
@@ -71,13 +73,13 @@ async function workloadRows(db, { condition, params, limit = 8 }) {
                 (a.status IN ('ASSIGNED', 'IN_PROGRESS', 'CHANGES_REQUESTED') AND a.due_date < ${dayRef})::int AS overdue
            FROM ${S}.learning_courses c
            JOIN ${S}.learning_lessons l ON l.course_id = c.id AND l.archived_at IS NULL
-           JOIN ${S}.learning_assets a ON a.lesson_id = l.id
+           JOIN ${S}.learning_assets a ON a.lesson_id = l.id AND a.applicable
           WHERE ${condition} AND a.assignee_user_id IS NOT NULL AND a.status NOT IN ${COMPLETE_SQL}
          UNION ALL
          SELECT a.reviewer_user_id, 0, 1, 0
            FROM ${S}.learning_courses c
            JOIN ${S}.learning_lessons l ON l.course_id = c.id AND l.archived_at IS NULL
-           JOIN ${S}.learning_assets a ON a.lesson_id = l.id
+           JOIN ${S}.learning_assets a ON a.lesson_id = l.id AND a.applicable
           WHERE ${condition} AND a.reviewer_user_id IS NOT NULL AND a.status IN ${REVIEW_SQL}
        ) work
       GROUP BY person
@@ -96,7 +98,7 @@ async function myCounts(actor) {
        FROM ${S}.learning_assets a
        JOIN ${S}.learning_lessons l ON l.id = a.lesson_id AND l.archived_at IS NULL
        JOIN ${S}.learning_courses c ON c.id = a.course_id AND c.archived_at IS NULL
-      WHERE a.organization_id = $1 AND (a.assignee_user_id = $2 OR a.reviewer_user_id = $2)`,
+      WHERE a.organization_id = $1 AND a.applicable AND (a.assignee_user_id = $2 OR a.reviewer_user_id = $2)`,
     [actor.organizationId, actor.userId, today()]
   );
   return found;
@@ -125,7 +127,7 @@ export async function dashboard(actor) {
               count(a.id) FILTER (WHERE a.status IN ${COMPLETE_SQL})::int AS complete
          FROM ${S}.learning_courses c
          JOIN ${S}.learning_lessons l ON l.course_id = c.id AND l.archived_at IS NULL
-         JOIN ${S}.learning_assets a ON a.lesson_id = l.id
+         JOIN ${S}.learning_assets a ON a.lesson_id = l.id AND a.applicable
         WHERE ${condition}`,
       [...params, day]
     ),
@@ -427,7 +429,7 @@ const APPROVAL_JOIN = `
 const ASSET_JOIN = `
   FROM ${S}.learning_courses c
   JOIN ${S}.learning_lessons l ON l.course_id = c.id AND l.archived_at IS NULL
-  JOIN ${S}.learning_assets a ON a.lesson_id = l.id`;
+  JOIN ${S}.learning_assets a ON a.lesson_id = l.id AND a.applicable`;
 
 /**
  * Operational reports: completion, reviews, revisions, workload, throughput

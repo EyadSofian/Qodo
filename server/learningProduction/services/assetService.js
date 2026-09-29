@@ -12,14 +12,15 @@ import { ASSET_TYPES, PRIORITIES, REVIEW_STATUSES, isTextAsset } from '../../../
 import { LP_PERMISSIONS as P } from '../../../shared/learningProduction/permissions.js';
 import { normalizeContent } from '../../../shared/learningProduction/review.js';
 import { primaryAction, statusAfterAssignment } from '../../../shared/learningProduction/workflow.js';
-import { SCHEMA as S, direct, transaction } from '../db.js';
-import { canComment, courseContext } from '../access.js';
+import { SCHEMA as S, direct } from '../db.js';
+import { canComment, courseContext, requireGrant } from '../access.js';
 import { record } from '../activity.js';
-import { WINDOW, assetLink, flush } from '../notifications.js';
-import { badRequest, conflict, forbidden, validation, workflowRefusal } from '../errors.js';
+import { WINDOW, assetLink, transactionWithOutbox } from '../notifications.js';
+import { syncCourseRun } from '../runSync.js';
+import { badRequest, conflict, forbidden, notFound, validation, workflowRefusal } from '../errors.js';
 import { mapApproval, mapAsset, mapVersion } from '../mappers.js';
 import { assertAssignable, peopleFor, userIdField, userIdsIn } from '../people.js';
-import { dateOrder, httpsUrl, idList, integer, isoDate, oneOf, plainObject, seconds, text } from '../validate.js';
+import { bool, dateOrder, httpsUrl, idList, integer, isoDate, oneOf, plainObject, seconds, text } from '../validate.js';
 import * as blobs from '../blobs.js';
 import { ACCEPTED, KINDS, detectKind, safeFileName, uploadLimit } from '../fileTypes.js';
 import { schedulePreview } from '../previewConverter.js';
@@ -70,19 +71,32 @@ async function courseManagers(db, courseId) {
 }
 
 /**
- * Run one action: lock, evaluate, write, commit, then notify. The caller reads
- * the asset back afterwards — reading it inside would hold the lock for no
+ * Run one action: lock, evaluate, write, re-derive the course's run (its
+ * automatic gates read these assets), commit, then deliver. Alerts are
+ * written to the outbox inside the same transaction. The caller reads the
+ * asset back afterwards — reading it inside would hold the lock for no
  * reason, and failing to read it must never undo a committed change.
  */
 async function act(actor, assetId, work) {
   const outbox = [];
-  const result = await transaction(async (tx) => {
+  return transactionWithOutbox(outbox, async (tx) => {
     const actx = await assetContext(actor, assetId, { db: tx, lock: true });
     const state = await contentState(tx, actx);
-    return work({ tx, actx, state, evaluation: evaluate(actx, state), outbox });
+    const result = await work({ tx, actx, state, evaluation: evaluate(actx, state), outbox });
+    await syncCourseRun(tx, actx.course.id, { actorId: actx.userId, outbox });
+    return result;
   });
-  await flush(outbox);
-  return result;
+}
+
+/**
+ * Who made a version: `aiAssisted` and the tool's name, recorded on the
+ * version itself (immutable). AI-assisted work is reviewed like any other —
+ * the approver must still be someone other than the submitter.
+ */
+function provenance(input) {
+  const aiAssisted = bool(input?.aiAssisted);
+  const aiTool = aiAssisted ? text(input?.aiTool, 'aiTool', { max: 80 }) || null : null;
+  return { aiAssisted, aiTool };
 }
 
 /* ------------------------------------------------------------------ */
@@ -119,7 +133,7 @@ export async function getAsset(actor, assetId) {
     direct.rows(
       `SELECT v.id, v.asset_id, v.version_number, v.source_kind, v.storage_key, v.file_name, v.mime_type, v.file_size,
               v.external_url, v.preview_storage_key, v.preview_file_name, v.duration_seconds, v.version_notes,
-              v.created_by, v.created_at,
+              v.ai_assisted, v.ai_tool, v.created_by, v.created_at,
               (SELECT ap.decision FROM ${S}.learning_asset_approvals ap
                 WHERE ap.version_id = v.id ORDER BY ap.submitted_at DESC LIMIT 1) AS decision
          FROM ${S}.learning_asset_versions v
@@ -159,8 +173,11 @@ export async function getAsset(actor, assetId) {
     siblings: ASSET_TYPES.map((assetType) => ({
       assetType,
       id: actx.siblingIds[assetType] ?? null,
-      status: actx.siblingStatuses[assetType] ?? 'NOT_STARTED',
+      status: actx.siblingStatuses[assetType] ?? (actx.siblingIds[assetType] ? 'NOT_STARTED' : null),
+      applicable: actx.applicableTypes.includes(assetType),
+      present: actx.presentTypes.includes(assetType),
     })),
+    canManageApplicability: actx.grants.has(P.LESSON_EDIT),
     evaluation: {
       actions: evaluation.actions,
       blocked: evaluation.blocked,
@@ -313,7 +330,8 @@ export async function bulkAssign(actor, courseId, input) {
   if (Object.keys(patch).length === 0) throw validation('assigneeUserId', 'required');
 
   const collected = [];
-  const summary = await transaction(async (tx) => {
+  const outbox = [];
+  const summary = await transactionWithOutbox(outbox, async (tx) => {
     let updated = 0;
     let skipped = 0;
     for (const assetId of ids) {
@@ -345,31 +363,34 @@ export async function bulkAssign(actor, courseId, input) {
       }
       if (await applyAssignment(tx, actx, assetPatch, collected, state.current?.version_number)) updated += 1;
     }
+
+    // Collapse per recipient: forty assignments are one alert.
+    const byRecipient = new Map();
+    for (const item of collected) {
+      const key = item.recipients[0];
+      byRecipient.set(key, [...(byRecipient.get(key) ?? []), item]);
+    }
+    for (const [userId, items] of byRecipient) {
+      outbox.push(
+        items.length === 1
+          ? items[0]
+          : {
+              organizationId: ctx.organizationId,
+              actorId: ctx.userId,
+              recipients: [userId],
+              type: 'assigned',
+              message: 'bulkAssigned',
+              dedupeKey: `bulk-assigned:${courseId}:${userId}`,
+              windowMinutes: WINDOW.SHORT,
+              entityType: 'COURSE',
+              entityId: courseId,
+              link: '/learning-production/my-work',
+              data: { courseName: ctx.course.name, count: items.length },
+            }
+      );
+    }
     return { updated, skipped };
   });
-
-  // Collapse per recipient: forty assignments are one alert.
-  const byRecipient = new Map();
-  for (const item of collected) {
-    const key = item.recipients[0];
-    byRecipient.set(key, [...(byRecipient.get(key) ?? []), item]);
-  }
-  const outbox = [...byRecipient.entries()].map(([userId, items]) =>
-    items.length === 1
-      ? items[0]
-      : {
-          organizationId: ctx.organizationId,
-          actorId: ctx.userId,
-          recipients: [userId],
-          type: 'assigned',
-          message: 'bulkAssigned',
-          dedupeKey: `bulk-assigned:${courseId}:${userId}`,
-          windowMinutes: WINDOW.SHORT,
-          link: '/learning-production/my-work',
-          data: { courseName: ctx.course.name, count: items.length },
-        }
-  );
-  await flush(outbox);
   return summary;
 }
 
@@ -443,7 +464,7 @@ export async function saveDraft(actor, assetId, input) {
   const body = plainObject(input, 'body');
   const revision = integer(body.revision, 'revision', { min: 0, required: true });
 
-  return transaction(async (tx) => {
+  return transactionWithOutbox([], async (tx) => {
     const actx = await assetContext(actor, assetId, { db: tx, lock: true });
     const type = actx.asset.assetType;
     if (!isTextAsset(type)) throw workflowRefusal('NOT_SUPPORTED');
@@ -484,6 +505,7 @@ export async function uploadVersion(actor, assetId, input) {
 
   const notes = text(input.notes, 'notes', { max: 2000 }) ?? '';
   const durationSeconds = seconds(input.durationSeconds, 'durationSeconds');
+  const { aiAssisted, aiTool } = provenance(input);
   // Refuse before storing a single byte — a 300 MB upload from somebody who
   // may not upload should cost nothing.
   ensure(evaluate(probe, await contentState(direct, probe)), 'UPLOAD_VERSION');
@@ -526,8 +548,8 @@ export async function uploadVersion(actor, assetId, input) {
       created = await tx.row(
         `INSERT INTO ${S}.learning_asset_versions
            (organization_id, asset_id, version_number, source_kind, storage_key, file_name, mime_type, file_size,
-            checksum, external_url, duration_seconds, version_notes, created_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            checksum, external_url, duration_seconds, version_notes, created_by, ai_assisted, ai_tool, run_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
          RETURNING *`,
         [
           actx.organizationId,
@@ -543,6 +565,9 @@ export async function uploadVersion(actor, assetId, input) {
           durationSeconds,
           notes,
           actx.userId,
+          aiAssisted,
+          aiTool,
+          actx.openRunId,
         ]
       );
       await tx.query(`UPDATE ${S}.learning_assets SET current_version_id = $2 WHERE id = $1`, [assetId, created.id]);
@@ -550,7 +575,7 @@ export async function uploadVersion(actor, assetId, input) {
         ...base(actx),
         versionId: created.id,
         eventType: 'VERSION_UPLOADED',
-        metadata: { versionNumber: next, fileName: file?.name ?? null, fileSize: file?.size ?? null, link: Boolean(url), notes: notes.slice(0, 280) },
+        metadata: { versionNumber: next, fileName: file?.name ?? null, fileSize: file?.size ?? null, link: Boolean(url), notes: notes.slice(0, 280), aiAssisted, aiTool },
       });
     });
   } catch (error) {
@@ -584,7 +609,7 @@ export async function attachPreview(actor, versionId, input) {
 
   const key = await blobs.store(bytes);
   try {
-    await transaction(async (tx) => {
+    await transactionWithOutbox([], async (tx) => {
       const updated = await tx.row(
         `UPDATE ${S}.learning_asset_versions
             SET preview_storage_key = $2, preview_file_name = $3, preview_mime_type = 'application/pdf', preview_file_size = $4
@@ -619,6 +644,7 @@ export async function attachPreview(actor, versionId, input) {
 export async function submit(actor, assetId, input) {
   const body = plainObject(input, 'body');
   const notes = text(body.notes, 'notes', { max: 2000 }) ?? '';
+  const { aiAssisted, aiTool } = provenance(body);
 
   await act(actor, assetId, async ({ tx, actx, state, outbox }) => {
     const asset = actx.asset;
@@ -633,17 +659,27 @@ export async function submit(actor, assetId, input) {
       );
       current = await tx.row(
         `INSERT INTO ${S}.learning_asset_versions
-           (organization_id, asset_id, version_number, source_kind, content_json, version_notes, created_by)
-         VALUES ($1, $2, $3, 'CONTENT', $4, $5, $6)
+           (organization_id, asset_id, version_number, source_kind, content_json, version_notes, created_by, ai_assisted, ai_tool, run_id)
+         VALUES ($1, $2, $3, 'CONTENT', $4, $5, $6, $7, $8, $9)
          RETURNING id, version_number`,
-        [actx.organizationId, assetId, next, JSON.stringify(normalizeContent(asset.assetType, state.draft.content_json)), notes, actx.userId]
+        [
+          actx.organizationId,
+          assetId,
+          next,
+          JSON.stringify(normalizeContent(asset.assetType, state.draft.content_json)),
+          notes,
+          actx.userId,
+          aiAssisted,
+          aiTool,
+          actx.openRunId,
+        ]
       );
       await tx.query(`UPDATE ${S}.learning_assets SET current_version_id = $2 WHERE id = $1`, [assetId, current.id]);
       await record(tx, {
         ...base(actx),
         versionId: current.id,
         eventType: 'VERSION_UPLOADED',
-        metadata: { versionNumber: next, content: true, notes: notes.slice(0, 280) },
+        metadata: { versionNumber: next, content: true, notes: notes.slice(0, 280), aiAssisted, aiTool },
       });
       asset.currentVersionId = current.id;
       versionSinceChanges = true;
@@ -943,6 +979,77 @@ export async function overrideDependency(actor, assetId, input) {
       eventType: 'DEPENDENCY_OVERRIDDEN',
       metadata: { reason: why, waitingFor: evaluation.dependencies.waitingFor },
     });
+  });
+  return getAsset(actor, assetId);
+}
+
+/* ------------------------------------------------------------------ */
+/* Applicability                                                        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Mark an asset not applicable — this lesson has no voice-over, say — or bring
+ * it back. Needs a reason going out; the asset leaves the progress count and
+ * the gates, and its versions and reviews stay exactly where they are. Work
+ * that is with a reviewer is not pulled out from under them.
+ */
+export async function setApplicability(actor, assetId, input) {
+  const body = plainObject(input, 'body');
+  const applicable = body.applicable === true;
+  const why = applicable ? null : reason(body.reason);
+  await act(actor, assetId, async ({ tx, actx }) => {
+    requireGrant(actx, P.LESSON_EDIT);
+    const asset = actx.asset;
+    if (asset.applicable === applicable) return;
+    if (!applicable && REVIEW_STATUSES.includes(asset.status)) throw workflowRefusal('INVALID_TRANSITION');
+    await tx.query(
+      `UPDATE ${S}.learning_assets
+          SET applicable = $2, not_applicable_reason = $3,
+              not_applicable_by = CASE WHEN $2 THEN NULL ELSE $4 END,
+              not_applicable_at = CASE WHEN $2 THEN NULL ELSE now() END
+        WHERE id = $1`,
+      [asset.id, applicable, why, actx.userId]
+    );
+    await record(tx, { ...base(actx), eventType: applicable ? 'ASSET_APPLICABLE' : 'ASSET_NOT_APPLICABLE', metadata: applicable ? {} : { reason: why } });
+  });
+  return getAsset(actor, assetId);
+}
+
+/**
+ * Give a lesson an asset its template left out. If the asset exists but was
+ * marked not applicable, it is brought back instead — never duplicated.
+ */
+export async function addLessonAsset(actor, lessonId, input) {
+  const body = plainObject(input, 'body');
+  const assetType = oneOf(body.assetType, ASSET_TYPES, 'assetType', { required: true });
+  const lesson = await direct.row(
+    `SELECT id, course_id FROM ${S}.learning_lessons WHERE id = $1 AND organization_id = $2 AND archived_at IS NULL`,
+    [lessonId, actor.organizationId]
+  );
+  if (!lesson) throw notFound();
+  const outbox = [];
+  const assetId = await transactionWithOutbox(outbox, async (tx) => {
+    const ctx = await courseContext(actor, lesson.course_id, { db: tx });
+    requireGrant(ctx, P.LESSON_EDIT);
+    const existing = await tx.row(`SELECT id, applicable FROM ${S}.learning_assets WHERE lesson_id = $1 AND asset_type = $2 FOR UPDATE`, [lessonId, assetType]);
+    if (existing) {
+      if (!existing.applicable) {
+        await tx.query(
+          `UPDATE ${S}.learning_assets SET applicable = true, not_applicable_reason = NULL, not_applicable_by = NULL, not_applicable_at = NULL WHERE id = $1`,
+          [existing.id]
+        );
+        await record(tx, { organizationId: ctx.organizationId, courseId: ctx.course.id, lessonId, assetId: existing.id, actorUserId: ctx.userId, eventType: 'ASSET_APPLICABLE', metadata: {} });
+      }
+      await syncCourseRun(tx, ctx.course.id, { actorId: ctx.userId, outbox });
+      return existing.id;
+    }
+    const inserted = await tx.row(
+      `INSERT INTO ${S}.learning_assets (organization_id, course_id, lesson_id, asset_type, status) VALUES ($1, $2, $3, $4, 'NOT_STARTED') RETURNING id`,
+      [ctx.organizationId, ctx.course.id, lessonId, assetType]
+    );
+    await record(tx, { organizationId: ctx.organizationId, courseId: ctx.course.id, lessonId, assetId: inserted.id, actorUserId: ctx.userId, eventType: 'ASSET_ADDED', metadata: { assetType } });
+    await syncCourseRun(tx, ctx.course.id, { actorId: ctx.userId, outbox });
+    return inserted.id;
   });
   return getAsset(actor, assetId);
 }

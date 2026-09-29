@@ -112,6 +112,13 @@ async function refuses(promise, code) {
   });
 }
 
+/**
+ * A calendar day `offset` days from today, as the module measures days. The
+ * course below must be "on track" whatever day the suite runs: fixed dates
+ * made it fall behind its own straight line the moment they were a month old.
+ */
+const dayFromToday = (offset) => new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
+
 const pdf = (label) => Buffer.from(`%PDF-1.4\n% ${label}\n${'0'.repeat(64)}\n%%EOF\n`);
 const wav = () => Buffer.concat([Buffer.from('RIFF'), Buffer.alloc(4), Buffer.from('WAVEfmt '), Buffer.alloc(128)]);
 const mp4 = () => Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from('ftypmp42'), Buffer.alloc(128)]);
@@ -134,8 +141,8 @@ describe('E-Learning Production', { skip: SKIP }, () => {
     const created = await courses.createCourse(actor('manager'), {
       name: 'CMRP Certification',
       code: 'CMRP',
-      startDate: '2026-09-01',
-      targetDate: '2027-03-01',
+      startDate: dayFromToday(0),
+      targetDate: dayFromToday(180),
       modules: [{ name: 'Module 1', lessons: ['Lesson 1', 'Lesson 2', 'Lesson 3'] }],
       team: [{ userId: users.reviewer.id, roles: ['QUALITY_REVIEWER'] }],
     });

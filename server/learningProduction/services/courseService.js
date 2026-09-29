@@ -17,7 +17,7 @@ import { MAX_IMPORT_LESSONS } from '../../../shared/learningProduction/lessonImp
 import { SCHEMA as S, direct, transaction } from '../db.js';
 import { courseCapabilities, courseContext, requireGrant, visibleCourseCondition } from '../access.js';
 import { HEADLINE_EVENTS, feed, record } from '../activity.js';
-import { WINDOW, flush } from '../notifications.js';
+import { WINDOW, transactionWithOutbox } from '../notifications.js';
 import { badRequest, forbidden, validation } from '../errors.js';
 import { mapCourse } from '../mappers.js';
 import { assertAssignable, peopleFor, userIdField, userIdsIn } from '../people.js';
@@ -142,9 +142,9 @@ export async function blockedCounts(db, { condition, params }) {
     `SELECT count(DISTINCT a.id)::int AS assets, count(DISTINCT a.lesson_id)::int AS lessons
        FROM ${S}.learning_courses c
        JOIN ${S}.learning_lessons l ON l.course_id = c.id AND l.archived_at IS NULL
-       JOIN ${S}.learning_assets a ON a.lesson_id = l.id
+       JOIN ${S}.learning_assets a ON a.lesson_id = l.id AND a.applicable
        JOIN unnest(${dependentRef}, ${requiresRef}) AS d(asset_type, requires) ON d.asset_type = a.asset_type
-       JOIN ${S}.learning_assets s ON s.lesson_id = a.lesson_id AND s.asset_type = d.requires
+       JOIN ${S}.learning_assets s ON s.lesson_id = a.lesson_id AND s.asset_type = d.requires AND s.applicable
       WHERE ${condition}
         AND a.status = 'ASSIGNED'
         AND a.dependency_override_at IS NULL
@@ -183,7 +183,7 @@ export async function normalizeDefaults(actor, input) {
   return result;
 }
 
-async function insertChecklistTemplate(tx, organizationId, courseId, userId) {
+export async function insertChecklistTemplate(tx, organizationId, courseId, userId) {
   const checklist = await tx.row(
     `INSERT INTO ${S}.learning_checklists (organization_id, course_id, asset_type, is_template, created_by)
      VALUES ($1, $2, 'VIDEO', true, $3)
@@ -251,7 +251,7 @@ export async function createCourse(actor, input) {
   if (!actor.grants.has(P.COURSE_EDIT)) addRoles(actor.userId, ['PRODUCTION_MANAGER']);
 
   const outbox = [];
-  const course = await transaction(async (tx) => {
+  const course = await transactionWithOutbox(outbox, async (tx) => {
     const inserted = await tx.row(
       `INSERT INTO ${S}.learning_courses
          (organization_id, name, code, description, manager_user_id, priority, start_date, target_date,
@@ -316,7 +316,6 @@ export async function createCourse(actor, input) {
     return inserted;
   });
 
-  await flush(outbox);
   return { course: mapCourse(course) };
 }
 
@@ -404,7 +403,7 @@ export async function updateProductionDefaults(actor, courseId, input) {
   const applyToOpen = body.applyToOpen === true;
 
   const outbox = [];
-  const result = await transaction(async (tx) => {
+  const result = await transactionWithOutbox(outbox, async (tx) => {
     await tx.query(`UPDATE ${S}.learning_courses SET production_defaults_json = $2 WHERE id = $1`, [
       courseId,
       JSON.stringify(defaults),
@@ -418,7 +417,7 @@ export async function updateProductionDefaults(actor, courseId, input) {
           `SELECT a.id, a.status, a.assignee_user_id, a.reviewer_user_id, a.priority, a.due_date
              FROM ${S}.learning_assets a
              JOIN ${S}.learning_lessons l ON l.id = a.lesson_id AND l.archived_at IS NULL
-            WHERE a.course_id = $1 AND a.asset_type = $2 AND a.status NOT IN ${COMPLETE_SQL}
+            WHERE a.course_id = $1 AND a.asset_type = $2 AND a.applicable AND a.status NOT IN ${COMPLETE_SQL}
               AND (a.assignee_user_id IS NULL OR a.reviewer_user_id IS NULL)
             FOR UPDATE OF a`,
           [courseId, type]
@@ -484,7 +483,6 @@ export async function updateProductionDefaults(actor, courseId, input) {
     return { productionDefaults: defaults, filled };
   });
 
-  await flush(outbox);
   return result;
 }
 

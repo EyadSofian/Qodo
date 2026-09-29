@@ -1016,6 +1016,17 @@ const CORE_STRINGS = {
   'perm.elearning_production.team.manage': { ar: 'إنتاج المحتوى: إدارة فرق الكورسات', en: 'E-Learning Production: manage course teams' },
   'perm.elearning_production.report.view': { ar: 'إنتاج المحتوى: التقارير', en: 'E-Learning Production: view reports' },
   'perm.elearning_production.admin': { ar: 'إنتاج المحتوى: صلاحية كاملة', en: 'E-Learning Production: full control' },
+  'perm.elearning_production.run.manage': { ar: 'إنتاج المحتوى: بدء دورات الإنتاج وإدارتها', en: 'E-Learning Production: start and manage production runs' },
+  'perm.elearning_production.task.work': { ar: 'إنتاج المحتوى: العمل على أي مهمة', en: 'E-Learning Production: work on any task' },
+  'perm.elearning_production.task.assign': { ar: 'إنتاج المحتوى: إسناد المهام', en: 'E-Learning Production: assign tasks' },
+  'perm.elearning_production.task.review': { ar: 'إنتاج المحتوى: مراجعة المهام', en: 'E-Learning Production: review tasks' },
+  'perm.elearning_production.task.approve': { ar: 'إنتاج المحتوى: اعتماد المهام', en: 'E-Learning Production: approve tasks' },
+  'perm.elearning_production.task.waive': { ar: 'إنتاج المحتوى: تخطي المهام الشرطية بسبب', en: 'E-Learning Production: waive conditional tasks with a reason' },
+  'perm.elearning_production.task.reopen': { ar: 'إنتاج المحتوى: إعادة فتح المهام المنتهية', en: 'E-Learning Production: reopen finished tasks' },
+  'perm.elearning_production.release.signoff': { ar: 'إنتاج المحتوى: اعتماد الإصدارات', en: 'E-Learning Production: sign off releases' },
+  'perm.elearning_production.release.publish': { ar: 'إنتاج المحتوى: نشر الإصدارات', en: 'E-Learning Production: publish releases' },
+  'perm.elearning_production.template.admin': { ar: 'إنتاج المحتوى: إدارة قوالب سير العمل', en: 'E-Learning Production: manage workflow templates' },
+  'perm.elearning_production.experts.sensitive': { ar: 'إنتاج المحتوى: بيانات المرشحين والعقود', en: 'E-Learning Production: candidate records and contracts' },
 
   /* ── visibility scope ────────────────────────────────────── */
   'scope.label': { ar: 'نطاق الرؤية', en: 'Task visibility' },

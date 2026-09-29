@@ -128,8 +128,12 @@ export function statusAfterAssignment(status, assigneeUserId) {
  * Over has started, the recording in progress is not frozen — the dependency
  * gate is the decision to begin, and that decision has already been made.
  */
-export function dependencyState(assetType, status, siblingStatuses, { enforce = true, overridden = false } = {}) {
-  const required = STAGE_DEPENDENCIES[assetType] ?? [];
+export function dependencyState(assetType, status, siblingStatuses, { enforce = true, overridden = false, applicableTypes = null } = {}) {
+  // A lesson whose template has no Outline, or whose Outline was marked not
+  // applicable, does not keep its slides waiting for one. Callers that know
+  // which of a lesson's assets apply pass them; without that list every
+  // dependency counts, as it did when every lesson had all five.
+  const required = (STAGE_DEPENDENCIES[assetType] ?? []).filter((type) => !applicableTypes || applicableTypes.includes(type));
   const waitingFor = required.filter((type) => !isComplete(siblingStatuses?.[type]));
   const unstarted = status === 'NOT_STARTED' || status === 'ASSIGNED';
   return {
@@ -166,6 +170,7 @@ export function evaluateAsset({
   userId,
   hasContent = false,
   versionSinceChanges = true,
+  applicableTypes = null,
 }) {
   const stage = asset.assetType;
   const status = asset.status;
@@ -173,6 +178,7 @@ export function evaluateAsset({
   const dependencies = dependencyState(stage, status, siblingStatuses, {
     enforce: settings?.enforceDependencies !== false,
     overridden: Boolean(asset.dependencyOverrideAt),
+    applicableTypes,
   });
 
   const isAssignee = Boolean(userId) && asset.assigneeUserId === userId;
@@ -188,8 +194,13 @@ export function evaluateAsset({
   const ownWork = isSubmitter && !grants.isAdmin;
 
   const actions = {};
+  const notApplicable = asset.applicable === false;
   const decide = (action, authorised, blocker = null) => {
-    if (!LEGAL_FROM[action].includes(status)) {
+    if (notApplicable) {
+      // Marked not applicable, with a reason: nothing happens to it until a
+      // manager brings it back. Its history stays readable.
+      actions[action] = { allowed: false, reason: 'NOT_APPLICABLE' };
+    } else if (!LEGAL_FROM[action].includes(status)) {
       actions[action] = { allowed: false, reason: status === 'LOCKED' ? 'ASSET_LOCKED' : 'INVALID_TRANSITION' };
     } else if (!authorised) {
       actions[action] = { allowed: false, reason: 'FORBIDDEN' };
@@ -283,14 +294,16 @@ export function percent(part, whole) {
  * In Progress counts for nothing — work that is not signed off is not done.
  */
 export function lessonProgress(statuses) {
+  // Only the assets the lesson actually has (and that apply) are counted: a
+  // lesson its template gave four assets is complete at four.
   const list = Object.values(statuses ?? {});
   const complete = list.filter(isComplete).length;
-  return { complete, total: ASSET_TYPES.length, percent: percent(complete, ASSET_TYPES.length) };
+  return { complete, total: list.length, percent: percent(complete, list.length) };
 }
 
-/** The first stage, in production order, that is not finished yet. */
+/** The first stage, in production order, that the lesson has and has not finished. */
 export function currentStage(statuses) {
-  return ASSET_TYPES.find((type) => !isComplete(statuses?.[type])) ?? null;
+  return ASSET_TYPES.find((type) => type in (statuses ?? {}) && !isComplete(statuses[type])) ?? null;
 }
 
 /**
@@ -299,7 +312,8 @@ export function currentStage(statuses) {
  * simply being under way.
  */
 export function lessonState(statuses) {
-  const list = ASSET_TYPES.map((type) => statuses?.[type] ?? 'NOT_STARTED');
+  const list = ASSET_TYPES.filter((type) => type in (statuses ?? {})).map((type) => statuses[type]);
+  if (list.length === 0) return 'NOT_STARTED';
   if (list.every(isComplete)) return 'COMPLETE';
   if (list.includes('CHANGES_REQUESTED')) return 'CHANGES_REQUESTED';
   if (list.some((status) => REVIEW_STATUSES.includes(status))) return 'IN_REVIEW';

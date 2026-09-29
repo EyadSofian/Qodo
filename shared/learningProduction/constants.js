@@ -99,6 +99,55 @@ export const COURSE_ROLES = /** @type {const} */ ([
   'VIDEO_EDITOR',
   'QUALITY_REVIEWER',
   'VIEWER',
+  // Added with production runs (migration 002). The roles above keep their
+  // names so existing team rows stay valid; QUALITY_REVIEWER is shown as
+  // "Media / Content QA", SUBJECT_MATTER_EXPERT as "Subject-matter expert / coach".
+  'RESEARCHER',
+  'EXPERT_COORDINATOR',
+  'TECHNICAL_PM',
+  'DELIVERY_PM',
+  'TECHNICAL_CONSULTANT',
+  'LEARNING_OPERATIONS',
+  'MARKETING',
+  'UAT_COORDINATOR',
+  'UAT_TESTER',
+]);
+
+/** Roles kept only so older team rows stay valid; not offered for new work. */
+export const LEGACY_COURSE_ROLES = /** @type {const} */ (['OUTLINE_WRITER', 'AUDIO_REVIEWER']);
+
+/**
+ * Every stage key a workflow template can produce (see workflowTemplates.js).
+ * Stable and language-neutral; permissions are scoped to them the way asset
+ * permissions are scoped to asset types.
+ */
+export const STAGE_KEYS = /** @type {const} */ ([
+  'CHANGE_IMPACT',
+  'AI_INPUT',
+  'AI_OUTLINES',
+  'AI_OUTLINE_REVIEW',
+  'RESEARCH',
+  'CURRICULUM_DRAFT',
+  'EXPERT_ACQUISITION',
+  'FINAL_CURRICULUM',
+  'AI_SCRIPTS',
+  'AI_SCRIPT_REVIEW',
+  'AI_SLIDES',
+  'AI_VOICE_VIDEO',
+  'AI_VIDEO_REVIEW',
+  'AI_COMMENTS_FIX',
+  'AI_COMMENTS_VERIFY',
+  'INSTRUCTIONAL_DESIGN',
+  'MEDIA_PRODUCTION',
+  'PLATFORM_DEPLOYMENT',
+  'DRY_RUN_1',
+  'APPLY_CHANGES',
+  'DRY_RUN_FIXES',
+  'APPLY_DRY_RUN_COMMENTS',
+  'REDEPLOYMENT',
+  'DRY_RUN_2',
+  'UAT',
+  'RELEASE',
 ]);
 
 export const COMMENT_TYPES = /** @type {const} */ ([
@@ -167,6 +216,52 @@ export const ACTIVITY_EVENTS = /** @type {const} */ ([
   'SUGGESTION_APPLIED',
   'CHECKLIST_UPDATED',
   'TRANSCRIPT_UPDATED',
+  // Production runs (migration 002).
+  'RUN_CREATED',
+  'RUN_UPDATED',
+  'RUN_STATUS_CHANGED',
+  'TEMPLATE_PUBLISHED',
+  'TEMPLATE_ADOPTED',
+  'RUN_MEMBER_ADDED',
+  'RUN_MEMBER_UPDATED',
+  'RUN_MEMBER_REMOVED',
+  'STAGE_COMPLETED',
+  'STAGE_REOPENED',
+  'STAGE_SKIPPED',
+  'TASK_ASSIGNED',
+  'TASK_STARTED',
+  'TASK_CHECKLIST_UPDATED',
+  'EVIDENCE_ADDED',
+  'EVIDENCE_WITHDRAWN',
+  'TASK_SUBMITTED',
+  'TASK_RESUBMITTED',
+  'TASK_REVIEW_STARTED',
+  'TASK_CHANGES_REQUESTED',
+  'TASK_APPROVED',
+  'TASK_COMPLETED',
+  'TASK_WAIVED',
+  'TASK_REOPENED',
+  'TASK_DEPENDENCY_OVERRIDDEN',
+  'TASK_COMMENTED',
+  'ISSUE_REPORTED',
+  'ISSUE_UPDATED',
+  'ISSUE_FIXED',
+  'ISSUE_VERIFIED',
+  'ISSUE_REOPENED',
+  'ISSUE_WONT_FIX',
+  'RELEASE_PREPARED',
+  'RELEASE_SIGNED_OFF',
+  'RELEASE_PUBLISHED',
+  'RELEASE_ROLLED_BACK',
+  'RELEASE_WITHDRAWN',
+  'IMPACT_RECORDED',
+  'IMPACT_APPLIED',
+  'CANDIDATE_ADDED',
+  'CANDIDATE_UPDATED',
+  'CANDIDATE_FILE_ADDED',
+  'ASSET_ADDED',
+  'ASSET_NOT_APPLICABLE',
+  'ASSET_APPLICABLE',
 ]);
 
 /**

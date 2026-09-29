@@ -55,32 +55,67 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 /* ------------------------------------------------------------------ */
 
 describe('constants match the migration', () => {
+  const directory = path.join(__dirname, 'learningProduction', 'migrations');
   const sqlFor = async () => {
-    const directory = path.join(__dirname, 'learningProduction', 'migrations');
     const files = (await fs.readdir(directory)).filter((name) => name.endsWith('.sql')).sort();
     return (await Promise.all(files.map((name) => fs.readFile(path.join(directory, name), 'utf8')))).join('\n');
   };
+  /** The CHECK list for `column` — the last one in `sql`, so a later migration's widened list wins. */
   const listIn = (sql, column) => {
-    const matches = [...sql.matchAll(new RegExp(`${column} IN \\(([^)]*)\\)`, 'g'))];
+    const matches = [...sql.matchAll(new RegExp(`\\b${column} IN \\(([^)]*)\\)`, 'g'))];
     assert.ok(matches.length > 0, `no CHECK list found for ${column}`);
     const last = matches[matches.length - 1][1];
     return [...last.matchAll(/'([A-Z_]+)'/g)].map((match) => match[1]);
   };
+  /** One table's CREATE TABLE block, so each list is read from the table it guards. */
+  const table = (sql, name) => {
+    const start = sql.indexOf(`CREATE TABLE ${name} (`);
+    assert.ok(start >= 0, `no table ${name}`);
+    return sql.slice(start, sql.indexOf('\n);', start));
+  };
 
   test('every enum the services use is the one the database enforces', async () => {
     const sql = await sqlFor();
-    assert.deepEqual(listIn(sql, 'asset_type'), [...C.ASSET_TYPES]);
-    assert.deepEqual(listIn(sql, 'status'), ['PENDING', 'PASSED', 'ISSUE'], 'checklist item status is the last status list');
-    assert.ok(sql.includes(`CHECK (status IN (${C.ASSET_STATUSES.map((s) => `'${s}'`).join(', ')}))`));
-    assert.deepEqual(listIn(sql, 'priority'), [...C.PRIORITIES]);
-    assert.deepEqual(listIn(sql, 'comment_type'), [...C.COMMENT_TYPES]);
-    assert.deepEqual(listIn(sql, 'annotation_type'), [...C.ANNOTATION_TYPES]);
+    const foundation = await fs.readFile(path.join(directory, '001_foundation.sql'), 'utf8');
+    assert.deepEqual(listIn(table(foundation, 'learning_assets'), 'asset_type'), [...C.ASSET_TYPES]);
+    assert.deepEqual(listIn(table(foundation, 'learning_assets'), 'status'), [...C.ASSET_STATUSES]);
+    assert.deepEqual(listIn(table(foundation, 'learning_checklist_items'), 'status'), ['PENDING', 'PASSED', 'ISSUE']);
+    assert.deepEqual(listIn(table(foundation, 'learning_assets'), 'priority'), [...C.PRIORITIES]);
+    assert.deepEqual(listIn(foundation, 'comment_type'), [...C.COMMENT_TYPES]);
+    assert.deepEqual(listIn(foundation, 'annotation_type'), [...C.ANNOTATION_TYPES]);
     assert.deepEqual(listIn(sql, 'event_type'), [...C.ACTIVITY_EVENTS]);
-    assert.deepEqual(listIn(sql, 'decision'), [...C.APPROVAL_DECISIONS]);
-    assert.deepEqual(listIn(sql, 'source_kind'), [...C.VERSION_SOURCES]);
-    assert.deepEqual(listIn(sql, 'source'), [...C.TRANSCRIPT_SOURCES]);
-    const roles = /roles <@ ARRAY\[([^\]]*)\]/.exec(sql)[1];
-    assert.deepEqual([...roles.matchAll(/'([A-Z_]+)'/g)].map((match) => match[1]), [...C.COURSE_ROLES]);
+    assert.deepEqual(listIn(table(foundation, 'learning_asset_approvals'), 'decision'), [...C.APPROVAL_DECISIONS]);
+    assert.deepEqual(listIn(foundation, 'source_kind'), [...C.VERSION_SOURCES]);
+    assert.deepEqual(listIn(table(foundation, 'learning_transcripts'), 'source'), [...C.TRANSCRIPT_SOURCES]);
+    const rolesLists = [...sql.matchAll(/roles <@ ARRAY\[([^\]]*)\]/g)];
+    const lastRoles = rolesLists[rolesLists.length - 1][1];
+    assert.deepEqual([...lastRoles.matchAll(/'([A-Z_]+)'/g)].map((match) => match[1]), [...C.COURSE_ROLES]);
+  });
+
+  test('every production-run enum is the one the database enforces', async () => {
+    const sql = await sqlFor();
+    const R = await import('../shared/learningProduction/runs.js');
+    const T = await import('../shared/learningProduction/workflowTemplates.js');
+    assert.deepEqual(listIn(table(sql, 'learning_production_runs'), 'status'), [...R.RUN_STATUSES]);
+    assert.deepEqual(listIn(table(sql, 'learning_production_runs'), 'scenario'), [...T.RUN_SCENARIOS]);
+    assert.deepEqual(listIn(table(sql, 'learning_workflow_template_versions'), 'scenario'), [...T.SCENARIOS]);
+    assert.deepEqual(listIn(table(sql, 'learning_stage_instances'), 'status'), [...R.STAGE_STATUSES]);
+    assert.deepEqual(listIn(table(sql, 'learning_stage_instances'), 'origin'), [...R.ORIGINS]);
+    assert.deepEqual(listIn(table(sql, 'learning_task_instances'), 'status'), [...R.TASK_STATUSES]);
+    assert.deepEqual(listIn(table(sql, 'learning_task_instances'), 'kind'), [...R.TASK_KINDS]);
+    assert.deepEqual(listIn(table(sql, 'learning_task_instances'), 'classification'), [...R.TASK_CLASSIFICATIONS]);
+    assert.deepEqual(listIn(table(sql, 'learning_task_checklist_items'), 'status'), [...R.CHECK_STATUSES]);
+    assert.deepEqual(listIn(table(sql, 'learning_task_evidence'), 'kind'), [...R.EVIDENCE_KINDS]);
+    assert.deepEqual(listIn(table(sql, 'learning_task_submissions'), 'decision'), [...R.SUBMISSION_DECISIONS]);
+    assert.deepEqual(listIn(table(sql, 'learning_run_issues'), 'severity'), [...R.ISSUE_SEVERITIES]);
+    assert.deepEqual(listIn(table(sql, 'learning_run_issues'), 'area'), [...R.ISSUE_AREAS]);
+    assert.deepEqual(listIn(table(sql, 'learning_run_issues'), 'status'), [...R.ISSUE_STATUSES]);
+    assert.deepEqual(listIn(table(sql, 'learning_releases'), 'kind'), [...R.RELEASE_KINDS]);
+    assert.deepEqual(listIn(table(sql, 'learning_releases'), 'status'), [...R.RELEASE_STATUSES]);
+    assert.deepEqual(listIn(table(sql, 'learning_change_impact_items'), 'decision'), [...R.IMPACT_DECISIONS]);
+    assert.deepEqual(listIn(table(sql, 'learning_expert_candidates'), 'status'), [...R.CANDIDATE_STATUSES]);
+    assert.deepEqual(listIn(table(sql, 'learning_expert_candidates'), 'source'), [...R.CANDIDATE_SOURCES]);
+    assert.deepEqual(listIn(table(sql, 'learning_candidate_files'), 'kind'), [...R.CANDIDATE_FILE_KINDS]);
   });
 
   test('every module permission is grantable from the Users screen', () => {

@@ -31,22 +31,26 @@ export function today() {
 const iso = (value) => (value instanceof Date ? value.toISOString() : value ?? null);
 
 /** The summary of one asset in a list, given its lesson's five statuses. */
-export function assetSummary(r, siblingStatuses, settings, day = today()) {
+export function assetSummary(r, siblingStatuses, settings, day = today(), applicableTypes = null) {
+  const applicable = r.applicable !== false;
   const dependencies = dependencyState(r.asset_type, r.status, siblingStatuses, {
     enforce: settings?.enforceDependencies !== false,
     overridden: Boolean(r.dependency_override_at),
+    applicableTypes,
   });
   return {
     id: r.id,
     assetType: r.asset_type,
+    applicable,
+    notApplicableReason: r.not_applicable_reason ?? null,
     status: r.status,
     priority: r.priority,
     assigneeUserId: r.assignee_user_id ?? null,
     reviewerUserId: r.reviewer_user_id ?? null,
     dueDate: r.due_date ?? null,
-    dueState: dueState(r.due_date, r.status, day),
-    blocked: dependencies.blocked,
-    waitingFor: dependencies.blocked ? dependencies.waitingFor : [],
+    dueState: applicable ? dueState(r.due_date, r.status, day) : null,
+    blocked: applicable && dependencies.blocked,
+    waitingFor: applicable && dependencies.blocked ? dependencies.waitingFor : [],
     currentVersionNumber: r.current_version_number ?? null,
     openComments: Number(r.open_comments ?? 0),
     submittedAt: iso(r.submitted_at),
@@ -83,14 +87,14 @@ export async function coursesWithStats(db, { condition, params, limit = 500 }) {
                 count(DISTINCT a.lesson_id)::int AS lesson_count
            FROM ${S}.learning_assets a
            JOIN ${S}.learning_lessons l ON l.id = a.lesson_id AND l.archived_at IS NULL
-          WHERE a.course_id = c.id
+          WHERE a.course_id = c.id AND a.applicable
        ) s ON true
        LEFT JOIN LATERAL (
          SELECT count(*)::int AS completed_lessons
            FROM (SELECT a.lesson_id
                    FROM ${S}.learning_assets a
                    JOIN ${S}.learning_lessons l ON l.id = a.lesson_id AND l.archived_at IS NULL
-                  WHERE a.course_id = c.id
+                  WHERE a.course_id = c.id AND a.applicable
                   GROUP BY a.lesson_id
                  HAVING bool_and(a.status IN ${COMPLETE_SQL})) finished
        ) cl ON true
@@ -155,7 +159,7 @@ export async function stageStats(db, { condition, params }) {
             count(*) FILTER (WHERE a.status NOT IN ${COMPLETE_SQL} AND a.due_date < ${todayRef})::int AS overdue
        FROM ${S}.learning_courses c
        JOIN ${S}.learning_lessons l ON l.course_id = c.id AND l.archived_at IS NULL
-       JOIN ${S}.learning_assets a ON a.lesson_id = l.id
+       JOIN ${S}.learning_assets a ON a.lesson_id = l.id AND a.applicable
       WHERE ${condition}
       GROUP BY a.asset_type`,
     values
@@ -184,24 +188,25 @@ export async function stageStats(db, { condition, params }) {
  * caller adds `WHERE`.
  */
 export const WORK_ROW_SQL = `
-  SELECT a.id, a.asset_type, a.status, a.priority, a.due_date, a.assignee_user_id, a.reviewer_user_id,
+  SELECT a.id, a.asset_type, a.status, a.applicable, a.priority, a.due_date, a.assignee_user_id, a.reviewer_user_id,
          a.submitted_at, a.submitted_by, a.approved_at, a.updated_at, a.dependency_override_at, a.lesson_id,
          c.id AS course_id, c.name AS course_name, c.code AS course_code, c.settings_json,
          l.name AS lesson_name, m.name AS module_name,
          v.version_number AS current_version_number,
          (SELECT count(*)::int FROM ${S}.learning_comments cm
            WHERE cm.asset_id = a.id AND cm.status = 'OPEN' AND cm.parent_comment_id IS NULL AND cm.deleted_at IS NULL) AS open_comments,
-         (SELECT jsonb_object_agg(sib.asset_type, sib.status) FROM ${S}.learning_assets sib WHERE sib.lesson_id = a.lesson_id) AS siblings
+         (SELECT jsonb_object_agg(sib.asset_type, sib.status) FROM ${S}.learning_assets sib WHERE sib.lesson_id = a.lesson_id AND sib.applicable) AS siblings
     FROM ${S}.learning_assets a
-    JOIN ${S}.learning_lessons l ON l.id = a.lesson_id AND l.archived_at IS NULL
+    JOIN ${S}.learning_lessons l ON l.id = a.lesson_id AND l.archived_at IS NULL AND a.applicable
     JOIN ${S}.learning_courses c ON c.id = a.course_id AND c.archived_at IS NULL
     LEFT JOIN ${S}.learning_course_modules m ON m.id = l.module_id
     LEFT JOIN ${S}.learning_asset_versions v ON v.id = a.current_version_id`;
 
 export function mapWorkRow(r, day = today()) {
   const settings = normalizeSettings(r.settings_json);
+  const siblings = r.siblings ?? {};
   return {
-    ...assetSummary(r, r.siblings ?? {}, settings, day),
+    ...assetSummary(r, siblings, settings, day, Object.keys(siblings)),
     submittedBy: r.submitted_by ?? null,
     approvedAt: iso(r.approved_at),
     course: { id: r.course_id, name: r.course_name, code: r.course_code ?? null },
