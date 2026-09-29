@@ -119,7 +119,7 @@ export function CourseProduction() {
           </select>
           <select className="field" value={filters.stage} onChange={(event) => set('stage', event.target.value as AssetType | '')} aria-label={t('lp.stage')}>
             <option value="">{t('lp.allStages')}</option>
-            {STAGES.map((type) => (
+            {(data?.assetTypes?.length ? data.assetTypes : STAGES).map((type) => (
               <option key={type} value={type}>
                 {t(stageKey(type))}
               </option>
@@ -236,7 +236,7 @@ function BulkBar({
       <label className="block">
         <span className="label !mb-1">{t('lp.stage')}</span>
         <select className="field !min-h-9 !py-1" value={stage} onChange={(event) => setStage(event.target.value as AssetType)}>
-          {STAGES.map((type) => (
+          {(data?.assetTypes?.length ? data.assetTypes : STAGES).map((type) => (
             <option key={type} value={type}>
               {t(stageKey(type))}
             </option>

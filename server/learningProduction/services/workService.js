@@ -212,7 +212,7 @@ const urgency = (a, b) => {
  */
 export async function myWork(actor) {
   const day = today();
-  const [taskRows, assetRows, doneAssets, doneTasks, issueRows, verifyRows, reviewSet] = await Promise.all([
+  const [taskRows, assetRows, doneAssets, doneTasks, issueRows, reviewSet] = await Promise.all([
     direct.rows(
       `${TASK_ROW_SQL}
         WHERE t.organization_id = $1 AND t.assignee_user_id = $2 AND r.status = 'ACTIVE'
@@ -245,10 +245,6 @@ export async function myWork(actor) {
       `${ISSUE_ROW_SQL} WHERE i.organization_id = $1 AND i.owner_user_id = $2 AND i.status IN ('OPEN', 'IN_PROGRESS') ORDER BY i.reported_at LIMIT 100`,
       [actor.organizationId, actor.userId]
     ),
-    direct.rows(
-      `${ISSUE_ROW_SQL} WHERE i.organization_id = $1 AND i.reported_by = $2 AND i.status = 'FIXED' AND coalesce(i.fixed_by, '') <> $2 ORDER BY i.fixed_at LIMIT 100`,
-      [actor.organizationId, actor.userId]
-    ),
     reviews(actor),
   ]);
 
@@ -260,10 +256,9 @@ export async function myWork(actor) {
     const item = mapWorkRow(row, day);
     return assetItem(item, item.status === 'CHANGES_REQUESTED' ? 'FIX' : ['NOT_STARTED', 'ASSIGNED'].includes(item.status) ? 'START' : 'CONTINUE');
   });
-  const issues = [
-    ...issueRows.map((row) => issueItem(row, day, 'FIX')),
-    ...verifyRows.map((row) => issueItem(row, day, 'VERIFY')),
-  ];
+  // Fixed issues waiting for the reporter's check are a decision, so they are
+  // listed under review (reviewSet), not here.
+  const issues = issueRows.map((row) => issueItem(row, day, 'FIX'));
 
   const all = [...tasks, ...assets];
   const now = [...all.filter((item) => !item.blocked), ...issues].sort(urgency);
@@ -513,9 +508,11 @@ export async function portfolio(actor) {
       `SELECT person AS user_id, sum(active)::int AS active, sum(reviewing)::int AS reviewing, sum(overdue)::int AS overdue
          FROM (
            SELECT t.assignee_user_id AS person, 1 AS active, 0 AS reviewing,
-                  (t.due_date < ${dayRef})::int AS overdue
+                  coalesce(t.due_date < ${dayRef}, false)::int AS overdue
              FROM ${S}.learning_task_instances t
              JOIN ${S}.learning_production_runs r ON r.id = t.run_id AND r.status = 'ACTIVE'
+             -- Load is the work people can pick up now, not every task of later stages.
+             JOIN ${S}.learning_stage_instances st ON st.id = t.stage_id AND st.status IN ('READY', 'IN_PROGRESS')
              JOIN ${S}.learning_courses c ON c.id = r.course_id
             WHERE ${condition} AND t.assignee_user_id IS NOT NULL AND t.kind <> 'AUTO'
               AND t.status IN ('NOT_STARTED', 'IN_PROGRESS', 'CHANGES_REQUESTED')
@@ -526,7 +523,7 @@ export async function portfolio(actor) {
              JOIN ${S}.learning_courses c ON c.id = r.course_id
             WHERE ${condition} AND t.reviewer_user_id IS NOT NULL AND t.status IN ('SUBMITTED', 'UNDER_REVIEW')
            UNION ALL
-           SELECT a.assignee_user_id, 1, 0, (a.due_date < ${dayRef})::int
+           SELECT a.assignee_user_id, 1, 0, coalesce(a.due_date < ${dayRef}, false)::int
              FROM ${S}.learning_assets a
              JOIN ${S}.learning_lessons l ON l.id = a.lesson_id AND l.archived_at IS NULL
              JOIN ${S}.learning_courses c ON c.id = a.course_id

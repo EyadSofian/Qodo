@@ -1,192 +1,160 @@
 /**
  * E-Learning Production — the module frame.
  *
- * Its own dark vertical rail, full height under the workspace top bar — a
- * deliberate one-off next to every other module's horizontal tab strip. A
- * production team lives on these five screens all day, and the per-stage
- * colors used throughout the module (see `format.ts`'s `STAGE_COLOR`) read
- * more clearly against one calm dark surface than fighting the light app
- * chrome above them.
+ * A frosted bar under the workspace header — the module's name, its five
+ * places (Dashboard, Courses, My Work, Reviews, Reports) with the counts that
+ * matter to the reader, and the one thing a manager starts from here, a new
+ * production run — over an aurora in the current area's colours.
+ *
+ * The colours live on <body> (class `lp-theme`, `--lp-a1` / `--lp-a2`) while
+ * the module is open, so drawers, which portal there, wear them too. A page
+ * with its own colours (a course takes its scenario's) sets them through
+ * `useLpTheme`.
+ *
+ * The counts come from the same My Work response the My Work page reads, so
+ * the badge and the page can never disagree.
  */
 
-import { createContext, useContext, useEffect, useState } from 'react';
-import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
-import { BarChart3, ClipboardCheck, Database, GraduationCap, Inbox, LayoutDashboard, Library, Menu, X, type LucideIcon } from 'lucide-react';
-import { useI18n, type StringKey } from '../../lib/i18n';
-import { useAuth } from '../../lib/auth';
-import { cx } from '../../lib/utils';
+import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { Link, Outlet, useLocation } from 'react-router-dom';
+import { Database, Layers, Plus, Settings2 } from 'lucide-react';
+import { useI18n } from '../../lib/i18n';
 import { ApiError } from '../../lib/api';
 import { paths } from '../../lib/learningProduction/api';
+import { runPaths } from '../../lib/learningProduction/runApi';
 import { useLpQuery } from '../../lib/learningProduction/hooks';
-import type { CourseWithStats, DashboardResponse, Me } from '../../lib/learningProduction/types';
-import { Avatar } from '../../components/ui';
-import { EmptyPanel } from '../../components/learning-production/kit';
+import { AREA_THEME, areaOf, type LpTheme } from '../../lib/learningProduction/theme';
+import type { Me } from '../../lib/learningProduction/types';
+import type { MyWork2Response } from '../../lib/learningProduction/runTypes';
+import { EmptyNote, RouteTabs } from '../../components/learning-production/studio';
 
 const MeContext = createContext<Me | null>(null);
+const ThemeContext = createContext<(theme: LpTheme | null) => void>(() => {});
 
 export function useLpMe() {
   return useContext(MeContext);
 }
 
-interface NavTab {
-  to: string;
-  end: boolean;
-  key: StringKey;
-  icon: LucideIcon;
+/** Give the module a page's own colours while that page is on screen. */
+export function useLpTheme(theme: LpTheme | null) {
+  const set = useContext(ThemeContext);
+  const a1 = theme?.a1;
+  const a2 = theme?.a2;
+  useEffect(() => {
+    set(a1 && a2 ? { a1, a2 } : null);
+    return () => set(null);
+  }, [set, a1, a2]);
 }
 
-const PRIMARY_NAV: NavTab[] = [
-  { to: '/learning-production', end: true, key: 'lp.nav.dashboard', icon: LayoutDashboard },
-  { to: '/learning-production/courses', end: false, key: 'lp.nav.courses', icon: Library },
-  { to: '/learning-production/my-work', end: false, key: 'lp.nav.myWork', icon: Inbox },
-  { to: '/learning-production/reviews', end: false, key: 'lp.nav.reviews', icon: ClipboardCheck },
-];
-
-export function LearningProductionLayout() {
-  const { t } = useI18n();
-  const { user } = useAuth();
-  const location = useLocation();
-  const [drawerOpen, setDrawerOpen] = useState(false);
-
-  const { data: me, error } = useLpQuery<Me>(paths.me);
-  // Same cache entry Dashboard.tsx reads — the rail piggybacks on it for
-  // "my work"/"reviews" badge counts rather than adding a bespoke endpoint.
-  const { data: summary } = useLpQuery<DashboardResponse>(paths.dashboard);
-  const { data: recentData } = useLpQuery<{ courses: CourseWithStats[] }>(paths.courses({ sort: 'recent' }));
-
-  useEffect(() => setDrawerOpen(false), [location.pathname]);
-
-  const unavailable = error instanceof ApiError && error.status === 503;
-  const tabs: NavTab[] = [...PRIMARY_NAV, ...(me?.canViewReports ? [{ to: '/learning-production/reports', end: false, key: 'lp.nav.reports' as StringKey, icon: BarChart3 }] : [])];
-  const badges: Record<string, number> = {
-    '/learning-production/my-work': summary?.mine?.assigned ?? 0,
-    '/learning-production/reviews': summary?.mine?.reviews ?? 0,
-  };
-  const recentCourses = (recentData?.courses ?? []).slice(0, 4);
-
+/**
+ * The colour behind every page: a soft aurora in the area's colours, drifting
+ * slowly, under a faint dot grid. Sheets of frosted white sit on it.
+ */
+function Aurora() {
   return (
-    <MeContext.Provider value={me}>
-      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-        <div className="flex items-center justify-between border-b border-surface-line bg-white px-4 py-3 lg:hidden">
-          <span className="flex items-center gap-2 text-[13.5px] font-bold text-ink">
-            <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-navy text-white">
-              <GraduationCap size={15} aria-hidden="true" />
-            </span>
-            {t('lp.module')}
-          </span>
-          <button type="button" className="btn-ghost btn-sm !min-h-9 !px-2.5" aria-label={t('lp.sidebar.menu')} onClick={() => setDrawerOpen(true)}>
-            <Menu size={18} aria-hidden="true" />
-          </button>
-        </div>
-
-        <aside className="hidden w-[248px] shrink-0 flex-col bg-navy text-white lg:flex">
-          <RailContent t={t} tabs={tabs} badges={badges} recentCourses={recentCourses} user={user} />
-        </aside>
-
-        {drawerOpen && (
-          <div className="fixed inset-0 z-40 lg:hidden">
-            <div className="absolute inset-0 bg-navy/40" onClick={() => setDrawerOpen(false)} aria-hidden="true" />
-            <div className="absolute inset-y-0 start-0 flex w-[84%] max-w-[300px] flex-col bg-navy text-white shadow-panel">
-              <div className="flex items-center justify-end px-3 pt-3">
-                <button type="button" className="rounded-lg p-2 text-white/70 hover:bg-white/10 hover:text-white" aria-label={t('lp.sidebar.close')} onClick={() => setDrawerOpen(false)}>
-                  <X size={18} aria-hidden="true" />
-                </button>
-              </div>
-              <RailContent t={t} tabs={tabs} badges={badges} recentCourses={recentCourses} user={user} onNavigate={() => setDrawerOpen(false)} />
-            </div>
-          </div>
-        )}
-
-        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">
-          <div className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6">
-            {unavailable ? <EmptyPanel icon={<Database size={26} />} title={t('lp.unavailable.title')} body={t('lp.unavailable.body')} /> : <Outlet />}
-          </div>
-        </div>
-      </div>
-    </MeContext.Provider>
+    <div aria-hidden="true" className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+      <div className="absolute inset-0 bg-[linear-gradient(160deg,#eef2ff_0%,#f5f3ff_38%,#fdf4ff_64%,#eff6ff_100%)]" />
+      <div
+        className="lps-aurora-blob absolute -top-[24%] start-[2%] h-[54vw] w-[54vw] rounded-full blur-3xl transition-[background] duration-700"
+        style={{ background: 'radial-gradient(circle, rgb(var(--lp-a1) / 0.4), transparent 64%)' }}
+      />
+      <div
+        className="lps-aurora-blob absolute top-[24%] -end-[14%] h-[46vw] w-[46vw] rounded-full blur-3xl transition-[background] duration-700"
+        style={{ animationDelay: '-9s', background: 'radial-gradient(circle, rgb(var(--lp-a2) / 0.34), transparent 64%)' }}
+      />
+      <div
+        className="lps-aurora-blob absolute -bottom-[26%] start-[24%] h-[40vw] w-[40vw] rounded-full blur-3xl"
+        style={{ animationDelay: '-16s', background: 'radial-gradient(circle, rgb(244 114 182 / 0.26), transparent 64%)' }}
+      />
+      <div
+        className="lps-aurora-blob absolute top-[6%] end-[28%] h-[26vw] w-[26vw] rounded-full blur-3xl"
+        style={{ animationDelay: '-4s', background: 'radial-gradient(circle, rgb(56 189 248 / 0.26), transparent 64%)' }}
+      />
+      <div className="absolute inset-0 opacity-40 [background-image:radial-gradient(rgb(79_70_229/0.12)_1px,transparent_1px)] [background-size:22px_22px]" />
+    </div>
   );
 }
 
-/** Shared between the desktop rail and the mobile drawer so they never drift. */
-function RailContent({
-  t,
-  tabs,
-  badges,
-  recentCourses,
-  user,
-  onNavigate,
-}: {
-  t: (key: StringKey) => string;
-  tabs: NavTab[];
-  badges: Record<string, number>;
-  recentCourses: CourseWithStats[];
-  user: { name: string; title: string | null; avatarColor: string } | null;
-  onNavigate?: () => void;
-}) {
+export function LearningProductionLayout() {
+  const { t, dir } = useI18n();
+  const location = useLocation();
+  const { data: me, error } = useLpQuery<Me>(paths.me);
+  const { data: work } = useLpQuery<MyWork2Response>(runPaths.work);
+  const unavailable = error instanceof ApiError && error.status === 503;
+  const [override, setOverride] = useState<LpTheme | null>(null);
+  const area = areaOf(location.pathname);
+  const theme = override ?? AREA_THEME[area];
+
+  useEffect(() => {
+    document.body.classList.add('lp-theme');
+    return () => {
+      document.body.classList.remove('lp-theme');
+      document.body.style.removeProperty('--lp-a1');
+      document.body.style.removeProperty('--lp-a2');
+    };
+  }, []);
+  useEffect(() => {
+    document.body.style.setProperty('--lp-a1', theme.a1);
+    document.body.style.setProperty('--lp-a2', theme.a2);
+  }, [theme.a1, theme.a2]);
+
+  const tabs = useMemo(
+    () => [
+      { to: '/learning-production', end: true, label: t('lp.nav.dashboard') },
+      { to: '/learning-production/courses', label: t('lp.nav.courses') },
+      { to: '/learning-production/my-work', label: t('lp.nav.myWork'), count: work?.counts.now, attention: Boolean(work?.counts.overdue) },
+      { to: '/learning-production/reviews', label: t('lp.nav.reviews'), count: work?.counts.review, attention: Boolean(work?.counts.review) },
+      ...(me?.canViewReports ? [{ to: '/learning-production/reports', label: t('lp.nav.reports') }] : []),
+    ],
+    [t, work, me]
+  );
+
   return (
-    <>
-      <div className="flex items-center gap-2.5 px-4 py-4">
-        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-white/10">
-          <GraduationCap size={18} aria-hidden="true" />
-        </span>
-        <span className="truncate text-[14px] font-bold">{t('lp.module')}</span>
-      </div>
-
-      <div className="flex min-h-0 flex-1 flex-col">
-        <nav aria-label={t('lp.module')} className="flex flex-col gap-0.5 px-3">
-          {tabs.map((tab) => (
-            <NavLink
-              key={tab.to}
-              to={tab.to}
-              end={tab.end}
-              onClick={onNavigate}
-              className={({ isActive }) =>
-                cx(
-                  'flex items-center gap-3 rounded-lg border-s-2 px-3 py-2.5 text-[13.5px] font-semibold transition-colors',
-                  isActive ? 'border-brand-400 bg-white/10 text-white' : 'border-transparent text-white/70 hover:bg-white/5 hover:text-white'
-                )
-              }
-            >
-              <tab.icon size={17} aria-hidden="true" />
-              <span className="flex-1 truncate">{t(tab.key)}</span>
-              {Boolean(badges[tab.to]) && (
-                <span className="inline-flex min-w-[20px] items-center justify-center rounded-full bg-white/15 px-1.5 py-0.5 text-[11px] font-bold text-white">
-                  {badges[tab.to]}
+    <MeContext.Provider value={me}>
+      <ThemeContext.Provider value={setOverride}>
+        <div className="lps flex min-h-0 flex-1 flex-col" dir={dir}>
+          <Aurora />
+          <div className="lps-bar sticky top-0 z-20">
+            <div className="mx-auto flex w-full max-w-[1480px] items-center gap-3 px-4 py-2 sm:px-6">
+              <Link to="/learning-production" className="hidden shrink-0 items-center gap-2.5 md:flex" aria-label={t('lp.module')}>
+                <span className="lps-logo">
+                  <Layers size={17} aria-hidden="true" />
                 </span>
-              )}
-            </NavLink>
-          ))}
-        </nav>
-
-        {recentCourses.length > 0 && (
-          <div className="mt-5 flex min-h-0 flex-1 flex-col px-3">
-            <p className="px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wide text-white/40">{t('lp.sidebar.recentCourses')}</p>
-            <div className="lp-rail-scroll min-h-0 flex-1 space-y-0.5 overflow-y-auto pb-2">
-              {recentCourses.map((course) => (
-                <Link
-                  key={course.id}
-                  to={`/learning-production/courses/${course.id}`}
-                  onClick={onNavigate}
-                  className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-[12.5px] text-white/70 hover:bg-white/5 hover:text-white"
-                >
-                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand-400" aria-hidden="true" />
-                  <span className="truncate">{course.name}</span>
-                </Link>
-              ))}
+                <span className="font-display text-[14.5px] font-bold">{t('lp.module')}</span>
+              </Link>
+              <div className="min-w-0 flex-1 md:ms-3">
+                <RouteTabs items={tabs} label={t('lp.module')} />
+              </div>
+              <div className="flex shrink-0 items-center gap-1.5">
+                {me?.canManageTemplates && (
+                  <Link to="/learning-production/templates" className="lps-btn-quiet !px-2" title={t('lp.nav.templates')}>
+                    <Settings2 size={16} aria-hidden="true" />
+                    <span className="hidden xl:inline">{t('lp.nav.templates')}</span>
+                  </Link>
+                )}
+                {me?.canCreateRun && (
+                  <Link to="/learning-production/runs/new" className="lps-btn-primary">
+                    <Plus size={15} aria-hidden="true" />
+                    <span className="hidden sm:inline">{t('lp.run.new')}</span>
+                  </Link>
+                )}
+              </div>
             </div>
           </div>
-        )}
-      </div>
 
-      <div className="mt-auto border-t border-white/10 px-4 py-3">
-        <div className="flex items-center gap-2.5">
-          <Avatar name={user?.name ?? ''} color={user?.avatarColor ?? '#94A3B8'} size={32} />
-          <div className="min-w-0">
-            <p className="truncate text-[13px] font-bold text-white">{user?.name}</p>
-            {user?.title && <p className="truncate text-[11.5px] text-white/50">{user.title}</p>}
-          </div>
+          <main className="min-h-0 flex-1 overflow-y-auto">
+            <div className="mx-auto w-full max-w-[1480px] px-4 py-5 sm:px-6 sm:py-6">
+              {unavailable ? (
+                <div className="lps-panel">
+                  <EmptyNote icon={Database} title={t('lp.unavailable.title')} body={t('lp.unavailable.body')} />
+                </div>
+              ) : (
+                <Outlet />
+              )}
+            </div>
+          </main>
         </div>
-      </div>
-    </>
+      </ThemeContext.Provider>
+    </MeContext.Provider>
   );
 }

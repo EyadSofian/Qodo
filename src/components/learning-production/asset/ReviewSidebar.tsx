@@ -277,6 +277,11 @@ function VersionsPanel() {
                   {version.fileName} · {formatSize(version.fileSize)}
                 </p>
               )}
+              {version.aiAssisted && (
+                <p className="mt-1 text-[11.5px] font-semibold text-accent-700">
+                  {t('lp.ai.label', { tool: version.aiTool ?? '—' })}
+                </p>
+              )}
               {version.versionNotes && <p className="mt-1.5 whitespace-pre-line text-[12.5px] text-ink">{version.versionNotes}</p>}
               <div className="mt-2 flex flex-wrap gap-1">
                 {viewing !== version.id && (

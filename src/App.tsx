@@ -119,15 +119,16 @@ const lpPage = <K extends string>(loader: () => Promise<Record<K, React.Componen
 const LearningProductionLayout = lpPage(() => import('./pages/learning-production/Layout'), 'LearningProductionLayout');
 const LpDashboard = lpPage(() => import('./pages/learning-production/Dashboard'), 'Dashboard');
 const LpCourses = lpPage(() => import('./pages/learning-production/Courses'), 'Courses');
-const LpCourseCreate = lpPage(() => import('./pages/learning-production/CourseCreate'), 'CourseCreate');
+const LpNewRun = lpPage(() => import('./pages/learning-production/NewRun'), 'NewRun');
+const LpTemplates = lpPage(() => import('./pages/learning-production/Templates'), 'Templates');
 const LpCourseWorkspace = lpPage(() => import('./pages/learning-production/CourseWorkspace'), 'CourseWorkspace');
-const LpCourseOverview = lpPage(() => import('./pages/learning-production/course/CourseOverview'), 'CourseOverview');
-const LpCourseLessons = lpPage(() => import('./pages/learning-production/course/CourseLessons'), 'CourseLessons');
+const LpRunOverview = lpPage(() => import('./pages/learning-production/course/RunOverview'), 'RunOverview');
+const LpRunPlan = lpPage(() => import('./pages/learning-production/course/RunPlan'), 'RunPlan');
+const LpCurriculum = lpPage(() => import('./pages/learning-production/course/Curriculum'), 'Curriculum');
 const LpCourseProduction = lpPage(() => import('./pages/learning-production/course/CourseProduction'), 'CourseProduction');
-const LpCourseAssets = lpPage(() => import('./pages/learning-production/course/CourseAssets'), 'CourseAssets');
-const LpCourseTeam = lpPage(() => import('./pages/learning-production/course/CourseTeam'), 'CourseTeam');
-const LpCourseFiles = lpPage(() => import('./pages/learning-production/course/CourseFiles'), 'CourseFiles');
-const LpCourseActivity = lpPage(() => import('./pages/learning-production/course/CourseActivity'), 'CourseActivity');
+const LpQaRelease = lpPage(() => import('./pages/learning-production/course/QaRelease'), 'QaRelease');
+const LpTeamTab = lpPage(() => import('./pages/learning-production/course/TeamTab'), 'TeamTab');
+const LpFilesActivity = lpPage(() => import('./pages/learning-production/course/FilesActivity'), 'FilesActivity');
 const LpCourseSettings = lpPage(() => import('./pages/learning-production/course/CourseSettings'), 'CourseSettings');
 const LpLessonWorkspace = lpPage(() => import('./pages/learning-production/LessonWorkspace'), 'LessonWorkspace');
 const LpMyWork = lpPage(() => import('./pages/learning-production/MyWork'), 'MyWork');
@@ -256,16 +257,23 @@ function Gate() {
         <Route path="/learning-production" element={<Suspended><LearningProductionLayout /></Suspended>}>
           <Route index element={<Suspended><LpDashboard /></Suspended>} />
           <Route path="courses" element={<Suspended><LpCourses /></Suspended>} />
-          <Route path="courses/new" element={<Suspended><LpCourseCreate /></Suspended>} />
+          {/* The old course wizard became "new production run". */}
+          <Route path="courses/new" element={<Navigate to="/learning-production/runs/new" replace />} />
+          <Route path="runs/new" element={<Suspended><LpNewRun /></Suspended>} />
+          <Route path="templates" element={<Suspended><LpTemplates /></Suspended>} />
           <Route path="courses/:courseId" element={<Suspended><LpCourseWorkspace /></Suspended>}>
-            <Route index element={<Suspended><LpCourseOverview /></Suspended>} />
-            <Route path="lessons" element={<Suspended><LpCourseLessons /></Suspended>} />
+            <Route index element={<Suspended><LpRunOverview /></Suspended>} />
+            <Route path="plan" element={<Suspended><LpRunPlan /></Suspended>} />
+            <Route path="curriculum" element={<Suspended><LpCurriculum /></Suspended>} />
             <Route path="production" element={<Suspended><LpCourseProduction /></Suspended>} />
-            <Route path="assets" element={<Suspended><LpCourseAssets /></Suspended>} />
-            <Route path="team" element={<Suspended><LpCourseTeam /></Suspended>} />
-            <Route path="files" element={<Suspended><LpCourseFiles /></Suspended>} />
-            <Route path="activity" element={<Suspended><LpCourseActivity /></Suspended>} />
+            <Route path="qa" element={<Suspended><LpQaRelease /></Suspended>} />
+            <Route path="team" element={<Suspended><LpTeamTab /></Suspended>} />
+            <Route path="files" element={<Suspended><LpFilesActivity /></Suspended>} />
             <Route path="settings" element={<Suspended><LpCourseSettings /></Suspended>} />
+            {/* Links written before the rebuild keep landing. */}
+            <Route path="lessons" element={<Navigate to="../curriculum" relative="path" replace />} />
+            <Route path="assets" element={<Navigate to="../production" relative="path" replace />} />
+            <Route path="activity" element={<Navigate to="../files?view=activity" relative="path" replace />} />
           </Route>
           <Route path="courses/:courseId/lessons/:lessonId" element={<Suspended><LpLessonWorkspace /></Suspended>} />
           <Route path="courses/:courseId/lessons/:lessonId/:stage" element={<Suspended><LpLessonWorkspace /></Suspended>} />

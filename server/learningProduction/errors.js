@@ -50,6 +50,25 @@ const MESSAGES = {
   LAST_MANAGER: 'A course needs at least one Production Manager.',
   STORAGE_UNAVAILABLE: 'E-Learning Production needs its database.',
   DEMO_DISABLED: 'Demo data is switched off on this deployment.',
+  TASK_BLOCKED: 'This task is waiting for earlier work to finish.',
+  EVIDENCE_REQUIRED: 'Add the evidence this task asks for first.',
+  NEW_EVIDENCE_REQUIRED: 'Add new evidence that answers the requested changes before resubmitting.',
+  APPROVAL_REQUIRED: 'This needs an approval first.',
+  AUTOMATIC: 'This gate is checked automatically and cannot be changed by hand.',
+  STAGE_SKIPPED: 'This stage was skipped.',
+  RUN_CLOSED: 'This production run is not active, so its work cannot change.',
+  REQUIRED_TASK: 'A required task can only be waived by an administrator.',
+  RUN_ALREADY_OPEN: 'This course already has a production run in progress.',
+  RELEASE_NOT_READY: 'The run is not ready for release yet.',
+  RELEASE_IN_PROGRESS: 'A release candidate for this run is already waiting.',
+  RELEASE_STALE: 'Approved content changed after this release was prepared.',
+  RELEASE_LABEL_TAKEN: 'Another release of this course already uses this label.',
+  SIGNOFF_REQUIRED: 'The release must be signed off before it is published.',
+  STAGE_NOT_SKIPPABLE: 'This stage cannot be skipped.',
+  IMPACT_LOCKED: 'The change impact is signed off or applied and can no longer be edited.',
+  IMPACT_APPLIED: 'The change impact was already applied.',
+  LEGACY_RUN: 'Adopt a workflow for this legacy run first.',
+  NOT_APPLICABLE: 'This asset is marked not applicable.',
   SERVER_ERROR: 'Something went wrong on our side. Nothing was changed. Please try again.',
 };
 
@@ -57,6 +76,8 @@ const MESSAGES = {
 const WORKFLOW_STATUS = {
   FORBIDDEN: 403,
   OWN_WORK: 403,
+  REQUIRED_TASK: 403,
+  STAGE_NOT_SKIPPABLE: 403,
   NOT_SUPPORTED: 400,
 };
 

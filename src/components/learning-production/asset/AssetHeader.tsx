@@ -16,7 +16,9 @@ import { dueState, todayIn } from '@shared/learningProduction/workflow';
 import { isTextAsset } from '@shared/learningProduction/constants';
 import type { AssetAction, AssetDetail, Priority } from '../../../lib/learningProduction/types';
 import { Modal, Spinner, useToast } from '../../ui';
-import { Chip, CommentCount, ConfirmDialog, DueChip, PersonChip, PersonSelect, PriorityChip, StageLabel, StatusBadge, usePeople } from '../kit';
+import { Chip, CommentCount, ConfirmDialog, DueChip, PersonChip, PersonSelect, PriorityChip, ProvenanceField, StageLabel, StatusBadge, usePeople } from '../kit';
+import { runsApi } from '../../../lib/learningProduction/runApi';
+import { invalidate } from '../../../lib/learningProduction/hooks';
 import { useAsset } from './AssetContext';
 
 const SLUG: Partial<Record<AssetAction, string>> = {
@@ -31,7 +33,7 @@ const SLUG: Partial<Record<AssetAction, string>> = {
   OVERRIDE_DEPENDENCY: 'override-dependency',
 };
 
-type Dialog = 'submit' | 'approve' | 'changes' | 'reopen' | 'override' | 'lock' | 'revision' | 'assign' | null;
+type Dialog = 'submit' | 'approve' | 'changes' | 'reopen' | 'override' | 'lock' | 'revision' | 'assign' | 'notApplicable' | null;
 
 export function AssetHeader() {
   const { t } = useI18n();
@@ -42,6 +44,7 @@ export function AssetHeader() {
   const [busy, setBusy] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [lockOnApprove, setLockOnApprove] = useState(false);
+  const [provenance, setProvenance] = useState<{ aiAssisted?: boolean; aiTool?: string }>({});
   const allowed = (action: AssetAction) => evaluation.actions[action]?.allowed;
   const text = isTextAsset(asset.assetType);
   const due = dueState(asset.dueDate, asset.status, todayIn(Intl.DateTimeFormat().resolvedOptions().timeZone));
@@ -62,6 +65,20 @@ export function AssetHeader() {
     }
   };
 
+  const setApplicable = async (applicable: boolean, reason?: string) => {
+    setBusy(true);
+    try {
+      await runsApi.setApplicability(assetId, applicable, reason);
+      refresh(await lp.asset(assetId));
+      invalidate();
+      setDialog(null);
+    } catch (error) {
+      toast.push(t(lpErrorKey(error)), 'bad');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const latestDecision = detail.approvals.find((approval) => approval.decision !== 'PENDING');
   const secondary = useMemo(
     () =>
@@ -69,6 +86,11 @@ export function AssetHeader() {
         allowed('START_REVISION') && { key: 'revision', label: text ? t('lp.action.newRevision') : t('lp.action.newRevisionFile'), icon: Pencil },
         allowed('LOCK') && primary.action !== 'LOCK' && { key: 'lock', label: t('lp.action.lock'), icon: Lock },
         allowed('REOPEN') && { key: 'reopen', label: t('lp.action.reopen'), icon: Unlock },
+        detail.canManageApplicability && asset.applicable && !['SUBMITTED', 'UNDER_REVIEW', 'RESUBMITTED'].includes(asset.status) && {
+          key: 'notApplicable',
+          label: t('lp.asset.markNotApplicable'),
+          icon: Ban,
+        },
       ].filter(Boolean) as Array<{ key: Dialog; label: string; icon: typeof Lock }>,
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [detail]
@@ -141,6 +163,19 @@ export function AssetHeader() {
         </div>
       </div>
 
+      {!asset.applicable && (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-dashed border-surface-line bg-surface-sunken px-3 py-2.5 text-[13px]">
+          <span>
+            <strong>{t('lp.asset.notApplicable')}</strong>
+            {asset.notApplicableReason && <span className="text-ink-muted"> — “{asset.notApplicableReason}”</span>}
+          </span>
+          {detail.canManageApplicability && (
+            <button type="button" className="btn-ghost btn-sm" disabled={busy} onClick={() => void setApplicable(true)}>
+              {t('lp.asset.bringBack')}
+            </button>
+          )}
+        </div>
+      )}
       {evaluation.blocked && (
         <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-surface-sunken px-3 py-2.5 text-[13px] text-ink">
           <Ban size={15} className="text-ink-muted" aria-hidden="true" />
@@ -189,10 +224,21 @@ export function AssetHeader() {
           </>
         }
         field={text ? { label: t('lp.upload.notes'), placeholder: t('lp.upload.notesPlaceholder') } : undefined}
+        extra={text ? <ProvenanceField value={provenance} onChange={setProvenance} /> : undefined}
         confirmLabel={t('lp.action.submit')}
         busy={busy}
         onClose={() => setDialog(null)}
-        onConfirm={(notes) => void run('SUBMIT', { notes }, asset.status === 'CHANGES_REQUESTED' ? 'lp.toast.resubmitted' : 'lp.toast.submitted')}
+        onConfirm={(notes) => void run('SUBMIT', { notes, ...(text ? provenance : {}) }, asset.status === 'CHANGES_REQUESTED' ? 'lp.toast.resubmitted' : 'lp.toast.submitted')}
+      />
+      <ConfirmDialog
+        open={dialog === 'notApplicable'}
+        title={t('lp.asset.markNotApplicable')}
+        body={t('lp.asset.notApplicableBody')}
+        field={{ label: t('lp.reason.label'), required: true }}
+        confirmLabel={t('lp.asset.markNotApplicable')}
+        busy={busy}
+        onClose={() => setDialog(null)}
+        onConfirm={(reason) => void setApplicable(false, reason)}
       />
       <ConfirmDialog
         open={dialog === 'changes'}

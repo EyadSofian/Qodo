@@ -5,6 +5,8 @@
  * turns enum/dynamic keys into readable labels instead of exposing `lp.*`.
  */
 
+import { STUDIO_STRINGS } from './studioStrings';
+
 type Pair = { ar: string; en: string };
 
 export const LP_STRINGS: Record<string, Pair> = {
@@ -124,7 +126,7 @@ export const LP_STRINGS: Record<string, Pair> = {
   'lp.tab.lessons': { ar: 'الدروس', en: 'Lessons' },
   'lp.tab.production': { ar: 'مصفوفة الإنتاج', en: 'Production' },
   'lp.tab.team': { ar: 'الفريق', en: 'Team' },
-  'lp.tab.files': { ar: 'الملفات', en: 'Files' },
+  'lp.tab.files': { ar: 'الملفات والسجل', en: 'Files & activity' },
   'lp.tab.activity': { ar: 'النشاط', en: 'Activity' },
   'lp.tab.settings': { ar: 'الإعدادات', en: 'Settings' },
   'lp.overview.pipeline': { ar: 'مسار الإنتاج', en: 'Production pipeline' },
@@ -830,11 +832,22 @@ function humanize(token: string): Pair {
   return { ar: spaced, en: spaced.replace(/\b\w/g, (char) => char.toUpperCase()) };
 }
 
-/** Returns readable feature copy for a key not yet added to the exact table. */
+const warned = new Set<string>();
+
+/**
+ * Returns the copy for an `lp.*` key: the rebuilt table first, then the
+ * original one. A key in neither falls back to a readable label built from the
+ * key so the screen never shows a raw key — but that fallback is a bug, warned
+ * about in development and caught by server/learningProduction.i18n.test.js.
+ */
 export function learningProductionString(key: string, lang: 'ar' | 'en') {
-  const exact = LP_STRINGS[key];
+  const exact = STUDIO_STRINGS[key] ?? LP_STRINGS[key];
   if (exact) return exact[lang];
   if (!key.startsWith('lp.')) return key;
+  if (import.meta.env?.DEV && !warned.has(key)) {
+    warned.add(key);
+    console.warn(`[i18n] missing learning-production string: ${key}`);
+  }
   const parts = key.split('.').slice(1);
   const labels = parts.map(humanize);
   return labels.map((label) => label[lang]).join(lang === 'ar' ? ' · ' : ' · ');

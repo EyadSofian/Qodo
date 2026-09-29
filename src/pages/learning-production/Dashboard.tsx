@@ -1,498 +1,301 @@
 /**
- * The production dashboard. Five questions, answered without a click: how much
- * is being made, how much is finished, what is late, what waits for review,
- * and who is carrying too much.
+ * E-Learning Production — the dashboard.
  *
- * It is the one screen in the module that is allowed to be loud. Everywhere
- * else a colour has to earn its place against the work it sits next to; here
- * the figures *are* the content, so each one carries its own tone — brand blue
- * for the catalogue, navy for its size, green for what is finished, indigo for
- * what sits with a reviewer, amber for what came back, red for what is late —
- * and every chart reuses the colour its own badge already has, so a slice of
- * "Changes requested" is the same amber as the chip that says it.
+ * The manager's portfolio: every production run in flight in one table —
+ * where it is, how far its workflow and its content have come (two separate
+ * numbers, never blended), its health and why, what waits for approval, what
+ * is late, what is blocking release — then where runs are piling up and who
+ * is carrying the work. A contributor sees the same page limited to their own
+ * courses, with their next actions on top.
  */
 
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
-import {
-  AlertTriangle,
-  Ban,
-  BookOpen,
-  CheckCircle2,
-  ClipboardCheck,
-  GraduationCap,
-  Inbox,
-  Library,
-  ListTree,
-  Plus,
-  RotateCcw,
-  TrendingUp,
-  type LucideIcon,
-} from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { AlarmClock, ArrowUpRight, Hourglass, Inbox, LayoutDashboard, Layers, Plus, Rocket, Search, ShieldAlert, TrendingDown, Workflow } from 'lucide-react';
 import { useI18n, type StringKey } from '../../lib/i18n';
-import { cx, formatDate } from '../../lib/utils';
-import { paths } from '../../lib/learningProduction/api';
 import { useLpQuery } from '../../lib/learningProduction/hooks';
-import { HEALTH_TONE, STAGE_HEX, STAGES, formatDay, healthKey, stageKey, statusKey } from '../../lib/learningProduction/format';
-import type { AssetStatus, AttentionKind, CourseHealth, DashboardResponse, People, StageStat, WorkItem } from '../../lib/learningProduction/types';
+import { runPaths } from '../../lib/learningProduction/runApi';
+import type { MyWork2Response, PortfolioResponse, Scenario, StageKey } from '../../lib/learningProduction/runTypes';
+import { STAGE_KEYS } from '@shared/learningProduction/constants';
 import {
-  ActivityFeed,
-  Chip,
-  EmptyPanel,
-  ErrorPanel,
-  PageHeader,
-  PersonChip,
-  ProgressBar,
-  Section,
-  SkeletonRows,
-} from '../../components/learning-production/kit';
-import { ColumnTrend, Donut, HEALTH_HEX, Legend, LoadBars, STATUS_HEX, StackedBar } from '../../components/learning-production/charts';
-import { WorkList } from '../../components/learning-production/WorkList';
-
-/** Each headline figure's own colour: tile, number and border come from one row. */
-interface Palette {
-  bg: string;
-  border: string;
-  ink: string;
-  tile: string;
-}
-
-const PALETTES: Record<string, Palette> = {
-  brand: { bg: 'bg-brand-50', border: 'border-brand-100', ink: 'text-brand-700', tile: 'bg-brand-500' },
-  navy: { bg: 'bg-surface-sunken', border: 'border-surface-line', ink: 'text-navy', tile: 'bg-navy' },
-  green: { bg: 'bg-status-okBg', border: 'border-green-200', ink: 'text-green-700', tile: 'bg-status-ok' },
-  indigo: { bg: 'bg-indigo-50', border: 'border-indigo-100', ink: 'text-indigo-700', tile: 'bg-indigo-600' },
-  amber: { bg: 'bg-status-warnBg', border: 'border-amber-200', ink: 'text-accent-700', tile: 'bg-status-warn' },
-  red: { bg: 'bg-status-badBg', border: 'border-red-200', ink: 'text-status-bad', tile: 'bg-status-bad' },
-};
-
-/** The four statuses a stage bar is cut into, in the order work moves through them. */
-const STAGE_SEGMENTS: Array<{ key: string; status: AssetStatus; pick: (stage: StageStat) => number }> = [
-  { key: 'complete', status: 'APPROVED', pick: (stage) => stage.complete },
-  { key: 'review', status: 'UNDER_REVIEW', pick: (stage) => stage.review },
-  { key: 'changes', status: 'CHANGES_REQUESTED', pick: (stage) => stage.changes },
-  { key: 'working', status: 'IN_PROGRESS', pick: (stage) => stage.inProgress },
-];
-
-const HEALTHS: CourseHealth[] = ['ON_TRACK', 'AT_RISK', 'DELAYED', 'COMPLETED'];
-const MIX_ORDER: AssetStatus[] = ['APPROVED', 'LOCKED', 'UNDER_REVIEW', 'RESUBMITTED', 'SUBMITTED', 'CHANGES_REQUESTED', 'IN_PROGRESS', 'ASSIGNED', 'NOT_STARTED'];
+  EmptyNote,
+  ErrorNote,
+  Figure,
+  PageHero,
+  HealthPill,
+  LoadingRows,
+  Meter,
+  Panel,
+  PersonLine,
+  ScenarioBadge,
+  usePick,
+  useDay,
+} from '../../components/learning-production/studio';
+import { useLpMe } from './Layout';
 
 export function Dashboard() {
-  const { t, lang } = useI18n();
-  const { data, error, loading, reload } = useLpQuery<DashboardResponse>(paths.dashboard);
-  const [open, setOpen] = useState<AttentionKind | null>(null);
+  const { t } = useI18n();
+  const pick = usePick();
+  const day = useDay();
+  const navigate = useNavigate();
+  const me = useLpMe();
+  const { data, error, loading, reload } = useLpQuery<PortfolioResponse>(runPaths.portfolio);
+  const { data: work } = useLpQuery<MyWork2Response>(runPaths.work);
+  const [search, setSearch] = useState('');
+  const [scenario, setScenario] = useState<Scenario | ''>('');
+  const [health, setHealth] = useState('');
 
-  const newCourse = data?.canCreateCourse ? (
-    <Link to="/learning-production/courses/new" className="btn-primary btn-sm">
-      <Plus size={15} />
-      {t('lp.course.new')}
-    </Link>
-  ) : null;
-
-  if (loading && !data) {
-    return (
-      <>
-        <PageHeader title={t('lp.dashboard.title')} description={t('lp.dashboard.subtitle')} />
-        <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-          {Array.from({ length: 6 }, (_, index) => (
-            <div key={index} className="skeleton h-[104px]" />
-          ))}
-        </div>
-        <SkeletonRows rows={6} height="h-14" />
-      </>
+  const runs = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    return (data?.runs ?? []).filter(
+      (run) =>
+        (!needle || run.course.name.toLowerCase().includes(needle) || (run.course.code ?? '').toLowerCase().includes(needle)) &&
+        (!scenario || run.scenario === scenario) &&
+        (!health || run.health === health)
     );
-  }
-  if (error && !data) return <ErrorPanel error={error} onRetry={reload} />;
-  if (!data) return null;
+  }, [data, search, scenario, health]);
 
-  const { kpis, attention, statusMix, throughput, healthCounts } = data;
-  const hasWork = kpis.totalLessons > 0 || data.watchlist.length > 0;
-  const completedShare = kpis.totalLessons ? Math.round((kpis.completedLessons / kpis.totalLessons) * 100) : 0;
-  const totalAssets = MIX_ORDER.reduce((sum, status) => sum + (statusMix?.[status] ?? 0), 0);
-  const openAssets = totalAssets - (statusMix?.APPROVED ?? 0) - (statusMix?.LOCKED ?? 0);
-  const totalCourses = HEALTHS.reduce((sum, health) => sum + (healthCounts?.[health] ?? 0), 0);
-  const weeks = throughput ?? [];
-  const lastWeek = weeks[weeks.length - 1]?.approved ?? 0;
-  const previousWeek = weeks[weeks.length - 2]?.approved ?? 0;
+  const pipeline = useMemo(() => {
+    const entries = STAGE_KEYS.map((key) => [key, data?.pipeline[key as StageKey] ?? 0] as const).filter(([, count]) => count > 0);
+    const top = Math.max(1, ...entries.map(([, count]) => count));
+    return { entries, top };
+  }, [data]);
 
   return (
-    <>
-      <PageHeader title={t('lp.dashboard.title')} description={t('lp.dashboard.subtitle')} actions={newCourse} />
-
-      {(data.mine.assigned > 0 || data.mine.reviews > 0) && (
-        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-2xl border border-brand-100 bg-brand-50/70 px-4 py-3 text-[13px]">
-          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-brand-500 text-white">
-            <Inbox size={15} aria-hidden="true" />
-          </span>
-          <span className="font-semibold text-ink">{t('lp.dashboard.yourWork')}</span>
-          {data.mine.assigned > 0 && (
-            <Link to="/learning-production/my-work" className="font-semibold text-brand-700 hover:underline">
-              {t('lp.dashboard.assignedToYou', { n: data.mine.assigned })}
+    <div className="lps-stagger space-y-5">
+      <PageHero
+        icon={LayoutDashboard}
+        title={t('lp.dashboard.title')}
+        lede={t('lp.dashboard.lede')}
+        actions={
+          work && (work.counts.now > 0 || work.counts.review > 0) ? (
+            <Link to="/learning-production/my-work" className="lps-hero-stat flex items-center gap-3 text-[13px] text-white transition-colors hover:bg-white/25">
+              <Inbox size={16} aria-hidden="true" />
+              <span>
+                <strong>{t('lp.dashboard.yours', { n: work.counts.now })}</strong>
+                {work.counts.review > 0 && <span className="text-white/80"> · {t('lp.dashboard.yourReviews', { n: work.counts.review })}</span>}
+                {work.counts.overdue > 0 && <span className="font-semibold text-amber-200"> · {t('lp.dashboard.yourOverdue', { n: work.counts.overdue })}</span>}
+              </span>
+              <ArrowUpRight size={14} aria-hidden="true" className="rtl:-scale-x-100" />
             </Link>
-          )}
-          {data.mine.reviews > 0 && (
-            <Link to="/learning-production/reviews" className="font-semibold text-indigo-700 hover:underline">
-              {t('lp.dashboard.waitingForYou', { n: data.mine.reviews })}
-            </Link>
-          )}
-          {data.mine.overdue > 0 && <Chip tone="bad">{t('lp.dashboard.yourOverdue', { n: data.mine.overdue })}</Chip>}
-        </div>
-      )}
+          ) : undefined
+        }
+      />
 
-      {!hasWork ? (
-        <EmptyPanel
-          icon={<GraduationCap size={28} />}
-          title={t('lp.course.emptyTitle')}
-          body={data.canCreateCourse ? t('lp.course.emptyBodyManager') : t('lp.course.emptyBody')}
-          action={
-            data.canCreateCourse ? (
-              <Link to="/learning-production/courses/new" className="btn-primary btn-sm">
-                <Plus size={15} />
-                {t('lp.course.createFirst')}
-              </Link>
-            ) : null
-          }
-        />
-      ) : (
-        <>
-          <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-            <Kpi palette="brand" icon={Library} label={t('lp.kpi.activeCourses')} value={kpis.activeCourses} hint={t('lp.dashboard.ofCourses', { n: totalCourses })} to="/learning-production/courses" />
-            <Kpi palette="navy" icon={ListTree} label={t('lp.kpi.totalLessons')} value={kpis.totalLessons} hint={t('lp.dashboard.assetsTotal', { n: totalAssets })} />
-            <Kpi palette="green" icon={CheckCircle2} label={t('lp.kpi.completedLessons')} value={kpis.completedLessons} hint={`${completedShare}%`} bar={completedShare} />
-            <Kpi palette="indigo" icon={ClipboardCheck} label={t('lp.kpi.underReview')} value={kpis.underReview} hint={t('lp.dashboard.dueSoon', { n: kpis.dueSoon })} onClick={() => setOpen('review')} />
-            <Kpi palette="amber" icon={RotateCcw} label={t('lp.kpi.changesRequested')} value={kpis.changesRequested} hint={t('lp.dashboard.blockedShort', { n: attention.blockedAssets })} onClick={() => setOpen('changes')} />
-            <Kpi palette="red" icon={AlertTriangle} label={t('lp.kpi.overdue')} value={kpis.overdue} hint={t('lp.dashboard.ofOpen', { n: openAssets })} onClick={() => setOpen('overdue')} />
+      {error ? <ErrorNote error={error} onRetry={reload} /> : null}
+
+      <section aria-label={t('lp.dashboard.figures')} className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-6">
+        <Figure icon={Workflow} value={data?.kpis.activeRuns ?? '—'} label={t('lp.kpi.activeRuns')} hint={data?.kpis.legacyRuns ? t('lp.kpi.legacyRuns', { n: data.kpis.legacyRuns }) : undefined} />
+        <Figure icon={Hourglass} value={data?.kpis.pendingApprovals ?? '—'} label={t('lp.kpi.pendingApprovals')} to="/learning-production/reviews" tone="accent" />
+        <Figure icon={AlarmClock} value={data?.kpis.overdue ?? '—'} label={t('lp.kpi.overdue')} tone={data?.kpis.overdue ? 'danger' : 'sky'} />
+        <Figure icon={ShieldAlert} value={data?.kpis.blockingIssues ?? '—'} label={t('lp.kpi.blockingIssues')} tone={data?.kpis.blockingIssues ? 'attention' : 'sky'} />
+        <Figure icon={TrendingDown} value={data?.kpis.atRisk ?? '—'} label={t('lp.kpi.atRisk')} tone={data?.kpis.atRisk ? 'attention' : 'sky'} />
+        <Figure icon={Rocket} value={data?.kpis.releasedLast90 ?? '—'} label={t('lp.kpi.released90')} tone="ok" />
+      </section>
+
+      <Panel
+        title={t('lp.dashboard.runs')}
+        bodyClassName="p-0"
+        action={
+          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+            <label className="relative min-w-0 flex-1 sm:w-56 sm:flex-none">
+              <span className="sr-only">{t('common.search')}</span>
+              <Search size={14} aria-hidden="true" className="pointer-events-none absolute start-2.5 top-1/2 -translate-y-1/2 lps-faint" />
+              <input className="lps-input !py-1.5 ps-8" value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t('lp.dashboard.searchRuns')} />
+            </label>
+            <select className="lps-input !w-auto !py-1.5" value={scenario} onChange={(event) => setScenario(event.target.value as Scenario | '')} aria-label={t('lp.filter.scenario')}>
+              <option value="">{t('lp.filter.anyScenario')}</option>
+              {(['EXPERT_NEW', 'AI_NEW', 'REVAMP', 'LEGACY'] as Scenario[]).map((value) => (
+                <option key={value} value={value}>
+                  {t(`lp.scenarioShort.${value}` as StringKey)}
+                </option>
+              ))}
+            </select>
+            <select className="lps-input !w-auto !py-1.5" value={health} onChange={(event) => setHealth(event.target.value)} aria-label={t('lp.filter.health')}>
+              <option value="">{t('lp.filter.anyHealth')}</option>
+              {['DELAYED', 'AT_RISK', 'ON_TRACK'].map((value) => (
+                <option key={value} value={value}>
+                  {t(`lp.health.${value}` as StringKey)}
+                </option>
+              ))}
+            </select>
           </div>
-
-          <div className="mb-4 grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_minmax(0,1fr)]">
-            <Section title={t('lp.dashboard.progress')}>
-              <div className="space-y-3.5">
-                {data.stages.map((stage) => {
-                  const rest = Math.max(0, stage.total - STAGE_SEGMENTS.reduce((sum, segment) => sum + segment.pick(stage), 0));
+        }
+      >
+        {loading && !data ? (
+          <LoadingRows rows={5} />
+        ) : runs.length === 0 ? (
+          <EmptyNote
+            icon={Layers}
+            title={data?.runs.length ? t('lp.dashboard.noMatch') : t('lp.dashboard.noRuns')}
+            body={data?.runs.length ? undefined : t('lp.dashboard.noRunsBody')}
+            action={
+              !data?.runs.length && me?.canCreateRun ? (
+                <Link to="/learning-production/runs/new" className="lps-btn-primary">
+                  <Plus size={15} aria-hidden="true" />
+                  {t('lp.run.new')}
+                </Link>
+              ) : undefined
+            }
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="lps-table min-w-[980px]">
+              <thead>
+                <tr>
+                  <th className="sticky start-0 z-[2]">{t('lp.col.course')}</th>
+                  <th>{t('lp.col.stage')}</th>
+                  <th className="w-[130px]">{t('lp.col.workflow')}</th>
+                  <th className="w-[130px]">{t('lp.col.content')}</th>
+                  <th>{t('lp.col.health')}</th>
+                  <th className="text-center">{t('lp.col.waiting')}</th>
+                  <th className="text-center">{t('lp.col.overdue')}</th>
+                  <th className="text-center">{t('lp.col.issues')}</th>
+                  <th>{t('lp.col.target')}</th>
+                  <th>{t('lp.col.manager')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {runs.map((run) => {
+                  const open = () => navigate(`/learning-production/courses/${run.course.id}`);
                   return (
-                    <div key={stage.assetType}>
-                      <div className="mb-1.5 flex items-center justify-between gap-2 text-[13px]">
-                        <span className="flex items-center gap-2 font-bold text-ink">
-                          <span className="h-2.5 w-2.5 rounded-full" style={{ background: STAGE_HEX[stage.assetType] }} aria-hidden="true" />
-                          {t(stageKey(stage.assetType))}
+                    <tr key={run.id} className="lps-row-link" onClick={open}>
+                      <td className="sticky start-0 z-[1] bg-white">
+                        <Link to={`/learning-production/courses/${run.course.id}`} className="block min-w-0 max-w-[260px] font-semibold hover:underline" onClick={(event) => event.stopPropagation()}>
+                          <span className="lps-bidi block truncate">{run.course.name}</span>
+                        </Link>
+                        <span className="mt-1 flex items-center gap-1.5">
+                          <ScenarioBadge scenario={run.scenario} short />
+                          <span className="text-[11.5px] lps-faint">{t('lp.run.number', { n: run.runNumber })}</span>
                         </span>
-                        <span className="flex items-baseline gap-2">
-                          <span className="text-[15px] font-extrabold tabular-nums" style={{ color: STAGE_HEX[stage.assetType] }}>
-                            {stage.percent}%
+                      </td>
+                      <td>
+                        {run.scenario === 'LEGACY' ? (
+                          <span className="text-[12.5px] lps-muted">{t('lp.run.legacyNoStages')}</span>
+                        ) : run.currentStage ? (
+                          <>
+                            <span className="block max-w-[220px] truncate font-medium">{pick(run.currentStage.label)}</span>
+                            <span className="text-[11.5px] lps-faint">{t('lp.run.stageOf', { n: run.currentStage.index + 1, total: run.stageCount })}</span>
+                          </>
+                        ) : (
+                          <span className="text-[12.5px]">{t('lp.run.allStagesDone')}</span>
+                        )}
+                      </td>
+                      <td>
+                        <div className="flex items-center gap-2">
+                          <Meter value={run.workflow.percent} label={t('lp.col.workflow')} />
+                          <span className="w-9 shrink-0 text-end text-[12px] font-semibold">{run.workflow.percent}%</span>
+                        </div>
+                      </td>
+                      <td>
+                        <div className="flex items-center gap-2">
+                          <Meter value={run.content.percent} tone="ok" label={t('lp.col.content')} />
+                          <span className="w-9 shrink-0 text-end text-[12px] font-semibold">{run.content.total ? `${run.content.percent}%` : '—'}</span>
+                        </div>
+                      </td>
+                      <td>
+                        <HealthPill
+                          health={run.health}
+                          title={run.healthReasons.map((reason) => t(`lp.healthReason.${reason.code}` as StringKey, reason as Record<string, string | number>)).join('\n')}
+                        />
+                      </td>
+                      <td className="text-center font-semibold">{run.pendingApprovals || <span className="lps-faint">0</span>}</td>
+                      <td className="text-center font-semibold" style={{ color: run.overdue ? 'var(--lps-danger)' : undefined }}>
+                        {run.overdue || <span className="lps-faint">0</span>}
+                      </td>
+                      <td className="text-center">
+                        {run.blockingIssues ? (
+                          <span className="font-semibold" style={{ color: 'var(--lps-attention)' }}>
+                            {run.blockingIssues}
                           </span>
-                          <span className="text-[11.5px] tabular-nums text-ink-faint">
-                            {stage.complete}/{stage.total}
-                          </span>
-                        </span>
-                      </div>
-                      <StackedBar
-                        height="h-3"
-                        slices={[
-                          ...STAGE_SEGMENTS.map((segment) => ({
-                            key: segment.key,
-                            label: t(statusKey(segment.status)),
-                            value: segment.pick(stage),
-                            color: STATUS_HEX[segment.status],
-                          })),
-                          { key: 'rest', label: t('lp.status.NOT_STARTED'), value: rest, color: STATUS_HEX.NOT_STARTED },
-                        ]}
-                      />
-                      {stage.overdue > 0 && (
-                        <p className="mt-1 text-[11px] font-semibold text-status-bad">{t('lp.dashboard.stageOverdue', { n: stage.overdue })}</p>
-                      )}
-                    </div>
+                        ) : (
+                          <span className="lps-faint">{run.openIssues || 0}</span>
+                        )}
+                      </td>
+                      <td className="whitespace-nowrap text-[12.5px]">{day(run.targetDate)}</td>
+                      <td>
+                        <PersonLine userId={run.managerUserId} people={data?.people ?? {}} />
+                      </td>
+                    </tr>
                   );
                 })}
-              </div>
-              <div className="mt-4 border-t border-surface-line pt-3">
-                <div className="mb-1 flex items-baseline justify-between">
-                  <span className="text-[13px] font-bold text-ink">{t('lp.overallCompletion')}</span>
-                  <span className="text-lg font-extrabold tabular-nums text-status-ok">{data.overallPercent}%</span>
-                </div>
-                <ProgressBar value={data.overallPercent} tone="ok" className="!h-2.5" label={t('lp.overallCompletion')} />
-                <Legend
-                  items={[
-                    { key: 'done', label: t('lp.status.APPROVED'), color: STATUS_HEX.APPROVED },
-                    { key: 'review', label: t('lp.status.UNDER_REVIEW'), color: STATUS_HEX.UNDER_REVIEW },
-                    { key: 'changes', label: t('lp.status.CHANGES_REQUESTED'), color: STATUS_HEX.CHANGES_REQUESTED },
-                    { key: 'working', label: t('lp.status.IN_PROGRESS'), color: STATUS_HEX.IN_PROGRESS },
-                    { key: 'not', label: t('lp.status.NOT_STARTED'), color: STATUS_HEX.NOT_STARTED },
-                  ]}
-                />
-              </div>
-            </Section>
-
-            <Section title={t('lp.dashboard.statusMix')}>
-              <Donut
-                slices={MIX_ORDER.filter((status) => (statusMix?.[status] ?? 0) > 0).map((status) => ({
-                  key: status,
-                  label: t(statusKey(status)),
-                  value: statusMix?.[status] ?? 0,
-                  color: STATUS_HEX[status],
-                }))}
-                total={totalAssets}
-                caption={t('lp.dashboard.assetsWord')}
-                layout="stack"
-                size={148}
-              />
-              <div className="mt-4 border-t border-surface-line pt-3">
-                <p className="mb-2 text-[11.5px] font-semibold text-ink-muted">{t('lp.dashboard.mixBar')}</p>
-                <StackedBar
-                  height="h-4"
-                  slices={MIX_ORDER.map((status) => ({
-                    key: status,
-                    label: t(statusKey(status)),
-                    value: statusMix?.[status] ?? 0,
-                    color: STATUS_HEX[status],
-                  }))}
-                />
-                <p className="mt-2 text-[11.5px] text-ink-faint">{t('lp.dashboard.mixHint', { done: (statusMix?.APPROVED ?? 0) + (statusMix?.LOCKED ?? 0), open: openAssets })}</p>
-              </div>
-            </Section>
-
-            <Section title={t('lp.dashboard.healthMix')}>
-              <Donut
-                slices={HEALTHS.filter((health) => (healthCounts?.[health] ?? 0) > 0).map((health) => ({
-                  key: health,
-                  label: t(healthKey(health)),
-                  value: healthCounts?.[health] ?? 0,
-                  color: HEALTH_HEX[health],
-                }))}
-                caption={t('lp.dashboard.coursesWord')}
-                layout="stack"
-                legendColumns={1}
-                size={148}
-              />
-              <ul className="mt-4 grid gap-2 border-t border-surface-line pt-3">
-                <AttentionTile palette="red" icon={AlertTriangle} count={attention.overdue} label="lp.attention.overdue" active={open === 'overdue'} onClick={() => setOpen(open === 'overdue' ? null : 'overdue')} />
-                <AttentionTile palette="indigo" icon={ClipboardCheck} count={attention.review} label="lp.attention.review" active={open === 'review'} onClick={() => setOpen(open === 'review' ? null : 'review')} />
-                <AttentionTile palette="amber" icon={RotateCcw} count={attention.changes} label="lp.attention.changes" active={open === 'changes'} onClick={() => setOpen(open === 'changes' ? null : 'changes')} />
-                <AttentionTile palette="navy" icon={Ban} count={attention.blockedLessons} label="lp.attention.blocked" active={open === 'blocked'} onClick={() => setOpen(open === 'blocked' ? null : 'blocked')} />
-              </ul>
-            </Section>
+              </tbody>
+            </table>
           </div>
-
-          {open && <AttentionList kind={open} onClose={() => setOpen(null)} />}
-
-          <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-            <Section
-              title={t('lp.dashboard.throughput')}
-              actions={
-                <span className={cx('inline-flex items-center gap-1 text-[12px] font-bold', lastWeek >= previousWeek ? 'text-status-ok' : 'text-accent-700')}>
-                  <TrendingUp size={13} className={lastWeek >= previousWeek ? '' : 'rotate-180'} aria-hidden="true" />
-                  {t('lp.dashboard.thisWeek', { n: lastWeek })}
-                </span>
-              }
-            >
-              <ColumnTrend
-                height={164}
-                points={weeks.map((week, index) => ({
-                  label: formatDay(week.week, lang),
-                  value: week.approved,
-                  highlight: index === weeks.length - 1,
-                }))}
-              />
-              <p className="mt-2 text-[11.5px] text-ink-faint">{t('lp.dashboard.throughputHint')}</p>
-            </Section>
-
-            {data.managerView ? (
-              <Section title={t('lp.dashboard.workload')}>
-                <LoadBars
-                  empty={t('lp.workload.empty')}
-                  rows={data.workload.map((row) => ({
-                    key: row.userId,
-                    label: <PersonChip userId={row.userId} people={data.people} size={20} />,
-                    active: row.active,
-                    reviewing: row.reviewing,
-                    overdue: row.overdue,
-                  }))}
-                />
-                <div className="mt-3 border-t border-surface-line pt-2.5">
-                  <Legend
-                    items={[
-                      { key: 'active', label: t('lp.workload.active'), color: '#4A8FCB' },
-                      { key: 'review', label: t('lp.workload.review'), color: '#4F46E5' },
-                      { key: 'overdue', label: t('lp.workload.overdue'), color: '#DC2626' },
-                    ]}
-                  />
-                </div>
-              </Section>
-            ) : (
-              <Section title={t('lp.dashboard.stagesShare')}>
-                <Donut
-                  slices={STAGES.map((type) => ({
-                    key: type,
-                    label: t(stageKey(type)),
-                    value: data.stages.find((stage) => stage.assetType === type)?.complete ?? 0,
-                    color: STAGE_HEX[type],
-                  }))}
-                  caption={t('lp.dashboard.approvedWord')}
-                />
-              </Section>
-            )}
-          </div>
-
-          <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-            <Section
-              title={t('lp.dashboard.courses')}
-              actions={
-                <Link to="/learning-production/courses" className="text-[12.5px] font-semibold text-brand-600 hover:underline">
-                  {t('lp.viewAll')}
-                </Link>
-              }
-              bodyClassName="!p-0"
-            >
-              <CourseWatchlist courses={data.watchlist} people={data.people} />
-            </Section>
-
-            <Section title={t('lp.dashboard.activity')}>
-              <ActivityFeed entries={data.activity} people={data.people} />
-            </Section>
-          </div>
-        </>
-      )}
-    </>
-  );
-}
-
-function Kpi({
-  palette,
-  icon: Icon,
-  label,
-  value,
-  hint,
-  bar,
-  to,
-  onClick,
-}: {
-  palette: keyof typeof PALETTES;
-  icon: LucideIcon;
-  label: string;
-  value: number;
-  hint?: string;
-  bar?: number;
-  to?: string;
-  onClick?: () => void;
-}) {
-  const tone = PALETTES[palette];
-  const body = (
-    <>
-      <span className="flex items-center gap-2">
-        <span className={cx('grid h-7 w-7 shrink-0 place-items-center rounded-lg text-white', tone.tile)}>
-          <Icon size={15} aria-hidden="true" />
-        </span>
-        <span className="min-w-0 flex-1 truncate text-[12px] font-bold text-ink-muted">{label}</span>
-      </span>
-      <span className={cx('mt-2 block text-[26px] font-extrabold leading-none tabular-nums', tone.ink)}>{value}</span>
-      {bar !== undefined && (
-        <span className="mt-2 block h-1.5 overflow-hidden rounded-full bg-white/70">
-          <span className={cx('block h-full rounded-full', tone.tile)} style={{ width: `${Math.max(2, Math.min(100, bar))}%` }} />
-        </span>
-      )}
-      {hint && <span className="mt-1.5 block truncate text-[11.5px] font-semibold text-ink-muted">{hint}</span>}
-    </>
-  );
-  const className = cx('block rounded-2xl border px-3.5 py-3 text-start transition-shadow', tone.bg, tone.border);
-  if (to) return <Link to={to} className={cx(className, 'hover:shadow-card')}>{body}</Link>;
-  if (onClick) return <button type="button" onClick={onClick} className={cx(className, 'hover:shadow-card')}>{body}</button>;
-  return <div className={className}>{body}</div>;
-}
-
-function AttentionTile({
-  palette,
-  icon: Icon,
-  count,
-  label,
-  active,
-  onClick,
-}: {
-  palette: keyof typeof PALETTES;
-  icon: LucideIcon;
-  count: number;
-  label: StringKey;
-  active: boolean;
-  onClick: () => void;
-}) {
-  const { t } = useI18n();
-  const tone = PALETTES[palette];
-  return (
-    <li>
-      <button
-        type="button"
-        onClick={onClick}
-        disabled={count === 0}
-        aria-expanded={active}
-        className={cx(
-          'flex w-full items-center gap-2 rounded-xl border px-2.5 py-2 text-start transition-all disabled:cursor-default',
-          count === 0 ? 'border-surface-line bg-white opacity-60' : cx(tone.bg, tone.border, 'hover:shadow-card'),
-          active && 'ring-2 ring-brand-300'
         )}
-      >
-        <Icon size={15} className={count === 0 ? 'text-ink-faint' : tone.ink} aria-hidden="true" />
-        <span className={cx('text-[17px] font-extrabold tabular-nums', count === 0 ? 'text-ink-faint' : tone.ink)}>{count}</span>
-        <span className="min-w-0 flex-1 truncate text-[11.5px] font-semibold text-ink-muted">{t(label, { n: count })}</span>
-      </button>
-    </li>
-  );
-}
+      </Panel>
 
-function AttentionList({ kind, onClose }: { kind: AttentionKind; onClose: () => void }) {
-  const { t } = useI18n();
-  const { data, error, loading, reload } = useLpQuery<{ items: WorkItem[]; people: People }>(paths.attention(kind));
-  return (
-    <Section
-      className="mt-4"
-      title={t(`lp.attention.list.${kind}` as StringKey)}
-      actions={
-        <button type="button" className="btn-quiet btn-sm" onClick={onClose}>
-          {t('common.close')}
-        </button>
-      }
-      bodyClassName="!p-0"
-    >
-      {loading && !data ? (
-        <div className="p-4">
-          <SkeletonRows rows={3} />
-        </div>
-      ) : error && !data ? (
-        <ErrorPanel error={error} onRetry={reload} />
-      ) : (
-        <WorkList items={data?.items ?? []} people={data?.people ?? {}} empty={t('lp.attention.allClear')} />
-      )}
-    </Section>
-  );
-}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <Panel title={t('lp.dashboard.pipeline')} className="lg:col-span-1">
+          {pipeline.entries.length === 0 ? (
+            <p className="text-[13px] lps-muted">{t('lp.dashboard.pipelineEmpty')}</p>
+          ) : (
+            <ul className="space-y-2">
+              {pipeline.entries.map(([key, count]) => (
+                <li key={key}>
+                  <div className="mb-1 flex items-center justify-between gap-2 text-[12.5px]">
+                    <span className="truncate">{t(`lp.stageKey.${key}` as StringKey)}</span>
+                    <span className="font-semibold" style={{ color: data?.bottleneck === key ? 'var(--lps-attention)' : undefined }}>
+                      {count}
+                    </span>
+                  </div>
+                  <Meter value={(count / pipeline.top) * 100} tone={data?.bottleneck === key ? 'attention' : 'accent'} label={t(`lp.stageKey.${key}` as StringKey)} />
+                </li>
+              ))}
+            </ul>
+          )}
+          {data?.bottleneck && <p className="mt-3 text-[12px] lps-muted">{t('lp.dashboard.bottleneck', { stage: t(`lp.stageKey.${data.bottleneck}` as StringKey) })}</p>}
+        </Panel>
 
-function CourseWatchlist({ courses, people }: { courses: DashboardResponse['watchlist']; people: People }) {
-  const { t, lang } = useI18n();
-  if (courses.length === 0) return <p className="px-4 py-6 text-center text-[13px] text-ink-faint">{t('lp.course.noneActive')}</p>;
-  return (
-    <ul className="divide-y divide-surface-line">
-      {courses.map((course) => (
-        <li key={course.id}>
-          <Link to={`/learning-production/courses/${course.id}`} className="block px-4 py-3 hover:bg-surface-bg">
-            <div className="flex items-center justify-between gap-2">
-              <span className="flex min-w-0 items-center gap-2">
-                <span className="h-6 w-1.5 shrink-0 rounded-full" style={{ background: HEALTH_HEX[course.health] }} aria-hidden="true" />
-                <BookOpen size={15} className="shrink-0 text-brand-500" aria-hidden="true" />
-                <span className="truncate text-[13.5px] font-semibold text-ink">{course.name}</span>
-              </span>
-              <Chip tone={HEALTH_TONE[course.health]}>{t(healthKey(course.health))}</Chip>
-            </div>
-            <div className="mt-2 flex items-center gap-2">
-              <ProgressBar value={course.progress} color={HEALTH_HEX[course.health]} />
-              <span className="w-9 shrink-0 text-end text-[12px] font-semibold tabular-nums text-ink">{course.progress}%</span>
-            </div>
-            <p className="mt-1 flex items-center gap-2 truncate text-[11.5px] text-ink-faint">
-              <Library size={11} aria-hidden="true" />
-              {t('lp.course.lessonsCount', { n: course.stats.lessons })}
-              {course.stats.overdueAssets > 0 && <span className="font-bold text-status-bad">· {t('lp.dashboard.stageOverdue', { n: course.stats.overdueAssets })}</span>}
-              {course.targetDate && <span>· {t('lp.course.target')}: {formatDate(course.targetDate, lang)}</span>}
-              {course.managerUserId && <span className="truncate">· {people[course.managerUserId]?.name ?? ''}</span>}
-            </p>
-          </Link>
-        </li>
-      ))}
-    </ul>
+        <Panel title={t('lp.dashboard.workload')} bodyClassName="p-0" className="lg:col-span-1">
+          {data && data.workload.length === 0 ? (
+            <p className="p-4 text-[13px] lps-muted">{t('lp.dashboard.workloadEmpty')}</p>
+          ) : (
+            <table className="lps-table">
+              <thead>
+                <tr>
+                  <th>{t('lp.col.person')}</th>
+                  <th className="text-center">{t('lp.col.active')}</th>
+                  <th className="text-center">{t('lp.col.reviewing')}</th>
+                  <th className="text-center">{t('lp.col.overdue')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(data?.workload ?? []).map((row) => (
+                  <tr key={row.userId}>
+                    <td>
+                      <PersonLine userId={row.userId} people={data?.people ?? {}} />
+                    </td>
+                    <td className="text-center font-semibold">{row.active}</td>
+                    <td className="text-center">{row.reviewing}</td>
+                    <td className="text-center font-semibold" style={{ color: row.overdue ? 'var(--lps-danger)' : undefined }}>
+                      {row.overdue}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Panel>
+
+        <Panel title={t('lp.dashboard.releases')} className="lg:col-span-1">
+          {data && data.releases.length === 0 ? (
+            <p className="text-[13px] lps-muted">{t('lp.dashboard.releasesEmpty')}</p>
+          ) : (
+            <ul className="divide-y" style={{ borderColor: 'var(--lps-line)' }}>
+              {(data?.releases ?? []).map((release) => (
+                <li key={release.id} className="flex items-center justify-between gap-2 py-2 text-[13px]">
+                  <Link to={`/learning-production/courses/${release.course.id}/qa?release=${release.id}`} className="min-w-0 hover:underline">
+                    <span className="lps-bidi block truncate font-semibold">{release.course.name}</span>
+                    <span className="text-[12px] lps-faint">{release.versionLabel}</span>
+                  </Link>
+                  <span className="shrink-0 text-[12px] lps-muted">{day(release.publishedAt)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Panel>
+      </div>
+    </div>
   );
 }

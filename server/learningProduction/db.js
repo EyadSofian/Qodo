@@ -167,10 +167,19 @@ export async function transaction(fn) {
   const connection = await client.connect();
   try {
     await connection.query('BEGIN');
+    // One connection runs one statement at a time. Reads fanned out with
+    // Promise.all inside a transaction are queued here explicitly rather than
+    // left to pg's implicit queue, which pg 9 removes.
+    let tail = Promise.resolve();
+    const run = (text, params) => {
+      const next = tail.then(() => connection.query(text, params));
+      tail = next.catch(() => {});
+      return next;
+    };
     const tx = {
-      query: (text, params = []) => connection.query(text, params),
-      rows: async (text, params = []) => (await connection.query(text, params)).rows,
-      row: async (text, params = []) => (await connection.query(text, params)).rows[0] ?? null,
+      query: (text, params = []) => run(text, params),
+      rows: async (text, params = []) => (await run(text, params)).rows,
+      row: async (text, params = []) => (await run(text, params)).rows[0] ?? null,
     };
     const result = await fn(tx);
     await connection.query('COMMIT');

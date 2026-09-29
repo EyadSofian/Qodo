@@ -55,6 +55,8 @@ export function ProductionMatrix({
   const { t } = useI18n();
   const [assigning, setAssigning] = useState<{ asset: AssetSummary; lesson: MatrixLesson; anchor: DOMRect } | null>(null);
   const moduleName = new Map(data.modules.map((module) => [module.id, module.name]));
+  // The run's asset types; a lesson without one of them shows an empty cell, not a gap.
+  const columns = data.assetTypes?.length ? data.assetTypes : STAGES;
   const selectable = Boolean(onToggle) && data.capabilities.assignAny;
 
   // Module header rows keep a long course scannable without a column for it.
@@ -95,7 +97,7 @@ export function ProductionMatrix({
                 {t('lp.lesson')}
               </span>
             </th>
-            {STAGES.map((type) => (
+            {columns.map((type) => (
               <th
                 key={type}
                 scope="col"
@@ -122,6 +124,7 @@ export function ProductionMatrix({
                 courseId={data.course.id}
                 people={data.people}
                 canAssign={data.capabilities.assign}
+                columns={columns}
                 selectable={selectable}
                 selected={Boolean(selected?.has(row.lesson.id))}
                 onToggle={onToggle}
@@ -152,6 +155,7 @@ const LessonRow = memo(function LessonRow({
   courseId,
   people,
   canAssign,
+  columns,
   selectable,
   selected,
   onToggle,
@@ -161,6 +165,7 @@ const LessonRow = memo(function LessonRow({
   courseId: string;
   people: People;
   canAssign: Record<AssetType, boolean>;
+  columns: readonly AssetType[];
   selectable: boolean;
   selected: boolean;
   onToggle?: (lessonId: string) => void;
@@ -191,16 +196,40 @@ const LessonRow = memo(function LessonRow({
           </div>
         </div>
       </th>
-      {STAGES.map((type) => (
+      {columns.map((type) => (
         <td key={type} className="border-b border-surface-line p-1">
           {lesson.assets[type] ? (
-            <MatrixCell asset={lesson.assets[type]!} lesson={lesson} courseId={courseId} people={people} canAssign={canAssign[type]} onAssign={onAssign} />
-          ) : null}
+            lesson.assets[type]!.applicable === false ? (
+              <NotApplicableCell asset={lesson.assets[type]!} lesson={lesson} courseId={courseId} />
+            ) : (
+              <MatrixCell asset={lesson.assets[type]!} lesson={lesson} courseId={courseId} people={people} canAssign={canAssign[type]} onAssign={onAssign} />
+            )
+          ) : (
+            <span className="flex h-10 items-center justify-center text-[12px] text-ink-faint" title={t('lp.matrix.notInWorkflow')}>
+              —<span className="sr-only">{t('lp.matrix.notInWorkflow')}</span>
+            </span>
+          )}
         </td>
       ))}
     </tr>
   );
 });
+
+/** An asset a manager marked not applicable: still a link, so its history stays one click away. */
+function NotApplicableCell({ asset, lesson, courseId }: { asset: AssetSummary; lesson: MatrixLesson; courseId: string }) {
+  const { t } = useI18n();
+  const label = `${t(stageKey(asset.assetType))}: ${t('lp.asset.notApplicable')}${asset.notApplicableReason ? ` — ${asset.notApplicableReason}` : ''}`;
+  return (
+    <Link
+      to={assetRoute(courseId, lesson.id, asset.assetType)}
+      title={label}
+      aria-label={label}
+      className="flex h-10 w-full min-w-[120px] items-center rounded-lg border border-dashed border-surface-line px-2 text-[12px] font-semibold text-ink-faint hover:bg-surface-sunken"
+    >
+      {t('lp.asset.notApplicableShort')}
+    </Link>
+  );
+}
 
 function MatrixCell({
   asset,

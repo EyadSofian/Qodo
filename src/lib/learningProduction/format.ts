@@ -159,6 +159,8 @@ export function assetRoute(courseId: string, lessonId: string, type: AssetType) 
 }
 
 const KNOWN_ERRORS = new Set([
+  'DEMO_DISABLED',
+  'SERVER_ERROR',
   'VALIDATION_FAILED',
   'NOT_FOUND',
   'FORBIDDEN',
@@ -187,6 +189,25 @@ const KNOWN_ERRORS = new Set([
   'SUGGESTION_OUTDATED',
   'LAST_MANAGER',
   'STORAGE_UNAVAILABLE',
+  'TASK_BLOCKED',
+  'EVIDENCE_REQUIRED',
+  'NEW_EVIDENCE_REQUIRED',
+  'APPROVAL_REQUIRED',
+  'AUTOMATIC',
+  'STAGE_SKIPPED',
+  'RUN_CLOSED',
+  'REQUIRED_TASK',
+  'RUN_ALREADY_OPEN',
+  'RELEASE_NOT_READY',
+  'RELEASE_IN_PROGRESS',
+  'RELEASE_STALE',
+  'RELEASE_LABEL_TAKEN',
+  'SIGNOFF_REQUIRED',
+  'STAGE_NOT_SKIPPABLE',
+  'IMPACT_LOCKED',
+  'IMPACT_APPLIED',
+  'LEGACY_RUN',
+  'NOT_APPLICABLE',
 ]);
 
 /** A sentence for a refusal. Unknown failures get the reassuring generic one — never a status code. */

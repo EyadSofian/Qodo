@@ -1,89 +1,219 @@
 # E-Learning Production
 
-The E-Learning Production module manages educational content from outline to
-final video:
+The E-Learning Production module runs a training program from research to a
+published release. It is a separate domain from Qodo Projects and Tasks: it
+shares workspace authentication, organization identity, people, the
+notification bell and the blob storage abstraction, and owns its own
+PostgreSQL schema (`qodo_elearning_production`), services, permissions, API
+routes and UI.
 
-`Course → Module → Lesson → Outline → PPT → Script → Voice Over → Video`
+The workflow is built from the business's *Content Development Checklists*
+workbook. Every row of it — visible and hidden — is traced in
+[ELEARNING_PRODUCTION_TRACEABILITY.md](ELEARNING_PRODUCTION_TRACEABILITY.md),
+which is generated and checked by the test suite.
 
-It is a separate domain from Qodo Projects and Tasks. It shares workspace
-authentication, organization identity, people, notifications, and the blob
-storage abstraction, but owns its own PostgreSQL schema, services, permissions,
-API routes, and UI.
+## The model
 
-## Routes
+```
+Course (catalogue identity, long-lived)
+ └─ Production run (one pinned template version; one open run per course)
+     ├─ Stage instances  ─ Task instances ─ checklist items, evidence,
+     │                                       submissions, comments, dependencies
+     ├─ Issues (dry run / UAT), change-impact items (revamp), expert candidates
+     └─ Release (immutable snapshot) → the course's current release
+ └─ Modules → Lessons → lesson assets (Outline, PPT, Script, Voice-over, Video)
+```
 
-- `/learning-production` — dashboard
-- `/learning-production/courses` — course list
-- `/learning-production/courses/:courseId` — course workspace
-- `/learning-production/courses/:courseId/lessons/:lessonId/:stage` — asset workspace
-- `/learning-production/my-work` — assigned work
-- `/learning-production/reviews` — review queue
-- `/learning-production/reports` — production reports
+Two levels of work run side by side:
 
-## Data and workflow
+- **Program work** — stages and tasks copied from a template version when the
+  run starts: research, curriculum, experts, instructional design, deployment,
+  dry runs, UAT, release. Tasks carry a role, a checklist, evidence rules and,
+  where the workbook or a proposal says so, an approver role.
+- **Lesson work** — the original asset pipeline (Outline → PPT → Script →
+  Voice-over → Video) with its versions, review tools and approvals, unchanged.
+  An asset can be marked *not applicable* with a reason. Stages such as Media
+  Production are *automatic gates* over the lesson assets (for example "every
+  applicable asset approved"), evaluated only once the stage is unblocked.
 
-The schema lives under `server/learningProduction/migrations/`. A lesson gets
-exactly five assets. Versions, approvals, comments, annotations, audio/video
-markers, checklists, team assignments, and activity are persisted and retain
-their history. Status transitions and dependencies are enforced by
-`shared/learningProduction/workflow.js` and repeated by database constraints
-where history must not be rewritten.
+### Scenarios
 
-The main course view is the production matrix. Each cell links to the exact
-asset workspace. Text assets autosave drafts and snapshot immutable versions
-when submitted; file assets stream versioned uploads and support slide, audio,
-and video review contexts.
-
-## The dashboard
-
-The module's landing screen is the one place in it that is allowed to be loud.
-Six headline figures, each in its own tone — brand blue for the catalogue, navy
-for its size, green for finished work, indigo for what sits with a reviewer,
-amber for what came back, red for what is late. Underneath: the five stages as
-stacked bars cut by status, a ring of every asset by status, a ring of every
-course by health with the attention list beside it, approvals per week as
-columns, and workload as a bar per person split into active, reviewing and
-overdue.
-
-The charts live in `src/components/learning-production/charts.tsx` rather than
-in the workspace's `Charts.tsx`, and they break that file's one-hue rule on
-purpose: a stage, a status and a health state are *kinds*, not sizes, and each
-already owns a colour the badges have been using since the module shipped. The
-charts reuse those exact values, so a slice of "Changes requested" is the same
-amber as the chip that says it. The one chart that does measure magnitude —
-approvals per week — keeps the single hue.
-
-`GET /dashboard/summary` carries the two aggregates the rings need
-(`statusMix`, `healthCounts`) and the eight-week `throughput` series.
-
-## The course workspace
-
-A course opens on a header — cover, name, lesson count, completion, target date,
-production manager — and six tabs, plus Files and Settings where the reader has
-the rights for them.
-
-| Tab | What it answers |
+| Scenario | Stages |
 | --- | --- |
-| Overview | Where the course stands: four figures, the five stages, what is in production right now, and what needs somebody today. |
-| Content | The structure: modules, and each lesson as one row with its five stages side by side. The editing tools (reorder, rename, duplicate, move, archive) appear on hover and on keyboard focus. |
-| Production | The matrix — every lesson down, the five stages across, filters and bulk assignment. |
-| Assets | One lesson's five deliverables, each drawn as the thing it is: the outline's objectives, a slide, the narration, a waveform, a video frame. Opening a card opens that asset's real review workspace. |
-| Team | Who is on the course, in which production roles, how loaded they are, and who makes and reviews each stage by default. |
-| Activity | The history, in sentences. |
+| `EXPERT_NEW` — new program, expert-led | Research → First draft → Experts & coaches (parallel with the draft, skippable only with a recorded reason when an expert is already contracted) → Final curriculum → Instructional design ∥ Media production → Platform deployment → Dry run 1 → Dry-run fixes → Redeployment → UAT → Release |
+| `AI_NEW` — new program, AI-assisted | Content input → Outlines → Outline review → Final curriculum → Scripts → Script review → Slides (Docki) → Voice-over & video (Think) → Video review → Implement comments → Check comments → *Platform deployment → UAT → Release (proposed, option `aiReleaseGates`)* |
+| `REVAMP` — revamp of a released program | Change impact → Instructional design → Media production → Platform deployment → Dry run 1 → Apply changes → Apply dry-run comments → Dry run 2 → UAT → Release |
+| `LEGACY` | Courses that existed before runs: history kept, no stages inferred. A legacy run can adopt a workflow later. |
 
-The Assets board is fed by `GET /lessons/:lessonId/asset-board`, which returns
-the five asset summaries plus a small preview of each current version — a couple
-of outline sections, the first lines of narration, the audio duration. It never
-returns the content itself; reading it is what opening the asset is for.
+AI output is always labelled (`ai_assisted`, `ai_tool` on the version) and is
+reviewed and approved by someone other than the sender. Docki and Think are
+**manual handoffs**: there is no integration, so their tasks ask for a link or
+file as evidence.
+
+A revamp starts from a published release (or, for a legacy course, a recorded
+`LEGACY_BASELINE` of the current content — marked as recorded, not as a
+verified publication). The change impact says, per lesson or asset, KEEP
+(the old approval is referenced, never copied), CHANGE (the asset reopens and
+needs a new approval) or REMOVE (the lesson is archived when applied).
+
+### Rules the server enforces
+
+All of these live in pure modules under `shared/learningProduction/` — the
+server enforces them, the browser renders the same verdicts:
+
+- `runs.js` — task transitions (`evaluateTask`), stage status and automatic
+  gates (`computeRun`), the four progress measures (`runProgress`: workflow,
+  lesson content, release readiness, published), health and its reasons.
+- `workflowTemplates.js` — the three templates, built from `workbookSource.js`
+  (generated from the workbook; never hand-edited), with options for every
+  decision the workbook leaves open.
+- `workflow.js` — the lesson asset pipeline, unchanged in behaviour.
+
+Guarantees:
+
+- A decision binds to exactly one submission and the evidence submitted with
+  it; after changes are requested, resubmitting needs new evidence.
+- Nobody approves their own work. An administrator may, with a reason that is
+  stored with the decision and shown as an override.
+- Required tasks are waived and non-skippable stages skipped only by an
+  administrator, with a reason; conditional work may be waived by a manager with
+  a reason. Waived and skipped work leaves the progress count, visibly.
+- High and critical open issues block release readiness. A fixed issue is
+  verified by someone other than the fixer.
+- A release is prepared, signed off by a different person, and published with
+  the platform link as evidence. Its snapshot is frozen; a candidate goes stale
+  if approved content changes after it was prepared.
+- Every screen can say *why* something is blocked: the stage, the task, the
+  asset approval, and who holds it.
+
+The database repeats what must never be rewritten: frozen template versions,
+immutable releases, evidence that can be withdrawn but not deleted, submissions
+that are final once decided, and an append-only activity log.
+
+## Roles and permissions
+
+Organization permissions (`elearning_production.*`) are granted in the
+workspace's role editor. Course roles are granted per course (and per run for
+run-only people, such as a UAT cycle's testers). Holding a task's named role
+also lets a person work on or review that one task.
+
+| Role | Program work | Lesson assets | Release | Candidate records |
+| --- | --- | --- | --- | --- |
+| Production manager | manage run; work, assign, review, approve, waive, reopen any task | everything | sign off, publish | yes |
+| Course manager | manage run; assign, review, approve, waive, reopen | assign, review, approve, reopen, lock | sign off, publish | **no** |
+| Expert coordinator | work and assign in Experts & coaches | — | — | yes (that stage) |
+| Researcher, Technical PM, Delivery PM, Learning operations, Marketing | tasks that name their role | — | — | no |
+| Technical consultant | tasks that name the role | review outline, PPT, script | — | no |
+| Instructional designer | tasks that name the role | edit/submit outline, script; review outline, PPT, script | — | no |
+| Subject-matter expert | tasks that name the role | review outline, PPT, script, video; approve outline, script | — | no |
+| Quality reviewer | tasks that name the role | review and approve every asset | — | no |
+| UAT coordinator | assign and review UAT tasks | — | — | no |
+| UAT tester | work UAT tasks, log issues | — | — | no |
+| Outline/script writer, PPT designer, voice-over artist, video editor | tasks that name the role | edit and submit their asset | — | no |
+| Viewer | read only | read only | — | no |
+
+Candidate CVs, assessments and contracts answer **404** to everyone without
+`experts.sensitive` in that stage; task evidence on sensitive tasks is shown
+redacted, and the activity log never names a candidate.
+
+## Notifications
+
+Alerts go to the existing workspace bell through a transactional outbox
+(`learning_notification_outbox`): written in the same transaction as the
+change, delivered after commit, retried with backoff by the scheduler if
+delivery fails. Every alert has a de-duplication key and window; the person
+who caused a change is never told about it; each person can mute ten groups
+(assigned, review requested, changes requested, approved, comments, mentions,
+handoffs, deadlines, issues, releases) and set deadline reminders from My Work.
+
+## Screens
+
+| Route | What it answers |
+| --- | --- |
+| `/learning-production` | Dashboard: runs in flight, where each is, approvals waiting, late work, blocking issues, workload, recent releases |
+| `/learning-production/courses` | The catalogue with each course's current run |
+| `/learning-production/runs/new` | Start a run: way → basics → team → review of the exact stages and tasks before anything is written |
+| `/learning-production/my-work` | Now / For my decision / Blocked (with reasons) / Recently done — every row deep-links to the place to act |
+| `/learning-production/reviews` | First submissions, resubmissions, curriculum approvals, media QA, UAT & release sign-off |
+| `/learning-production/reports` | Production reports (kept from the previous module) |
+| `/learning-production/templates` | Template versions and options, the row-by-row workbook trace, open decisions |
+| `/learning-production/courses/:id` | Overview · Plan & stages · Curriculum & lessons · Production · QA & release · Team · Files & activity (+ Settings) |
+| `…/courses/:id/lessons/:lessonId/:stage` | The asset review workspace, unchanged |
+
+Old links redirect: `courses/new` → `runs/new`, `lessons` → `curriculum`,
+`assets` → `production`, `activity` → `files?view=activity`.
+
+The UI uses a scoped `.lps` design layer (`src/index.css`): neutral canvas,
+ink and navy text, one blue accent, amber for attention, red only for late or
+blocking. Motion is 150–250 ms and off under `prefers-reduced-motion`. Every
+screen is Arabic-first with full RTL and works at 375 px without sideways
+scrolling.
+
+### Copy and translation
+
+Screen copy lives in `src/lib/learningProduction/studioStrings.ts` (enum
+families and history sentences) and `studioScreens.ts` (screen text), ahead of
+the older `strings.ts`. `server/learningProduction.i18n.test.js` fails when a
+key used in `src/` has no entry, when any value of a server enum family (stage
+keys, roles, statuses, error codes, activity events, preference groups, …) has
+none, when an Arabic entry is not Arabic, or when the two languages use
+different placeholders. A missing key still renders a readable label and warns
+in development.
+
+## Migration and backfill
+
+`server/learningProduction/migrations/002_production_runs.sql` is additive and
+forward-only (checksummed, like 001):
+
+- widens the role and activity-event vocabularies;
+- adds the run, stage, task, evidence, submission, issue, impact, candidate,
+  release, outbox and preference tables, and nullable columns on assets,
+  versions, activity and notifications;
+- **backfills one `LEGACY` run per existing course** (deterministic, only for
+  courses with no run) plus a `RUN_CREATED` activity entry marked
+  `backfill: true`. No stage, curriculum, UAT or publication state is inferred
+  from approved assets; nothing existing is updated or deleted.
+
+`server/learningProduction.migration.test.js` builds a database at 001 with
+legacy data (courses, lessons, versions, approvals, comments), applies 002, and
+checks that every row survives unchanged and every course has exactly one
+legacy run. Rollback: the new tables can be dropped; the widened checks only
+admit more values; the added columns are nullable or defaulted.
+
+## What changed from the previous module
+
+- **Preserved:** courses, modules, lessons, the five-asset pipeline and its
+  rules, versions, approvals, comments, annotations, audio/video markers,
+  transcripts, video QA checklists, the asset review workspace, reports, course
+  settings, all existing API endpoints (including the lesson asset board), and
+  all existing data.
+- **Replaced:** the dashboard, course list, course creation (now *New run*),
+  course overview, course lessons and assets tabs, and My Work / Reviews
+  screens. Removed files: `CourseCreate.tsx`, `course/CourseOverview.tsx`,
+  `course/CourseAssets.tsx`, `components/learning-production/charts.tsx`,
+  `CourseProgress.tsx`.
+- **Added:** production runs, workflow templates and versions, program stages
+  and tasks, checklists, evidence, submissions, dry-run/UAT issues, change
+  impact, expert candidates, releases, not-applicable assets, AI provenance,
+  the notification outbox and preferences, new roles and permissions, the
+  Templates screen, and the traceability document.
 
 ## Demo data
 
-`npm run seed:learning-demo` fills a development database with thirteen courses,
-about two hundred lessons and a thousand assets — versions, review decisions,
-comments, annotations, timestamped audio and video notes, QA checklists and two
-months of back-dated activity. It exists because none of the screens above can
-be judged against three lessons typed in by hand, and because a dashboard is a
-picture of a busy studio or it is a picture of nothing.
+`npm run seed:learning-demo` fills a **development** database. It refuses when
+`NODE_ENV=production`, marks every course with `is_demo` and every account with
+`isDemo`, and removes exactly those with `--remove` / `--reset`. Demo accounts
+have no password and `.invalid` addresses, so none can sign in.
+
+It writes thirteen courses of lesson history with direct SQL (each gets a
+legacy run, as the backfill would give it), then walks production runs through
+the real services as the people named on each task
+(`scripts/learning-demo/runs.js`): an expert-led program released as r1.0.0 and
+its revamp with change impact waiting for approval; a program in its first
+weeks with a resubmitted draft, four expert candidates and late tasks; an
+AI-assisted program with labelled outlines waiting for your review; a program
+in dry-run fixes with open, fixed and verified issues; a program on hold; and a
+legacy course that adopted a workflow. Alerts are muted while it loads.
 
 ```sh
 npm run seed:learning-demo             # build it
@@ -91,24 +221,6 @@ npm run seed:learning-demo -- --reset  # remove it and build it again
 npm run seed:learning-demo -- --remove
 npm run seed:learning-demo -- --for=someone@example.com   # whose My Work it fills
 ```
-
-The loader lives in `scripts/`, not in `server/`: nothing the application runs
-can reach it. It refuses outright when `NODE_ENV=production`, marks every course
-it writes with `is_demo` and every account with `isDemo`, and removes exactly
-what those two facts point at. The demo staff are real user rows — the assignee
-picker and the workload report would accept nothing less — created with no
-password hash and addresses on the reserved `.invalid` domain, so neither the
-password route nor the Google route can turn one into a session.
-
-Three things about the content are deliberate. Course health is spread across
-all four states by giving each course a share of late work either side of the
-`delayedOverdueShare` threshold rather than by chance, and one course is on
-hold and one archived so that neither state is a screen nobody has seen. Each
-asset's history is dated over the last two months rather than the last week, so
-"approvals per week" has eight weeks of shape to draw. And the finished videos are links rather than
-files: a PDF deck and a WAV recording can be generated from arithmetic, so the
-slide reviewer and the audio reviewer work on real bytes, but an MP4 cannot, and
-a file that fails to play would prove less than an honest link.
 
 ## Local configuration
 
@@ -120,14 +232,17 @@ outside development.
 
 ## Verification
 
-Run the normal checks from the repository root:
-
 ```sh
 npm run typecheck
 npm run build
 npm test
+node scripts/generate-production-traceability-doc.mjs --check
 ```
 
-The learning-production test suites cover workflow rules, permissions, tenant
-boundaries, migrations, HTTP error contracts, uploads and byte ranges, and the
-complete PPT, voice, and video review flows.
+The suites cover the three scenarios end to end against a real PostgreSQL
+(`learningProduction.runs.test.js`), template construction and workbook
+traceability (`learningProduction.templates.test.js`), the migration and
+backfill (`learningProduction.migration.test.js`), translation completeness
+(`learningProduction.i18n.test.js`), and — unchanged — workflow rules,
+permissions, tenant boundaries, HTTP error contracts, uploads and byte ranges,
+and the PPT, voice and video review flows.

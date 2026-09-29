@@ -13,6 +13,7 @@ import { formatSize, lpErrorKey } from '../../../lib/learningProduction/format';
 import type { AssetDetail } from '../../../lib/learningProduction/types';
 import { useToast } from '../../ui';
 import { useAsset } from './AssetContext';
+import { ProvenanceField } from '../kit';
 
 const EXTENSIONS: Record<string, string[]> = {
   PPTX: ['pptx'],
@@ -54,6 +55,7 @@ export function UploadPanel({ onClose }: { onClose?: () => void }) {
   const [file, setFile] = useState<File | null>(null);
   const [link, setLink] = useState('');
   const [notes, setNotes] = useState('');
+  const [provenance, setProvenance] = useState<{ aiAssisted?: boolean; aiTool?: string }>({});
   const [progress, setProgress] = useState<number | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -82,11 +84,11 @@ export function UploadPanel({ onClose }: { onClose?: () => void }) {
     setProblem(null);
     try {
       if (mode === 'link') {
-        refresh(await lp.addLink(assetId, link.trim(), notes));
+        refresh(await lp.addLink(assetId, link.trim(), notes, provenance));
       } else if (file) {
         setProgress(0);
         const duration = await probeDuration(file);
-        handle.current = uploads.version(assetId, file, notes, duration, setProgress);
+        handle.current = uploads.version(assetId, file, notes, duration, setProgress, provenance);
         refresh(await handle.current.promise);
       } else return;
       toast.push(t('lp.toast.versionUploaded', { n: nextVersion }));
@@ -185,6 +187,7 @@ export function UploadPanel({ onClose }: { onClose?: () => void }) {
         <span className="label">{t('lp.upload.notes')}</span>
         <textarea className="field min-h-[60px] text-[13px]" value={notes} onChange={(event) => setNotes(event.target.value)} placeholder={t('lp.upload.notesPlaceholder')} />
       </label>
+      <ProvenanceField value={provenance} onChange={setProvenance} />
 
       {problem && <p className="mt-2 text-[12.5px] font-semibold text-status-bad" role="alert">{problem}</p>}
 

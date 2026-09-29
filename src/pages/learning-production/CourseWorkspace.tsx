@@ -1,200 +1,284 @@
 /**
- * One course. Loads it once and gives its tabs a stable frame, so moving from
- * Content to Production is a route change rather than a reload.
+ * One course and its production run.
  *
- * The header is the course's identity card: cover, name, and one line of the
- * four facts a production manager asks for first — how many lessons, how far
- * along, when it is due, and whose course it is. Everything else about the
- * course lives behind a tab.
+ * Loads the course, its runs and the run being viewed once, and gives the
+ * tabs a stable frame: Overview · Plan & stages · Curriculum & lessons ·
+ * Production · QA & release · Team · Files & activity. The header answers the
+ * first questions — which way this run is going, where it is, how healthy it
+ * is, and when it is due — and holds the run's own controls.
+ *
+ * A course with several runs (a revamp after a first release) shows the run
+ * in flight by default; `?run=` pins another, so a link to an old run keeps
+ * working.
  */
 
-import { useEffect, useRef, useState } from 'react';
-import { Link, NavLink, Outlet, useNavigate, useOutletContext, useParams } from 'react-router-dom';
-import { FolderOpen, Link2, ListPlus, MoreHorizontal, Settings2 } from 'lucide-react';
+import { useState } from 'react';
+import { Link, Outlet, useNavigate, useOutletContext, useParams, useSearchParams } from 'react-router-dom';
+import { CheckCircle2, ChevronDown, MoreHorizontal, Pause, Play, Plus, Settings2, XCircle } from 'lucide-react';
 import { useI18n, type StringKey } from '../../lib/i18n';
-import { cx, formatDate } from '../../lib/utils';
 import { paths } from '../../lib/learningProduction/api';
-import { useLpQuery } from '../../lib/learningProduction/hooks';
-import { HEALTH_TONE, healthKey } from '../../lib/learningProduction/format';
+import { runPaths, runsApi } from '../../lib/learningProduction/runApi';
+import { invalidate, useLpQuery } from '../../lib/learningProduction/hooks';
 import type { CourseDetail } from '../../lib/learningProduction/types';
+import type { RunView, RunsResponse } from '../../lib/learningProduction/runTypes';
 import { useToast } from '../../components/ui';
-import { Chip, CourseCover, ErrorPanel, PersonChip, SkeletonRows } from '../../components/learning-production/kit';
+import {
+  Busy,
+  ErrorNote,
+  HealthPill,
+  LoadingRows,
+  PersonLine,
+  ReasonPrompt,
+  RouteTabs,
+  RunStatusPill,
+  ScenarioBadge,
+  useDay,
+  usePick,
+} from '../../components/learning-production/studio';
+import { lpErrorKey } from '../../lib/learningProduction/format';
+import { SCENARIO_THEME, gradient } from '../../lib/learningProduction/theme';
+import { useLpTheme } from './Layout';
 
 export interface CourseOutlet {
   detail: CourseDetail;
   reload: () => Promise<void>;
+  runs: RunsResponse | null;
+  run: RunView | null;
+  runId: string | null;
+  reloadRun: () => Promise<void>;
 }
 
 export function useCourse() {
   return useOutletContext<CourseOutlet>();
 }
 
-interface Tab {
-  to: string;
-  end?: boolean;
-  key: StringKey;
-}
-
 export function CourseWorkspace() {
   const { courseId = '' } = useParams();
-  const { t, lang } = useI18n();
-  const navigate = useNavigate();
+  const { t } = useI18n();
+  const pick = usePick();
+  const day = useDay();
   const toast = useToast();
-  const { data, error, loading, reload } = useLpQuery<CourseDetail>(paths.course(courseId));
+  const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
+  const { data: detail, error, loading, reload } = useLpQuery<CourseDetail>(paths.course(courseId));
+  const { data: runs, reload: reloadRuns } = useLpQuery<RunsResponse>(runPaths.courseRuns(courseId));
+  const runId = params.get('run') ?? runs?.currentRunId ?? null;
+  const { data: run, error: runError, reload: reloadRunView } = useLpQuery<RunView>(runId ? runPaths.run(runId) : null);
+  const [menu, setMenu] = useState(false);
+  const [prompt, setPrompt] = useState<'cancel' | null>(null);
+  const [busy, setBusy] = useState(false);
+  // Before any early return: a hook must run on every render.
+  const scenarioTheme = run ? SCENARIO_THEME[run.run.scenario] : null;
+  useLpTheme(scenarioTheme);
 
-  if (loading && !data) {
+  if (loading && !detail) {
     return (
-      <>
-        <div className="skeleton mb-4 h-24 w-full" />
-        <SkeletonRows rows={5} />
-      </>
+      <div className="space-y-3">
+        <div className="skeleton h-20 w-full" />
+        <LoadingRows rows={5} />
+      </div>
     );
   }
-  if (error && !data) return <ErrorPanel error={error} onRetry={reload} />;
-  if (!data) return null;
+  if (error && !detail) return <ErrorNote error={error} onRetry={reload} />;
+  if (!detail) return null;
 
-  const { course, capabilities } = data;
-  const tabs: Tab[] = [
-    { to: '', end: true, key: 'lp.tab.overview' },
-    { to: 'lessons', key: 'lp.tab.content' },
-    { to: 'production', key: 'lp.tab.production' },
-    { to: 'assets', key: 'lp.tab.assets' },
-    { to: 'team', key: 'lp.tab.team' },
-    { to: 'activity', key: 'lp.tab.activity' },
-    { to: 'files', key: 'lp.tab.files' },
-    ...(capabilities.edit || capabilities.archive ? [{ to: 'settings', key: 'lp.tab.settings' as StringKey }] : []),
+  const { course } = detail;
+  const legacy = run?.run.scenario === 'LEGACY';
+  const canManage = Boolean(run?.capabilities.manageRuns);
+  const openStatus = run && (run.run.status === 'ACTIVE' || run.run.status === 'ON_HOLD');
+  const current = run?.stages.find((stage) => stage.key === run.currentStage) ?? null;
+  const created = params.get('created') === '1';
+
+  const reloadRun = async () => {
+    await Promise.all([reloadRunView(), reloadRuns(), reload()]);
+  };
+
+  async function setStatus(status: 'ACTIVE' | 'ON_HOLD' | 'CANCELLED', reason?: string) {
+    if (!run) return;
+    setBusy(true);
+    try {
+      await runsApi.updateRun(run.run.id, { status, reason });
+      invalidate();
+      toast.push(t(`lp.run.statusChanged.${status}` as StringKey));
+      setPrompt(null);
+      setMenu(false);
+    } catch (failure) {
+      toast.push(t(lpErrorKey(failure)), 'bad');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const q = runId && params.get('run') ? `?run=${runId}` : '';
+  const tabs = [
+    { to: `.${q}`, end: true, label: t('lp.tab.overview') },
+    { to: `plan${q}`, label: t('lp.tab.plan'), count: run?.pendingApprovals.length || undefined, attention: Boolean(run?.overdueTasks.length) },
+    { to: `curriculum${q}`, label: t('lp.tab.curriculum') },
+    { to: `production${q}`, label: t('lp.tab.production') },
+    { to: `qa${q}`, label: t('lp.tab.qa'), count: run?.facts.blockingIssues || undefined, attention: Boolean(run?.facts.blockingIssues) },
+    { to: `team${q}`, label: t('lp.tab.team') },
+    { to: `files${q}`, label: t('lp.tab.files') },
   ];
 
-  const facts = [
-    t('lp.course.lessonsCount', { n: course.stats.lessons }),
-    t('lp.course.completedShare', { n: course.progress }),
-    course.targetDate ? `${t('lp.course.target')}: ${formatDate(course.targetDate, lang)}` : null,
-  ].filter(Boolean) as string[];
-
   return (
-    <>
-      <nav aria-label="breadcrumb" className="mb-2 flex flex-wrap items-center gap-1 text-[12px] text-ink-faint">
-        <Link to="/learning-production/courses" className="hover:text-brand-600 hover:underline">
-          {t('lp.nav.courses')}
-        </Link>
-        <span aria-hidden="true">/</span>
-        <span className="max-w-[18rem] truncate text-ink-muted">{course.name}</span>
-      </nav>
+    <div className="lps-stagger space-y-4">
+      <header className="space-y-3">
+        <div className="lps-hero" style={scenarioTheme ? { background: gradient(scenarioTheme) } : undefined}>
+        <div className="lps-hero-art" aria-hidden="true">
+          <span className="lps-orb -top-20 end-[6%] h-56 w-56" style={{ background: 'radial-gradient(circle, rgb(255 255 255 / 0.32), transparent 70%)' }} />
+          <span className="lps-orb -bottom-28 end-[38%] h-64 w-64" style={{ animationDelay: '-4s', background: 'radial-gradient(circle, rgb(255 255 255 / 0.18), transparent 70%)' }} />
+        </div>
+        <nav aria-label={t('lp.breadcrumb')} className="relative mb-2 text-[12.5px] text-white/80">
+          <Link to="/learning-production/courses" className="hover:underline">
+            {t('lp.nav.courses')}
+          </Link>
+          <span aria-hidden="true"> / </span>
+          <span className="lps-bidi">{course.name}</span>
+        </nav>
 
-      <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
-        {/* Full width on a phone so the actions wrap underneath rather than
-            squeezing the course name into a column. */}
-        <div className="flex w-full min-w-0 items-center gap-4 sm:w-auto sm:flex-1">
-          <CourseCover courseId={course.id} name={course.name} hasCover={course.hasCover} stamp={course.updatedAt} size={68} />
+        <div className="relative flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <h1 className="flex flex-wrap items-center gap-2 text-[26px] font-extrabold leading-tight tracking-tight text-ink">
-              {course.name}
-              {course.code && <span className="ltr rounded-md bg-surface-sunken px-1.5 py-0.5 text-[12px] font-semibold text-ink-muted">{course.code}</span>}
-            </h1>
-            {/* One sentence rather than a row of flex items: at phone width a
-                row puts every fact — and every separator — on its own line. */}
-            <p className="mt-1.5 text-[13px] leading-relaxed text-ink-muted">
-              {facts.join(' · ')}
-              <span className="ms-1.5 inline-flex items-center gap-1.5 align-middle">
-                · {t('lp.course.manager')}:
-                <PersonChip userId={course.managerUserId} people={data.people} size={20} />
-              </span>
-            </p>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <Chip tone={HEALTH_TONE[course.health]}>{t(healthKey(course.health))}</Chip>
-              {course.status === 'ON_HOLD' && <Chip tone="warn">{t('lp.course.onHold')}</Chip>}
-              {course.archivedAt && <Chip tone="neutral">{t('lp.course.archivedChip')}</Chip>}
-              {course.isDemo && <Chip tone="neutral">{t('lp.course.demo')}</Chip>}
+            <h1 className="lps-title lps-bidi">{course.name}</h1>
+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[12.5px]">
+              {run ? (
+                <>
+                  <ScenarioBadge scenario={run.run.scenario} />
+                  <span className="lps-muted">{t('lp.run.number', { n: run.run.runNumber })}</span>
+                  <RunStatusPill status={run.run.status} />
+                  {!legacy && current && (
+                    <span>
+                      <span className="lps-muted">{t('lp.run.nowAt')} </span>
+                      <strong>{pick(current.label)}</strong>
+                    </span>
+                  )}
+                  {!legacy && run.run.status === 'ACTIVE' && <HealthPill health={run.health.health} />}
+                  <span className="lps-muted">
+                    {t('lp.field.targetDate')}: <strong className="text-white">{day(run.run.targetDate, { year: true })}</strong>
+                  </span>
+                  <PersonLine userId={run.run.managerUserId} people={run.people} />
+                </>
+              ) : runs && runs.runs.length === 0 ? (
+                <span className="lps-muted">{t('lp.run.none')}</span>
+              ) : (
+                <Busy />
+              )}
             </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {runs && runs.runs.length > 1 && (
+              <label className="flex items-center gap-1.5 text-[12.5px]">
+                <span className="lps-muted">{t('lp.run.viewing')}</span>
+                <select
+                  className="lps-input !w-auto !py-1.5"
+                  value={runId ?? ''}
+                  onChange={(event) => {
+                    const next = new URLSearchParams(params);
+                    if (event.target.value === runs.currentRunId) next.delete('run');
+                    else next.set('run', event.target.value);
+                    setParams(next);
+                  }}
+                >
+                  {runs.runs.map((entry) => (
+                    <option key={entry.id} value={entry.id}>
+                      {t('lp.run.number', { n: entry.runNumber })} · {t(`lp.scenarioShort.${entry.scenario}` as StringKey)} · {t(`lp.runStatus.${entry.status}` as StringKey)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {(runs?.runs.length === 0 || (run && !openStatus) || legacy) && runs?.capabilities.manageRuns !== false && (
+              <Link to={`/learning-production/runs/new?course=${course.id}${run?.run.status === 'RELEASED' || legacy ? '&scenario=REVAMP' : ''}`} className="lps-btn">
+                <Plus size={15} aria-hidden="true" />
+                {t('lp.run.startAnother')}
+              </Link>
+            )}
+            {(canManage || detail.capabilities.edit) && (
+              <div className="relative">
+                <button type="button" className="lps-btn" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu((value) => !value)}>
+                  <MoreHorizontal size={16} aria-hidden="true" />
+                  <span className="sr-only">{t('lp.run.menu')}</span>
+                  <ChevronDown size={14} aria-hidden="true" />
+                </button>
+                {menu && (
+                  <div role="menu" className="lps-panel absolute end-0 z-30 mt-1 w-60 overflow-hidden py-1 shadow-panel" onKeyDown={(event) => event.key === 'Escape' && setMenu(false)}>
+                    {canManage && run?.run.status === 'ACTIVE' && (
+                      <MenuItem icon={Pause} label={t('lp.run.hold')} onClick={() => setStatus('ON_HOLD')} disabled={busy} />
+                    )}
+                    {canManage && run?.run.status === 'ON_HOLD' && (
+                      <MenuItem icon={Play} label={t('lp.run.resume')} onClick={() => setStatus('ACTIVE')} disabled={busy} />
+                    )}
+                    {canManage && openStatus && !legacy && (
+                      <MenuItem icon={XCircle} label={t('lp.run.cancel')} danger onClick={() => setPrompt('cancel')} disabled={busy} />
+                    )}
+                    {detail.capabilities.edit && (
+                      <MenuItem icon={Settings2} label={t('lp.course.settings')} onClick={() => navigate(`/learning-production/courses/${course.id}/settings`)} />
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            className="btn-ghost btn-sm"
-            onClick={() => {
-              void navigator.clipboard
-                ?.writeText(window.location.href)
-                .then(() => toast.push(t('lp.course.linkCopied')))
-                .catch(() => toast.push(t('lp.error.GENERIC'), 'bad'));
-            }}
-          >
-            <Link2 size={14} />
-            {t('lp.course.share')}
-          </button>
-          <CourseMenu courseId={courseId} canEdit={capabilities.edit || capabilities.archive} />
-          {capabilities.createLessons && (
-            <button type="button" className="btn-primary btn-sm" onClick={() => navigate(`/learning-production/courses/${courseId}/lessons?add=1`)}>
-              <ListPlus size={15} />
-              {t('lp.lessons.add')}
+        </div>
+
+        {created && (
+          <div className="lps-callout-info flex flex-wrap items-center justify-between gap-2" role="status">
+            <span className="flex items-center gap-2">
+              <CheckCircle2 size={15} aria-hidden="true" />
+              {t('lp.run.createdNotice')}
+            </span>
+            <button
+              type="button"
+              className="lps-btn-quiet !min-h-7"
+              onClick={() => {
+                const next = new URLSearchParams(params);
+                next.delete('created');
+                setParams(next, { replace: true });
+              }}
+            >
+              {t('common.close')}
             </button>
-          )}
+          </div>
+        )}
+        {runError && !run ? <ErrorNote error={runError} onRetry={reloadRunView} /> : null}
+        {run && run.run.status === 'ON_HOLD' && <p className="lps-callout">{t('lp.run.onHoldNotice')}</p>}
+
+        <div className="lps-tabs-sheet">
+          <RouteTabs items={tabs} label={t('lp.course.tabs')} />
         </div>
       </header>
 
-      <nav aria-label={t('lp.course.sections')} className="no-scrollbar mb-4 flex gap-1 overflow-x-auto border-b border-surface-line">
-        {tabs.map(({ to, end, key }) => (
-          <NavLink
-            key={to || 'overview'}
-            to={to}
-            end={end}
-            className={({ isActive }) =>
-              cx(
-                '-mb-px shrink-0 border-b-2 px-3.5 py-2.5 text-[13px]',
-                isActive ? 'border-brand-500 font-bold text-ink' : 'border-transparent font-semibold text-ink-muted hover:text-ink'
-              )
-            }
-          >
-            {t(key)}
-          </NavLink>
-        ))}
-      </nav>
+      <Outlet context={{ detail, reload, runs, run: run ?? null, runId, reloadRun } satisfies CourseOutlet} />
 
-      <Outlet context={{ detail: data, reload } satisfies CourseOutlet} />
-    </>
+      <ReasonPrompt
+        open={prompt === 'cancel'}
+        title={t('lp.run.cancel')}
+        body={t('lp.run.cancelBody')}
+        label={t('lp.reason.label')}
+        confirm={t('lp.run.cancelConfirm')}
+        danger
+        busy={busy}
+        onCancel={() => setPrompt(null)}
+        onConfirm={(reason) => setStatus('CANCELLED', reason)}
+      />
+    </div>
   );
 }
 
-/** The header's overflow: the destinations that are not worth a tab-strip slot. */
-function CourseMenu({ courseId, canEdit }: { courseId: string; canEdit: boolean }) {
-  const { t } = useI18n();
-  const [open, setOpen] = useState(false);
-  const box = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const close = (event: MouseEvent) => {
-      if (box.current && !box.current.contains(event.target as Node)) setOpen(false);
-    };
-    const escape = (event: KeyboardEvent) => event.key === 'Escape' && setOpen(false);
-    document.addEventListener('mousedown', close);
-    document.addEventListener('keydown', escape);
-    return () => {
-      document.removeEventListener('mousedown', close);
-      document.removeEventListener('keydown', escape);
-    };
-  }, [open]);
-
+function MenuItem({ icon: Icon, label, onClick, danger, disabled }: { icon: typeof Pause; label: string; onClick: () => void; danger?: boolean; disabled?: boolean }) {
   return (
-    <div className="relative" ref={box}>
-      <button type="button" className="btn-ghost btn-sm !px-2.5" aria-haspopup="menu" aria-expanded={open} aria-label={t('lp.course.more')} onClick={() => setOpen((value) => !value)}>
-        <MoreHorizontal size={16} />
-      </button>
-      {open && (
-        <div role="menu" className="absolute end-0 top-full z-40 mt-1 w-52 rounded-xl border border-surface-line bg-white p-1 shadow-panel animate-pop-in">
-          <Link role="menuitem" to={`/learning-production/courses/${courseId}/files`} className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-[13px] text-ink hover:bg-surface-bg" onClick={() => setOpen(false)}>
-            <FolderOpen size={14} aria-hidden="true" />
-            {t('lp.tab.files')}
-          </Link>
-          {canEdit && (
-            <Link role="menuitem" to={`/learning-production/courses/${courseId}/settings`} className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-[13px] text-ink hover:bg-surface-bg" onClick={() => setOpen(false)}>
-              <Settings2 size={14} aria-hidden="true" />
-              {t('lp.tab.settings')}
-            </Link>
-          )}
-        </div>
-      )}
-    </div>
+    <button
+      type="button"
+      role="menuitem"
+      disabled={disabled}
+      onClick={onClick}
+      className="flex w-full items-center gap-2 px-3 py-2 text-start text-[13px] hover:bg-[color:var(--lps-sunken)] disabled:opacity-50"
+      style={{ color: danger ? 'var(--lps-danger)' : undefined }}
+    >
+      <Icon size={15} aria-hidden="true" />
+      {label}
+    </button>
   );
 }

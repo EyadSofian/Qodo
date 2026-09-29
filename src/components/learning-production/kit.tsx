@@ -46,10 +46,11 @@ export function PageHeader({
   breadcrumbs?: Array<{ label: string; to?: string }>;
   meta?: ReactNode;
 }) {
+  const { t } = useI18n();
   return (
     <header className="mb-5">
       {breadcrumbs && breadcrumbs.length > 0 && (
-        <nav aria-label="breadcrumb" className="mb-1.5 flex flex-wrap items-center gap-1 text-[12px] text-ink-faint">
+        <nav aria-label={t('lp.breadcrumb')} className="mb-1.5 flex flex-wrap items-center gap-1 text-[12px] text-ink-faint">
           {breadcrumbs.map((crumb, index) => (
             <span key={`${crumb.label}-${index}`} className="flex items-center gap-1">
               {index > 0 && <span aria-hidden="true">/</span>}
@@ -368,6 +369,7 @@ export function PersonSelect({
   id,
   disabled,
   exclude,
+  className = 'field',
 }: {
   value: string | null;
   onChange: (value: string | null) => void;
@@ -377,6 +379,7 @@ export function PersonSelect({
   id?: string;
   disabled?: boolean;
   exclude?: string | null;
+  className?: string;
 }) {
   const { t } = useI18n();
   const { first, rest } = useMemo(() => {
@@ -387,7 +390,7 @@ export function PersonSelect({
   const known = people.some((person) => person.id === value);
 
   return (
-    <select id={id} className="field" value={value ?? ''} disabled={disabled} onChange={(event) => onChange(event.target.value || null)}>
+    <select id={id} className={className} value={value ?? ''} disabled={disabled} onChange={(event) => onChange(event.target.value || null)}>
       <option value="">{placeholder ?? t('lp.unassigned')}</option>
       {value && !known && <option value={value}>{t('lp.currentPerson')}</option>}
       {first.length > 0 && (
@@ -590,7 +593,15 @@ export function StageCell({ type, asset, courseId, lessonId }: { type: AssetType
   const { t } = useI18n();
   const overdue = asset?.dueState === 'OVERDUE';
   const tone: Tone = !asset ? 'neutral' : asset.blocked ? 'neutral' : overdue ? 'bad' : STATUS_META[asset.status].tone;
-  const state = !asset ? '—' : asset.blocked ? t('lp.blocked') : overdue ? t('lp.due.OVERDUE') : t(statusKey(asset.status));
+  const state = !asset
+    ? '—'
+    : asset.applicable === false
+      ? t('lp.asset.notApplicableShort')
+      : asset.blocked
+        ? t('lp.blocked')
+        : overdue
+          ? t('lp.due.OVERDUE')
+          : t(statusKey(asset.status));
   const body = (
     <>
       <b className="block text-[11px] font-bold text-ink">{t(stageKey(type))}</b>
@@ -621,7 +632,7 @@ export function StageCell({ type, asset, courseId, lessonId }: { type: AssetType
 
 /** History in sentences: "Sara requested changes on PPT v2", never an event code. */
 export function ActivityFeed({ entries, people, showWhere = true, empty }: { entries: ActivityEntry[]; people: People; showWhere?: boolean; empty?: string }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   if (entries.length === 0) return <p className="py-6 text-center text-[13px] text-ink-faint">{empty ?? t('lp.activity.empty')}</p>;
 
   return (
@@ -633,15 +644,33 @@ export function ActivityFeed({ entries, people, showWhere = true, empty }: { ent
         const milestone = entry.metadata.courseMilestone as number | null | undefined;
         const count = (entry.metadata.count as number | undefined) ?? 0;
         const key = `lp.activity.${entry.eventType}${count > 1 ? '_many' : ''}${entry.metadata.preview ? '_preview' : ''}` as StringKey;
-        const sentence = t(key, { actor, stage, version: String(version), count });
+        const pickPair = (pair: { en: string; ar: string } | null | undefined) => (pair ? (lang === 'en' ? pair.en : pair.ar) : '');
+        const sentence = t(key, {
+          actor,
+          stage,
+          version: String(version),
+          count,
+          task: pickPair(entry.task?.label),
+          phase: pickPair(entry.stage?.label),
+          issue: entry.issue ? `#${entry.issue.number}` : '',
+          release: entry.release?.versionLabel ?? String(entry.metadata.versionLabel ?? ''),
+          scenario: entry.metadata.scenario ? t(`lp.scenarioShort.${entry.metadata.scenario}` as StringKey) : '',
+        });
+        const base = entry.course ? `/learning-production/courses/${entry.course.id}` : null;
         const link =
           entry.course && entry.lesson && entry.asset
             ? assetRoute(entry.course.id, entry.lesson.id, entry.asset.assetType)
-            : entry.course && entry.lesson
-              ? `/learning-production/courses/${entry.course.id}/lessons/${entry.lesson.id}`
-              : entry.course
-                ? `/learning-production/courses/${entry.course.id}`
-                : null;
+            : base && entry.task
+              ? `${base}/plan?task=${entry.task.id}`
+              : base && entry.issue
+                ? `${base}/qa?issue=${entry.issue.id}`
+                : base && entry.release
+                  ? `${base}/qa?release=${entry.release.id}`
+                  : base && entry.stage
+                    ? `${base}/plan?stage=${entry.stage.key}`
+                    : entry.course && entry.lesson
+                      ? `${base}/lessons/${entry.lesson.id}`
+                      : base;
         const reason = (entry.metadata.reason ?? entry.metadata.summary) as string | undefined;
 
         return (
@@ -670,5 +699,28 @@ export function ActivityFeed({ entries, people, showWhere = true, empty }: { ent
         );
       })}
     </ol>
+  );
+}
+
+/**
+ * "Made with an AI tool" — recorded on the version it describes. The version
+ * is still reviewed and approved by a person other than the one who sent it.
+ */
+export function ProvenanceField({ value, onChange }: { value: { aiAssisted?: boolean; aiTool?: string }; onChange: (next: { aiAssisted?: boolean; aiTool?: string }) => void }) {
+  const { t } = useI18n();
+  return (
+    <div className="mt-3 rounded-xl border border-surface-line px-3 py-2.5">
+      <label className="flex items-center gap-2 text-[13px] font-semibold text-ink">
+        <input type="checkbox" checked={Boolean(value.aiAssisted)} onChange={(event) => onChange({ ...value, aiAssisted: event.target.checked })} />
+        {t('lp.ai.assisted')}
+      </label>
+      {value.aiAssisted && (
+        <label className="mt-2 block">
+          <span className="label">{t('lp.ai.tool')}</span>
+          <input className="field" value={value.aiTool ?? ''} onChange={(event) => onChange({ ...value, aiTool: event.target.value })} placeholder={t('lp.ai.toolPlaceholder')} maxLength={80} />
+          <span className="mt-1 block text-[12px] text-ink-faint">{t('lp.ai.reviewed')}</span>
+        </label>
+      )}
+    </div>
   );
 }

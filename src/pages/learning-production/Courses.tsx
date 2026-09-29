@@ -1,173 +1,159 @@
 /**
- * Courses — every production course this person can see, with its progress
- * and health. Cards, because a studio runs tens of courses, not thousands.
+ * E-Learning Production — the course catalogue.
+ *
+ * A course is the long-lived identity; this list shows each one with the run
+ * currently in flight (or its latest), where that run is, and how much of its
+ * lesson content is approved. Search, a status filter and a sort — nothing
+ * more is needed to find a course.
  */
 
-import { useMemo, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
-import { Archive, BookOpen, Plus, Search } from 'lucide-react';
-import { useI18n } from '../../lib/i18n';
-import { formatDate, timeAgo } from '../../lib/utils';
+import { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Library, Plus, Search } from 'lucide-react';
+import { useI18n, type StringKey } from '../../lib/i18n';
 import { paths } from '../../lib/learningProduction/api';
-import { useDebounced, useLpQuery } from '../../lib/learningProduction/hooks';
-import { HEALTH_TONE, healthKey } from '../../lib/learningProduction/format';
-import type { CourseHealth, CourseWithStats, People } from '../../lib/learningProduction/types';
-import { Chip, EmptyPanel, ErrorPanel, PageHeader, PersonChip, ProgressBar } from '../../components/learning-production/kit';
-import { HealthReasonText } from './course/CourseOverview';
+import { useDebounced, useLpQuery, useSessionState } from '../../lib/learningProduction/hooks';
+import type { CourseWithStats, People } from '../../lib/learningProduction/types';
+import {
+  Choice,
+  EmptyNote,
+  ErrorNote,
+  LoadingRows,
+  Meter,
+  PageHero,
+  Panel,
+  PersonLine,
+  RunStatusPill,
+  ScenarioBadge,
+  useDay,
+  usePick,
+} from '../../components/learning-production/studio';
 
-const HEALTHS: CourseHealth[] = ['ON_TRACK', 'AT_RISK', 'DELAYED', 'COMPLETED'];
+type View = 'active' | 'hold' | 'archived';
 
 export function Courses() {
   const { t } = useI18n();
-  const [params, setParams] = useSearchParams();
-  const [search, setSearch] = useState(params.get('q') ?? '');
-  const q = useDebounced(search.trim(), 300);
-  const health = params.get('health') ?? '';
-  const managerId = params.get('manager') ?? '';
-  const sort = params.get('sort') ?? 'recent';
-  const archived = params.get('archived') === '1';
-
-  const set = (key: string, value: string) => {
-    const next = new URLSearchParams(params);
-    if (value) next.set(key, value);
-    else next.delete(key);
-    setParams(next, { replace: true });
-  };
-
-  const path = paths.courses({ q, health, managerId, sort, archived });
-  const { data, error, loading, reload } = useLpQuery<{ courses: CourseWithStats[]; people: People; canCreate: boolean }>(path);
-
-  const managers = useMemo(() => {
-    const ids = new Set((data?.courses ?? []).map((course) => course.managerUserId).filter(Boolean) as string[]);
-    return [...ids].map((id) => ({ id, name: data?.people[id]?.name ?? id }));
-  }, [data]);
-
-  const filtered = Boolean(q || health || managerId);
+  const pick = usePick();
+  const day = useDay();
+  const navigate = useNavigate();
+  const [view, setView] = useSessionState<View>('lpstudio:courses.view', 'active');
+  const [sort, setSort] = useSessionState('lpstudio:courses.sort', 'recent');
+  const [search, setSearch] = useState('');
+  const q = useDebounced(search.trim(), 250);
+  const { data, error, loading, reload } = useLpQuery<{ courses: CourseWithStats[]; people: People; canCreate: boolean }>(
+    paths.courses({ q, sort, status: view === 'hold' ? 'ON_HOLD' : view === 'active' ? 'ACTIVE' : undefined, archived: view === 'archived' })
+  );
+  const courses = data?.courses ?? [];
 
   return (
-    <>
-      <PageHeader
-        title={t('lp.course.title')}
-        description={t('lp.course.subtitle')}
+    <div className="lps-stagger space-y-4">
+      <PageHero
+        icon={Library}
+        title={t('lp.courses.title')}
+        lede={t('lp.courses.lede')}
         actions={
           data?.canCreate ? (
-            <Link to="/learning-production/courses/new" className="btn-primary btn-sm">
-              <Plus size={15} />
-              {t('lp.course.new')}
+            <Link to="/learning-production/runs/new" className="lps-btn-primary">
+              <Plus size={15} aria-hidden="true" />
+              {t('lp.run.new')}
             </Link>
-          ) : null
+          ) : undefined
         }
       />
 
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <label className="relative min-w-[220px] flex-1 sm:max-w-sm">
-          <span className="sr-only">{t('common.search')}</span>
-          <Search size={15} className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-ink-faint" />
-          <input className="field !ps-9" value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t('lp.course.search')} />
-        </label>
-        <select className="field !w-auto" value={health} onChange={(event) => set('health', event.target.value)} aria-label={t('lp.course.health')}>
-          <option value="">{t('lp.course.allHealth')}</option>
-          {HEALTHS.map((value) => (
-            <option key={value} value={value}>
-              {t(healthKey(value))}
-            </option>
-          ))}
-        </select>
-        {managers.length > 1 && (
-          <select className="field !w-auto" value={managerId} onChange={(event) => set('manager', event.target.value)} aria-label={t('lp.course.manager')}>
-            <option value="">{t('lp.course.allManagers')}</option>
-            {managers.map((manager) => (
-              <option key={manager.id} value={manager.id}>
-                {manager.name}
-              </option>
-            ))}
-          </select>
-        )}
-        <select className="field !w-auto" value={sort} onChange={(event) => set('sort', event.target.value)} aria-label={t('lp.sort')}>
-          <option value="recent">{t('lp.sort.recent')}</option>
-          <option value="name">{t('lp.sort.name')}</option>
-          <option value="target">{t('lp.sort.target')}</option>
-          <option value="progress">{t('lp.sort.progress')}</option>
-        </select>
-        <button type="button" className={archived ? 'btn-navy btn-sm' : 'btn-ghost btn-sm'} onClick={() => set('archived', archived ? '' : '1')} aria-pressed={archived}>
-          <Archive size={14} />
-          {t('lp.course.archived')}
-        </button>
-      </div>
-
-      {loading && !data ? (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {Array.from({ length: 6 }, (_, index) => (
-            <div key={index} className="skeleton h-44 rounded-2xl" />
-          ))}
-        </div>
-      ) : error && !data ? (
-        <ErrorPanel error={error} onRetry={reload} />
-      ) : data && data.courses.length === 0 ? (
-        filtered || archived ? (
-          <EmptyPanel icon={<Search size={24} />} title={archived ? t('lp.course.noArchived') : t('lp.course.noMatch')} />
-        ) : (
-          <EmptyPanel
-            icon={<BookOpen size={26} />}
-            title={t('lp.course.emptyTitle')}
-            body={data.canCreate ? t('lp.course.emptyBodyManager') : t('lp.course.emptyBody')}
-            action={
-              data.canCreate ? (
-                <Link to="/learning-production/courses/new" className="btn-primary btn-sm">
-                  <Plus size={15} />
-                  {t('lp.course.createFirst')}
-                </Link>
-              ) : null
-            }
+      <Panel
+        bodyClassName="p-0"
+        title={
+          <Choice<View>
+            label={t('lp.courses.title')}
+            value={view}
+            onChange={setView}
+            options={[
+              { value: 'active', label: t('lp.courses.active') },
+              { value: 'hold', label: t('lp.courses.onHold') },
+              { value: 'archived', label: t('lp.courses.archived') },
+            ]}
           />
-        )
-      ) : (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {data?.courses.map((course) => <CourseCard key={course.id} course={course} people={data.people} />)}
-        </div>
-      )}
-    </>
-  );
-}
-
-function CourseCard({ course, people }: { course: CourseWithStats; people: People }) {
-  const { t, lang } = useI18n();
-  return (
-    <Link to={`/learning-production/courses/${course.id}`} className="group flex flex-col rounded-2xl border border-surface-line bg-white p-4 transition-shadow hover:shadow-card">
-      <div className="flex items-start gap-3">
-        {course.hasCover ? (
-          <img src={paths.cover(course.id, course.updatedAt)} alt="" className="h-12 w-12 shrink-0 rounded-xl object-cover" loading="lazy" />
+        }
+        action={
+          <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+            <label className="relative min-w-0 flex-1 sm:w-60 sm:flex-none">
+              <span className="sr-only">{t('common.search')}</span>
+              <Search size={14} aria-hidden="true" className="pointer-events-none absolute start-2.5 top-1/2 -translate-y-1/2 lps-faint" />
+              <input className="lps-input !py-1.5 ps-8" value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t('lp.courses.search')} />
+            </label>
+            <select className="lps-input !w-auto !py-1.5" value={sort} onChange={(event) => setSort(event.target.value)} aria-label={t('lp.courses.sort')}>
+              {['recent', 'name', 'target', 'progress'].map((value) => (
+                <option key={value} value={value}>
+                  {t(`lp.courses.sort.${value}` as StringKey)}
+                </option>
+              ))}
+            </select>
+          </div>
+        }
+      >
+        {error ? (
+          <div className="p-4">
+            <ErrorNote error={error} onRetry={reload} />
+          </div>
+        ) : loading && !data ? (
+          <LoadingRows />
+        ) : courses.length === 0 ? (
+          <EmptyNote icon={Library} title={q ? t('lp.courses.noMatch') : t('lp.courses.empty')} body={q ? undefined : t('lp.courses.emptyBody')} />
         ) : (
-          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-600">
-            <BookOpen size={20} aria-hidden="true" />
-          </span>
+          <div className="overflow-x-auto">
+            <table className="lps-table min-w-[880px]">
+              <thead>
+                <tr>
+                  <th className="sticky start-0 z-[2]">{t('lp.col.course')}</th>
+                  <th>{t('lp.col.run')}</th>
+                  <th>{t('lp.col.stage')}</th>
+                  <th className="text-center">{t('lp.col.lessons')}</th>
+                  <th className="w-[150px]">{t('lp.col.content')}</th>
+                  <th>{t('lp.col.target')}</th>
+                  <th>{t('lp.col.manager')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {courses.map((course) => (
+                  <tr key={course.id} className="lps-row-link" onClick={() => navigate(`/learning-production/courses/${course.id}`)}>
+                    <td className="sticky start-0 z-[1] bg-white">
+                      <Link to={`/learning-production/courses/${course.id}`} className="block max-w-[280px] hover:underline" onClick={(event) => event.stopPropagation()}>
+                        <span className="lps-bidi block truncate font-semibold">{course.name}</span>
+                        {course.code && <span className="text-[11.5px] lps-faint">{course.code}</span>}
+                      </Link>
+                    </td>
+                    <td>
+                      {course.run ? (
+                        <span className="flex flex-wrap items-center gap-1.5">
+                          <ScenarioBadge scenario={course.run.scenario} short />
+                          <RunStatusPill status={course.run.status} />
+                        </span>
+                      ) : (
+                        <span className="text-[12.5px] lps-faint">{t('lp.courses.noRun')}</span>
+                      )}
+                    </td>
+                    <td className="max-w-[220px] truncate text-[12.5px]">
+                      {course.run?.currentStage ? pick(course.run.currentStage.label) : course.run?.scenario === 'LEGACY' ? <span className="lps-muted">{t('lp.run.legacyNoStages')}</span> : '—'}
+                    </td>
+                    <td className="text-center">{course.stats.lessons}</td>
+                    <td>
+                      <div className="flex items-center gap-2">
+                        <Meter value={course.progress} tone="ok" label={t('lp.col.content')} />
+                        <span className="w-9 shrink-0 text-end text-[12px] font-semibold">{course.stats.totalAssets ? `${course.progress}%` : '—'}</span>
+                      </div>
+                    </td>
+                    <td className="whitespace-nowrap text-[12.5px]">{day(course.targetDate)}</td>
+                    <td>
+                      <PersonLine userId={course.managerUserId} people={data?.people ?? {}} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
-        <div className="min-w-0 flex-1">
-          <h3 className="truncate text-[15px] font-bold text-ink group-hover:text-brand-600">{course.name}</h3>
-          <p className="mt-0.5 flex items-center gap-2 text-[12px] text-ink-faint">
-            {course.code && <span className="ltr font-semibold">{course.code}</span>}
-            <span>{t('lp.course.lessonsCount', { n: course.stats.lessons })}</span>
-          </p>
-        </div>
-        <Chip tone={HEALTH_TONE[course.health]}>{t(healthKey(course.health))}</Chip>
-      </div>
-
-      <div className="mt-4 flex items-center gap-2">
-        <ProgressBar value={course.progress} label={t('lp.progress')} className="!h-2" />
-        <span className="w-10 shrink-0 text-end text-[13px] font-bold tabular-nums text-ink">{course.progress}%</span>
-      </div>
-      {course.healthReasons[0] && (
-        <p className="mt-1.5 line-clamp-1 text-[12px] text-ink-muted">
-          <HealthReasonText reason={course.healthReasons[0]} />
-        </p>
-      )}
-
-      <div className="mt-auto flex items-center justify-between gap-2 border-t border-surface-line pt-3 text-[12px] text-ink-muted" style={{ marginTop: 14 }}>
-        <PersonChip userId={course.managerUserId} people={people} size={20} />
-        <span className="shrink-0 text-ink-faint">
-          {course.targetDate ? `${t('lp.course.target')}: ${formatDate(course.targetDate, lang)}` : course.lastActivityAt ? timeAgo(course.lastActivityAt, t) : ''}
-        </span>
-      </div>
-    </Link>
+      </Panel>
+    </div>
   );
 }

@@ -617,6 +617,7 @@ export async function getRun(actor, runId) {
             assigneeUserId: entry.assigneeUserId,
             reviewerUserId: entry.reviewerUserId,
             role: entry.role,
+            dueDate: entry.dueDate,
             dueState: entry.dueState,
             gate: entry.gate,
           })),

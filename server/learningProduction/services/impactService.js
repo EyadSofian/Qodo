@@ -70,12 +70,16 @@ export async function getImpact(actor, runId) {
   };
 }
 
-/** Record decisions: `{ items: [{ lessonId, assetType?, decision, note }] }`. Replaces earlier decisions on the same lines. */
+/**
+ * Record decisions: `{ items: [{ lessonId, assetType?, decision, note }] }`.
+ * The set replaces the previous one whole — a lesson switched back from
+ * "change the slides" to "keep" must not keep a stale per-asset decision.
+ */
 export async function saveImpact(actor, runId, input) {
   const body = plainObject(input, 'body');
   if (!Array.isArray(body.items) || body.items.length === 0) throw validation('items', 'required');
   if (body.items.length > 2000) throw validation('items', 'too_many', { max: 2000 });
-  const items = body.items.map((entry, index) => {
+  const parsed = body.items.map((entry, index) => {
     const item = plainObject(entry, `items.${index}`);
     return {
       lessonId: bodyId(item.lessonId, `items.${index}.lessonId`),
@@ -84,6 +88,8 @@ export async function saveImpact(actor, runId, input) {
       note: text(item.note, `items.${index}.note`, { max: 1000 }) ?? '',
     };
   });
+  // One decision per line: a repeated line keeps its last decision.
+  const items = [...new Map(parsed.map((item) => [`${item.lessonId}|${item.assetType ?? ''}`, item])).values()];
 
   await transactionWithOutbox([], async (tx) => {
     const ctx = await runContext(actor, runId, { db: tx, lock: true });
@@ -100,17 +106,13 @@ export async function saveImpact(actor, runId, input) {
         (lesson) => [lesson.id, lesson]
       )
     );
+    await tx.query(`DELETE FROM ${S}.learning_change_impact_items WHERE run_id = $1`, [runId]);
     for (const item of items) {
       if (item.lessonId && !snapshotLessons.has(item.lessonId)) throw validation('lessonId', 'not_in_source');
       if (item.decision === 'REMOVE' && item.assetType) throw validation('decision', 'remove_whole_lesson');
       const sourceVersionId = item.lessonId && item.assetType
         ? snapshotLessons.get(item.lessonId)?.assets.find((asset) => asset.type === item.assetType)?.approvedVersionId ?? null
         : null;
-      await tx.query(
-        `DELETE FROM ${S}.learning_change_impact_items
-          WHERE run_id = $1 AND lesson_id IS NOT DISTINCT FROM $2 AND asset_type IS NOT DISTINCT FROM $3`,
-        [runId, item.lessonId, item.assetType]
-      );
       await tx.query(
         `INSERT INTO ${S}.learning_change_impact_items
            (organization_id, run_id, lesson_id, asset_type, source_version_id, decision, note, decided_by)

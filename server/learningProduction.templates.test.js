@@ -432,3 +432,11 @@ describe('dates and labels', () => {
     assert.equal(nextReleaseLabel('r1.2.0', { major: true }), 'r2.0.0');
   });
 });
+
+test('the traceability document is generated from the current templates', async () => {
+  const { execFileSync } = await import('node:child_process');
+  const { fileURLToPath } = await import('node:url');
+  const root = fileURLToPath(new URL('..', import.meta.url));
+  // Throws (non-zero exit) when docs/ELEARNING_PRODUCTION_TRACEABILITY.md is stale.
+  execFileSync(process.execPath, ['scripts/generate-production-traceability-doc.mjs', '--check'], { cwd: root, stdio: 'pipe' });
+});

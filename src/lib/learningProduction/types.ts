@@ -49,6 +49,8 @@ export interface Me {
   isAdmin: boolean;
   seesEveryCourse: boolean;
   canCreateCourse: boolean;
+  canCreateRun: boolean;
+  canManageTemplates: boolean;
   canViewReports: boolean;
   managesWork: boolean;
   visibleCourses: number;
@@ -77,6 +79,7 @@ export interface Course {
   startDate: string | null;
   targetDate: string | null;
   productionDefaults: ProductionDefaults;
+  currentReleaseId?: string | null;
   isDemo: boolean;
   createdBy: string;
   createdAt: string;
@@ -111,6 +114,16 @@ export interface CourseWithStats extends Course {
   health: CourseHealth;
   healthReasons: HealthReason[];
   lastActivityAt: string | null;
+  /** The run in flight, or the latest one. Null for a course that never had a run. */
+  run?: {
+    id: string;
+    scenario: 'AI_NEW' | 'EXPERT_NEW' | 'REVAMP' | 'LEGACY';
+    status: 'ACTIVE' | 'ON_HOLD' | 'RELEASED' | 'CLOSED' | 'CANCELLED';
+    runNumber: number;
+    isLegacy: boolean;
+    currentStage: { key: string; label: { en: string; ar: string } } | null;
+    hasRelease: boolean;
+  } | null;
 }
 
 export interface StageStat {
@@ -133,6 +146,11 @@ export interface CourseCapabilities {
   viewReports: boolean;
   assign: Record<AssetType, boolean>;
   assignAny: boolean;
+  manageRuns: boolean;
+  assignTasks: boolean;
+  signoffReleases: boolean;
+  publishReleases: boolean;
+  seeSensitive: boolean;
   roles: CourseRole[];
   isAdmin: boolean;
 }
@@ -147,6 +165,11 @@ export interface ActivityEntry {
   lesson: { id: string; name: string } | null;
   asset: { id: string; assetType: AssetType } | null;
   versionNumber: number | null;
+  runId?: string | null;
+  stage?: { id: string; key: string; label: { en: string; ar: string } | null } | null;
+  task?: { id: string; key: string; label: { en: string; ar: string } | null } | null;
+  issue?: { id: string; number: number; title: string } | null;
+  release?: { id: string; versionLabel: string } | null;
 }
 
 export interface CourseDetail {
@@ -171,6 +194,9 @@ export interface ModuleRow {
 export interface AssetSummary {
   id: string;
   assetType: AssetType;
+  /** False when a manager marked it not applicable, with a reason. */
+  applicable?: boolean;
+  notApplicableReason?: string | null;
   status: AssetStatus;
   priority: Priority;
   assigneeUserId: string | null;
@@ -211,6 +237,9 @@ export interface MatrixResponse {
   lessons: MatrixLesson[];
   capabilities: CourseCapabilities;
   settings: { enforceDependencies: boolean };
+  /** The columns to draw: the run's asset types plus any a lesson still has. */
+  assetTypes: AssetType[];
+  run: { id: string; scenario: string; lessonAssetTypes: AssetType[] } | null;
   today: string;
   people: People;
 }
@@ -290,6 +319,8 @@ export interface Version {
   previewFileName: string | null;
   durationSeconds: number | null;
   versionNotes: string;
+  aiAssisted?: boolean;
+  aiTool?: string | null;
   createdBy: string;
   createdAt: string;
   decision?: 'PENDING' | 'APPROVED' | 'CHANGES_REQUESTED' | null;
@@ -331,6 +362,10 @@ export interface Asset {
   dependencyOverrideBy: string | null;
   dependencyOverrideAt: string | null;
   dependencyOverrideReason: string | null;
+  applicable: boolean;
+  notApplicableReason: string | null;
+  notApplicableBy: string | null;
+  notApplicableAt: string | null;
   updatedAt: string;
 }
 
@@ -360,7 +395,8 @@ export interface AssetDetail {
   lesson: { id: string; name: string; moduleId: string | null; moduleName: string | null };
   course: { id: string; name: string; code: string | null };
   settings: { wordsPerMinute: number; enforceDependencies: boolean };
-  siblings: Array<{ assetType: AssetType; id: string | null; status: AssetStatus }>;
+  siblings: Array<{ assetType: AssetType; id: string | null; status: AssetStatus | null; applicable: boolean; present: boolean }>;
+  canManageApplicability: boolean;
   evaluation: {
     actions: Record<AssetAction, Verdict>;
     blocked: boolean;

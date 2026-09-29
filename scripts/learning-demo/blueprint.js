@@ -47,6 +47,15 @@ export const PEOPLE = [
   { ref: 'kareem', name: 'كريم عبد الرحمن', title: 'مصمم عروض تقديمية', avatarColor: '#B45309' },
   { ref: 'laila', name: 'ليلى منصور', title: 'معلّقة صوتية', avatarColor: '#0284C7' },
   { ref: 'sherif', name: 'شريف جمال', title: 'محرر فيديو', avatarColor: '#15803D' },
+  // The program roles the production runs add (see learning-demo/runs.js).
+  { ref: 'reem', name: 'ريم عادل', title: 'باحثة برامج', avatarColor: '#0E7490' },
+  { ref: 'yasmin', name: 'ياسمين فاروق', title: 'منسقة الخبراء', avatarColor: '#9D174D' },
+  { ref: 'adel', name: 'عادل نصار', title: 'مستشار تقني', avatarColor: '#334155' },
+  { ref: 'mahmoud', name: 'محمود رشاد', title: 'مدير مشروع تقني', avatarColor: '#1E40AF' },
+  { ref: 'ali', name: 'علي حمدي', title: 'عمليات التعلم', avatarColor: '#047857' },
+  { ref: 'noha', name: 'نهى سعيد', title: 'التسويق', avatarColor: '#C2410C' },
+  { ref: 'ziad', name: 'زياد كمال', title: 'منسق اختبار القبول', avatarColor: '#4338CA' },
+  { ref: 'fatma', name: 'فاطمة يسري', title: 'مختبرة قبول', avatarColor: '#86198F' },
 ];
 
 /* ── the shape of a lesson's production ───────────────────────────── */

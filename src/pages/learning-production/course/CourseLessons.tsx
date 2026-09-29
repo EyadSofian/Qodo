@@ -281,7 +281,7 @@ export function CourseLessons() {
                               </div>
                             </div>
 
-                            {STAGES.map((type) => (
+                            {(data?.assetTypes?.length ? data.assetTypes : STAGES).map((type) => (
                               <div key={type} className="hidden min-w-0 lg:block">
                                 <StageCell type={type} asset={lesson.assets[type]} courseId={courseId} lessonId={lesson.id} />
                               </div>
@@ -353,7 +353,7 @@ export function CourseLessons() {
                               band under the lesson, so the row never becomes a
                               horizontal scroller. */}
                           <div className="mt-2 grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:hidden">
-                            {STAGES.map((type) => (
+                            {(data?.assetTypes?.length ? data.assetTypes : STAGES).map((type) => (
                               <StageCell key={type} type={type} asset={lesson.assets[type]} courseId={courseId} lessonId={lesson.id} />
                             ))}
                           </div>

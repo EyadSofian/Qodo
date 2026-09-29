@@ -60,6 +60,7 @@ import { organizationOf } from '../shared/organization.js';
 import { ASSET_TYPES } from '../shared/learningProduction/constants.js';
 
 import { coverPng, narrationWav, slidesPdf } from './learning-demo/media.js';
+import { seedRuns } from './learning-demo/runs.js';
 import {
   COURSES,
   PEOPLE,
@@ -222,6 +223,14 @@ async function removeDemo(organizationId) {
   } else {
     const ids = courses.map((course) => course.id);
     const { rows: covers } = await query(`SELECT cover_storage_key FROM ${S}.learning_courses WHERE id = ANY($1::uuid[]) AND cover_storage_key IS NOT NULL`, [ids]);
+    const { rows: runFiles } = await query(
+      `SELECT e.storage_key FROM ${S}.learning_task_evidence e JOIN ${S}.learning_task_instances t ON t.id = e.task_id
+         JOIN ${S}.learning_production_runs r ON r.id = t.run_id WHERE r.course_id = ANY($1::uuid[]) AND e.storage_key IS NOT NULL
+       UNION ALL
+       SELECT f.storage_key FROM ${S}.learning_candidate_files f JOIN ${S}.learning_expert_candidates c ON c.id = f.candidate_id
+        WHERE c.course_id = ANY($1::uuid[])`,
+      [ids]
+    );
     const { rows: files } = await query(
       `SELECT v.storage_key, v.preview_storage_key FROM ${S}.learning_asset_versions v
          JOIN ${S}.learning_assets a ON a.id = v.asset_id WHERE a.course_id = ANY($1::uuid[])`,
@@ -234,6 +243,41 @@ async function removeDemo(organizationId) {
       const byCourse = (table, column = 'course_id') => tx.query(`DELETE FROM ${S}.${table} WHERE ${column} = ANY($1::uuid[])`, [ids]);
       const byAsset = (table) =>
         tx.query(`DELETE FROM ${S}.${table} WHERE asset_id IN (SELECT id FROM ${S}.learning_assets WHERE course_id = ANY($1::uuid[]))`, [ids]);
+
+      // Production runs and everything under them (migration 002).
+      const byRun = (table) =>
+        tx.query(`DELETE FROM ${S}.${table} WHERE run_id IN (SELECT id FROM ${S}.learning_production_runs WHERE course_id = ANY($1::uuid[]))`, [ids]);
+      const byTask = (table) =>
+        tx.query(
+          `DELETE FROM ${S}.${table} WHERE task_id IN (SELECT t.id FROM ${S}.learning_task_instances t JOIN ${S}.learning_production_runs r ON r.id = t.run_id WHERE r.course_id = ANY($1::uuid[]))`,
+          [ids]
+        );
+      const entities = `SELECT id FROM ${S}.learning_production_runs WHERE course_id = ANY($1::uuid[])
+        UNION ALL SELECT t.id FROM ${S}.learning_task_instances t JOIN ${S}.learning_production_runs r ON r.id = t.run_id WHERE r.course_id = ANY($1::uuid[])
+        UNION ALL SELECT s.id FROM ${S}.learning_stage_instances s JOIN ${S}.learning_production_runs r ON r.id = s.run_id WHERE r.course_id = ANY($1::uuid[])
+        UNION ALL SELECT i.id FROM ${S}.learning_run_issues i JOIN ${S}.learning_production_runs r ON r.id = i.run_id WHERE r.course_id = ANY($1::uuid[])
+        UNION ALL SELECT id FROM ${S}.learning_releases WHERE course_id = ANY($1::uuid[])
+        UNION ALL SELECT id FROM ${S}.learning_assets WHERE course_id = ANY($1::uuid[])
+        UNION ALL SELECT unnest($1::uuid[])`;
+      await tx.query(`DELETE FROM ${S}.learning_notification_outbox WHERE entity_id IN (${entities})`, [ids]);
+      await tx.query(`DELETE FROM ${S}.learning_notifications WHERE entity_id IN (${entities})`, [ids]);
+      await tx.query(
+        `DELETE FROM ${S}.learning_candidate_files WHERE candidate_id IN (SELECT id FROM ${S}.learning_expert_candidates WHERE course_id = ANY($1::uuid[]))`,
+        [ids]
+      );
+      await byCourse('learning_expert_candidates');
+      await byRun('learning_change_impact_items');
+      await byTask('learning_task_comments');
+      await byTask('learning_task_submissions');
+      await byTask('learning_task_evidence');
+      await byTask('learning_task_checklist_items');
+      await byTask('learning_task_dependencies');
+      await byRun('learning_run_issues');
+      await byRun('learning_task_instances');
+      await byRun('learning_stage_instances');
+      await byRun('learning_run_members');
+      await tx.query(`UPDATE ${S}.learning_courses SET current_release_id = NULL WHERE id = ANY($1::uuid[])`, [ids]);
+      await byCourse('learning_releases');
 
       await byAsset('learning_notifications');
       await byAsset('learning_annotations');
@@ -257,10 +301,15 @@ async function removeDemo(organizationId) {
       await byCourse('learning_lessons');
       await byCourse('learning_course_modules');
       await byCourse('learning_course_members');
+      await byCourse('learning_production_runs');
       await tx.query(`DELETE FROM ${S}.learning_courses WHERE id = ANY($1::uuid[])`, [ids]);
     });
 
-    for (const key of [...covers.map((row) => row.cover_storage_key), ...files.flatMap((row) => [row.storage_key, row.preview_storage_key])]) {
+    for (const key of [
+      ...covers.map((row) => row.cover_storage_key),
+      ...files.flatMap((row) => [row.storage_key, row.preview_storage_key]),
+      ...runFiles.map((row) => row.storage_key),
+    ]) {
       if (key) await removeBlob(key).catch(() => {});
     }
     say(`Removed ${courses.length} demo courses and everything under them.`);
@@ -520,6 +569,10 @@ async function load({ viewer, organizationId }) {
 
   await flushActivity();
   await backdate(organizationId);
+
+  say('');
+  say('Production runs, walked through the workflow services…');
+  await seedRuns({ viewer, organizationId, ids, say });
 
   say('');
   say(`Loaded ${counts.courses} courses, ${counts.lessons} lessons, ${counts.assets} assets, ${counts.versions} versions, ${counts.comments} comments, ${counts.activity} activity entries.`);

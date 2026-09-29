@@ -77,7 +77,7 @@ export function LessonWorkspace() {
         }
       />
 
-      <nav aria-label={t('lp.lesson.stages')} className="no-scrollbar mb-4 flex gap-1 overflow-x-auto rounded-2xl border border-surface-line bg-white p-1">
+      <nav aria-label={t('lp.lesson.stages')} className="no-scrollbar relative mb-4 flex gap-1 overflow-x-auto rounded-2xl border border-surface-line bg-white p-1">
         {data.assets.map((entry) => {
           const meta = entry.blocked ? BLOCKED_META : STATUS_META[entry.status];
           const StatusIcon = meta.icon;

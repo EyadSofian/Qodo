@@ -82,9 +82,39 @@ export async function listCourses(actor, query = {}) {
   }[sort];
   courses.sort(compare);
 
+  // Each course's run in flight (or, failing that, its latest run) — what the
+  // course list shows beside it and what a new run must know about.
+  const runRows = courses.length
+    ? await direct.rows(
+        `SELECT DISTINCT ON (r.course_id) r.course_id, r.id, r.scenario, r.status, r.run_number, r.is_legacy,
+                (SELECT st.label_json FROM ${S}.learning_stage_instances st
+                  WHERE st.run_id = r.id AND st.status NOT IN ('DONE', 'SKIPPED') ORDER BY st.sort_order LIMIT 1) AS stage_label,
+                (SELECT st.stage_key FROM ${S}.learning_stage_instances st
+                  WHERE st.run_id = r.id AND st.status NOT IN ('DONE', 'SKIPPED') ORDER BY st.sort_order LIMIT 1) AS stage_key,
+                EXISTS (SELECT 1 FROM ${S}.learning_releases rel WHERE rel.course_id = r.course_id AND rel.published_at IS NOT NULL) AS has_release
+           FROM ${S}.learning_production_runs r
+          WHERE r.course_id = ANY($1::uuid[])
+          ORDER BY r.course_id, (r.status IN ('ACTIVE', 'ON_HOLD')) DESC, r.run_number DESC`,
+        [courses.map((course) => course.id)]
+      )
+    : [];
+  const runOf = new Map(
+    runRows.map((row) => [
+      row.course_id,
+      {
+        id: row.id,
+        scenario: row.scenario,
+        status: row.status,
+        runNumber: row.run_number,
+        isLegacy: row.is_legacy,
+        currentStage: row.stage_key ? { key: row.stage_key, label: row.stage_label } : null,
+        hasRelease: row.has_release,
+      },
+    ])
+  );
   const managers = await peopleFor(courses.map((course) => course.managerUserId));
   return {
-    courses: courses.map(({ settings: _settings, ...course }) => course),
+    courses: courses.map(({ settings: _settings, ...course }) => ({ ...course, run: runOf.get(course.id) ?? null })),
     people: managers,
     canCreate: actor.grants.has(P.COURSE_CREATE),
   };

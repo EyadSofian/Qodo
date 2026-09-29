@@ -146,8 +146,8 @@ export const lp = {
     api.post<AssetDetail>(`${paths.asset(assetId)}/${action}`, body),
   saveDraft: (assetId: string, content: unknown, revision: number) =>
     api.put<{ revision: number; savedAt: string; status: AssetStatus }>(`${paths.asset(assetId)}/draft`, { content, revision }),
-  addLink: (assetId: string, externalUrl: string, notes: string) =>
-    api.post<AssetDetail>(`${paths.asset(assetId)}/versions`, { externalUrl, notes }),
+  addLink: (assetId: string, externalUrl: string, notes: string, provenance: Provenance = {}) =>
+    api.post<AssetDetail>(`${paths.asset(assetId)}/versions`, { externalUrl, notes, ...provenance }),
   assetActivity: (assetId: string) => api.get<{ entries: ActivityEntry[]; people: People }>(paths.assetActivity(assetId)),
 
   comments: (assetId: string) => api.get<CommentsResponse>(paths.comments(assetId)),
@@ -169,6 +169,12 @@ export const lp = {
   saveTranscript: (versionId: string, body: string, segments: Transcript['segments']) =>
     api.put<{ transcript: Transcript }>(`${BASE}/versions/${versionId}/transcript`, { body, segments }),
 };
+
+/** Who made a version: marked AI-assisted, with the tool's name. Still reviewed by a person. */
+export interface Provenance {
+  aiAssisted?: boolean;
+  aiTool?: string;
+}
 
 export interface UploadHandle<T> {
   promise: Promise<T>;
@@ -212,11 +218,12 @@ export function uploadFile<T>(
 }
 
 export const uploads = {
-  version: (assetId: string, file: File, notes: string, durationSeconds: number | null, onProgress?: (fraction: number) => void) =>
+  version: (assetId: string, file: File, notes: string, durationSeconds: number | null, onProgress?: (fraction: number) => void, provenance: Provenance = {}) =>
     uploadFile<AssetDetail>(`${BASE}/assets/${assetId}/versions`, file, {
       headers: {
         ...(notes ? { 'X-Version-Notes': encodeURIComponent(notes) } : {}),
         ...(durationSeconds ? { 'X-Duration-Seconds': String(durationSeconds) } : {}),
+        ...(provenance.aiAssisted ? { 'X-Ai-Assisted': '1', 'X-Ai-Tool': encodeURIComponent(provenance.aiTool ?? '') } : {}),
       },
       onProgress,
     }),
