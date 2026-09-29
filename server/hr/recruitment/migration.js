@@ -9,7 +9,8 @@
  *    deterministic id derived from it, written with `createIfAbsent`. A restart
  *    or a re-upload of the same jobs therefore never creates a second copy.
  *  • A job, once imported, belongs to Qodo. A later workbook never overwrites
- *    it; differences are reported by `recruitmentReconciliation` instead.
+ *    it implicitly; a settings manager can separately apply the approved
+ *    recruiter distribution snapshot and archive rows outside that snapshot.
  *
  * Nothing is invented. There is no approval history in the workbook, so none
  * is written — the sheet's own "Validation" value is kept as `legacyValidation`
@@ -243,13 +244,15 @@ export async function migrateLegacyRecruitment(organizationId, { today = localDa
 }
 
 /**
- * Where the current workbook and Qodo disagree. Qodo is the source of truth;
- * this is a list for a person to look at, never an instruction to overwrite.
+ * Where the current workbook and Qodo disagree. Differences stay visible for
+ * review; applying assignments and archiving out-of-file jobs is a separate,
+ * settings-protected operation.
  */
 export async function recruitmentReconciliation(organizationId) {
   const { recruitment, employees } = await datasetsFor(organizationId);
   const rows = recruitment?.payload?.requests ?? [];
-  const requests = await requestsFor(organizationId);
+  const allRequests = await requestsFor(organizationId, { includeArchived: true });
+  const requests = allRequests.filter((request) => !request.archivedAt);
   const byId = new Map(requests.map((request) => [request.id, request]));
   const seen = new Set();
   const differences = [];
@@ -281,6 +284,8 @@ export async function recruitmentReconciliation(organizationId) {
   return {
     workbook: recruitment ? { fileName: recruitment.fileName, importedAt: recruitment.importedAt, period: recruitment.payload?.period ?? null, rows: rows.length } : null,
     imported: requests.filter((request) => request.source === 'legacy_workbook').length,
+    activeRequests: requests.length,
+    archived: allRequests.filter((request) => request.source === 'legacy_workbook' && request.archivedAt).length,
     differences,
     missing,
     orphans,

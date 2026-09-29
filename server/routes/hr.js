@@ -19,7 +19,7 @@ import recruitmentRoutes from './hrRecruitment.js';
 import { employeeOdoo, hrAccess, hrHome, odooOnlyProfile, organizationOverview, payrollOverview, peopleDirectory } from '../hr/workspace.js';
 import { performanceOverview, reviewFor, saveReview } from '../hr/performance.js';
 import { buildReport, reportsFor } from '../hr/reports.js';
-import { auditLog, reconciliationView, saveSettings, settingsView } from '../hr/admin.js';
+import { applyRecruitmentWorkbookSnapshot, auditLog, reconciliationView, saveSettings, settingsView } from '../hr/admin.js';
 import { saveRewardRules } from '../hr/recruitment/rewards.js';
 import { migrateLegacyRecruitment } from '../hr/recruitment/migration.js';
 import {
@@ -342,6 +342,7 @@ router.post('/settings/migration', requirePermission(PERMISSIONS.HR_SETTINGS_MAN
   return { migration };
 }));
 router.get('/settings/reconciliation', h((req) => reconciliationView(req.user)));
+router.post('/settings/reconciliation/apply-workbook', requirePermission(PERMISSIONS.HR_SETTINGS_MANAGE), h((req) => applyRecruitmentWorkbookSnapshot(req.user, req.body ?? {})));
 router.get('/settings/audit', h((req) => auditLog(req.user, { limit: req.query.limit })));
 
 router.get('/personnel', h((req) => listPersonnel(req.user, { type: req.query.type, status: req.query.status })));

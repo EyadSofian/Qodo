@@ -129,6 +129,8 @@ const ERRORS: Record<string, { ar: string; en: string }> = {
   hr_owner_required: { ar: 'اختر مسؤولاً قبل تفعيل المهمة الدورية.', en: 'Choose an owner before enabling the recurring task.' },
   /* ── HR V2 · Recruitment ─────────────────────────────────────── */
   recruitment_request_not_found: { ar: 'طلب الوظيفة غير موجود.', en: 'The job request was not found.' },
+  recruitment_workbook_snapshot_mismatch: { ar: 'لم تتطابق أعداد أو مفاتيح الملف مع الطلبات الحالية؛ لم يتم تنفيذ أي تغيير.', en: 'The workbook and current requests did not match the expected scope; nothing was changed.' },
+  recruitment_request_not_archived: { ar: 'طلب الوظيفة ليس في الأرشيف.', en: 'The job request is not archived.' },
   recruitment_transition_invalid: { ar: 'هذه الخطوة غير متاحة في حالة الطلب الحالية.', en: 'That step is not available in the request\'s current state.' },
   recruitment_action_unknown: { ar: 'إجراء غير معروف.', en: 'Unknown action.' },
   recruitment_comment_required: { ar: 'اكتب سبباً واضحاً لهذا القرار.', en: 'Write a clear reason for this decision.' },

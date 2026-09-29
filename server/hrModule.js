@@ -426,11 +426,11 @@ export async function organizationState(organizationId) {
 }
 
 /**
- * Open recruitment for the headline figures, read from Qodo's own requests —
- * the workbook is history now, not the live count.
+ * Open recruitment for the headline figures; archived requests are retained
+ * for recovery but no longer contribute to live HR totals.
  */
 async function openRecruitmentSummary(organizationId) {
-  const requests = await find('recruitmentRequests', (request) => organizationOf(request) === organizationId);
+  const requests = await find('recruitmentRequests', (request) => organizationOf(request) === organizationId && !request.archivedAt);
   const live = requests.filter((request) => ['hiring', 'on_hold'].includes(request.status));
   return {
     total: requests.length,

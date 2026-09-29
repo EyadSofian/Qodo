@@ -23,7 +23,7 @@ const SOURCE_HINT: Record<string, { ar: string; en: string }> = {
   master: { ar: 'البيانات الشخصية والوظيفية والمستندات', en: 'Personal, employment and document data' },
   payroll: { ar: 'المرتب الأساسي وKPI والإجمالي الشهري', en: 'Base, KPI and monthly total' },
   insurance: { ar: 'الاشتراكات والوعاء والضريبة', en: 'Contributions, taxable base and tax' },
-  recruitment: { ar: 'سجل تاريخي فقط — يُرحَّل مرة واحدة إلى طلبات Qodo', en: 'History only — migrated once into Qodo requests' },
+  recruitment: { ar: 'يُرحّل مرة واحدة، ويمكن تطبيق توزيع المسؤولين والأرشفة من المطابقة', en: 'Migrated once; assignment sync and archival can be applied from reconciliation' },
   organization: { ar: 'المناصب والمدير المباشر والشواغر', en: 'Positions, reporting lines and vacancies' },
   leave: { ar: 'الرصيد السنوي والمرضي وسجل الإجازات', en: 'Annual and sick balances with leave history' },
   offices: { ar: 'الغرف والسعة وأماكن الجلوس', en: 'Rooms, capacity and seating' },
@@ -207,6 +207,8 @@ function PeopleGap({ title, people }: { title: string; people: ReconciliationPer
 
 export function ReconciliationSection() {
   const { t, lang } = useHRText();
+  const { push } = useToast();
+  const [applying, setApplying] = useState(false);
   const { data, error, loading, reload } = useHRQuery<ReconciliationView>(hrApi.reconciliation);
   if (error && !data) return <ErrorBlock error={error} onRetry={reload} />;
   if (loading && !data) return <Skeleton className="h-64" />;
@@ -219,6 +221,27 @@ export function ReconciliationSection() {
     recruiter: { ar: 'المسؤول', en: 'Recruiter' },
   };
   const show = (value: unknown) => (value === null || value === undefined || value === '' ? '—' : String(value));
+  const canApplySnapshot = Boolean(data.workbook?.rows === 67
+    && data.missing.length === 0
+    && ((data.activeRequests === 125 && data.archived === 0 && data.orphans.length === 58)
+      || (data.activeRequests === 67 && data.archived === 58 && data.orphans.length === 0)));
+  const applySnapshot = async () => {
+    setApplying(true);
+    try {
+      const result = await hrMutate<{ assignmentsChanged: number; assignmentsCleared: number; archived: number }>(
+        'post',
+        hrApi.applyRecruitmentWorkbook,
+        { expectedRows: 67, expectedOutside: 58 },
+      );
+      push(t(`تم تحديث توزيع ${num(result.assignmentsChanged, lang)} وظيفة، إفراغ ${num(result.assignmentsCleared, lang)} إسناد، وأرشفة ${num(result.archived, lang)} طلب.`, `Updated assignments for ${num(result.assignmentsChanged, lang)} jobs, cleared ${num(result.assignmentsCleared, lang)} assignments, and archived ${num(result.archived, lang)} requests.`));
+      await reload();
+    } catch (applyError) {
+      push(errorMessage(applyError, lang), 'bad');
+      await reload();
+    } finally {
+      setApplying(false);
+    }
+  };
   return (
     <div className="space-y-5">
       <SettingsCard title={t('الموظفون والحسابات', 'People and accounts')} hint={t('ما لا يتطابق بين ملفات HR وبين حسابات الدخول.', 'What does not line up across the HR files and the sign-in accounts.')}>
@@ -261,12 +284,15 @@ export function ReconciliationSection() {
         )}
       </SettingsCard>
 
-      <SettingsCard title={t('ملف التوظيف القديم مقابل Qodo', 'Recruitment workbook vs Qodo')} hint={data.workbook ? t(`${data.workbook.fileName} · ${num(data.workbook.rows, 'ar')} صف · ${dateTime(data.workbook.importedAt, 'ar')}`, `${data.workbook.fileName} · ${num(data.workbook.rows, 'en')} rows · ${dateTime(data.workbook.importedAt, 'en')}`) : t('لا يوجد ملف توظيف مرفوع.', 'No recruitment workbook uploaded.')}>
+      <SettingsCard title={t('ملف التوظيف القديم مقابل Qodo', 'Recruitment workbook vs Qodo')} hint={data.workbook ? t(`${data.workbook.fileName} · ${num(data.workbook.rows, 'ar')} صف · ${dateTime(data.workbook.importedAt, 'ar')}`, `${data.workbook.fileName} · ${num(data.workbook.rows, 'en')} rows · ${dateTime(data.workbook.importedAt, 'en')}`) : t('لا يوجد ملف توظيف مرفوع.', 'No recruitment workbook uploaded.')}
+        action={data.canApplyWorkbook ? <button type="button" className="btn-primary btn-sm" onClick={applySnapshot} disabled={!canApplySnapshot || applying}>{applying ? <Spinner size={14} /> : <RefreshCw size={14} />}{t('تطبيق توزيع الشيت وإخفاء الـ58', 'Apply workbook assignments and archive the 58')}</button> : undefined}>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          {[[t('مُرحّل', 'Migrated'), data.imported], [t('فروق', 'Differences'), data.differences.length], [t('لم يُرحّل', 'Not migrated'), data.missing.length], [t('أسماء غير محسومة', 'Unresolved names'), data.unresolved.length]].map(([label, value]) => (
+          {[[t('الطلبات النشطة', 'Active requests'), data.activeRequests], [t('مطابقة للشيت', 'In workbook'), data.imported], [t('خارج الشيت', 'Outside workbook'), data.orphans.length], [t('مؤرشفة', 'Archived'), data.archived], [t('فروق', 'Differences'), data.differences.length], [t('لم تُرحّل', 'Not migrated'), data.missing.length], [t('أسماء غير محسومة', 'Unresolved names'), data.unresolved.length]].map(([label, value]) => (
             <div key={String(label)} className="rounded-xl bg-[#F6F8FB] p-3"><p className="text-[11.5px] font-semibold text-[#5A6C82]">{label}</p><p className="mt-0.5 text-[20px] font-bold tabular-nums text-navy">{num(Number(value), lang)}</p></div>
           ))}
         </div>
+        {!canApplySnapshot && <p className="mt-3 text-[12px] text-[#5A6C82]">{t('لن يتاح التطبيق إلا عندما يحتوي الملف على 67 صفاً، وتطابق جميعها، وتكون الطلبات الـ58 الزائدة هي وحدها خارج الملف.', 'Apply becomes available when the workbook has 67 rows, every row matches, and the 58 extra requests are the only records outside it.')}</p>}
+        {data.archived > 0 && <Link to="/hr/recruitment/requests?scope=archived" className="mt-3 inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-brand-700 hover:underline">{t('فتح الأرشيف واسترجاع طلب', 'Open archive and restore a request')}<ExternalLink size={13} aria-hidden="true" /></Link>}
         {data.differences.length > 0 && (
           <div className="mt-4">
             <h3 className="mb-1.5 text-[13px] font-bold text-navy">{t('فروق بين الملف وQodo', 'Where the workbook and Qodo differ')}</h3>
@@ -287,7 +313,7 @@ export function ReconciliationSection() {
             <ul className="space-y-1.5">{data.unresolved.map((row) => <li key={row.requestId} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#EEF2F7] px-3 py-2 text-[12.5px]"><Link to={`/hr/recruitment/requests/${encodeURIComponent(row.requestId)}?action=assign`} className="font-semibold text-navy hover:text-brand-700">{row.reference} · {row.title}</Link><span className="text-amber-700">{row.names.join('، ')}</span></li>)}</ul>
           </div>
         )}
-        {data.orphans.length > 0 && <p className="mt-4 text-[12px] text-[#5A6C82]">{t(`${data.orphans.length} طلب مُرحّل لم يعد في الملف الحالي — يبقى في Qodo كما هو.`, `${data.orphans.length} migrated requests are no longer in the current workbook — they stay in Qodo as they are.`)}</p>}
+        {data.orphans.length > 0 && <p className="mt-4 text-[12px] text-[#5A6C82]">{t(`${data.orphans.length} طلب خارج الملف سيُنقل إلى الأرشيف ويمكن استرجاعه.`, `${data.orphans.length} requests outside the workbook will move to the archive and can be restored.`)}</p>}
       </SettingsCard>
     </div>
   );
@@ -307,6 +333,9 @@ const AUDIT_KIND: Record<string, { ar: string; en: string }> = {
   odoo_linked: { ar: 'ربط Odoo', en: 'Odoo linked' },
   odoo_unlinked: { ar: 'فك ربط Odoo', en: 'Odoo unlinked' },
   imported_from_workbook: { ar: 'ترحيل من الملف', en: 'Migrated from workbook' },
+  workbook_assignment_synced: { ar: 'تحديث إسناد من ملف التوظيف', en: 'Workbook assignment sync' },
+  archived: { ar: 'أرشفة طلب', en: 'Request archived' },
+  restored: { ar: 'استرجاع طلب', en: 'Request restored' },
   'hr.import': { ar: 'رفع ملف', en: 'Workbook uploaded' },
   'hr.employee.update': { ar: 'تعديل موظف', en: 'Employee edited' },
   'hr.employee.link': { ar: 'ربط حساب', en: 'Account linked' },
@@ -317,7 +346,7 @@ const AUDIT_KIND: Record<string, { ar: string; en: string }> = {
 
 function auditDetail(row: AuditRow) {
   const detail = row.detail ?? {};
-  const parts = ['comment', 'reason', 'overrideReason', 'note', 'decision', 'previousDueDate', 'newDueDate', 'added', 'sections', 'fields', 'fileName']
+  const parts = ['comment', 'reason', 'overrideReason', 'note', 'decision', 'previousDueDate', 'newDueDate', 'added', 'sections', 'fields', 'fileName', 'workbookFileName', 'previousCodes', 'recruiterCode', 'supportRecruiterCodes', 'unresolvedAssignees']
     .map((key) => detail[key])
     .filter((value) => value !== null && value !== undefined && value !== '')
     .map((value) => (Array.isArray(value) ? value.join('، ') : typeof value === 'object' ? JSON.stringify(value) : String(value)));

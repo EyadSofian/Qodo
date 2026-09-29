@@ -30,7 +30,7 @@ import { COMMENT_REQUIRED, OPEN_STATUSES, approvalTimeline, transitionFor } from
 import { CONSUMING_BATCH_STATUSES, jobEligibility } from '../../../shared/recruitment/rewards.js';
 import { kpiRules } from '../../../shared/recruitment/kpi.js';
 import { HRError, forbidden, notFound } from '../errors.js';
-import { appendActivity, appendApproval, requestById, rowsFor, saveRequest, setOdooLink } from './data.js';
+import { appendActivity, appendApproval, requestById, requestsFor, rowsFor, saveRequest, setOdooLink } from './data.js';
 import { employeeName, recruitmentContext, userNames, usersWith } from './context.js';
 import { knownPhoto, odooEmployeeFor } from '../odooPeople.js';
 import { photoUrlFor } from './team.js';
@@ -288,7 +288,11 @@ async function tell(ctx, userIds, request, { type, title, body }) {
 
 export async function listRequests(user, filters = {}) {
   const ctx = await recruitmentContext(user);
-  let rows = ctx.requests.filter((request) => canSee(ctx, request));
+  const archivedScope = filters.scope === 'archived';
+  if (archivedScope && !ctx.perms.settings) throw forbidden(PERMISSIONS.HR_SETTINGS_MANAGE);
+  let rows = archivedScope
+    ? (await requestsFor(ctx.organizationId, { includeArchived: true })).filter((request) => Boolean(request.archivedAt))
+    : ctx.requests.filter((request) => canSee(ctx, request));
   if (filters.scope === 'mine') rows = rows.filter((request) => request.requestedBy === user.id);
   if (filters.status) {
     const wanted = new Set(String(filters.status).split(','));
@@ -366,12 +370,36 @@ export async function requestDetail(user, id) {
   };
 }
 
+/** Restore an archived workbook request. Only HR settings managers can do this. */
+export async function restoreRequest(user, id) {
+  const ctx = await recruitmentContext(user);
+  if (!ctx.perms.settings) throw forbidden(PERMISSIONS.HR_SETTINGS_MANAGE);
+  const request = await requestById(ctx.organizationId, id, { includeArchived: true });
+  if (!request) throw notFound('recruitment_request_not_found');
+  if (!request.archivedAt) throw new HRError('recruitment_request_not_archived', 409);
+  await saveRequest(request.id, {
+    archivedAt: null,
+    archivedBy: null,
+    archiveReason: null,
+    revision: (request.revision ?? 1) + 1,
+  });
+  await appendActivity({
+    organizationId: ctx.organizationId,
+    requestId: request.id,
+    type: 'restored',
+    actorId: user.id,
+    meta: { reason: request.archiveReason ?? null },
+  });
+  return { restored: true, requestId: request.id };
+}
+
 /* ── Writes ──────────────────────────────────────────────────────── */
 
 async function nextReference(ctx) {
   const year = ctx.today.slice(0, 4);
-  const taken = new Set(ctx.requests.map((request) => request.reference));
-  let sequence = ctx.requests.filter((request) => String(request.reference ?? '').startsWith(`REQ-${year}-`)).length + 1;
+  const allRequests = await requestsFor(ctx.organizationId, { includeArchived: true });
+  const taken = new Set(allRequests.map((request) => request.reference));
+  let sequence = allRequests.filter((request) => String(request.reference ?? '').startsWith(`REQ-${year}-`)).length + 1;
   let reference = `REQ-${year}-${String(sequence).padStart(4, '0')}`;
   while (taken.has(reference)) {
     sequence += 1;

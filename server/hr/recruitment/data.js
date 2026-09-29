@@ -11,12 +11,12 @@ import { organizationOf } from '../../../shared/organization.js';
 export const stableId = (prefix, ...parts) =>
   `${prefix}-${crypto.createHash('sha256').update(parts.join('|')).digest('hex').slice(0, 24)}`;
 
-export async function requestsFor(organizationId) {
-  return find('recruitmentRequests', (request) => organizationOf(request) === organizationId);
+export async function requestsFor(organizationId, { includeArchived = false } = {}) {
+  return find('recruitmentRequests', (request) => organizationOf(request) === organizationId && (includeArchived || !request.archivedAt));
 }
 
-export async function requestById(organizationId, id) {
-  return findOne('recruitmentRequests', (request) => request.id === String(id) && organizationOf(request) === organizationId);
+export async function requestById(organizationId, id, { includeArchived = false } = {}) {
+  return findOne('recruitmentRequests', (request) => request.id === String(id) && organizationOf(request) === organizationId && (includeArchived || !request.archivedAt));
 }
 
 export async function saveRequest(id, patch) {

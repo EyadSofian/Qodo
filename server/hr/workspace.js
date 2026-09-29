@@ -375,7 +375,7 @@ export async function organizationOverview(user) {
   const organizationId = organizationOf(user);
   const state = await organizationState(organizationId);
   const profiles = [...state.profiles.values()].filter((profile) => profile.status === 'active' && profile.sources.master);
-  const requests = await find('recruitmentRequests', (request) => organizationOf(request) === organizationId);
+  const requests = await find('recruitmentRequests', (request) => organizationOf(request) === organizationId && !request.archivedAt);
   const departments = new Map();
   for (const profile of profiles) {
     const name = String(profile.department || profile.sector || '—').trim();

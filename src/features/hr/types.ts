@@ -148,6 +148,8 @@ export interface JobRequest {
   id: string;
   reference: string;
   source: 'qodo' | 'legacy_workbook';
+  archivedAt?: string | null;
+  archiveReason?: string | null;
   status: RequestStatus;
   statusChangedAt: string | null;
   title: string;
@@ -984,8 +986,11 @@ export interface ReconciliationPerson {
 }
 
 export interface ReconciliationView {
+  canApplyWorkbook: boolean;
   workbook: { fileName: string; importedAt: string; period: string | null; rows: number } | null;
   imported: number;
+  activeRequests: number;
+  archived: number;
   differences: Array<{ requestId: string; reference: string; title: string; fields: Array<{ field: string; workbook: unknown; qodo: unknown }> }>;
   missing: Array<{ legacyKey: string; title: string; sequence: string; status: string }>;
   orphans: Array<{ requestId: string; reference: string; title: string; status: string }>;

@@ -19,6 +19,7 @@ import {
   listRequests,
   recordAccepted,
   requestDetail,
+  restoreRequest,
   review,
   transition,
   updateRequest,
@@ -49,6 +50,7 @@ router.post('/requests', h(async (req, res) => {
   res.status(201).json(result);
 }));
 router.get('/requests/:id', h((req) => requestDetail(req.user, req.params.id)));
+router.post('/requests/:id/restore', h((req) => restoreRequest(req.user, req.params.id)));
 router.patch('/requests/:id', h((req) => updateRequest(req.user, req.params.id, body(req))));
 router.post('/requests/:id/submit', h((req) => transition(req.user, req.params.id, 'submit', { comment: body(req).comment })));
 router.post('/requests/:id/review', h((req) => review(req.user, req.params.id, body(req))));

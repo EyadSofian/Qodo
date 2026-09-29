@@ -3,10 +3,12 @@
  * is in its life. A department manager sees their own; the desk sees all.
  */
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Plus, Search } from 'lucide-react';
-import { hrApi, useHRQuery } from '../../api';
+import { Archive, Plus, RotateCcw, Search } from 'lucide-react';
+import { errorMessage } from '../../../../lib/api';
+import { useToast } from '../../../../components/ui';
+import { hrApi, hrMutate, useHRQuery } from '../../api';
 import { date, num, shortName, useHRText } from '../../format';
 import { STATUS_LABEL } from '../../labels';
 import type { JobRequest, RecruitmentContext, RequestStatus } from '../../types';
@@ -29,9 +31,12 @@ export function JobRequests() {
   const { t, lang, pick } = useHRText();
   const [params, setParams] = useSearchParams();
   const tab = TABS.find((item) => item.id === params.get('status')) ?? TABS[0];
-  const mine = params.get('scope') === 'mine';
+  const archived = params.get('scope') === 'archived';
+  const mine = !archived && params.get('scope') === 'mine';
   const query = params.get('q') ?? '';
-  const { data, error, loading, reload } = useHRQuery<{ requests: JobRequest[]; context: RecruitmentContext }>(hrApi.recruitment.requests(undefined, mine ? 'mine' : undefined));
+  const { data, error, loading, reload } = useHRQuery<{ requests: JobRequest[]; context: RecruitmentContext }>(hrApi.recruitment.requests(undefined, archived ? 'archived' : mine ? 'mine' : undefined));
+  const [restoring, setRestoring] = useState<string | null>(null);
+  const { push } = useToast();
 
   const set = (key: string, value: string | null) => {
     const next = new URLSearchParams(params);
@@ -43,16 +48,29 @@ export function JobRequests() {
   const rows = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return (data?.requests ?? [])
-      .filter((request) => !tab.statuses || tab.statuses.includes(request.status))
+      .filter((request) => archived || !tab.statuses || tab.statuses.includes(request.status))
       .filter((request) => !needle || `${request.title} ${request.reference} ${request.department} ${request.requestedByName}`.toLowerCase().includes(needle))
       .sort((left, right) => String(right.updatedAt).localeCompare(String(left.updatedAt)));
-  }, [data, tab, query]);
+  }, [data, tab, query, archived]);
 
   const counts = useMemo(() => Object.fromEntries(TABS.map((item) => [item.id, (data?.requests ?? []).filter((request) => !item.statuses || item.statuses.includes(request.status)).length])), [data]);
 
   if (error && !data) return <ErrorBlock error={error} onRetry={reload} />;
   if (loading && !data) return <PageSkeleton rows={1} />;
   const canCreate = Boolean(data?.context.perms.request || data?.context.perms.assign);
+  const canManageArchive = Boolean(data?.context.perms.settings);
+  const restore = async (id: string) => {
+    setRestoring(id);
+    try {
+      await hrMutate('post', hrApi.recruitment.restoreRequest(id), {});
+      push(t('تم استرجاع الطلب إلى قائمة التوظيف.', 'Request restored to recruitment.'));
+      await reload();
+    } catch (restoreError) {
+      push(errorMessage(restoreError, lang), 'bad');
+    } finally {
+      setRestoring(null);
+    }
+  };
 
   const columns: Array<Column<JobRequest>> = [
     {
@@ -78,30 +96,33 @@ export function JobRequests() {
     { key: 'sla', header: 'SLA', cell: (row) => <SlaMeter sla={row.slaSnapshot} compact /> },
     { key: 'requested', header: t('بواسطة', 'Requested by'), sort: (row) => row.requestedByName, cell: (row) => <span className="text-[12.5px] text-[#5A6C82]">{row.requestedByName || '—'}</span>, hideOnCard: true },
     { key: 'updated', header: t('آخر تحديث', 'Updated'), sort: (row) => row.updatedAt, cell: (row) => <span className="text-[12px] text-ink-faint">{date(row.updatedAt, lang)}</span>, hideOnCard: true },
+    ...(archived && canManageArchive ? [{ key: 'restore', header: t('الإجراء', 'Action'), cell: (row: JobRequest) => <button type="button" className="btn-secondary btn-sm" disabled={Boolean(restoring)} onClick={() => void restore(row.id)}><RotateCcw size={14} />{restoring === row.id ? t('جارٍ الاسترجاع…', 'Restoring…') : t('استرجاع', 'Restore')}</button> }] : []),
   ];
 
   return (
     <div className="space-y-5">
       <PageHeader
         eyebrow={t('التوظيف', 'Recruitment')}
-        title={t('طلبات الوظائف', 'Job requests')}
-        description={t('من الطلب إلى مراجعة القسم إلى الاعتماد النهائي — الـSLA لا يبدأ قبل الاعتماد.', 'From request to department review to final approval — the SLA never starts before approval.')}
-        actions={canCreate ? <Link to="/hr/recruitment/requests/new" className="btn-primary btn-sm"><Plus size={16} />{t('طلب وظيفة جديد', 'New job request')}</Link> : undefined}
+        title={archived ? t('أرشيف طلبات الوظائف', 'Archived job requests') : t('طلبات الوظائف', 'Job requests')}
+        description={archived ? t('الطلبات المؤرشفة محفوظة ويمكن إرجاعها إلى قائمة التوظيف.', 'Archived requests are kept here and can be restored to recruitment.') : t('من الطلب إلى مراجعة القسم إلى الاعتماد النهائي — الـSLA لا يبدأ قبل الاعتماد.', 'From request to department review to final approval — the SLA never starts before approval.')}
+        actions={archived
+          ? <Link to="/hr/recruitment/requests" className="btn-secondary btn-sm">{t('العودة للطلبات', 'Back to requests')}</Link>
+          : <span className="flex flex-wrap items-center gap-2">{canManageArchive && <Link to="/hr/recruitment/requests?scope=archived" className="btn-secondary btn-sm"><Archive size={15} />{t('الأرشيف', 'Archive')}</Link>}{canCreate && <Link to="/hr/recruitment/requests/new" className="btn-primary btn-sm"><Plus size={16} />{t('طلب وظيفة جديد', 'New job request')}</Link>}</span>}
       />
 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-        <PillTabs
+        {!archived && <PillTabs
           className="min-w-0"
           value={tab.id}
           onChange={(next) => set('status', next === 'all' ? null : next)}
           options={TABS.map((item) => ({ id: item.id, label: pick(item.label), count: num(counts[item.id], lang) }))}
           label={t('حالة الطلب', 'Request status')}
           layoutId="job-request-status"
-        />
-        <label className="flex shrink-0 items-center gap-2 whitespace-nowrap text-[12.5px] font-semibold text-[#5A6C82]">
+        />}
+        {!archived && <label className="flex shrink-0 items-center gap-2 whitespace-nowrap text-[12.5px] font-semibold text-[#5A6C82]">
           <input type="checkbox" className="h-4 w-4 rounded border-slate-300 text-brand-600" checked={mine} onChange={(event) => set('scope', event.target.checked ? 'mine' : null)} />
           {t('طلباتي فقط', 'Only my requests')}
-        </label>
+        </label>}
         <div className="relative lg:ms-auto lg:w-72">
           <Search size={15} className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-ink-faint" aria-hidden="true" />
           <input className="field !py-2 ps-9" value={query} onChange={(event) => set('q', event.target.value || null)} placeholder={t('ابحث بالوظيفة أو المرجع…', 'Search job or reference…')} aria-label={t('بحث', 'Search')} />
@@ -111,8 +132,8 @@ export function JobRequests() {
       <DataTable
         rows={rows}
         columns={columns}
-        rowHref={(row) => `/hr/recruitment/requests/${encodeURIComponent(row.id)}`}
-        caption={t('طلبات الوظائف', 'Job requests')}
+        rowHref={(row) => archived ? null : `/hr/recruitment/requests/${encodeURIComponent(row.id)}`}
+        caption={archived ? t('أرشيف طلبات الوظائف', 'Archived job requests') : t('طلبات الوظائف', 'Job requests')}
         empty={<EmptyBlock title={t('لا توجد طلبات هنا', 'No requests here')} body={canCreate ? t('ابدأ طلباً جديداً من الزر بالأعلى.', 'Start a new request from the button above.') : undefined} />}
       />
     </div>
