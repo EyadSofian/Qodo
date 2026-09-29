@@ -17,7 +17,7 @@
 
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
-import { Database, Layers, Plus, Settings2 } from 'lucide-react';
+import { BookOpen, Database, Layers, Plus, Settings2 } from 'lucide-react';
 import { useI18n } from '../../lib/i18n';
 import { ApiError } from '../../lib/api';
 import { paths } from '../../lib/learningProduction/api';
@@ -47,30 +47,31 @@ export function useLpTheme(theme: LpTheme | null) {
 }
 
 /**
- * The colour behind every page: a soft aurora in the area's colours, drifting
- * slowly, under a faint dot grid. Sheets of frosted white sit on it.
+ * The colour behind every page: a faint wash of the area's colour, drifting
+ * slowly, under a faint dot grid. Sheets of frosted white sit on it. Kept
+ * quiet on purpose — it tells you where you are, it does not compete.
  */
 function Aurora() {
   return (
     <div aria-hidden="true" className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
-      <div className="absolute inset-0 bg-[linear-gradient(160deg,#eef2ff_0%,#f5f3ff_38%,#fdf4ff_64%,#eff6ff_100%)]" />
+      <div className="absolute inset-0 bg-[linear-gradient(160deg,#f4f5fa_0%,#f6f5fb_45%,#f3f6fb_100%)]" />
       <div
         className="lps-aurora-blob absolute -top-[24%] start-[2%] h-[54vw] w-[54vw] rounded-full blur-3xl transition-[background] duration-700"
-        style={{ background: 'radial-gradient(circle, rgb(var(--lp-a1) / 0.4), transparent 64%)' }}
+        style={{ background: 'radial-gradient(circle, rgb(var(--lp-a1) / 0.13), transparent 64%)' }}
       />
       <div
         className="lps-aurora-blob absolute top-[24%] -end-[14%] h-[46vw] w-[46vw] rounded-full blur-3xl transition-[background] duration-700"
-        style={{ animationDelay: '-9s', background: 'radial-gradient(circle, rgb(var(--lp-a2) / 0.34), transparent 64%)' }}
+        style={{ animationDelay: '-9s', background: 'radial-gradient(circle, rgb(var(--lp-a2) / 0.1), transparent 64%)' }}
       />
       <div
         className="lps-aurora-blob absolute -bottom-[26%] start-[24%] h-[40vw] w-[40vw] rounded-full blur-3xl"
-        style={{ animationDelay: '-16s', background: 'radial-gradient(circle, rgb(244 114 182 / 0.26), transparent 64%)' }}
+        style={{ animationDelay: '-16s', background: 'radial-gradient(circle, rgb(148 163 184 / 0.12), transparent 64%)' }}
       />
       <div
         className="lps-aurora-blob absolute top-[6%] end-[28%] h-[26vw] w-[26vw] rounded-full blur-3xl"
-        style={{ animationDelay: '-4s', background: 'radial-gradient(circle, rgb(56 189 248 / 0.26), transparent 64%)' }}
+        style={{ animationDelay: '-4s', background: 'radial-gradient(circle, rgb(148 163 184 / 0.1), transparent 64%)' }}
       />
-      <div className="absolute inset-0 opacity-40 [background-image:radial-gradient(rgb(79_70_229/0.12)_1px,transparent_1px)] [background-size:22px_22px]" />
+      <div className="absolute inset-0 opacity-30 [background-image:radial-gradient(rgb(15_23_42/0.08)_1px,transparent_1px)] [background-size:22px_22px]" />
     </div>
   );
 }
@@ -126,6 +127,10 @@ export function LearningProductionLayout() {
                 <RouteTabs items={tabs} label={t('lp.module')} />
               </div>
               <div className="flex shrink-0 items-center gap-1.5">
+                <Link to="/learning-production/guide" className="lps-btn-quiet !px-2" title={t('lp.nav.guide')}>
+                  <BookOpen size={16} aria-hidden="true" />
+                  <span className="hidden xl:inline">{t('lp.nav.guide')}</span>
+                </Link>
                 {me?.canManageTemplates && (
                   <Link to="/learning-production/templates" className="lps-btn-quiet !px-2" title={t('lp.nav.templates')}>
                     <Settings2 size={16} aria-hidden="true" />

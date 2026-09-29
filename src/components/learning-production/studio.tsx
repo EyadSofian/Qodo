@@ -14,7 +14,6 @@ import { createPortal } from 'react-dom';
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import {
   AlertTriangle,
-  Ban,
   BookOpenCheck,
   CheckCircle2,
   Circle,
@@ -88,7 +87,7 @@ export function Pill({ tone = 'neutral', icon: Icon, children, title, className 
 }
 
 const TASK_TONE: Record<string, { tone: PillTone; icon: LucideIcon }> = {
-  BLOCKED: { tone: 'outline', icon: Ban },
+  BLOCKED: { tone: 'outline', icon: Clock3 },
   READY: { tone: 'neutral', icon: Circle },
   NOT_STARTED: { tone: 'neutral', icon: Circle },
   IN_PROGRESS: { tone: 'accent', icon: CircleDot },
@@ -260,13 +259,14 @@ export function Meter({ value, label, tone = 'accent' }: { value: number; label?
 }
 
 /** One compact figure: the number, what it counts, and optionally where it opens. */
+/** [chip background, chip icon, number] — colour only where it means something. */
 const FIGURE_TONE = {
-  neutral: ['linear-gradient(135deg, rgb(var(--lp-a1, 79 70 229)), rgb(var(--lp-a2, 147 51 234)))', 'rgb(var(--lp-a1, 79 70 229) / 0.9)', 'var(--lps-ink)'],
-  accent: ['linear-gradient(135deg, #6366f1, #8b5cf6)', 'rgb(99 102 241 / 0.9)', '#4338ca'],
-  ok: ['linear-gradient(135deg, #10b981, #059669)', 'rgb(16 185 129 / 0.9)', '#047857'],
-  attention: ['linear-gradient(135deg, #f59e0b, #f97316)', 'rgb(249 115 22 / 0.9)', '#b45309'],
-  danger: ['linear-gradient(135deg, #fb7185, #e11d48)', 'rgb(225 29 72 / 0.9)', '#e11d48'],
-  sky: ['linear-gradient(135deg, #38bdf8, #2563eb)', 'rgb(37 99 235 / 0.9)', '#1d4ed8'],
+  neutral: ['#eef1f6', '#475569', 'var(--lps-ink)'],
+  accent: ['#eef2ff', '#4f46e5', 'var(--lps-ink)'],
+  ok: ['#e7f8ef', '#047857', '#047857'],
+  attention: ['#fff4e0', '#b45309', '#b45309'],
+  danger: ['#ffe8ee', '#e11d48', '#e11d48'],
+  sky: ['#eef1f6', '#475569', 'var(--lps-ink)'],
 } as const;
 
 export type FigureTone = keyof typeof FIGURE_TONE;
@@ -309,8 +309,8 @@ export function Figure({
   to?: string;
   icon?: LucideIcon;
 }) {
-  const [fill, shadow, ink] = FIGURE_TONE[tone];
-  const style = { '--lps-tone': fill, '--lps-tone-shadow': shadow } as CSSProperties;
+  const [soft, iconInk, ink] = FIGURE_TONE[tone];
+  const style = { '--lps-tone-soft': soft, '--lps-tone-ink': iconInk } as CSSProperties;
   const body = (
     <span className="flex items-start justify-between gap-3">
       <span className="min-w-0">
@@ -339,9 +339,9 @@ export function Figure({
 }
 
 /**
- * The band at the top of a page: the area's gradient, an icon, the title and
+ * The band at the top of a page: an icon in the area's colour, the title and
  * a line of what the page answers, with the page's main actions and, below,
- * optional figures on glass.
+ * optional figures.
  */
 export function PageHero({
   icon: Icon,
@@ -364,22 +364,17 @@ export function PageHero({
 }) {
   return (
     <header className="lps-hero" style={style}>
-      <div className="lps-hero-art" aria-hidden="true">
-        <span className="lps-orb -top-16 end-[8%] h-48 w-48" style={{ background: 'radial-gradient(circle, rgb(255 255 255 / 0.35), transparent 70%)' }} />
-        <span className="lps-orb -bottom-24 end-[34%] h-56 w-56" style={{ animationDelay: '-3s', background: 'radial-gradient(circle, rgb(255 255 255 / 0.22), transparent 70%)' }} />
-        <span className="lps-orb top-6 start-[46%] h-16 w-16" style={{ animationDelay: '-6s', background: 'radial-gradient(circle, rgb(255 255 255 / 0.3), transparent 70%)' }} />
-      </div>
       <div className="relative flex flex-wrap items-start justify-between gap-4">
         <div className="flex min-w-0 items-start gap-3.5">
           {Icon && (
             <span className="lps-hero-icon">
-              <Icon size={22} aria-hidden="true" />
+              <Icon size={20} aria-hidden="true" />
             </span>
           )}
           <div className="min-w-0">
-            {eyebrow && <div className="mb-1 text-[12.5px] font-semibold text-white/80">{eyebrow}</div>}
+            {eyebrow && <div className="mb-1 text-[12.5px] font-semibold lps-muted">{eyebrow}</div>}
             <h1 className={cx('lps-title', titleClassName)}>{title}</h1>
-            {lede && <div className="mt-1.5 max-w-3xl text-[13.5px] text-white/85">{lede}</div>}
+            {lede && <div className="mt-1 max-w-3xl text-[13.5px] lps-muted">{lede}</div>}
           </div>
         </div>
         {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}

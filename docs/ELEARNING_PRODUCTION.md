@@ -90,6 +90,25 @@ The database repeats what must never be rewritten: frozen template versions,
 immutable releases, evidence that can be withdrawn but not deleted, submissions
 that are final once decided, and an append-only activity log.
 
+### People and unowned work
+
+- The **New run** team step has three groups: who co-runs the program
+  (course manager), who works the stage tasks the template names, and who
+  makes and reviews each lesson file. A role held by one person gets that
+  role's tasks; the lesson roles become the course's default maker and
+  reviewer per file (`defaultsFromTeam` in `runService.js`), so every lesson
+  added later is already assigned. Existing defaults are never overwritten,
+  and nobody is made the reviewer of their own file.
+- Ready work with nobody on it (a non-optional task whose stage is open, or a
+  lesson file whose turn has come) is listed in the **run manager's My Work**
+  with an *Assign* action — lesson files grouped per course and file type.
+- A lesson file whose turn has not come says what it waits for ("Waits for
+  the outline"), in grey; it is the normal order, not an error.
+
+The in-app guide (`/learning-production/guide`, "How it works") explains all
+of this to users; its prose is `src/lib/learningProduction/guideContent.ts`
+and its stage lists are read from the published templates.
+
 ## Roles and permissions
 
 Organization permissions (`elearning_production.*`) are granted in the

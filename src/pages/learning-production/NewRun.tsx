@@ -26,6 +26,9 @@ import { Busy, ErrorNote, OriginBadge, PageHero, Panel, Pill, usePick } from '..
 import { cx } from '../../lib/utils';
 
 type Way = Exclude<Scenario, 'LEGACY'>;
+const LESSON_ROLES = ['OUTLINE_WRITER', 'PPT_DESIGNER', 'SCRIPT_WRITER', 'VOICE_OVER_ARTIST', 'VIDEO_EDITOR'];
+const LESSON_REVIEWERS = ['SUBJECT_MATTER_EXPERT', 'QUALITY_REVIEWER'];
+
 const WAYS: Array<{ value: Way; icon: LucideIcon; letter: string }> = [
   { value: 'AI_NEW', icon: Sparkles, letter: 'A' },
   { value: 'EXPERT_NEW', icon: BookOpenCheck, letter: 'B1' },
@@ -128,7 +131,20 @@ export function NewRun() {
     (scenario !== 'REVAMP' || Boolean(releaseChoice)) &&
     (!expertContracted || expertReason.trim().length > 0);
 
-  const roles = useMemo(() => (preview?.roles ?? []).filter((role) => role !== 'PRODUCTION_MANAGER'), [preview]);
+  // Three groups of people: who co-runs the program, who works the stage
+  // tasks the template names, and who makes and reviews each lesson file.
+  // The last group becomes the course's default assignees, so a lesson added
+  // later is already with the right people.
+  const sections = useMemo(() => {
+    const program = (preview?.roles ?? []).filter((role) => !['PRODUCTION_MANAGER', 'COURSE_MANAGER', ...LESSON_ROLES].includes(role));
+    const lessons = [...LESSON_ROLES, ...LESSON_REVIEWERS.filter((role) => !program.includes(role))];
+    return [
+      { key: 'management', roles: ['COURSE_MANAGER'] },
+      { key: 'program', roles: program },
+      { key: 'lessons', roles: lessons },
+    ];
+  }, [preview]);
+  const roles = useMemo(() => sections.flatMap((section) => section.roles), [sections]);
   const uncovered = roles.filter((role) => !team[role]);
 
   async function create() {
@@ -336,17 +352,27 @@ export function NewRun() {
           {!preview ? (
             <Busy />
           ) : (
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              {roles.map((role) => (
-                <Field key={role} label={t(`lp.role.${role}` as StringKey)}>
-                  <PersonSelect
-                    className="lps-input"
-                    value={team[role] ?? null}
-                    onChange={(value) => setTeam((current) => ({ ...current, [role]: value }))}
-                    people={people}
-                    placeholder={t('lp.people.later')}
-                  />
-                </Field>
+            <div className="space-y-5">
+              {sections.map((section) => (
+                <section key={section.key} aria-labelledby={`team-${section.key}`}>
+                  <h3 id={`team-${section.key}`} className="lps-h2">
+                    {t(`lp.newRun.section.${section.key}` as StringKey)}
+                  </h3>
+                  {section.key !== 'management' && <p className="mt-0.5 text-[12.5px] lps-muted">{t(`lp.newRun.section.${section.key}Hint` as StringKey)}</p>}
+                  <div className="mt-2.5 grid grid-cols-1 gap-3 md:grid-cols-2">
+                    {section.roles.map((role) => (
+                      <Field key={role} label={t(`lp.role.${role}` as StringKey)} hint={t(`lp.roleHint.${role}` as StringKey)}>
+                        <PersonSelect
+                          className="lps-input"
+                          value={team[role] ?? null}
+                          onChange={(value) => setTeam((current) => ({ ...current, [role]: value }))}
+                          people={people}
+                          placeholder={t('lp.people.later')}
+                        />
+                      </Field>
+                    ))}
+                  </div>
+                </section>
               ))}
             </div>
           )}

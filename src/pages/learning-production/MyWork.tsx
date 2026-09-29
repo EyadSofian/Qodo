@@ -60,9 +60,11 @@ export function MyWork() {
         {data && (
           <div className="flex flex-wrap gap-2">
             {(['now', 'review', 'blocked'] as const).map((key) => (
-              <button key={key} type="button" className="lps-hero-stat min-w-[110px] text-start transition-colors hover:bg-white/25" onClick={() => setSection(key)}>
-                <span className="font-display block text-[22px] font-bold leading-none">{data.sections[key].length}</span>
-                <span className="mt-1 block text-[12px] text-white/85">{t(`lp.myWork.${key}` as StringKey)}</span>
+              <button key={key} type="button" className="lps-hero-stat min-w-[110px] text-start transition-colors hover:bg-white" onClick={() => setSection(key)}>
+                <span className="font-display block text-[22px] font-bold leading-none" style={key === 'blocked' && data.sections[key].length ? { color: 'var(--lps-attention)' } : undefined}>
+                  {data.sections[key].length}
+                </span>
+                <span className="mt-1 block text-[12px] lps-muted">{t(`lp.myWork.${key}` as StringKey)}</span>
               </button>
             ))}
           </div>
@@ -129,7 +131,12 @@ export function WorkTable({ items, people, showBlockers = false }: { items: Work
                 : item.kind === 'RELEASE'
                   ? t('lp.work.release', { label: String(item.title ?? '') })
                   : pick(item.title as never);
-            const where = [item.course.name, item.kind === 'ASSET' ? item.lesson?.name : item.stage ? pick(item.stage.label) : null].filter(Boolean).join(' · ');
+            const where = [
+              item.course.name,
+              item.count ? t('lp.work.lessonsCount', { n: item.count }) : item.kind === 'ASSET' ? item.lesson?.name : item.stage ? pick(item.stage.label) : null,
+            ]
+              .filter(Boolean)
+              .join(' · ');
             return (
               <tr key={`${item.kind}:${item.id}`}>
                 <td className="max-w-[340px]">
@@ -151,7 +158,9 @@ export function WorkTable({ items, people, showBlockers = false }: { items: Work
                 </td>
                 <td className="lps-bidi max-w-[260px] truncate text-[12.5px] lps-muted">{where}</td>
                 <td>
-                  {item.kind === 'TASK' ? (
+                  {item.unowned ? (
+                    <Pill tone="attention">{t('lp.cell.unassigned')}</Pill>
+                  ) : item.kind === 'TASK' ? (
                     <TaskStatusPill display={item.display} />
                   ) : item.kind === 'ASSET' ? (
                     <StatusBadge status={item.status as never} blocked={item.blocked} size="sm" />
@@ -164,7 +173,7 @@ export function WorkTable({ items, people, showBlockers = false }: { items: Work
                 </td>
                 <td className="text-end">
                   {item.action ? (
-                    <Link to={item.link} className={item.action === 'FIX' || item.action === 'REVIEW' ? 'lps-btn-primary' : 'lps-btn'}>
+                    <Link to={item.link} className={item.action === 'FIX' || item.action === 'REVIEW' || item.action === 'ASSIGN' ? 'lps-btn-primary' : 'lps-btn'}>
                       {t(`lp.work.action.${item.action}` as StringKey)}
                     </Link>
                   ) : (

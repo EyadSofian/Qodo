@@ -123,12 +123,9 @@ export function CourseWorkspace() {
   return (
     <div className="lps-stagger space-y-4">
       <header className="space-y-3">
-        <div className="lps-hero" style={scenarioTheme ? { background: gradient(scenarioTheme) } : undefined}>
-        <div className="lps-hero-art" aria-hidden="true">
-          <span className="lps-orb -top-20 end-[6%] h-56 w-56" style={{ background: 'radial-gradient(circle, rgb(255 255 255 / 0.32), transparent 70%)' }} />
-          <span className="lps-orb -bottom-28 end-[38%] h-64 w-64" style={{ animationDelay: '-4s', background: 'radial-gradient(circle, rgb(255 255 255 / 0.18), transparent 70%)' }} />
-        </div>
-        <nav aria-label={t('lp.breadcrumb')} className="relative mb-2 text-[12.5px] text-white/80">
+        <div className="lps-hero">
+        {scenarioTheme && <span className="lps-hero-accent" aria-hidden="true" style={{ background: gradient(scenarioTheme, 90) }} />}
+        <nav aria-label={t('lp.breadcrumb')} className="relative mb-2 text-[12.5px] lps-muted">
           <Link to="/learning-production/courses" className="hover:underline">
             {t('lp.nav.courses')}
           </Link>
@@ -153,7 +150,7 @@ export function CourseWorkspace() {
                   )}
                   {!legacy && run.run.status === 'ACTIVE' && <HealthPill health={run.health.health} />}
                   <span className="lps-muted">
-                    {t('lp.field.targetDate')}: <strong className="text-white">{day(run.run.targetDate, { year: true })}</strong>
+                    {t('lp.field.targetDate')}: <strong className="text-[color:var(--lps-ink)]">{day(run.run.targetDate, { year: true })}</strong>
                   </span>
                   <PersonLine userId={run.run.managerUserId} people={run.people} />
                 </>

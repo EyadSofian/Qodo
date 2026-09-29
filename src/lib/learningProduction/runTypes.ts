@@ -511,7 +511,7 @@ export interface WorkItem2 {
   course: { id: string; name: string; code: string | null };
   run?: { id: string; runNumber: number; scenario: Scenario; status?: RunStatus };
   stage?: { key: StageKey; label: Pair };
-  lesson?: { id: string; name: string; moduleName: string | null };
+  lesson?: { id: string; name: string; moduleName: string | null } | null;
   status: string;
   display: string;
   severity?: IssueSeverity;
@@ -528,7 +528,11 @@ export interface WorkItem2 {
   versionNumber?: number | null;
   openComments?: number;
   sensitive?: boolean;
-  action: 'START' | 'CONTINUE' | 'FIX' | 'REVIEW' | 'VERIFY' | 'SIGN_OFF' | 'PUBLISH' | null;
+  action: 'START' | 'CONTINUE' | 'FIX' | 'REVIEW' | 'VERIFY' | 'SIGN_OFF' | 'PUBLISH' | 'ASSIGN' | null;
+  /** Ready work nobody holds, shown to the people who run the course. */
+  unowned?: boolean;
+  /** For a grouped line: how many lessons it covers. */
+  count?: number;
   link: string;
 }
 

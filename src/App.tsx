@@ -121,6 +121,7 @@ const LpDashboard = lpPage(() => import('./pages/learning-production/Dashboard')
 const LpCourses = lpPage(() => import('./pages/learning-production/Courses'), 'Courses');
 const LpNewRun = lpPage(() => import('./pages/learning-production/NewRun'), 'NewRun');
 const LpTemplates = lpPage(() => import('./pages/learning-production/Templates'), 'Templates');
+const LpGuide = lpPage(() => import('./pages/learning-production/Guide'), 'Guide');
 const LpCourseWorkspace = lpPage(() => import('./pages/learning-production/CourseWorkspace'), 'CourseWorkspace');
 const LpRunOverview = lpPage(() => import('./pages/learning-production/course/RunOverview'), 'RunOverview');
 const LpRunPlan = lpPage(() => import('./pages/learning-production/course/RunPlan'), 'RunPlan');
@@ -260,6 +261,7 @@ function Gate() {
           {/* The old course wizard became "new production run". */}
           <Route path="courses/new" element={<Navigate to="/learning-production/runs/new" replace />} />
           <Route path="runs/new" element={<Suspended><LpNewRun /></Suspended>} />
+          <Route path="guide" element={<Suspended><LpGuide /></Suspended>} />
           <Route path="templates" element={<Suspended><LpTemplates /></Suspended>} />
           <Route path="courses/:courseId" element={<Suspended><LpCourseWorkspace /></Suspended>}>
             <Route index element={<Suspended><LpRunOverview /></Suspended>} />

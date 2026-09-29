@@ -69,12 +69,12 @@ export function Dashboard() {
         lede={t('lp.dashboard.lede')}
         actions={
           work && (work.counts.now > 0 || work.counts.review > 0) ? (
-            <Link to="/learning-production/my-work" className="lps-hero-stat flex items-center gap-3 text-[13px] text-white transition-colors hover:bg-white/25">
-              <Inbox size={16} aria-hidden="true" />
+            <Link to="/learning-production/my-work" className="lps-hero-stat flex items-center gap-3 text-[13px] transition-colors hover:bg-white">
+              <Inbox size={16} aria-hidden="true" className="lps-muted" />
               <span>
                 <strong>{t('lp.dashboard.yours', { n: work.counts.now })}</strong>
-                {work.counts.review > 0 && <span className="text-white/80"> · {t('lp.dashboard.yourReviews', { n: work.counts.review })}</span>}
-                {work.counts.overdue > 0 && <span className="font-semibold text-amber-200"> · {t('lp.dashboard.yourOverdue', { n: work.counts.overdue })}</span>}
+                {work.counts.review > 0 && <span className="lps-muted"> · {t('lp.dashboard.yourReviews', { n: work.counts.review })}</span>}
+                {work.counts.overdue > 0 && <span className="font-semibold" style={{ color: 'var(--lps-danger)' }}> · {t('lp.dashboard.yourOverdue', { n: work.counts.overdue })}</span>}
               </span>
               <ArrowUpRight size={14} aria-hidden="true" className="rtl:-scale-x-100" />
             </Link>

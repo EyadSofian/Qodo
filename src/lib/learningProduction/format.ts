@@ -7,7 +7,7 @@
  */
 
 import {
-  Ban,
+  Clock3,
   CheckCircle2,
   Circle,
   Clapperboard,
@@ -60,7 +60,7 @@ export const STATUS_META: Record<AssetStatus, { tone: Tone; icon: LucideIcon }> 
   LOCKED: { tone: 'ok', icon: Lock },
 };
 
-export const BLOCKED_META = { tone: 'neutral' as Tone, icon: Ban };
+export const BLOCKED_META = { tone: 'neutral' as Tone, icon: Clock3 };
 
 export const STAGE_ICON: Record<AssetType, LucideIcon> = {
   OUTLINE: ListTree,

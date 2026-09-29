@@ -1,11 +1,12 @@
 /**
  * Content — the course's structure, and where every lesson stands.
  *
- * A module is a card; a lesson is one row of that card: its picture, its name,
- * then its five production stages side by side and its own percentage. The row
- * is deliberately shallow — a course of forty lessons has to be scannable in
- * one scroll, and the column a reader's eye runs down (all the PPTs, all the
- * voice-overs) is the one that says where the course is stuck.
+ * A module is a card; a lesson is one row of that card: its number, its name
+ * and one sentence saying what happens next and with whom, then its five
+ * production stages under one header row (the stage names are said once, not
+ * in every cell) and how many are approved. A stage that cannot start yet
+ * says what it waits for, in grey — a new lesson reads as a queue, not as a
+ * wall of errors.
  *
  * Everything structural — reordering by drag or by arrow key, renaming,
  * duplicating, moving between modules, archiving — lives in the row's trailing
@@ -25,28 +26,56 @@ import {
   Pencil,
   Plus,
 } from 'lucide-react';
-import { useI18n } from '../../../lib/i18n';
+import { useI18n, type StringKey } from '../../../lib/i18n';
 import { cx, formatDate, timeAgo } from '../../../lib/utils';
+import { stageKey } from '../../../lib/learningProduction/format';
 import { lp, paths } from '../../../lib/learningProduction/api';
 import { invalidate, useLpQuery } from '../../../lib/learningProduction/hooks';
 import { STAGES, lpErrorKey } from '../../../lib/learningProduction/format';
 import { parseLessonList } from '@shared/learningProduction/lessonImport';
-import type { Lesson, MatrixLesson, MatrixResponse } from '../../../lib/learningProduction/types';
+import type { AssetType, Lesson, MatrixLesson, MatrixResponse, People } from '../../../lib/learningProduction/types';
 import { Modal, Spinner, useToast } from '../../../components/ui';
 import {
   Chip,
   ConfirmDialog,
   EmptyPanel,
   ErrorPanel,
-  LessonThumb,
   PersonChip,
   SkeletonRows,
   StageCell,
 } from '../../../components/learning-production/kit';
 import { useCourse } from '../CourseWorkspace';
 
-/** Lesson columns: the name, the five stages, the percentage, the tools. */
-const ROW_GRID = 'grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 lg:grid-cols-[minmax(280px,1.9fr)_repeat(5,minmax(84px,0.7fr))_62px]';
+/** Lesson columns: the name, the five stages, how many are approved. */
+const ROW_GRID = 'grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 lg:grid-cols-[minmax(260px,1.7fr)_repeat(5,minmax(96px,0.75fr))_64px]';
+
+type Translate = (key: StringKey, vars?: Record<string, string | number>) => string;
+
+/**
+ * One sentence for what happens next on a lesson, and with whom. The first
+ * asset in production order that is not approved decides it; assets waiting
+ * for an earlier one are skipped, because nobody can act on them yet.
+ */
+function nextStep(lesson: MatrixLesson, types: readonly AssetType[], people: People, t: Translate) {
+  const present = types.map((type) => lesson.assets[type]).filter((asset) => asset && asset.applicable !== false);
+  const open = present.filter((asset) => asset && !['APPROVED', 'LOCKED'].includes(asset.status) && !asset.blocked);
+  if (present.length > 0 && open.length === 0 && present.every((asset) => asset && ['APPROVED', 'LOCKED'].includes(asset.status))) {
+    return { text: t('lp.lessons.next.done'), tone: 'text-emerald-700' };
+  }
+  const asset = open[0];
+  if (!asset) return { text: '', tone: '' };
+  const stage = t(stageKey(asset.assetType));
+  const name = (id: string | null) => (id ? people[id]?.name ?? t('common.removedUser') : null);
+  if (['SUBMITTED', 'UNDER_REVIEW', 'RESUBMITTED'].includes(asset.status)) {
+    const reviewer = name(asset.reviewerUserId);
+    return { text: reviewer ? t('lp.lessons.next.review', { stage, who: reviewer }) : t('lp.lessons.next.reviewAnyone', { stage }), tone: 'text-indigo-700' };
+  }
+  const maker = name(asset.assigneeUserId);
+  if (!maker) return { text: t('lp.lessons.next.unassigned', { stage }), tone: 'text-amber-700' };
+  if (asset.dueState === 'OVERDUE') return { text: t('lp.lessons.next.overdue', { stage, who: maker }), tone: 'text-rose-600' };
+  if (asset.status === 'CHANGES_REQUESTED') return { text: t('lp.lessons.next.changes', { stage, who: maker }), tone: 'text-amber-700' };
+  return { text: t('lp.lessons.next.work', { stage, who: maker }), tone: 'text-ink-muted' };
+}
 
 export function CourseLessons() {
   const { t, lang } = useI18n();
@@ -121,6 +150,8 @@ export function CourseLessons() {
     void reorder(group.id, ids);
   };
 
+  const types = data?.assetTypes?.length ? data.assetTypes : STAGES;
+
   if (loading && !data) return <SkeletonRows rows={6} height="h-16" />;
   if (error && !data) return <ErrorPanel error={error} onRetry={reload} />;
   if (!data) return null;
@@ -128,7 +159,10 @@ export function CourseLessons() {
   return (
     <>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[13px] text-ink-muted">{t('lp.lessons.summary', { modules: data.modules.length, lessons: data.lessons.length })}</p>
+        <div>
+          <p className="text-[13px] font-semibold text-ink">{t('lp.lessons.summary', { modules: data.modules.length, lessons: data.lessons.length })}</p>
+          <p className="text-[12px] text-ink-faint">{t('lp.lessons.orderHint')}</p>
+        </div>
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" className="btn-quiet btn-sm" onClick={() => setShowArchived((value) => !value)} aria-pressed={showArchived}>
             <Archive size={14} />
@@ -232,6 +266,17 @@ export function CourseLessons() {
                   )}
                 </header>
 
+                {!isCollapsed && group.lessons.length > 0 && (
+                  <div className={cx(ROW_GRID, 'hidden border-b border-surface-line px-3 py-1.5 text-[11.5px] font-semibold text-ink-faint lg:grid')} aria-hidden="true">
+                    <span className="ps-8">{t('lp.col.lesson')}</span>
+                    {types.map((type) => (
+                      <span key={type} className="truncate px-1">
+                        {t(stageKey(type))}
+                      </span>
+                    ))}
+                    <span>{t('lp.col.approvedShort')}</span>
+                  </div>
+                )}
                 {!isCollapsed && (
                   <ul>
                     {group.lessons.length === 0 && <li className="px-4 py-5 text-[13px] text-ink-faint">{t('lp.lessons.moduleEmpty')}</li>}
@@ -240,13 +285,8 @@ export function CourseLessons() {
                         (latest, asset) => (asset?.updatedAt && (!latest || asset.updatedAt > latest) ? asset.updatedAt : latest),
                         null
                       );
-                      const meta = [
-                        lesson.estimatedDurationMinutes ? t('lp.lessons.minutes', { n: lesson.estimatedDurationMinutes }) : null,
-                        t(`lp.lessonState.${lesson.state}` as never),
-                        updatedAt ? t('lp.lessons.updated', { when: timeAgo(updatedAt, t) }) : null,
-                      ]
-                        .filter(Boolean)
-                        .join(' · ');
+                      const next = nextStep(lesson, types, data.people, t);
+                      const updated = updatedAt ? t('lp.lessons.updated', { when: timeAgo(updatedAt, t) }) : undefined;
 
                       return (
                         <li
@@ -269,7 +309,9 @@ export function CourseLessons() {
                               <span className={cx('text-ink-faint', canEdit ? 'cursor-grab' : 'hidden')} aria-hidden="true">
                                 <GripVertical size={15} />
                               </span>
-                              <LessonThumb seed={lesson.id} />
+                              <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-surface-sunken text-[11px] font-bold text-ink-muted" aria-hidden="true">
+                                {index + 1}
+                              </span>
                               <div className="min-w-0">
                                 <Link
                                   to={`/learning-production/courses/${courseId}/lessons/${lesson.id}`}
@@ -277,19 +319,22 @@ export function CourseLessons() {
                                 >
                                   {lesson.name}
                                 </Link>
-                                <p className="truncate text-[11.5px] text-ink-faint">{meta}</p>
+                                <p className={cx('truncate text-[12px]', next.tone)} title={updated}>
+                                  {next.text}
+                                  {lesson.estimatedDurationMinutes ? <span className="text-ink-faint"> · {t('lp.lessons.minutes', { n: lesson.estimatedDurationMinutes })}</span> : null}
+                                </p>
                               </div>
                             </div>
 
-                            {(data?.assetTypes?.length ? data.assetTypes : STAGES).map((type) => (
+                            {types.map((type) => (
                               <div key={type} className="hidden min-w-0 lg:block">
-                                <StageCell type={type} asset={lesson.assets[type]} courseId={courseId} lessonId={lesson.id} />
+                                <StageCell type={type} asset={lesson.assets[type]} courseId={courseId} lessonId={lesson.id} people={data.people} showLabel={false} />
                               </div>
                             ))}
 
                             <div className="flex items-center justify-end gap-2 lg:justify-start">
-                              <Chip tone={lesson.progress.percent === 100 ? 'ok' : lesson.state === 'CHANGES_REQUESTED' ? 'warn' : lesson.state === 'IN_REVIEW' ? 'review' : 'neutral'}>
-                                {lesson.progress.percent}%
+                              <Chip tone={lesson.progress.percent === 100 ? 'ok' : 'neutral'}>
+                                {t('lp.lessons.progressOf', { done: lesson.progress.complete, total: lesson.progress.total })}
                               </Chip>
                             </div>
 
@@ -353,8 +398,8 @@ export function CourseLessons() {
                               band under the lesson, so the row never becomes a
                               horizontal scroller. */}
                           <div className="mt-2 grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:hidden">
-                            {(data?.assetTypes?.length ? data.assetTypes : STAGES).map((type) => (
-                              <StageCell key={type} type={type} asset={lesson.assets[type]} courseId={courseId} lessonId={lesson.id} />
+                            {types.map((type) => (
+                              <StageCell key={type} type={type} asset={lesson.assets[type]} courseId={courseId} lessonId={lesson.id} people={data.people} />
                             ))}
                           </div>
                         </li>

@@ -18,22 +18,10 @@ import { cx } from '../../lib/utils';
 import { useToast, Spinner } from '../ui';
 import { lp } from '../../lib/learningProduction/api';
 import { invalidate } from '../../lib/learningProduction/hooks';
-import {
-  BLOCKED_META,
-  STAGE_HEX,
-  STAGES,
-  STATUS_META,
-  TONE_CELL,
-  assetRoute,
-  formatDay,
-  lpErrorKey,
-  priorityKey,
-  stageKey,
-  statusKey,
-} from '../../lib/learningProduction/format';
+import { STAGES, assetRoute, formatDay, lpErrorKey, priorityKey, stageKey } from '../../lib/learningProduction/format';
 import { STAGE_ROLES } from '@shared/learningProduction/permissions';
 import type { AssetSummary, AssetType, MatrixLesson, MatrixResponse, People, Person, Priority } from '../../lib/learningProduction/types';
-import { CommentCount, PersonSelect, ProgressBar, StageLabel } from './kit';
+import { CommentCount, PersonSelect, ProgressBar, StageLabel, stageCellView } from './kit';
 
 export function ProductionMatrix({
   data,
@@ -101,8 +89,7 @@ export function ProductionMatrix({
               <th
                 key={type}
                 scope="col"
-                className="sticky top-0 z-20 border-b-2 bg-surface-bg px-2 py-2.5 text-start font-semibold text-ink-muted"
-                style={{ borderBottomColor: STAGE_HEX[type] }}
+                className="sticky top-0 z-20 border-b border-surface-line bg-surface-bg px-2 py-2.5 text-start font-semibold text-ink-muted"
               >
                 <StageLabel type={type} />
               </th>
@@ -249,10 +236,9 @@ function MatrixCell({
   const { t, lang } = useI18n();
   const navigate = useNavigate();
   const overdue = asset.dueState === 'OVERDUE';
-  const meta = asset.blocked ? BLOCKED_META : STATUS_META[asset.status];
-  const Icon = meta.icon;
-  const tone = overdue ? 'bad' : meta.tone;
-  const label = asset.blocked ? t('lp.blocked') : t(statusKey(asset.status));
+  const view = stageCellView(asset, t);
+  const Icon = view.icon;
+  const label = view.label;
   const assignee = asset.assigneeUserId ? people[asset.assigneeUserId]?.name ?? t('common.removedUser') : t('lp.unassigned');
   const reviewer = asset.reviewerUserId ? people[asset.reviewerUserId]?.name ?? t('common.removedUser') : '—';
 
@@ -278,14 +264,13 @@ function MatrixCell({
         title={details}
         aria-label={details.replaceAll('\n', '. ')}
         className={cx(
-          'flex h-10 w-full min-w-[120px] items-center gap-1.5 rounded-lg border border-s-[3px] px-2 text-start text-[12px] font-semibold transition-colors hover:brightness-[0.97] focus-visible:ring-2',
-          TONE_CELL[tone],
-          unassigned && 'border-dashed'
+          'flex h-10 w-full min-w-[120px] items-center gap-1.5 rounded-lg border px-2 text-start text-[12px] font-semibold transition-colors hover:brightness-[0.98] focus-visible:ring-2',
+          view.box,
+          view.text
         )}
-        style={{ borderInlineStartColor: STAGE_HEX[asset.assetType], borderInlineStartStyle: 'solid' }}
       >
         <Icon size={13} className="shrink-0" aria-hidden="true" />
-        <span className="min-w-0 flex-1 truncate">{overdue && !asset.blocked ? t('lp.due.OVERDUE') : label}</span>
+        <span className="min-w-0 flex-1 truncate">{label}</span>
         <CommentCount count={asset.openComments} />
         {asset.assigneeUserId && (
           <span

@@ -304,6 +304,17 @@ describe('E-Learning Production — runs', { skip: SKIP }, () => {
     assert.ok(history.some((entry) => entry.event_type === 'RUN_CREATED'));
   });
 
+  test('the people chosen for lesson roles become every new lesson file\'s maker and reviewer', async () => {
+    const row = await db.row(`SELECT production_defaults_json AS d FROM ${S}.learning_courses WHERE id = $1`, [expertCourse]);
+    assert.equal(row.d.OUTLINE.assigneeUserId, users.writer.id);
+    assert.equal(row.d.OUTLINE.reviewerUserId, users.sme.id, 'the subject-matter expert reviews outlines');
+    assert.equal(row.d.PPT.assigneeUserId, users.slides.id);
+    assert.equal(row.d.PPT.reviewerUserId, users.qa.id, 'media QA reviews slides');
+    assert.equal(row.d.VOICE_OVER.assigneeUserId, users.voice.id);
+    assert.equal(row.d.VIDEO.assigneeUserId, users.editor.id);
+    assert.equal(row.d.VIDEO.reviewerUserId, users.qa.id);
+  });
+
   test('research runs first; finishing it hands the draft and expert sourcing over in parallel', async () => {
     const assigned = await work.myWork(actor('researcher'));
     assert.ok(assigned.sections.now.some((item) => item.key === 'research.define' && item.display === 'READY'));
@@ -604,6 +615,21 @@ describe('E-Learning Production — runs', { skip: SKIP }, () => {
     assert.equal(waived.task.status, 'WAIVED');
     const entry = await db.row(`SELECT metadata_json FROM ${S}.learning_activity_log WHERE task_id = $1 AND event_type = 'TASK_WAIVED'`, [define.id]);
     assert.equal(entry.metadata_json.adminOverride, true);
+  });
+
+  test('ready work with nobody on it lands in the manager\'s My Work, grouped, and nowhere else', async () => {
+    const created = await runs.createRun(actor('manager'), { scenario: 'EXPERT_NEW', course: { name: 'Nobody Assigned Yet' }, team: [] });
+    const courseId = created.course.id;
+    let mine = await work.myWork(actor('manager'));
+    const unowned = mine.sections.now.filter((item) => item.unowned && item.course.id === courseId);
+    assert.ok(unowned.length > 0, 'the open research tasks are listed for the manager');
+    assert.ok(unowned.every((item) => item.action === 'ASSIGN' && item.stage.key === 'RESEARCH'), 'only work that can start now');
+    assert.equal((await work.myWork(actor('researcher'))).sections.now.filter((item) => item.course.id === courseId).length, 0);
+
+    await lessons.createLessons(actor('manager'), courseId, { items: [{ name: 'One' }, { name: 'Two' }] });
+    mine = await work.myWork(actor('manager'));
+    const files = mine.sections.now.filter((item) => item.unowned && item.kind === 'ASSET' && item.course.id === courseId);
+    assert.deepEqual(files.map((item) => [item.assetType, item.count]), [['OUTLINE', 2]], 'one line per file type; slides and script wait for the outline');
   });
 
   test('another organization cannot reach any of it, by any id', async () => {

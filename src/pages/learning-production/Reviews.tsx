@@ -36,7 +36,7 @@ export function Reviews() {
         actions={
           me?.managesWork ? (
             <label className="lps-hero-stat flex cursor-pointer items-center gap-2 !py-2 text-[13px]">
-              <input type="checkbox" className="accent-white" checked={scope === 'all'} onChange={(event) => setScope(event.target.checked ? 'all' : 'mine')} />
+              <input type="checkbox" checked={scope === 'all'} onChange={(event) => setScope(event.target.checked ? 'all' : 'mine')} />
               {t('lp.reviews.includeOthers')}
             </label>
           ) : undefined
