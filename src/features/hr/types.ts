@@ -128,6 +128,7 @@ export interface Abilities {
   assign: boolean;
   changePriority: boolean;
   extend: boolean;
+  correctSchedule: boolean;
   hold: boolean;
   resume: boolean;
   cancel: boolean;
@@ -175,6 +176,8 @@ export interface JobRequest {
   salaryRange: SalaryRange;
   actualSalary?: string;
   targetWorkingDays: number | null;
+  hiringPeriodDays?: number | null;
+  scheduleCorrectedAt?: string | null;
   recruiterCode: string | null;
   supportRecruiterCodes: string[];
   unresolvedAssignees: string[];
@@ -203,6 +206,7 @@ export interface JobRequest {
     hiringPeriodDays: number | null;
     activeDate: string | null;
     dueDate: string | null;
+    actualHiringDate?: string | null;
     status: string;
     stages: Record<string, string>;
     assignedTo: string[];

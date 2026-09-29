@@ -306,6 +306,47 @@ export function ExtendDialog({ request, context, onClose, onDone }: { request: J
   );
 }
 
+/* ── Correct an imported schedule ────────────────────────────── */
+
+export function CorrectScheduleDialog({ request, onClose, onDone }: { request: JobRequest; onClose: () => void; onDone: Done }) {
+  const { t, lang } = useHRText();
+  const originalPeriod = request.hiringPeriodDays ?? request.legacy?.hiringPeriodDays ?? null;
+  const originalDue = request.slaSnapshot.dueDate ?? '';
+  const [dueDate, setDueDate] = useState(originalDue);
+  const [period, setPeriod] = useState(originalPeriod === null ? '' : String(originalPeriod));
+  const [reason, setReason] = useState('');
+  const { saving, run } = useSubmit();
+  const periodValue = period === '' ? originalPeriod : Number(period);
+  const validPeriod = periodValue === null || (Number.isInteger(periodValue) && periodValue >= 1 && periodValue <= 60);
+  const periodChanged = periodValue !== originalPeriod;
+  const changed = dueDate !== originalDue || periodValue !== originalPeriod;
+  const submit = async () => {
+    const result = await run(
+      () => hrMutate<RequestDetailData>('post', `${hrApi.recruitment.request(request.id)}/correct-schedule`, {
+        dueDate, hiringPeriodDays: periodValue, reason, revision: request.revision,
+      }),
+      t('تم تعديل الموعد وحفظ السبب في سجل النشاط.', 'Schedule corrected and reason recorded in the activity log.')
+    );
+    if (result) onDone(result);
+  };
+  return (
+    <Modal open onClose={onClose} title={t('تصحيح موعد التوظيف', 'Correct hiring schedule')} footer={<DialogFooter saving={saving} onClose={onClose} onConfirm={() => void submit()} label={t('حفظ التصحيح', 'Save correction')} disabled={!changed || !dueDate || !validPeriod || (periodChanged && dueDate === originalDue) || reason.trim().length < 5} />}>
+      <div className="space-y-4">
+        <p className="text-[12.5px] leading-6 text-[#5A6C82]">{t('عدّل مدة التعيين والموعد الفعلي للوظيفة. يحسب Qodo التأخر من الموعد الجديد، ويحفظ السبب باسمك.', 'Set the hiring period and actual deadline. Qodo recalculates overdue days from the new date and records your reason.')}</p>
+        <dl className="grid grid-cols-2 gap-3">
+          <div className="rounded-xl bg-[#F6F8FB] p-3"><dt className="text-[11.5px] font-semibold text-[#5A6C82]">{t('بدأت', 'Started')}</dt><dd className="mt-0.5 text-[14px] font-bold text-navy">{date(request.sla?.startDate, lang)}</dd></div>
+          <div className="rounded-xl bg-[#F6F8FB] p-3"><dt className="text-[11.5px] font-semibold text-[#5A6C82]">{t('الموعد الحالي', 'Current due')}</dt><dd className="mt-0.5 text-[14px] font-bold text-navy">{date(originalDue, lang)}</dd></div>
+        </dl>
+        <label className="block"><Label>{t('مدة التعيين بالأيام', 'Hiring period in days')}</Label><input className="field ltr" type="number" min={1} max={60} value={period} onChange={(event) => setPeriod(event.target.value)} /></label>
+        <label className="block"><Label required>{t('موعد الاستحقاق الجديد', 'New due date')}</Label><input className="field ltr" type="date" min={request.sla?.startDate} value={dueDate} onChange={(event) => setDueDate(event.target.value)} /></label>
+        {periodChanged && dueDate === originalDue && <p className="text-[12px] font-semibold text-amber-700">{t('غيّرت مدة التعيين؛ حدّد الموعد الجديد أيضاً.', 'The hiring period changed; set the new due date too.')}</p>}
+        <label className="block"><Label required>{t('سبب التعديل', 'Reason for correction')}</Label><textarea className="field min-h-20" value={reason} onChange={(event) => setReason(event.target.value)} placeholder={t('مثلاً: المدة الرسمية لهذه الوظيفة 45 يوماً', 'For example: the official hiring period is 45 days')} /></label>
+        <p className="text-[11.5px] leading-5 text-ink-faint">{t('اختر يوم عمل للموعد الجديد. يظل تاريخ الملف الأصلي محفوظاً للمراجعة.', 'Choose a working day for the new due date. The original workbook date remains available for review.')}</p>
+      </div>
+    </Modal>
+  );
+}
+
 /* ── Review / final approval ──────────────────────────────────── */
 
 export function DecisionDialog({ request, stage, onClose, onDone }: { request: JobRequest; stage: 'review' | 'approve'; onClose: () => void; onDone: Done }) {
@@ -382,7 +423,7 @@ export function AcceptedDialog({ request, odooAccepted, onClose, onDone }: { req
     if (result) onDone(result);
   };
   return (
-    <Modal open onClose={onClose} title={t('تسجيل المرشحين المقبولين', 'Record accepted candidates')} footer={<DialogFooter saving={saving} onClose={onClose} onConfirm={() => void submit()} label={closing ? t('حفظ وإغلاق الوظيفة', 'Save & close job') : t('حفظ', 'Save')} disabled={accepted === request.accepted} />}>
+    <Modal open onClose={onClose} title={t('تسجيل المرشحين المقبولين', 'Record accepted candidates')} footer={<DialogFooter saving={saving} onClose={onClose} onConfirm={() => void submit()} label={closing ? t('حفظ وإغلاق الوظيفة', 'Save & close job') : t('حفظ', 'Save')} disabled={accepted === request.accepted && !closing} />}>
       <div className="space-y-4">
         <div className="flex items-center justify-center gap-4">
           <button type="button" className="btn-ghost h-11 w-11 !px-0 text-lg" onClick={() => setAccepted((value) => Math.max(0, value - 1))} aria-label={t('إنقاص', 'Decrease')}>−</button>

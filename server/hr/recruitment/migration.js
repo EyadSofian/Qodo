@@ -29,7 +29,11 @@ import { hrSettingsFor } from '../settings.js';
 
 export const MIGRATION_VERSION = 1;
 
-const STATUS_MAP = { active: 'hiring', hold: 'on_hold', done: 'completed' };
+const STATUS_MAP = { active: 'hiring', hold: 'on_hold', done: 'completed', hired: 'completed' };
+
+export function statusFromWorkbook(status) {
+  return STATUS_MAP[status] ?? null;
+}
 
 function normalise(value) {
   return String(value ?? '')
@@ -98,7 +102,7 @@ function reasonFor(value) {
 
 /** One workbook row as a Qodo request document. Pure — the tests call it directly. */
 export function legacyRequestFromRow(row, { organizationId, employees, policy, dataset, today }) {
-  const status = STATUS_MAP[row.status] ?? 'on_hold';
+  const status = statusFromWorkbook(row.status) ?? 'on_hold';
   const priority = priorityForHiringPeriod(row.hiringPeriodDays);
   const assignees = (row.assignedTo ?? []).map((name) => ({ name, employeeCode: resolveAssignee(name, employees) }));
   const resolved = assignees.filter((item) => item.employeeCode);
@@ -122,7 +126,7 @@ export function legacyRequestFromRow(row, { organizationId, employees, policy, d
         // The workbook does not say when a hold began; the clock is paused from
         // the day the job reached Qodo, which charges nothing retroactively.
         pausedSince: status === 'on_hold' ? today : null,
-        completedAt: status === 'completed' && isIsoDate(row.actualHiringDate) ? row.actualHiringDate : null,
+        completedAt: status === 'completed' && isIsoDate(row.actualHiringDate) && row.actualHiringDate >= row.activeDate && row.actualHiringDate <= today ? row.actualHiringDate : null,
         actualWorkingDays: null,
         slaMet: null,
       };
@@ -163,6 +167,7 @@ export function legacyRequestFromRow(row, { organizationId, employees, policy, d
     salaryRange: { min: null, max: null, currency: null, text: row.salaryRange || '' },
     actualSalary: row.actualSalary || '',
     targetWorkingDays: sla?.targetWorkingDays ?? null,
+    hiringPeriodDays: row.hiringPeriodDays ?? null,
     recruiterCode: resolved[0]?.employeeCode ?? null,
     supportRecruiterCodes: resolved.slice(1).map((item) => item.employeeCode),
     unresolvedAssignees: assignees.filter((item) => !item.employeeCode).map((item) => item.name),
@@ -266,7 +271,7 @@ export async function recruitmentReconciliation(organizationId) {
       continue;
     }
     const fields = [];
-    const workbookStatus = STATUS_MAP[row.status] ?? row.status;
+    const workbookStatus = statusFromWorkbook(row.status) ?? row.status;
     if (workbookStatus !== request.status) fields.push({ field: 'status', workbook: workbookStatus, qodo: request.status });
     if ((Number(row.accepted) || 0) !== (Number(request.accepted) || 0)) fields.push({ field: 'accepted', workbook: Number(row.accepted) || 0, qodo: Number(request.accepted) || 0 });
     if ((Number(row.numberNeeded) || 0) !== (Number(request.headcount) || 0)) fields.push({ field: 'headcount', workbook: Number(row.numberNeeded) || 0, qodo: Number(request.headcount) || 0 });

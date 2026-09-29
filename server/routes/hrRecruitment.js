@@ -13,6 +13,7 @@ import {
   assign,
   capacityPreview,
   changePriority,
+  correctLegacySchedule,
   createRequest,
   extend,
   linkOdooJob,
@@ -58,6 +59,7 @@ router.post('/requests/:id/approve', h((req) => approve(req.user, req.params.id,
 router.post('/requests/:id/assign', h((req) => assign(req.user, req.params.id, body(req))));
 router.post('/requests/:id/priority', h((req) => changePriority(req.user, req.params.id, body(req))));
 router.post('/requests/:id/extend', h((req) => extend(req.user, req.params.id, body(req))));
+router.post('/requests/:id/correct-schedule', h((req) => correctLegacySchedule(req.user, req.params.id, body(req))));
 router.post('/requests/:id/hold', h((req) => transition(req.user, req.params.id, 'hold', { comment: body(req).comment })));
 router.post('/requests/:id/resume', h((req) => transition(req.user, req.params.id, 'resume', body(req))));
 router.post('/requests/:id/cancel', h((req) => transition(req.user, req.params.id, 'cancel', { comment: body(req).comment })));

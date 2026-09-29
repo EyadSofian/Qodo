@@ -20,6 +20,8 @@ import {
   completionFields,
   currentDueDate,
   isIsoDate,
+  isWorkingDay,
+  priorityForHiringPeriod,
   RECRUITMENT_PRIORITIES,
   slaBand,
   slaSnapshot,
@@ -87,6 +89,7 @@ export function abilitiesFor(ctx, request) {
     assign: open && perms.assign,
     changePriority: open && (runs || (status === 'draft' && requester)),
     extend: ['hiring', 'on_hold'].includes(status) && perms.extend,
+    correctSchedule: request.source === 'legacy_workbook' && status === 'hiring' && Boolean(request.sla?.startDate) && (perms.assign || perms.extend || recruiter),
     hold: status === 'hiring' && runs,
     resume: status === 'on_hold' && runs,
     cancel: open && (runs || (requester && ['draft', 'pending_review'].includes(status))),
@@ -779,6 +782,71 @@ export async function extend(user, id, { addWorkingDays: days, reason = '', note
   return requestDetail(user, request.id);
 }
 
+/** Correct a legacy job's operational deadline and declared hiring period.
+ * The imported spreadsheet is retained as provenance; this change is audited
+ * and takes precedence over a later workbook re-apply.
+ */
+export async function correctLegacySchedule(user, id, { dueDate, hiringPeriodDays, reason = '', revision } = {}) {
+  const ctx = await recruitmentContext(user);
+  const request = ctx.requests.find((item) => item.id === String(id));
+  if (!request) throw notFound('recruitment_request_not_found');
+  if (!abilitiesFor(ctx, request).correctSchedule) throw forbidden();
+  if (revision !== undefined && Number(revision) !== Number(request.revision ?? 1)) {
+    throw new HRError('recruitment_request_conflict', 409, { revision: request.revision ?? 1 });
+  }
+  const why = text(reason, 500);
+  if (why.length < 5) throw new HRError('recruitment_reason_required');
+  if (!isIsoDate(dueDate) || dueDate <= request.sla.startDate || !isWorkingDay(dueDate, ctx.policy.calendar)) {
+    throw new HRError('recruitment_due_date_invalid');
+  }
+  const previousPeriod = request.hiringPeriodDays ?? request.legacy?.hiringPeriodDays ?? null;
+  const nextPeriod = hiringPeriodDays === '' || hiringPeriodDays === null || hiringPeriodDays === undefined
+    ? previousPeriod : Number(hiringPeriodDays);
+  if (nextPeriod !== null && (!Number.isInteger(nextPeriod) || nextPeriod < 1 || nextPeriod > 60)) {
+    throw new HRError('recruitment_hiring_period_invalid');
+  }
+  const before = slaSnapshot(request.sla, { today: ctx.today, calendar: ctx.policy.calendar });
+  if (dueDate === before.dueDate && nextPeriod === previousPeriod) throw new HRError('recruitment_schedule_unchanged', 409);
+  const extension = Number(request.sla.extendedWorkingDays) || 0;
+  const target = workingDaysBetween(request.sla.startDate, dueDate, ctx.policy.calendar) - extension - (before.pausedWorkingDays ?? 0);
+  if (!Number.isInteger(target) || target < 1) throw new HRError('recruitment_due_date_invalid');
+
+  const nextPriority = nextPeriod !== previousPeriod && request.prioritySource === 'legacy_hiring_period'
+    ? priorityForHiringPeriod(nextPeriod) : request.priority;
+  if (nextPriority !== request.priority && nextPriority) {
+    enforceCapacity(ctx, { recruiterCode: request.recruiterCode, priority: nextPriority, requestId: request.id });
+  }
+  const stamp = now();
+  const sla = {
+    ...request.sla,
+    targetWorkingDays: target,
+    targetSource: 'manual_correction',
+    originalDueDate: addWorkingDays(request.sla.startDate, target, ctx.policy.calendar),
+    currentDueDate: dueDate,
+  };
+  const patch = {
+    sla,
+    targetWorkingDays: target,
+    hiringPeriodDays: nextPeriod,
+    scheduleCorrectedAt: stamp,
+    scheduleCorrectedBy: user.id,
+    revision: (request.revision ?? 1) + 1,
+  };
+  if (nextPriority !== request.priority) {
+    patch.priority = nextPriority;
+    patch.prioritySource = 'manual_legacy_schedule';
+  }
+  await saveRequest(request.id, patch);
+  await appendActivity({
+    organizationId: ctx.organizationId,
+    requestId: request.id,
+    type: 'deadline_corrected',
+    actorId: user.id,
+    meta: { previousDueDate: before.dueDate, newDueDate: dueDate, previousPeriodDays: previousPeriod, newPeriodDays: nextPeriod, reason: why, previousPriority: request.priority, newPriority: nextPriority },
+  });
+  return requestDetail(user, request.id);
+}
+
 /**
  * How many candidates have been accepted. Reaching the headcount closes the job
  * — the business rule, applied here so it cannot be forgotten by a screen.
@@ -793,8 +861,8 @@ export async function recordAccepted(user, id, { accepted, note = '', completedA
   }
   const count = Number(accepted);
   if (!Number.isInteger(count) || count < 0 || count > 500) throw new HRError('recruitment_accepted_invalid');
-  if (count === (Number(request.accepted) || 0)) throw new HRError('recruitment_accepted_unchanged', 409);
   const closing = Number(request.headcount) > 0 && count >= Number(request.headcount);
+  if (count === (Number(request.accepted) || 0) && !closing) throw new HRError('recruitment_accepted_unchanged', 409);
   let closedOn = ctx.today;
   if (closing && completedAt) {
     if (!isIsoDate(completedAt) || completedAt > ctx.today || (request.sla?.startDate && completedAt < request.sla.startDate)) {

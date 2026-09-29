@@ -9,6 +9,8 @@ import { create, find, now } from '../store.js';
 import { ALL_PERMISSIONS, can, isActiveUser, permissionsFor, PERMISSIONS } from '../../shared/permissions.js';
 import { organizationOf } from '../../shared/organization.js';
 import { kpiCategories, kpiRules } from '../../shared/recruitment/kpi.js';
+import { completionFields, isIsoDate, isWorkingDay, localDay, workingDaysBetween } from '../../shared/recruitment/sla.js';
+import { recruitmentPolicy } from '../../shared/recruitment/settings.js';
 import { forbidden, HRError } from './errors.js';
 import { hrSettingsFor, updateHRSettings } from './settings.js';
 import { hrDatasetOverview, hrImportHistory, organizationState, reconciliation, telegramStatus } from '../hrModule.js';
@@ -18,7 +20,7 @@ import { deriveRecruitmentTeam, photoUrlFor } from './recruitment/team.js';
 import { knownPhoto, odooEmployeeIndex, odooOnlyCode } from './odooPeople.js';
 import { odooResolver } from './odooHR.js';
 import { activeRewardRules, rewardRuleVersions } from './recruitment/rewards.js';
-import { legacyRequestId, migrationStatus, recruitmentReconciliation, resolveAssignee } from './recruitment/migration.js';
+import { legacyRequestId, migrationStatus, recruitmentReconciliation, resolveAssignee, statusFromWorkbook } from './recruitment/migration.js';
 
 function canRead(user) {
   return can(user, PERMISSIONS.HR_SETTINGS_MANAGE) || can(user, PERMISSIONS.HR_MANAGE);
@@ -121,9 +123,9 @@ export async function reconciliationView(user) {
   };
 }
 
-/** Apply the approved workbook snapshot: replace assignments for its 67 rows,
- * clear blank owners, and archive only its 58 extra legacy rows. The exact
- * shape is checked here so a stale screen cannot widen the change.
+/** Apply the reviewed workbook snapshot. Manual status changes and deadline
+ * edits take precedence; untouched legacy dates and Hired rows can be fixed.
+ * The exact shape is checked so a stale screen cannot widen the change.
  */
 export async function applyRecruitmentWorkbookSnapshot(user, expected = {}) {
   if (!can(user, PERMISSIONS.HR_SETTINGS_MANAGE)) throw forbidden(PERMISSIONS.HR_SETTINGS_MANAGE);
@@ -132,11 +134,13 @@ export async function applyRecruitmentWorkbookSnapshot(user, expected = {}) {
   }
 
   const organizationId = organizationOf(user);
-  const [state, allRequests, reconciliation] = await Promise.all([
+  const [state, allRequests, reconciliation, settingsResult] = await Promise.all([
     organizationState(organizationId),
     requestsFor(organizationId, { includeArchived: true }),
     recruitmentReconciliation(organizationId),
+    hrSettingsFor(organizationId),
   ]);
+  const policy = recruitmentPolicy(settingsResult.settings);
   const workbook = state.bySource.recruitment;
   const rows = workbook?.payload?.requests ?? [];
   const employees = state.bySource.master?.payload?.employees ?? [];
@@ -172,6 +176,8 @@ export async function applyRecruitmentWorkbookSnapshot(user, expected = {}) {
   let assignmentsChanged = 0;
   let assignmentsCleared = 0;
   let unresolvedAssignments = 0;
+  let statusesChanged = 0;
+  let deadlinesChanged = 0;
   for (const row of rows) {
     const request = byId.get(legacyRequestId(organizationId, row));
     const rawNames = (row.assignedTo ?? []).map((value) => String(value ?? '').trim()).filter(Boolean);
@@ -181,21 +187,59 @@ export async function applyRecruitmentWorkbookSnapshot(user, expected = {}) {
     const unresolvedAssignees = rawNames.filter((name) => !resolveAssignee(name, employees));
     const previousCodes = [request.recruiterCode, ...(request.supportRecruiterCodes ?? [])].filter(Boolean);
     const previousUnresolved = request.unresolvedAssignees ?? [];
-    const same = request.recruiterCode === recruiterCode
+    const sameAssignment = request.recruiterCode === recruiterCode
       && JSON.stringify(request.supportRecruiterCodes ?? []) === JSON.stringify(supportRecruiterCodes)
       && JSON.stringify(request.unresolvedAssignees ?? []) === JSON.stringify(unresolvedAssignees);
     unresolvedAssignments += unresolvedAssignees.length;
-    if (same) continue;
-
-    await saveRequest(request.id, {
+    const patch = {};
+    if (!sameAssignment) Object.assign(patch, {
       recruiterCode,
       supportRecruiterCodes,
       unresolvedAssignees,
       assignedAt: recruiterCode ? stamp : null,
       assignedBy: user.id,
-      revision: (request.revision ?? 1) + 1,
     });
-    if (request.recruiterCode !== recruiterCode) {
+
+    // Hired/Done used to fall through the importer as on-hold. Only repair
+    // untouched imported states; a human cancellation or completion wins.
+    const workbookStatus = statusFromWorkbook(row.status);
+    const statusSynced = workbookStatus === 'completed'
+      && ['hiring', 'on_hold'].includes(request.status)
+      && !request.statusChangedAt;
+    if (statusSynced) {
+      const completedAt = isIsoDate(row.actualHiringDate)
+        && (!request.sla?.startDate || row.actualHiringDate >= request.sla.startDate)
+        && row.actualHiringDate <= localDay()
+        ? row.actualHiringDate : null;
+      patch.status = 'completed';
+      patch.statusChangedAt = stamp;
+      if (request.sla) patch.sla = completedAt
+        ? { ...request.sla, ...completionFields(request.sla, completedAt, policy.calendar) }
+        : { ...request.sla, pausedSince: null, completedAt: null, actualWorkingDays: null, slaMet: null };
+    }
+
+    // A new workbook due date can replace an old imported one while the SLA
+    // is still untouched. Existing extensions, holds and manual edits remain.
+    const deadlineSynced = !statusSynced
+      && ['hiring', 'on_hold'].includes(request.status)
+      && request.sla?.targetSource === 'legacy_due_date'
+      && request.sla.startDate === row.activeDate
+      && isIsoDate(row.dueDate)
+      && isWorkingDay(row.dueDate, policy.calendar)
+      && row.dueDate > row.activeDate
+      && request.sla.originalDueDate !== row.dueDate
+      && !request.sla.extendedWorkingDays
+      && !request.sla.pausedWorkingDays
+      && !request.sla.pausedSince;
+    if (deadlineSynced) {
+      const targetWorkingDays = workingDaysBetween(row.activeDate, row.dueDate, policy.calendar);
+      patch.targetWorkingDays = targetWorkingDays;
+      patch.sla = { ...request.sla, targetWorkingDays, originalDueDate: row.dueDate, currentDueDate: row.dueDate };
+    }
+
+    if (!Object.keys(patch).length) continue;
+    await saveRequest(request.id, { ...patch, revision: (request.revision ?? 1) + 1 });
+    if (!sameAssignment && request.recruiterCode !== recruiterCode) {
       await create('recruitmentAssignments', {
         organizationId,
         requestId: request.id,
@@ -209,15 +253,25 @@ export async function applyRecruitmentWorkbookSnapshot(user, expected = {}) {
         capacity: null,
       });
     }
-    await appendActivity({
-      organizationId,
-      requestId: request.id,
-      type: 'workbook_assignment_synced',
-      actorId: user.id,
-      meta: { sequence: row.sequence, previousCodes, recruiterCode, supportRecruiterCodes, unresolvedAssignees },
-    });
-    assignmentsChanged += 1;
-    if ((previousCodes.length || previousUnresolved.length) && !recruiterCode && !supportRecruiterCodes.length && !unresolvedAssignees.length) assignmentsCleared += 1;
+    if (!sameAssignment) {
+      await appendActivity({
+        organizationId,
+        requestId: request.id,
+        type: 'workbook_assignment_synced',
+        actorId: user.id,
+        meta: { sequence: row.sequence, previousCodes, recruiterCode, supportRecruiterCodes, unresolvedAssignees },
+      });
+      assignmentsChanged += 1;
+      if ((previousCodes.length || previousUnresolved.length) && !recruiterCode && !supportRecruiterCodes.length && !unresolvedAssignees.length) assignmentsCleared += 1;
+    }
+    if (statusSynced) {
+      await appendActivity({ organizationId, requestId: request.id, type: 'workbook_status_synced', actorId: user.id, meta: { sequence: row.sequence, from: request.status, to: 'completed', actualHiringDate: row.actualHiringDate ?? null } });
+      statusesChanged += 1;
+    }
+    if (deadlineSynced) {
+      await appendActivity({ organizationId, requestId: request.id, type: 'workbook_deadline_synced', actorId: user.id, meta: { sequence: row.sequence, previousDueDate: request.sla.originalDueDate, newDueDate: row.dueDate } });
+      deadlinesChanged += 1;
+    }
   }
 
   for (const request of activeOutsideLegacy) {
@@ -236,7 +290,7 @@ export async function applyRecruitmentWorkbookSnapshot(user, expected = {}) {
     });
   }
 
-  return { workbookRows: rows.length, assignmentsChanged, assignmentsCleared, unresolvedAssignments, archived: activeOutsideLegacy.length };
+  return { workbookRows: rows.length, assignmentsChanged, assignmentsCleared, unresolvedAssignments, statusesChanged, deadlinesChanged, archived: activeOutsideLegacy.length };
 }
 
 /**

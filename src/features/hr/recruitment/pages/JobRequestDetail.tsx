@@ -37,9 +37,9 @@ import { EmptyBlock, ErrorBlock, PageSkeleton } from '../../ui/states';
 import { SLA_TONE, TONE } from '../../ui/tones';
 import { ApprovalTimeline } from '../components/ApprovalTimeline';
 import { OdooPipeline } from '../components/OdooPipeline';
-import { AcceptedDialog, AssignDialog, CommentActionDialog, DecisionDialog, ExtendDialog, OdooLinkDialog, PriorityDialog } from '../components/dialogs';
+import { AcceptedDialog, AssignDialog, CommentActionDialog, CorrectScheduleDialog, DecisionDialog, ExtendDialog, OdooLinkDialog, PriorityDialog } from '../components/dialogs';
 
-type DialogName = 'assign' | 'priority' | 'extend' | 'review' | 'approve' | 'accepted' | 'odoo' | 'submit' | 'hold' | 'resume' | 'cancel' | null;
+type DialogName = 'assign' | 'priority' | 'extend' | 'correctSchedule' | 'review' | 'approve' | 'accepted' | 'odoo' | 'submit' | 'hold' | 'resume' | 'cancel' | null;
 
 function Section({ id, title, hint, children, action }: { id: string; title: ReactNode; hint?: ReactNode; children: ReactNode; action?: ReactNode }) {
   return (
@@ -65,6 +65,9 @@ function activityLabel(type: string, t: (ar: string, en: string) => string) {
     unassigned: ['أُلغي الإسناد', 'Recruiter removed'],
     priority_changed: ['تغيّرت الأولوية', 'Priority changed'],
     extended: ['مُدّت المهلة', 'Deadline extended'],
+    deadline_corrected: ['صُحّح موعد التوظيف', 'Hiring deadline corrected'],
+    workbook_deadline_synced: ['تحدّث الموعد من الملف', 'Deadline synced from workbook'],
+    workbook_status_synced: ['تحدّثت الحالة من الملف', 'Status synced from workbook'],
     accepted_recorded: ['سُجل المقبولون', 'Accepted count recorded'],
     odoo_linked: ['رُبطت وظيفة Odoo', 'Odoo job linked'],
     odoo_unlinked: ['فُك ربط Odoo', 'Odoo job unlinked'],
@@ -163,6 +166,7 @@ export function JobRequestDetail() {
   if (abilities.assign) actions.push({ key: 'assign', label: request.recruiterCode ? t('إعادة إسناد', 'Reassign') : t('إسناد مسؤول', 'Assign'), icon: UserPlus });
   if (abilities.changePriority) actions.push({ key: 'priority', label: t('الأولوية', 'Priority'), icon: Flag });
   if (abilities.extend) actions.push({ key: 'extend', label: t('مد المهلة', 'Extend'), icon: CalendarClock });
+  if (abilities.correctSchedule) actions.push({ key: 'correctSchedule', label: t('تعديل الموعد', 'Edit deadline'), icon: CalendarClock });
   if (abilities.linkOdoo) actions.push({ key: 'odoo', label: t('ربط Odoo', 'Link Odoo'), icon: Link2 });
   if (abilities.hold) actions.push({ key: 'hold', label: t('تعليق', 'Hold'), icon: Pause });
   if (abilities.resume) actions.push({ key: 'resume', label: t('استئناف', 'Resume'), icon: Play, primary: true });
@@ -308,7 +312,7 @@ export function JobRequestDetail() {
                     <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-slate-300" aria-hidden="true" />
                     <div className="min-w-0">
                       <p className="font-semibold text-navy">{activityLabel(row.type, t)}</p>
-                      <p className="text-ink-faint">{row.actorName || t('النظام', 'System')} · {dateTime(row.createdAt, lang)}{typeof row.meta?.comment === 'string' && row.meta.comment ? ` · ${row.meta.comment}` : ''}</p>
+                      <p className="text-ink-faint">{row.actorName || t('النظام', 'System')} · {dateTime(row.createdAt, lang)}{typeof row.meta?.comment === 'string' && row.meta.comment ? ` · ${row.meta.comment}` : typeof row.meta?.reason === 'string' && row.meta.reason ? ` · ${row.meta.reason}` : ''}</p>
                     </div>
                   </li>
                 ))}
@@ -325,6 +329,7 @@ export function JobRequestDetail() {
                 <KeyValue label={t('المدة الحالية', 'Current target')} value={workingDays(sla.targetWorkingDays ?? 0, lang)} />
                 <KeyValue label={t('الموعد الأصلي', 'Original due')} value={date(sla.originalDueDate, lang)} />
                 <KeyValue label={t('الموعد الحالي', 'Current due')} value={date(sla.dueDate, lang)} />
+                {request.scheduleCorrectedAt && request.hiringPeriodDays != null && <KeyValue label={t('مدة التعيين الحالية', 'Current hiring period')} value={`${num(request.hiringPeriodDays, lang)} ${t('يوم', 'days')}`} />}
                 {(sla.pausedWorkingDays ?? 0) > 0 && <KeyValue label={t('موقوفة (تعليق)', 'Paused (on hold)')} value={workingDays(sla.pausedWorkingDays ?? 0, lang)} />}
                 {sla.completedAt && <KeyValue label={t('أُغلقت', 'Closed')} value={date(sla.completedAt, lang)} />}
               </dl>
@@ -429,6 +434,7 @@ export function JobRequestDetail() {
       {dialog === 'assign' && <AssignDialog request={request} context={context} onClose={() => setDialog(null)} onDone={done} />}
       {dialog === 'priority' && <PriorityDialog request={request} context={context} onClose={() => setDialog(null)} onDone={done} />}
       {dialog === 'extend' && request.sla && <ExtendDialog request={request} context={context} onClose={() => setDialog(null)} onDone={done} />}
+      {dialog === 'correctSchedule' && request.sla && <CorrectScheduleDialog request={request} onClose={() => setDialog(null)} onDone={done} />}
       {dialog === 'review' && <DecisionDialog request={request} stage="review" onClose={() => setDialog(null)} onDone={done} />}
       {dialog === 'approve' && <DecisionDialog request={request} stage="approve" onClose={() => setDialog(null)} onDone={done} />}
       {dialog === 'accepted' && <AcceptedDialog request={request} odooAccepted={pipelineQuery.data?.acceptedFromOdoo ?? null} onClose={() => setDialog(null)} onDone={done} />}

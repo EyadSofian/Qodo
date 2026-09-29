@@ -228,12 +228,12 @@ export function ReconciliationSection() {
   const applySnapshot = async () => {
     setApplying(true);
     try {
-      const result = await hrMutate<{ assignmentsChanged: number; assignmentsCleared: number; archived: number }>(
+      const result = await hrMutate<{ assignmentsChanged: number; assignmentsCleared: number; statusesChanged: number; deadlinesChanged: number; archived: number }>(
         'post',
         hrApi.applyRecruitmentWorkbook,
         { expectedRows: 67, expectedOutside: 58 },
       );
-      push(t(`تم تحديث توزيع ${num(result.assignmentsChanged, lang)} وظيفة، إفراغ ${num(result.assignmentsCleared, lang)} إسناد، وأرشفة ${num(result.archived, lang)} طلب.`, `Updated assignments for ${num(result.assignmentsChanged, lang)} jobs, cleared ${num(result.assignmentsCleared, lang)} assignments, and archived ${num(result.archived, lang)} requests.`));
+      push(t(`تم تحديث ${num(result.assignmentsChanged, lang)} إسناد، ${num(result.statusesChanged, lang)} حالة، ${num(result.deadlinesChanged, lang)} موعد، وأرشفة ${num(result.archived, lang)} طلب.`, `Updated ${num(result.assignmentsChanged, lang)} assignments, ${num(result.statusesChanged, lang)} statuses, ${num(result.deadlinesChanged, lang)} deadlines, and archived ${num(result.archived, lang)} requests.`));
       await reload();
     } catch (applyError) {
       push(errorMessage(applyError, lang), 'bad');
@@ -285,12 +285,13 @@ export function ReconciliationSection() {
       </SettingsCard>
 
       <SettingsCard title={t('ملف التوظيف القديم مقابل Qodo', 'Recruitment workbook vs Qodo')} hint={data.workbook ? t(`${data.workbook.fileName} · ${num(data.workbook.rows, 'ar')} صف · ${dateTime(data.workbook.importedAt, 'ar')}`, `${data.workbook.fileName} · ${num(data.workbook.rows, 'en')} rows · ${dateTime(data.workbook.importedAt, 'en')}`) : t('لا يوجد ملف توظيف مرفوع.', 'No recruitment workbook uploaded.')}
-        action={data.canApplyWorkbook ? <button type="button" className="btn-primary btn-sm" onClick={applySnapshot} disabled={!canApplySnapshot || applying}>{applying ? <Spinner size={14} /> : <RefreshCw size={14} />}{t('تطبيق توزيع الشيت وإخفاء الـ58', 'Apply workbook assignments and archive the 58')}</button> : undefined}>
+        action={data.canApplyWorkbook ? <button type="button" className="btn-primary btn-sm" onClick={applySnapshot} disabled={!canApplySnapshot || applying}>{applying ? <Spinner size={14} /> : <RefreshCw size={14} />}{t('تطبيق تحديثات الشيت', 'Apply workbook updates')}</button> : undefined}>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           {[[t('الطلبات النشطة', 'Active requests'), data.activeRequests], [t('مطابقة للشيت', 'In workbook'), data.imported], [t('خارج الشيت', 'Outside workbook'), data.orphans.length], [t('مؤرشفة', 'Archived'), data.archived], [t('فروق', 'Differences'), data.differences.length], [t('لم تُرحّل', 'Not migrated'), data.missing.length], [t('أسماء غير محسومة', 'Unresolved names'), data.unresolved.length]].map(([label, value]) => (
             <div key={String(label)} className="rounded-xl bg-[#F6F8FB] p-3"><p className="text-[11.5px] font-semibold text-[#5A6C82]">{label}</p><p className="mt-0.5 text-[20px] font-bold tabular-nums text-navy">{num(Number(value), lang)}</p></div>
           ))}
         </div>
+        <p className="mt-3 text-[12px] text-[#5A6C82]">{t('يحدّث الإسناد من الملف، ويصحّح حالات Hired والمواعيد التي لم تُعدّل يدوياً في Qodo. تغييرات الحالة والموعد اليدوية محفوظة.', 'Updates assignments from the workbook and corrects Hired statuses and deadlines that were not edited in Qodo. Manual status and deadline changes are preserved.')}</p>
         {!canApplySnapshot && <p className="mt-3 text-[12px] text-[#5A6C82]">{t('لن يتاح التطبيق إلا عندما يحتوي الملف على 67 صفاً، وتطابق جميعها، وتكون الطلبات الـ58 الزائدة هي وحدها خارج الملف.', 'Apply becomes available when the workbook has 67 rows, every row matches, and the 58 extra requests are the only records outside it.')}</p>}
         {data.archived > 0 && <Link to="/hr/recruitment/requests?scope=archived" className="mt-3 inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-brand-700 hover:underline">{t('فتح الأرشيف واسترجاع طلب', 'Open archive and restore a request')}<ExternalLink size={13} aria-hidden="true" /></Link>}
         {data.differences.length > 0 && (
@@ -334,6 +335,9 @@ const AUDIT_KIND: Record<string, { ar: string; en: string }> = {
   odoo_unlinked: { ar: 'فك ربط Odoo', en: 'Odoo unlinked' },
   imported_from_workbook: { ar: 'ترحيل من الملف', en: 'Migrated from workbook' },
   workbook_assignment_synced: { ar: 'تحديث إسناد من ملف التوظيف', en: 'Workbook assignment sync' },
+  workbook_status_synced: { ar: 'تصحيح حالة من ملف التوظيف', en: 'Workbook status correction' },
+  workbook_deadline_synced: { ar: 'تحديث موعد من ملف التوظيف', en: 'Workbook deadline sync' },
+  deadline_corrected: { ar: 'تصحيح موعد التوظيف', en: 'Recruitment deadline corrected' },
   archived: { ar: 'أرشفة طلب', en: 'Request archived' },
   restored: { ar: 'استرجاع طلب', en: 'Request restored' },
   'hr.import': { ar: 'رفع ملف', en: 'Workbook uploaded' },

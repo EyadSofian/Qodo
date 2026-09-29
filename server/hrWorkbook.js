@@ -575,7 +575,7 @@ function normalizeRecruitment(sheets) {
       rows: requests.length,
       open: requests.filter((item) => item.status === 'active').length,
       onHold: requests.filter((item) => item.status === 'hold').length,
-      done: requests.filter((item) => item.status === 'done').length,
+      done: requests.filter((item) => ['done', 'hired'].includes(item.status)).length,
       needed: requests.reduce((sum, item) => sum + item.numberNeeded, 0),
       accepted: requests.reduce((sum, item) => sum + item.accepted, 0),
     },
