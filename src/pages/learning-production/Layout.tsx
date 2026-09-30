@@ -17,7 +17,8 @@
 
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
-import { BookOpen, Database, Layers, Plus, Settings2 } from 'lucide-react';
+import { BookOpen, Database, Layers, PanelTopClose, PanelTopOpen, Plus, Settings2 } from 'lucide-react';
+import { useShellChrome } from '../../components/Shell';
 import { useI18n } from '../../lib/i18n';
 import { ApiError } from '../../lib/api';
 import { paths } from '../../lib/learningProduction/api';
@@ -53,6 +54,7 @@ export function LearningProductionLayout() {
   const { data: work } = useLpQuery<MyWork2Response>(runPaths.work);
   const unavailable = error instanceof ApiError && error.status === 503;
   const [override, setOverride] = useState<LpTheme | null>(null);
+  const chrome = useShellChrome();
   const area = areaOf(location.pathname);
   const theme = override ?? AREA_THEME[area];
 
@@ -96,6 +98,18 @@ export function LearningProductionLayout() {
                 <RouteTabs items={tabs} label={t('lp.module')} />
               </div>
               <div className="flex shrink-0 items-center gap-1.5">
+                {chrome && (
+                  <button
+                    type="button"
+                    className="lps-btn-quiet !px-2"
+                    onClick={() => chrome.setHidden(!chrome.hidden)}
+                    title={chrome.hidden ? t('lp.chrome.show') : t('lp.chrome.hide')}
+                    aria-label={chrome.hidden ? t('lp.chrome.show') : t('lp.chrome.hide')}
+                    aria-pressed={!chrome.hidden}
+                  >
+                    {chrome.hidden ? <PanelTopOpen size={16} aria-hidden="true" /> : <PanelTopClose size={16} aria-hidden="true" />}
+                  </button>
+                )}
                 <Link to="/learning-production/guide" className="lps-btn-quiet !px-2" title={t('lp.nav.guide')}>
                   <BookOpen size={16} aria-hidden="true" />
                   <span className="hidden xl:inline">{t('lp.nav.guide')}</span>

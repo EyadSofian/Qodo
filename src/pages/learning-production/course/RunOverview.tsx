@@ -80,7 +80,7 @@ export function StageStrip({ stages, current, courseId }: { stages: StageView[];
   const done = stages.filter((entry) => entry.status === 'DONE' || entry.status === 'SKIPPED').length;
   const tone = (entry: StageView) =>
     entry.key === current
-      ? 'var(--lps-action)'
+      ? 'var(--lps-grad)'
       : entry.issues.blocking > 0
         ? '#f59e0b'
         : entry.status === 'DONE'

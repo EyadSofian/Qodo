@@ -56,13 +56,22 @@ import { Avatar, useToast } from './ui';
 const ShellSlotContext = createContext<HTMLElement | null>(null);
 export const useShellSlot = () => useContext(ShellSlotContext);
 
-const IMMERSIVE_KEY = 'engosoft.frameImmersive';
+/** Whether the workspace bar is out of the way, and the switch — for modules that offer it in their own bar. */
+const ShellChromeContext = createContext<{ hidden: boolean; setHidden: (next: boolean) => void } | null>(null);
+export const useShellChrome = () => useContext(ShellChromeContext);
 
-function readImmersive() {
+const IMMERSIVE_KEY = 'engosoft.frameImmersive';
+// E-Learning Production starts without the workspace bar (its own bar
+// carries the navigation); the choice is remembered separately from framed
+// apps'. "0" means the person asked to keep the bar.
+const LP_IMMERSIVE_KEY = 'engosoft.lpImmersive';
+
+function readImmersive(key = IMMERSIVE_KEY, fallback = false) {
   try {
-    return localStorage.getItem(IMMERSIVE_KEY) === '1';
+    const stored = localStorage.getItem(key);
+    return stored === null ? fallback : stored === '1';
   } catch {
-    return false;
+    return fallback;
   }
 }
 
@@ -80,7 +89,8 @@ export function Shell({ children }: { children: ReactNode }) {
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [push, setPush] = useState<PushState>('unsupported');
   const [slot, setSlot] = useState<HTMLElement | null>(null);
-  const [immersiveChoice, setImmersiveChoice] = useState(readImmersive);
+  const [immersiveChoice, setImmersiveChoice] = useState(() => readImmersive());
+  const [lpImmersiveChoice, setLpImmersiveChoice] = useState(() => readImmersive(LP_IMMERSIVE_KEY, true));
 
   const { user, signOut, can } = useAuth();
   const { t, lang, setLang } = useI18n();
@@ -168,11 +178,12 @@ export function Shell({ children }: { children: ReactNode }) {
   const isHR = location.pathname === '/hr' || location.pathname.startsWith('/hr/');
   // A framed app brings its own header, so ours shrinks to one compact bar —
   // or, in full-screen mode, gets out of the way entirely until asked back.
-  const immersive = isFramed && immersiveChoice;
+  const immersive = (isFramed && immersiveChoice) || (isLearningProduction && lpImmersiveChoice);
   const setImmersive = (next: boolean) => {
-    setImmersiveChoice(next);
+    const key = isLearningProduction ? LP_IMMERSIVE_KEY : IMMERSIVE_KEY;
+    (isLearningProduction ? setLpImmersiveChoice : setImmersiveChoice)(next);
     try {
-      localStorage.setItem(IMMERSIVE_KEY, next ? '1' : '0');
+      localStorage.setItem(key, next ? '1' : '0');
     } catch {
       // Private mode: the choice just lasts for this visit.
     }
@@ -192,6 +203,7 @@ export function Shell({ children }: { children: ReactNode }) {
 
   return (
     <ShellSlotContext.Provider value={isFramed ? slot : null}>
+    <ShellChromeContext.Provider value={{ hidden: immersive, setHidden: setImmersive }}>
     <div
       className="flex min-h-[100dvh] flex-col"
       style={isFramed ? ({ '--topbar-h': immersive ? '0px' : '52px' } as CSSProperties) : undefined}
@@ -307,7 +319,7 @@ export function Shell({ children }: { children: ReactNode }) {
             <span className={cx('hidden', !isFramed && 'sm:inline')}>{t('shell.assistant')}</span>
           </button>
 
-          {isFramed && (
+          {(isFramed || isLearningProduction) && (
             <button
               type="button"
               onClick={() => setImmersive(true)}
@@ -474,7 +486,7 @@ export function Shell({ children }: { children: ReactNode }) {
           five destinations, so the global bar would only duplicate it. */}
       {!isFramed && !isLearningProduction && !isHR && <BottomNav onOpenSwitcher={() => setSwitcherOpen(true)} />}
 
-      {immersive && (
+      {immersive && !isLearningProduction && (
         <button type="button" onClick={() => setImmersive(false)} className="sh-peek">
           <ChevronDown size={14} />
           <span className="sh-peek-label">{t('shell.showBar')}</span>
@@ -488,6 +500,7 @@ export function Shell({ children }: { children: ReactNode }) {
       <IncomingNotificationPopup />
       <ReworkGuard />
     </div>
+    </ShellChromeContext.Provider>
     </ShellSlotContext.Provider>
   );
 }

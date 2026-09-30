@@ -264,10 +264,12 @@ export function Meter({ value, label, tone = 'accent' }: { value: number; label?
 const FIGURE_TONE = {
   neutral: ['#eef1f6', '#475569', 'var(--lps-ink)'],
   accent: ['#eef2ff', '#4f46e5', 'var(--lps-ink)'],
-  ok: ['#e7f8ef', '#047857', '#047857'],
-  attention: ['#fff4e0', '#b45309', '#b45309'],
+  indigo: ['#eef2ff', '#4f46e5', 'var(--lps-ink)'],
+  violet: ['#f3e8ff', '#7c3aed', 'var(--lps-ink)'],
+  sky: ['#e0f2fe', '#0284c7', 'var(--lps-ink)'],
+  ok: ['#e7f8ef', '#059669', '#047857'],
+  attention: ['#fff4e0', '#d97706', '#b45309'],
   danger: ['#ffe8ee', '#e11d48', '#e11d48'],
-  sky: ['#eef1f6', '#475569', 'var(--lps-ink)'],
 } as const;
 
 export type FigureTone = keyof typeof FIGURE_TONE;

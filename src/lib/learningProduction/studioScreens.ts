@@ -11,6 +11,8 @@ export const SCREEN_STRINGS: Record<string, Pair> = {
   'lp.action.next': { ar: 'التالي', en: 'Next' },
   'lp.action.retry': { ar: 'إعادة المحاولة', en: 'Try again' },
   'lp.breadcrumb': { ar: 'مسار التنقل', en: 'Breadcrumb' },
+  'lp.chrome.show': { ar: 'إظهار شريط مساحة العمل', en: 'Show the workspace bar' },
+  'lp.chrome.hide': { ar: 'إخفاء شريط مساحة العمل', en: 'Hide the workspace bar' },
   'lp.nav.guide': { ar: 'كيف يعمل', en: 'How it works' },
   'lp.nav.templates': { ar: 'قوالب سير العمل', en: 'Workflow templates' },
   'lp.people.search': { ar: 'ابحث بالاسم أو الوظيفة أو القسم', en: 'Search by name, title or department' },

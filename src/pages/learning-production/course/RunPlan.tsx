@@ -136,7 +136,7 @@ function StageNavItem({ stage, index, last, current, selected, onSelect }: { sta
           className={cx(
             'mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full text-[11px] font-bold',
             done && 'bg-emerald-500 text-white',
-            current && !done && 'bg-[color:var(--lps-action)] text-white',
+            current && !done && 'bg-[image:var(--lps-grad)] text-white shadow-[0_4px_10px_-4px_rgb(var(--lp-a1)/0.9)]',
             !done && !current && !waiting && !skipped && 'border-2 border-indigo-300 bg-white text-indigo-600',
             waiting && !current && 'border border-[#d5d9e0] bg-white text-[color:var(--lps-faint)]',
             skipped && 'border border-dashed border-[#cbd5e1] bg-white text-[color:var(--lps-faint)]'
@@ -150,7 +150,7 @@ function StageNavItem({ stage, index, last, current, selected, onSelect }: { sta
             {pick(stage.label)}
           </span>
           <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11.5px] lps-faint">
-            {current && <span className="font-semibold" style={{ color: 'var(--lps-action)' }}>{t('lp.plan.now')}</span>}
+            {current && <span className="font-semibold" style={{ color: 'rgb(var(--lp-a1))' }}>{t('lp.plan.now')}</span>}
             {stage.progress.total > 0 && <span>{t('lp.plan.stageProgress', { done: stage.progress.done, total: stage.progress.total })}</span>}
             {stage.issues.blocking > 0 && <span className="font-semibold text-amber-700">{t('lp.plan.openIssues', { n: stage.issues.open })}</span>}
           </span>

@@ -85,8 +85,8 @@ export function Dashboard() {
       {error ? <ErrorNote error={error} onRetry={reload} /> : null}
 
       <section aria-label={t('lp.dashboard.figures')} className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-6">
-        <Figure icon={Workflow} value={data?.kpis.activeRuns ?? '—'} label={t('lp.kpi.activeRuns')} hint={data?.kpis.legacyRuns ? t('lp.kpi.legacyRuns', { n: data.kpis.legacyRuns }) : undefined} />
-        <Figure icon={Hourglass} value={data?.kpis.pendingApprovals ?? '—'} label={t('lp.kpi.pendingApprovals')} to="/learning-production/reviews" tone="accent" />
+        <Figure icon={Workflow} tone="indigo" value={data?.kpis.activeRuns ?? '—'} label={t('lp.kpi.activeRuns')} hint={data?.kpis.legacyRuns ? t('lp.kpi.legacyRuns', { n: data.kpis.legacyRuns }) : undefined} />
+        <Figure icon={Hourglass} value={data?.kpis.pendingApprovals ?? '—'} label={t('lp.kpi.pendingApprovals')} to="/learning-production/reviews" tone="violet" />
         <Figure icon={AlarmClock} value={data?.kpis.overdue ?? '—'} label={t('lp.kpi.overdue')} tone={data?.kpis.overdue ? 'danger' : 'sky'} />
         <Figure icon={ShieldAlert} value={data?.kpis.blockingIssues ?? '—'} label={t('lp.kpi.blockingIssues')} tone={data?.kpis.blockingIssues ? 'attention' : 'sky'} />
         <Figure icon={TrendingDown} value={data?.kpis.atRisk ?? '—'} label={t('lp.kpi.atRisk')} tone={data?.kpis.atRisk ? 'attention' : 'sky'} />

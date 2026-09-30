@@ -950,6 +950,17 @@
     @apply flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3;
     border-color: var(--lps-line);
   }
+  /* A short bar in the area's colour before each panel title. */
+  .lps-panel-head > .lps-h2::before {
+    content: '';
+    display: inline-block;
+    width: 4px;
+    height: 15px;
+    margin-inline-end: 9px;
+    border-radius: 4px;
+    background: var(--lps-grad);
+    vertical-align: -2px;
+  }
   .lps-lift {
     transition:
       border-color 0.2s ease,
@@ -966,9 +977,23 @@
     background: #fff;
     border-color: #e6e8ec;
   }
+  /* A thin line in the area's colours along the top of the module bar. */
+  .lps-bar::before {
+    content: '';
+    position: absolute;
+    inset-inline: 0;
+    top: 0;
+    height: 3px;
+    background: var(--lps-grad);
+    transition: background 0.5s ease;
+  }
   .lps-logo {
-    @apply grid h-9 w-9 place-items-center rounded-xl text-white;
-    background: var(--lps-tab-active);
+    @apply grid h-9 w-9 place-items-center rounded-xl text-white transition-transform duration-300;
+    background: var(--lps-grad);
+    box-shadow: 0 6px 14px -8px rgb(var(--lp-a1, 79 70 229) / 0.9);
+  }
+  a:hover > .lps-logo {
+    transform: rotate(-8deg) scale(1.05);
   }
 
   /* Tabs. Navigation (module and course sections) is underlined; a filter
@@ -993,9 +1018,9 @@
     z-index: -1;
     inset-inline: 10px;
     bottom: 0;
-    height: 2px;
-    border-radius: 2px;
-    background: var(--lps-tab-active);
+    height: 3px;
+    border-radius: 3px 3px 0 0;
+    background: var(--lps-grad);
   }
   .lps-tab .lps-count {
     background: rgb(15 23 42 / 0.06);
@@ -1143,8 +1168,19 @@
     cursor: pointer;
   }
   .lps-table tbody tr:hover td {
-    background: rgb(15 23 42 / 0.025);
+    background: rgb(var(--lp-a1, 79 70 229) / 0.045);
   }
+  /* Rows arrive in quick sequence the first time a table appears. */
+  .lps-table tbody tr {
+    animation: lps-row 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .lps-table tbody tr:nth-child(2) { animation-delay: 25ms; }
+  .lps-table tbody tr:nth-child(3) { animation-delay: 50ms; }
+  .lps-table tbody tr:nth-child(4) { animation-delay: 75ms; }
+  .lps-table tbody tr:nth-child(5) { animation-delay: 100ms; }
+  .lps-table tbody tr:nth-child(6) { animation-delay: 125ms; }
+  .lps-table tbody tr:nth-child(7) { animation-delay: 150ms; }
+  .lps-table tbody tr:nth-child(n + 8) { animation-delay: 175ms; }
   .lps-table td[class~='bg-white'],
   .lps-table td[class~='sticky'] {
     background: rgb(255 255 255 / 0.97);
@@ -1175,9 +1211,15 @@
     @apply lps-panel lps-lift relative block min-w-0 overflow-hidden px-4 py-3.5;
   }
   .lps-figure-chip {
-    @apply grid h-10 w-10 shrink-0 place-items-center rounded-xl;
+    @apply grid h-10 w-10 shrink-0 place-items-center rounded-xl transition-transform duration-300;
     background: var(--lps-tone-soft);
     color: var(--lps-tone-ink);
+  }
+  .lps-figure:hover .lps-figure-chip {
+    transform: scale(1.08) rotate(-6deg);
+  }
+  .lps-figure {
+    border-top: 3px solid var(--lps-tone-ink);
   }
 
   /* Page motion */
@@ -1277,6 +1319,7 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
+    .lps-table tbody tr,
     .lps-aurora-blob,
     .lps-orb,
     .lps-stagger > *,
@@ -1381,4 +1424,9 @@
 @keyframes lps-pulse {
   0% { box-shadow: 0 0 0 0 rgb(244 63 94 / 0.5); }
   100% { box-shadow: 0 0 0 8px rgb(244 63 94 / 0); }
+}
+
+@keyframes lps-row {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
 }

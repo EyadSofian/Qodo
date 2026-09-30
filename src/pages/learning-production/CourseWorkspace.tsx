@@ -14,7 +14,7 @@
 
 import { useState } from 'react';
 import { Link, Outlet, useNavigate, useOutletContext, useParams, useSearchParams } from 'react-router-dom';
-import { CheckCircle2, ChevronDown, MoreHorizontal, Pause, Play, Plus, Settings2, XCircle } from 'lucide-react';
+import { BookOpenCheck, CheckCircle2, ChevronDown, Clock3, MoreHorizontal, Pause, Play, Plus, RotateCcw, Settings2, Sparkles, XCircle } from 'lucide-react';
 import { useI18n, type StringKey } from '../../lib/i18n';
 import { paths } from '../../lib/learningProduction/api';
 import { runPaths, runsApi } from '../../lib/learningProduction/runApi';
@@ -134,6 +134,15 @@ export function CourseWorkspace() {
         </nav>
 
         <div className="relative flex flex-wrap items-start justify-between gap-3">
+          <div className="flex min-w-0 items-start gap-3.5">
+          {run && (
+            <span className="lps-hero-icon mt-0.5" aria-hidden="true" style={scenarioTheme ? { background: gradient(scenarioTheme) } : undefined}>
+              {(() => {
+                const Icon = { AI_NEW: Sparkles, EXPERT_NEW: BookOpenCheck, REVAMP: RotateCcw, LEGACY: Clock3 }[run.run.scenario];
+                return <Icon size={20} />;
+              })()}
+            </span>
+          )}
           <div className="min-w-0">
             <h1 className="lps-title lps-bidi">{course.name}</h1>
             <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[12.5px]">
@@ -160,6 +169,7 @@ export function CourseWorkspace() {
                 <Busy />
               )}
             </div>
+          </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
