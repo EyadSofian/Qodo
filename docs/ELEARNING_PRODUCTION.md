@@ -147,20 +147,28 @@ handoffs, deadlines, issues, releases) and set deadline reminders from My Work.
 
 ## Screens
 
+The module bar has three places — **My tasks**, **Courses**, **Reports**
+(managers) — plus *New production run* and a small *More* menu (guide,
+templates, notification settings, the workspace-bar toggle). No page has tabs
+inside it: secondary tools open in drawers named in the URL.
+
 | Route | What it answers |
 | --- | --- |
-| `/learning-production` | Dashboard: runs in flight, where each is, approvals waiting, late work, blocking issues, workload, recent releases |
-| `/learning-production/courses` | The catalogue with each course's current run |
+| `/learning-production` | My tasks: one list — waiting for my decision, then mine to do — with *Waiting on others* (with reasons), *Done recently* and, for managers, the team's reviews folded underneath; managers also see the courses that need them |
+| `/learning-production/courses` | A card per course: where it is now, content approved, due date, on time or not |
 | `/learning-production/runs/new` | Start a run: way → basics → team → review of the exact stages and tasks before anything is written |
-| `/learning-production/my-work` | Now / For my decision / Blocked (with reasons) / Recently done — every row deep-links to the place to act |
-| `/learning-production/reviews` | First submissions, resubmissions, curriculum approvals, media QA, UAT & release sign-off |
 | `/learning-production/reports` | Production reports (kept from the previous module) |
 | `/learning-production/templates` | Template versions and options, the row-by-row workbook trace, open decisions |
-| `/learning-production/courses/:id` | Overview · Plan & stages · Curriculum & lessons · Production · QA & release · Team · Files & activity (+ Settings) |
-| `…/courses/:id/lessons/:lessonId/:stage` | The asset review workspace, unchanged |
+| `/learning-production/courses/:id` | One page: the current stage and what it needs (all stages one fold away), the lessons with their five files, and side cards for progress, QA & release, team, files. `?task=` opens a task; `?panel=lessons\|matrix\|qa\|team\|files` opens that tool in a drawer; `?stage=` opens a stage in the list |
+| `…/courses/:id/settings` | Course settings, under the course header |
+| `…/courses/:id/lessons/:lessonId/:stage` | The asset review workspace; its side panel is one column (open notes, then versions and history folded) |
 
-Old links redirect: `courses/new` → `runs/new`, `lessons` → `curriculum`,
-`assets` → `production`, `activity` → `files?view=activity`.
+Old links redirect and keep their query: `my-work` and `reviews` → My tasks;
+the course tabs `plan`, `curriculum`, `lessons` → the course page (`plan?task=`
+becomes `?task=`); `production`/`assets` → `?panel=matrix`; `qa` → `?panel=qa`
+(with `issue`/`release`); `team` → `?panel=team`; `files`/`activity` →
+`?panel=files`; `courses/new` → `runs/new`. Server notification links still use
+the old paths and rely on these redirects.
 
 The UI uses a scoped `.lps` design layer (`src/index.css`): neutral canvas,
 ink and navy text, one blue accent, amber for attention, red only for late or
@@ -206,7 +214,8 @@ admit more values; the added columns are nullable or defaulted.
   transcripts, video QA checklists, the asset review workspace, reports, course
   settings, all existing API endpoints (including the lesson asset board), and
   all existing data.
-- **Replaced:** the dashboard, course list, course creation (now *New run*),
+- **Replaced (2026-09-30, simple screens):** the dashboard, My Work and Reviews became *My tasks*; the seven course tabs became one course page with drawers. Removed files: `Dashboard.tsx`, `MyWork.tsx`, `Reviews.tsx`, `course/RunOverview.tsx`, `course/RunPlan.tsx`, `course/Curriculum.tsx`, `course/LegacyPlan.tsx`.
+- **Replaced (first rebuild):** the dashboard, course list, course creation (now *New run*),
   course overview, course lessons and assets tabs, and My Work / Reviews
   screens. Removed files: `CourseCreate.tsx`, `course/CourseOverview.tsx`,
   `course/CourseAssets.tsx`, `components/learning-production/charts.tsx`,

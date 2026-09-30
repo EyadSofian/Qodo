@@ -31,10 +31,10 @@ export const GUIDE = {
     steps: [
       { who: { ar: 'مدير الإنتاج', en: 'Production manager' }, what: { ar: 'يبدأ «دورة إنتاج جديدة»: يختار الطريقة، ويكتب اسم البرنامج والموعد، ويختار الفريق، ويراجع المراحل قبل الإنشاء.', en: 'Starts a “New production run”: picks the way, names the program and target date, chooses the team, reviews the stages before creating.' }, where: 'newRun' },
       { who: { ar: 'النظام', en: 'The system' }, what: { ar: 'ينشئ المراحل والمهام، ويسند كل مهمة لمن يحمل دورها (إن كان شخصًا واحدًا)، ويبلغ كل واحد بعمله.', en: 'Creates the stages and tasks, gives each task to the person holding its role (when there is one), and tells everyone about their work.' } },
-      { who: { ar: 'كل عضو في الفريق', en: 'Every team member' }, what: { ar: 'يفتح «عملي» فيجد ما عليه الآن، وما ينتظر قراره، وما هو متوقف ولماذا. كل سطر يفتح مكان العمل مباشرة.', en: 'Opens “My work” to see what is theirs now, what waits for their decision, and what cannot start yet and why. Every row opens the exact place to act.' }, where: 'myWork' },
+      { who: { ar: 'كل عضو في الفريق', en: 'Every team member' }, what: { ar: 'يفتح «مهامي» فيجد في قائمة واحدة ما ينتظر قراره وما عليه الآن، وتحتها ما هو متوقف ولماذا. كل سطر يفتح مكان العمل مباشرة.', en: 'Opens “My tasks” to see, in one list, what waits for their decision and what is theirs now, with what cannot start yet (and why) folded underneath. Every row opens the exact place to act.' }, where: 'myWork' },
       { who: { ar: 'صاحب المهمة', en: 'Task owner' }, what: { ar: 'يعلّم بنود القائمة، ويرفق الدليل المطلوب (رابط أو ملف أو ملاحظة)، ثم «تم الإنجاز» أو «إرسال للاعتماد».', en: 'Ticks the checklist, attaches the evidence asked for (link, file or note), then “Mark done” or “Send for approval”.' } },
-      { who: { ar: 'المعتمِد', en: 'Approver' }, what: { ar: 'يجد الطلب في «المراجعات» ويعتمد، أو يطلب تعديلًا مع ملاحظة. لا أحد يعتمد عمله بنفسه.', en: 'Finds it in “Reviews” and approves, or requests changes with a note. Nobody approves their own work.' }, where: 'reviews' },
-      { who: { ar: 'مدير الإنتاج', en: 'Production manager' }, what: { ar: 'يضيف الدروس في «المنهج والدروس» عندما يتضح المنهج. تُسند ملفاتها تلقائيًا لمن اختاره في الفريق.', en: 'Adds the lessons under “Curriculum & lessons” once the curriculum is clear. Their files go to the people chosen for the team.' } },
+      { who: { ar: 'المعتمِد', en: 'Approver' }, what: { ar: 'يجد الطلب أعلى «مهامي» تحت «بانتظار قرارك» ويعتمد، أو يطلب تعديلًا مع ملاحظة. لا أحد يعتمد عمله بنفسه.', en: 'Finds it at the top of “My tasks”, under “Waiting for your decision”, and approves, or requests changes with a note. Nobody approves their own work.' }, where: 'reviews' },
+      { who: { ar: 'مدير الإنتاج', en: 'Production manager' }, what: { ar: 'يضيف الدروس من صفحة الكورس («إضافة درس») عندما يتضح المنهج. تُسند ملفاتها تلقائيًا لمن اختاره في الفريق.', en: 'Adds the lessons from the course page (“Add lesson”) once the curriculum is clear. Their files go to the people chosen for the team.' } },
       { who: { ar: 'صنّاع المحتوى والمراجعون', en: 'Makers and reviewers' }, what: { ar: 'يصنع كل واحد ملفه ويرسله للمراجعة؛ المراجع يعلّق على الشريحة أو السطر أو الثانية ويعتمد أو يطلب تعديلًا.', en: 'Each maker produces their file and sends it for review; the reviewer comments on the slide, line or second and approves or requests changes.' }, where: 'production' },
       { who: { ar: 'عمليات التعلم', en: 'Learning operations' }, what: { ar: 'تنشر البرنامج على المنصة يدويًا وترفق الرابط دليلًا — لا يوجد ربط آلي بالمنصة.', en: 'Deploys the program on the platform by hand and attaches the link as evidence — there is no platform integration.' } },
       { who: { ar: 'الفريق ومختبرو القبول', en: 'Team and UAT testers' }, what: { ar: 'يجربون البرنامج كمتعلمين ويسجلون كل مشكلة. المشكلات العالية والحرجة تمنع الإصدار حتى تُصلح ويتحقق منها شخص آخر.', en: 'Try the program as learners and log every issue. High and critical issues hold the release until fixed and verified by someone else.' }, where: 'qa' },
@@ -53,7 +53,7 @@ export const GUIDE = {
   task: {
     title: { ar: 'حياة المهمة', en: 'A task’s life' } as Pair,
     states: [
-      { label: { ar: 'بانتظار ما قبلها', en: 'Waiting' }, body: { ar: 'مرحلتها لم تبدأ، أو مهمة قبلها لم تنتهِ. تظهر في «متوقف» مع السبب ومن يمسك السبب.', en: 'Its stage has not started, or a task before it is not finished. Listed under “Blocked” with the reason and who holds it.' } },
+      { label: { ar: 'بانتظار ما قبلها', en: 'Waiting' }, body: { ar: 'مرحلتها لم تبدأ، أو مهمة قبلها لم تنتهِ. تظهر في «متوقف على غيرك» مع السبب ومن يمسك السبب.', en: 'Its stage has not started, or a task before it is not finished. Listed under “Waiting on others” with the reason and who holds it.' } },
       { label: { ar: 'جاهزة', en: 'Ready' }, body: { ar: 'يمكن البدء الآن.', en: 'Can start now.' } },
       { label: { ar: 'قيد التنفيذ', en: 'In progress' }, body: { ar: 'صاحبها يعمل عليها: يعلّم البنود ويرفق الدليل.', en: 'Its owner is working: ticking lines, attaching evidence.' } },
       { label: { ar: 'بانتظار الاعتماد', en: 'Waiting for approval' }, body: { ar: 'أُرسلت مع دليلها. القرار يخص هذا الإرسال بالذات.', en: 'Sent with its evidence. The decision is about this exact submission.' } },
@@ -66,7 +66,7 @@ export const GUIDE = {
       { ar: 'المهمة التي تطلب دليلًا لا تكتمل بدونه.', en: 'A task that asks for evidence cannot finish without it.' },
       { ar: 'المعتمِد دائمًا شخص غير من أرسل العمل.', en: 'The approver is always someone other than the sender.' },
       { ar: 'من يحمل دور المهمة يستطيع العمل عليها حتى لو لم تُسند له باسمه.', en: 'Whoever holds a task’s role can work on it even if it is not in their name.' },
-      { ar: 'العمل الجاهز الذي بلا مسؤول يظهر لمدير الدورة في «عملي» ليسنده.', en: 'Ready work with nobody on it appears in the run manager’s “My work” to be assigned.' },
+      { ar: 'العمل الجاهز الذي بلا مسؤول يظهر لمدير الدورة في «مهامي» ليسنده.', en: 'Ready work with nobody on it appears in the run manager’s “My tasks” to be assigned.' },
     ] as Pair[],
   },
 
@@ -151,8 +151,8 @@ export const GUIDE = {
   alerts: {
     title: { ar: 'التنبيهات', en: 'Notifications' } as Pair,
     body: {
-      ar: 'تصل إلى جرس مساحة العمل: عند إسناد عمل لك، وطلب اعتماد منك، وطلب تعديل أو اعتماد عملك، وذكر اسمك، وبدء مرحلتك، واقتراب الموعد أو تجاوزه، والمشكلات والإصدارات. لا يصلك تنبيه عن فعل قمت به بنفسك، وتستطيع كتم أي نوع من «عملي» ← التنبيهات.',
-      en: 'They arrive in the workspace bell: when work is assigned to you, an approval is asked of you, your work is approved or sent back, you are mentioned, your stage starts, a deadline is close or passed, and for issues and releases. You are never told about your own action, and you can mute any kind from My work → Notifications.',
+      ar: 'تصل إلى جرس مساحة العمل: عند إسناد عمل لك، وطلب اعتماد منك، وطلب تعديل أو اعتماد عملك، وذكر اسمك، وبدء مرحلتك، واقتراب الموعد أو تجاوزه، والمشكلات والإصدارات. لا يصلك تنبيه عن فعل قمت به بنفسك، وتستطيع كتم أي نوع من قائمة «المزيد» ← «التنبيهات» في شريط الوحدة.',
+      en: 'They arrive in the workspace bell: when work is assigned to you, an approval is asked of you, your work is approved or sent back, you are mentioned, your stage starts, a deadline is close or passed, and for issues and releases. You are never told about your own action, and you can mute any kind from the module bar’s “More” menu → Notifications.',
     } as Pair,
   },
 };

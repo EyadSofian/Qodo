@@ -825,13 +825,13 @@ export function ActivityFeed({ entries, people, showWhere = true, empty }: { ent
           entry.course && entry.lesson && entry.asset
             ? assetRoute(entry.course.id, entry.lesson.id, entry.asset.assetType)
             : base && entry.task
-              ? `${base}/plan?task=${entry.task.id}`
+              ? `${base}?task=${entry.task.id}`
               : base && entry.issue
-                ? `${base}/qa?issue=${entry.issue.id}`
+                ? `${base}?panel=qa&issue=${entry.issue.id}`
                 : base && entry.release
-                  ? `${base}/qa?release=${entry.release.id}`
+                  ? `${base}?panel=qa&release=${entry.release.id}`
                   : base && entry.stage
-                    ? `${base}/plan?stage=${entry.stage.key}`
+                    ? `${base}?stage=${entry.stage.key}`
                     : entry.course && entry.lesson
                       ? `${base}/lessons/${entry.lesson.id}`
                       : base;

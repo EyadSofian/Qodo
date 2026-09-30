@@ -44,7 +44,7 @@ export function LessonWorkspace() {
       <PageHeader
         breadcrumbs={[
           { label: t('lp.nav.courses'), to: '/learning-production/courses' },
-          { label: data.course.name, to: `/learning-production/courses/${courseId}/production` },
+          { label: data.course.name, to: `/learning-production/courses/${courseId}` },
           ...(data.lesson.moduleName ? [{ label: data.lesson.moduleName }] : []),
           { label: data.lesson.name },
           { label: t(stageKey(requested)) },

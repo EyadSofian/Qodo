@@ -56,7 +56,7 @@ type Translate = (key: StringKey, vars?: Record<string, string | number>) => str
  * asset in production order that is not approved decides it; assets waiting
  * for an earlier one are skipped, because nobody can act on them yet.
  */
-function nextStep(lesson: MatrixLesson, types: readonly AssetType[], people: People, t: Translate) {
+export function nextStep(lesson: MatrixLesson, types: readonly AssetType[], people: People, t: Translate) {
   const present = types.map((type) => lesson.assets[type]).filter((asset) => asset && asset.applicable !== false);
   const open = present.filter((asset) => asset && !['APPROVED', 'LOCKED'].includes(asset.status) && !asset.blocked);
   if (present.length > 0 && open.length === 0 && present.every((asset) => asset && ['APPROVED', 'LOCKED'].includes(asset.status))) {

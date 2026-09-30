@@ -149,7 +149,7 @@ function TaskBody({ detail, replace, onDirty }: { detail: TaskDetail; replace: (
         <div>
           <p className="font-semibold">{t('lp.task.autoTitle')}</p>
           <p>{t(`lp.rule.${task.gate ? (task.gate.satisfied ? 'met' : 'notMet') : 'waiting'}` as StringKey, { done: task.gate?.done ?? 0, total: task.gate?.total ?? 0 })}</p>
-          <Link to={`/learning-production/courses/${courseId}/production`} className="mt-1 inline-block underline">
+          <Link to={`/learning-production/courses/${courseId}?panel=matrix`} className="mt-1 inline-block underline">
             {t('lp.task.openProduction')}
           </Link>
         </div>
@@ -636,7 +636,7 @@ function Checklist({
                     <span className="mt-0.5 flex flex-wrap items-center gap-1.5">
                       {line.origin !== 'WORKBOOK' && <OriginBadge origin={line.origin} source={line.source} compact />}
                       {line.status === 'ISSUE' && (
-                        <Link to={`/learning-production/courses/${detail.course.id}/qa?issue=${line.issueId ?? ''}`} className="inline-flex">
+                        <Link to={`/learning-production/courses/${detail.course.id}?panel=qa&issue=${line.issueId ?? ''}`} className="inline-flex">
                           <Pill tone="attention" icon={Flag}>{t('lp.checklist.issueLogged')}</Pill>
                         </Link>
                       )}

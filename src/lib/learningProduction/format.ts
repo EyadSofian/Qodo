@@ -158,6 +158,23 @@ export function assetRoute(courseId: string, lessonId: string, type: AssetType) 
   return `/learning-production/courses/${courseId}/lessons/${lessonId}/${ASSET_SLUGS[type]}`;
 }
 
+/**
+ * The course page is one page; its secondary tools open over it. These are
+ * the links into it — a task, or one of the panels — so every screen writes
+ * them the same way.
+ */
+export type CoursePanel = 'lessons' | 'matrix' | 'qa' | 'team' | 'files';
+
+export function courseRoute(courseId: string, params: Record<string, string | null | undefined> = {}) {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) if (value) search.set(key, value);
+  const text = search.toString();
+  return `/learning-production/courses/${courseId}${text ? `?${text}` : ''}`;
+}
+
+export const taskRoute = (courseId: string, taskId: string) => courseRoute(courseId, { task: taskId });
+export const panelRoute = (courseId: string, panel: CoursePanel, extra: Record<string, string | null | undefined> = {}) => courseRoute(courseId, { panel, ...extra });
+
 const KNOWN_ERRORS = new Set([
   'DEMO_DISABLED',
   'SERVER_ERROR',

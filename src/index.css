@@ -1293,6 +1293,143 @@
   }
   /* A name from the data, in whichever script: it truncates at its own end
      and still sits on the page's start edge. */
+  /* ── The simple screens (2026-09-30) ───────────────────────────
+     Three places in the bar, one list per page, states as a dot and a
+     word, secondary tools in drawers. No tabs inside pages. */
+  .lps-places {
+    @apply no-scrollbar flex min-w-0 items-stretch gap-1 overflow-x-auto;
+  }
+  .lps-place {
+    @apply relative inline-flex min-h-[56px] shrink-0 items-center gap-2 whitespace-nowrap px-3 text-[14.5px] font-semibold transition-colors duration-150;
+    color: var(--lps-muted);
+  }
+  .lps-place:hover {
+    color: var(--lps-ink);
+  }
+  .lps-place[aria-current='page'] {
+    color: var(--lps-ink);
+  }
+  .lps-place[aria-current='page']::after {
+    content: '';
+    position: absolute;
+    inset-inline: 10px;
+    bottom: 0;
+    height: 3px;
+    border-radius: 3px 3px 0 0;
+    background: var(--lps-grad);
+  }
+  .lps-menu {
+    @apply rounded-xl border bg-white;
+    border-color: #e6e8ec;
+    box-shadow: 0 18px 40px -18px rgb(15 23 42 / 0.35);
+  }
+  .lps-menu-item {
+    @apply flex w-full items-start gap-2.5 px-3.5 py-2.5 text-start text-[13.5px] font-medium disabled:opacity-50;
+    color: var(--lps-ink);
+  }
+  .lps-menu-item:hover:not(:disabled) {
+    background: #f5f6f8;
+  }
+  .lps-menu-item-danger {
+    color: var(--lps-danger);
+  }
+  .lps-dot {
+    @apply inline-flex items-center gap-1.5 whitespace-nowrap font-medium;
+    color: var(--lps-ink);
+  }
+  .lps-dot > span {
+    @apply inline-block h-2 w-2 shrink-0 rounded-full;
+    background: #b6bdc8;
+  }
+  .lps-dot-ok > span { background: #10b981; }
+  .lps-dot-progress > span { background: #3b82f6; }
+  .lps-dot-review > span { background: #8b5cf6; }
+  .lps-dot-attention > span { background: #f59e0b; }
+  .lps-dot-danger > span { background: #e11d48; }
+  .lps-dot-idle { color: var(--lps-muted); }
+  .lps-list > li + li {
+    border-top: 1px solid #eef0f3;
+  }
+  .lps-line {
+    @apply flex items-center gap-3 px-4 py-3.5 sm:px-5;
+    transition: background-color 0.15s ease;
+  }
+  a.lps-line:hover,
+  .lps-line:has(.lps-stretch:hover) {
+    background: #f8f9fb;
+  }
+  .lps-list > li:first-child > .lps-line,
+  .lps-list > li.lps-line:first-child {
+    border-start-start-radius: 14px;
+    border-start-end-radius: 14px;
+  }
+  .lps-list > li:last-child > .lps-line,
+  .lps-list > li.lps-line:last-child {
+    border-end-start-radius: 14px;
+    border-end-end-radius: 14px;
+  }
+  /* A link whose click area is the whole row it sits in. */
+  .lps-stretch::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+  }
+  .lps-disclosure {
+    @apply rounded-[14px] border bg-white;
+    border-color: #e6e8ec;
+  }
+  .lps-disclosure > summary {
+    @apply flex cursor-pointer select-none list-none items-center gap-2 px-4 py-3.5 text-[14px] sm:px-5;
+  }
+  .lps-disclosure > summary::-webkit-details-marker {
+    display: none;
+  }
+  .lps-disclosure-chevron {
+    flex-shrink: 0;
+    color: var(--lps-faint);
+    transform: rotate(-90deg);
+    transition: transform 0.15s ease;
+  }
+  [dir='rtl'] .lps-disclosure-chevron {
+    transform: rotate(90deg);
+  }
+  .lps-disclosure[open] > summary > .lps-disclosure-chevron {
+    transform: none;
+  }
+  .lps-disclosure-body {
+    @apply px-4 pb-4 sm:px-5;
+  }
+  .lps-disclosure-body > .lps-panel {
+    box-shadow: none;
+  }
+  .lps-drawer-wide {
+    @apply sm:w-[min(1180px,96vw)];
+  }
+  /* The stage track on a course: one short bar per stage. */
+  .lps-track {
+    @apply flex gap-1;
+  }
+  .lps-track > span {
+    @apply h-2 min-w-0 flex-1 rounded-full;
+    background: #e6e8ec;
+  }
+  .lps-track > span[data-state='DONE'] { background: #10b981; }
+  .lps-track > span[data-state='SKIPPED'] { background: repeating-linear-gradient(90deg, #cbd5e1 0 4px, transparent 4px 7px); }
+  .lps-track > span[data-current='true'] { background: var(--lps-grad); }
+  /* Five small squares for a lesson's files, in production order. */
+  .lps-pips {
+    @apply flex items-center gap-1;
+  }
+  .lps-pips > span {
+    @apply h-2.5 w-5 rounded-full;
+    background: #e6e8ec;
+  }
+  .lps-pips > span[data-tone='ok'] { background: #10b981; }
+  .lps-pips > span[data-tone='progress'] { background: #3b82f6; }
+  .lps-pips > span[data-tone='review'] { background: #8b5cf6; }
+  .lps-pips > span[data-tone='attention'] { background: #f59e0b; }
+  .lps-pips > span[data-tone='na'] { background: transparent; border: 1px dashed #cbd5e1; }
+
   .lps-bidi {
     unicode-bidi: plaintext;
     text-align: left;

@@ -117,24 +117,30 @@ const PublicNewEmployeeForm = hrPage(() => import('./features/hr/PublicNewEmploy
 const lpPage = <K extends string>(loader: () => Promise<Record<K, React.ComponentType>>, name: K) =>
   lazy(() => loader().then((module) => ({ default: module[name] })));
 const LearningProductionLayout = lpPage(() => import('./pages/learning-production/Layout'), 'LearningProductionLayout');
-const LpDashboard = lpPage(() => import('./pages/learning-production/Dashboard'), 'Dashboard');
+const LpHome = lpPage(() => import('./pages/learning-production/Home'), 'Home');
 const LpCourses = lpPage(() => import('./pages/learning-production/Courses'), 'Courses');
 const LpNewRun = lpPage(() => import('./pages/learning-production/NewRun'), 'NewRun');
 const LpTemplates = lpPage(() => import('./pages/learning-production/Templates'), 'Templates');
 const LpGuide = lpPage(() => import('./pages/learning-production/Guide'), 'Guide');
 const LpCourseWorkspace = lpPage(() => import('./pages/learning-production/CourseWorkspace'), 'CourseWorkspace');
-const LpRunOverview = lpPage(() => import('./pages/learning-production/course/RunOverview'), 'RunOverview');
-const LpRunPlan = lpPage(() => import('./pages/learning-production/course/RunPlan'), 'RunPlan');
-const LpCurriculum = lpPage(() => import('./pages/learning-production/course/Curriculum'), 'Curriculum');
-const LpCourseProduction = lpPage(() => import('./pages/learning-production/course/CourseProduction'), 'CourseProduction');
-const LpQaRelease = lpPage(() => import('./pages/learning-production/course/QaRelease'), 'QaRelease');
-const LpTeamTab = lpPage(() => import('./pages/learning-production/course/TeamTab'), 'TeamTab');
-const LpFilesActivity = lpPage(() => import('./pages/learning-production/course/FilesActivity'), 'FilesActivity');
 const LpCourseSettings = lpPage(() => import('./pages/learning-production/course/CourseSettings'), 'CourseSettings');
 const LpLessonWorkspace = lpPage(() => import('./pages/learning-production/LessonWorkspace'), 'LessonWorkspace');
-const LpMyWork = lpPage(() => import('./pages/learning-production/MyWork'), 'MyWork');
-const LpReviews = lpPage(() => import('./pages/learning-production/Reviews'), 'Reviews');
 const LpReports = lpPage(() => import('./pages/learning-production/Reports'), 'Reports');
+
+/**
+ * The course page used to be seven tabs; links to them (in notifications
+ * already sent, and in bookmarks) land on the one page, keeping their query
+ * — `plan?task=` becomes `?task=`, `qa?issue=` opens the QA drawer, and so on.
+ */
+function CourseTabRedirect({ panel }: { panel?: string }) {
+  const { courseId = '' } = useParams();
+  const { search } = useLocation();
+  const params = new URLSearchParams(search);
+  if (panel) params.set('panel', panel);
+  params.delete('view');
+  const text = params.toString();
+  return <Navigate to={`/learning-production/courses/${courseId}${text ? `?${text}` : ''}`} replace />;
+}
 
 export default function App() {
   return (
@@ -256,7 +262,7 @@ function Gate() {
         {/* E-Learning Production. Open to every session; the API decides what
             each person sees, the same choice Projects makes above. */}
         <Route path="/learning-production" element={<Suspended><LearningProductionLayout /></Suspended>}>
-          <Route index element={<Suspended><LpDashboard /></Suspended>} />
+          <Route index element={<Suspended><LpHome /></Suspended>} />
           <Route path="courses" element={<Suspended><LpCourses /></Suspended>} />
           {/* The old course wizard became "new production run". */}
           <Route path="courses/new" element={<Navigate to="/learning-production/runs/new" replace />} />
@@ -264,23 +270,23 @@ function Gate() {
           <Route path="guide" element={<Suspended><LpGuide /></Suspended>} />
           <Route path="templates" element={<Suspended><LpTemplates /></Suspended>} />
           <Route path="courses/:courseId" element={<Suspended><LpCourseWorkspace /></Suspended>}>
-            <Route index element={<Suspended><LpRunOverview /></Suspended>} />
-            <Route path="plan" element={<Suspended><LpRunPlan /></Suspended>} />
-            <Route path="curriculum" element={<Suspended><LpCurriculum /></Suspended>} />
-            <Route path="production" element={<Suspended><LpCourseProduction /></Suspended>} />
-            <Route path="qa" element={<Suspended><LpQaRelease /></Suspended>} />
-            <Route path="team" element={<Suspended><LpTeamTab /></Suspended>} />
-            <Route path="files" element={<Suspended><LpFilesActivity /></Suspended>} />
             <Route path="settings" element={<Suspended><LpCourseSettings /></Suspended>} />
-            {/* Links written before the rebuild keep landing. */}
-            <Route path="lessons" element={<Navigate to="../curriculum" relative="path" replace />} />
-            <Route path="assets" element={<Navigate to="../production" relative="path" replace />} />
-            <Route path="activity" element={<Navigate to="../files?view=activity" relative="path" replace />} />
           </Route>
+          {/* Links written for the old course tabs keep landing. */}
+          <Route path="courses/:courseId/plan" element={<CourseTabRedirect />} />
+          <Route path="courses/:courseId/curriculum" element={<CourseTabRedirect />} />
+          <Route path="courses/:courseId/lessons" element={<CourseTabRedirect />} />
+          <Route path="courses/:courseId/production" element={<CourseTabRedirect panel="matrix" />} />
+          <Route path="courses/:courseId/assets" element={<CourseTabRedirect panel="matrix" />} />
+          <Route path="courses/:courseId/qa" element={<CourseTabRedirect panel="qa" />} />
+          <Route path="courses/:courseId/team" element={<CourseTabRedirect panel="team" />} />
+          <Route path="courses/:courseId/files" element={<CourseTabRedirect panel="files" />} />
+          <Route path="courses/:courseId/activity" element={<CourseTabRedirect panel="files" />} />
           <Route path="courses/:courseId/lessons/:lessonId" element={<Suspended><LpLessonWorkspace /></Suspended>} />
           <Route path="courses/:courseId/lessons/:lessonId/:stage" element={<Suspended><LpLessonWorkspace /></Suspended>} />
-          <Route path="my-work" element={<Suspended><LpMyWork /></Suspended>} />
-          <Route path="reviews" element={<Suspended><LpReviews /></Suspended>} />
+          {/* My Work and Reviews are one list on the front page now. */}
+          <Route path="my-work" element={<Navigate to="/learning-production" replace />} />
+          <Route path="reviews" element={<Navigate to="/learning-production" replace />} />
           <Route path="reports" element={<Suspended><LpReports /></Suspended>} />
         </Route>
         <Route path="/mail" element={<Mail />} />

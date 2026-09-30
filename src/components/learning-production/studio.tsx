@@ -16,6 +16,7 @@ import {
   AlertTriangle,
   BookOpenCheck,
   CheckCircle2,
+  ChevronDown,
   Circle,
   CircleDashed,
   CircleDot,
@@ -440,7 +441,7 @@ export function BlockerList({ blockers, people, courseId, dense = false }: { blo
         return (
           <li key={`${blocker.type}:${blocker.key}`}>
             {blocker.type === 'TASK' && blocker.id ? (
-              <Link to={`/learning-production/courses/${courseId}/plan?task=${blocker.id}`} className="flex gap-1.5 hover:underline">
+              <Link to={`/learning-production/courses/${courseId}?task=${blocker.id}`} className="flex gap-1.5 hover:underline">
                 {body}
               </Link>
             ) : (
@@ -589,7 +590,7 @@ const drawerStack: symbol[] = [];
  * Escape and the scrim close it; focus moves in, stays in, and goes back to
  * whatever opened it.
  */
-export function Drawer({ open, onClose, title, subtitle, children, footer, labelledBy }: { open: boolean; onClose: () => void; title: ReactNode; subtitle?: ReactNode; children: ReactNode; footer?: ReactNode; labelledBy?: string }) {
+export function Drawer({ open, onClose, title, subtitle, children, footer, labelledBy, wide = false }: { open: boolean; onClose: () => void; title: ReactNode; subtitle?: ReactNode; children: ReactNode; footer?: ReactNode; labelledBy?: string; wide?: boolean }) {
   const { t, dir } = useI18n();
   const panel = useRef<HTMLDivElement>(null);
   const fallbackId = useId();
@@ -639,7 +640,7 @@ export function Drawer({ open, onClose, title, subtitle, children, footer, label
   return createPortal(
     <div className="lps" dir={dir}>
       <div className="lps-scrim" onClick={onClose} aria-hidden="true" />
-      <div ref={panel} role="dialog" aria-modal="true" aria-labelledby={headingId} tabIndex={-1} className="lps-drawer focus:outline-none">
+      <div ref={panel} role="dialog" aria-modal="true" aria-labelledby={headingId} tabIndex={-1} className={cx('lps-drawer focus:outline-none', wide && 'lps-drawer-wide')}>
         <header className="flex items-start justify-between gap-3 border-b px-4 py-3 sm:px-5" style={{ borderColor: 'var(--lps-line)' }}>
           <div className="min-w-0">
             <h2 id={headingId} className="lps-h2 text-[16px]">
@@ -730,5 +731,131 @@ export function ReasonPrompt({
       <textarea id={id} className="lps-input min-h-[110px]" value={reason} onChange={(event) => setReason(event.target.value)} maxLength={1000} />
       <p className="mt-1 text-[12px] lps-faint">{t('lp.reason.kept')}</p>
     </Drawer>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Menu, dot, disclosure                                                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A button that opens a short list of actions. Closes on a pick, on Escape
+ * and on a click anywhere else.
+ */
+export function Menu({ label, icon: Icon, children, buttonClassName = 'lps-btn', showLabel = false, align = 'end' }: { label: string; icon: LucideIcon; children: (close: () => void) => ReactNode; buttonClassName?: string; showLabel?: boolean; align?: 'start' | 'end' }) {
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (event: MouseEvent) => {
+      if (root.current && !root.current.contains(event.target as Node)) setOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+  return (
+    <div ref={root} className="relative">
+      <button type="button" className={buttonClassName} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((value) => !value)} title={label}>
+        <Icon size={16} aria-hidden="true" />
+        {showLabel ? <span>{label}</span> : <span className="sr-only">{label}</span>}
+      </button>
+      {open && (
+        <div role="menu" className={cx('lps-menu absolute z-40 mt-1.5 w-64 py-1.5', align === 'end' ? 'end-0' : 'start-0')}>
+          {children(() => setOpen(false))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function MenuItem({ icon: Icon, label, hint, onClick, to, danger, disabled }: { icon: LucideIcon; label: string; hint?: string; onClick?: () => void; to?: string; danger?: boolean; disabled?: boolean }) {
+  const body = (
+    <>
+      <Icon size={16} aria-hidden="true" className="mt-0.5 shrink-0" />
+      <span className="min-w-0">
+        <span className="block">{label}</span>
+        {hint && <span className="block text-[12px] lps-faint">{hint}</span>}
+      </span>
+    </>
+  );
+  const className = cx('lps-menu-item', danger && 'lps-menu-item-danger');
+  if (to) {
+    return (
+      <Link role="menuitem" to={to} className={className} onClick={onClick}>
+        {body}
+      </Link>
+    );
+  }
+  return (
+    <button type="button" role="menuitem" className={className} onClick={onClick} disabled={disabled}>
+      {body}
+    </button>
+  );
+}
+
+export type DotTone = 'ok' | 'progress' | 'review' | 'attention' | 'danger' | 'idle';
+
+/** A coloured dot and a word — the one way a state is shown on the simple screens. */
+// Written out whole so Tailwind keeps them: it drops classes it cannot find in the source.
+const DOT_CLASS: Record<DotTone, string> = {
+  ok: 'lps-dot-ok',
+  progress: 'lps-dot-progress',
+  review: 'lps-dot-review',
+  attention: 'lps-dot-attention',
+  danger: 'lps-dot-danger',
+  idle: 'lps-dot-idle',
+};
+
+export function Dot({ tone, children, className }: { tone: DotTone; children: ReactNode; className?: string }) {
+  return (
+    <span className={cx('lps-dot', DOT_CLASS[tone], className)}>
+      <span aria-hidden="true" />
+      {children}
+    </span>
+  );
+}
+
+const TONE_OF_STATUS: Record<string, DotTone> = {
+  APPROVED: 'ok',
+  DONE: 'ok',
+  LOCKED: 'ok',
+  VERIFIED: 'ok',
+  PUBLISHED: 'ok',
+  IN_PROGRESS: 'progress',
+  SUBMITTED: 'review',
+  UNDER_REVIEW: 'review',
+  RESUBMITTED: 'review',
+  FIXED: 'review',
+  SIGNED_OFF: 'review',
+  CANDIDATE: 'review',
+  CHANGES_REQUESTED: 'attention',
+  OPEN: 'attention',
+};
+
+/** The dot colour for any task, asset, issue or release state. */
+export const toneOfStatus = (status: string): DotTone => TONE_OF_STATUS[status] ?? 'idle';
+
+/**
+ * A heading that folds away what most people do not need to see every day.
+ * What is inside is only built once it is opened.
+ */
+export function Disclosure({ title, count, children, defaultOpen = false, className }: { title: ReactNode; count?: number; children: ReactNode; defaultOpen?: boolean; className?: string }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <details className={cx('lps-disclosure', className)} open={open} onToggle={(event) => setOpen((event.currentTarget as HTMLDetailsElement).open)}>
+      <summary>
+        <ChevronDown size={16} aria-hidden="true" className="lps-disclosure-chevron" />
+        <span className="font-semibold">{title}</span>
+        {count !== undefined && <span className="lps-count">{count}</span>}
+      </summary>
+      {open && <div className="lps-disclosure-body">{children}</div>}
+    </details>
   );
 }

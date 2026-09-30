@@ -18,8 +18,8 @@ import { Choice, LoadingRows, OriginBadge, PageHero, Panel, usePick } from '../.
 
 const WHERE: Record<string, string> = {
   newRun: '/learning-production/runs/new',
-  myWork: '/learning-production/my-work',
-  reviews: '/learning-production/reviews',
+  myWork: '/learning-production',
+  reviews: '/learning-production',
   production: '/learning-production/courses',
   qa: '/learning-production/courses',
 };

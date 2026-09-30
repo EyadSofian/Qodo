@@ -14,7 +14,7 @@
 
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Bug, CheckCircle2, ExternalLink, Flag, Package, Plus, Rocket, RotateCcw, ShieldCheck, Undo2 } from 'lucide-react';
+import { Bug, CheckCircle2, Circle, Clock3, ExternalLink, Flag, Package, Plus, Rocket, RotateCcw, ShieldCheck, Undo2 } from 'lucide-react';
 import { useI18n, type StringKey } from '../../../lib/i18n';
 import { runPaths, runsApi } from '../../../lib/learningProduction/runApi';
 import { invalidate, useLpQuery } from '../../../lib/learningProduction/hooks';
@@ -26,7 +26,6 @@ import { useToast } from '../../../components/ui';
 import { usePeople } from '../../../components/learning-production/kit';
 import {
   Busy,
-  Choice,
   Drawer,
   EmptyNote,
   ErrorNote,
@@ -43,7 +42,6 @@ import {
   usePick,
 } from '../../../components/learning-production/studio';
 import { useCourse } from '../CourseWorkspace';
-import { Readiness } from './RunOverview';
 import { IssueFields } from './TaskDrawer';
 import { ImpactPanel } from './ImpactPanel';
 
@@ -91,7 +89,7 @@ function SignoffStatus({ view }: { view: RunView }) {
       <ul>
         {tasks.map((task) => (
           <li key={task.id} className="border-b last:border-b-0" style={{ borderColor: 'var(--lps-line)' }}>
-            <Link to={`/learning-production/courses/${view.course.id}/plan?task=${task.id}`} className="flex items-center justify-between gap-2 px-4 py-2.5 hover:bg-[color:var(--lps-sunken)]">
+            <Link to={`/learning-production/courses/${view.course.id}?task=${task.id}`} className="flex items-center justify-between gap-2 px-4 py-2.5 hover:bg-[color:var(--lps-sunken)]">
               <span className="min-w-0 truncate text-[13px] font-medium">{pick(task.label)}</span>
               <TaskStatusPill display={task.display} />
             </Link>
@@ -146,6 +144,12 @@ function IssuesPanel({ view }: { view: RunView }) {
       bodyClassName="p-0"
       action={
         <div className="flex flex-wrap items-center gap-2">
+          <select className="lps-input !w-auto !py-1.5" value={filter} onChange={(event) => setFilter(event.target.value as IssueFilter)} aria-label={t('lp.qa.issues')}>
+            <option value="open">{t('lp.qa.filter.open')} ({count((issue) => ['OPEN', 'IN_PROGRESS'].includes(issue.status))})</option>
+            <option value="fixed">{t('lp.qa.filter.fixed')} ({count((issue) => issue.status === 'FIXED')})</option>
+            <option value="closed">{t('lp.qa.filter.closed')} ({count((issue) => ['VERIFIED', 'WONT_FIX'].includes(issue.status))})</option>
+            <option value="all">{t('lp.qa.filter.all')}</option>
+          </select>
           {data && data.stages.length > 1 && (
             <select className="lps-input !w-auto !py-1.5" value={stage} onChange={(event) => setStage(event.target.value)} aria-label={t('lp.qa.issueStage')}>
               <option value="">{t('lp.qa.allStages')}</option>
@@ -165,19 +169,6 @@ function IssuesPanel({ view }: { view: RunView }) {
         </div>
       }
     >
-      <div className="px-4">
-        <Choice<IssueFilter>
-          label={t('lp.qa.issues')}
-          value={filter}
-          onChange={setFilter}
-          options={[
-            { value: 'open', label: t('lp.qa.filter.open'), count: count((issue) => ['OPEN', 'IN_PROGRESS'].includes(issue.status)) },
-            { value: 'fixed', label: t('lp.qa.filter.fixed'), count: count((issue) => issue.status === 'FIXED') },
-            { value: 'closed', label: t('lp.qa.filter.closed'), count: count((issue) => ['VERIFIED', 'WONT_FIX'].includes(issue.status)) },
-            { value: 'all', label: t('lp.qa.filter.all') },
-          ]}
-        />
-      </div>
       {error ? (
         <div className="p-4">
           <ErrorNote error={error} onRetry={reload} />
@@ -806,5 +797,40 @@ function ReleaseDrawer({ releaseId, view, onClose }: { releaseId: string; view: 
         onConfirm={rollback}
       />
     </Drawer>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Release readiness                                                    */
+/* ------------------------------------------------------------------ */
+
+export function Readiness({ view }: { view: RunView }) {
+  const { t } = useI18n();
+  const checks = view.progress.readiness.checks;
+  return (
+    <ul className="space-y-1.5 text-[12.5px]">
+      {checks.map((check) => (
+        <li key={check.id} className="flex gap-2">
+          {check.ok ? (
+            <CheckCircle2 size={15} aria-hidden="true" className="mt-0.5 shrink-0" style={{ color: 'var(--lps-ok)' }} />
+          ) : check.gate ? (
+            <Clock3 size={15} aria-hidden="true" className="mt-0.5 shrink-0 lps-faint" />
+          ) : (
+            <Circle size={15} aria-hidden="true" className="mt-0.5 shrink-0 lps-faint" />
+          )}
+          <span className="min-w-0">
+            <span className={check.ok ? '' : 'font-medium'}>{t(`lp.readiness.${check.id}` as StringKey)}</span>
+            <span className="sr-only"> — {check.ok ? t('lp.readiness.met') : t('lp.readiness.notMet')}</span>
+            {!check.ok && check.id === 'STAGES_COMPLETE' && check.open?.length ? (
+              <span className="block lps-muted">{t('lp.readiness.openStages', { stages: [...check.open.slice(0, 2).map((key) => t(`lp.stageKey.${key}` as StringKey)), ...(check.open.length > 2 ? [t('lp.readiness.andMore', { n: check.open.length - 2 })] : [])].join(t('lp.listSeparator')) })}</span>
+            ) : null}
+            {check.id === 'CONTENT_APPROVED' && check.total !== undefined ? (
+              <span className="block lps-muted">{t('lp.progress.contentExplain', { done: check.done ?? 0, total: check.total })}</span>
+            ) : null}
+            {!check.ok && check.id === 'NO_BLOCKING_ISSUES' ? <span className="block lps-muted">{t('lp.readiness.blockingIssues', { n: check.count ?? 0 })}</span> : null}
+          </span>
+        </li>
+      ))}
+    </ul>
   );
 }
