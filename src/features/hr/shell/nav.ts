@@ -29,7 +29,7 @@ export interface HRNavItem {
 export const HR_NAV: HRNavItem[] = [
   { id: 'home', to: '/hr', end: true, icon: LayoutDashboard, label: { ar: 'الرئيسية', en: 'HR Home' }, visible: () => true },
   { id: 'recruitment', to: '/hr/recruitment', icon: BriefcaseBusiness, label: { ar: 'التوظيف', en: 'Recruitment' }, visible: (a) => a.recruitment || a.requests || a.kpiReview || a.rewards },
-  { id: 'people', to: '/hr/people', icon: UsersRound, label: { ar: 'الموظفون', en: 'People' }, visible: (a) => a.people },
+  { id: 'people', to: '/hr/people', icon: UsersRound, label: { ar: 'الموظفون', en: 'People' }, visible: (a) => a.people || a.team },
   { id: 'personnel', to: '/hr/personnel', icon: ClipboardList, label: { ar: 'شئون العاملين', en: 'Personnel' }, visible: (a) => a.personnel },
   { id: 'payroll', to: '/hr/payroll', icon: WalletCards, label: { ar: 'الرواتب والمزايا', en: 'Payroll & Benefits' }, visible: (a) => a.payroll },
   // Anyone with an HR record may read their own KPI, and anyone may find a colleague's seat.

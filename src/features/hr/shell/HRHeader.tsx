@@ -137,7 +137,7 @@ export function HRHeader() {
   return (
     <div className="sticky top-[calc(var(--topbar-h)+var(--sat))] z-30 flex items-center gap-3 border-b border-white/70 bg-white/55 px-4 py-2.5 shadow-[0_8px_30px_-24px_rgb(30_41_99/0.5)] backdrop-blur-xl sm:px-6">
       <div className="min-w-0 flex-1"><Breadcrumbs /></div>
-      {access?.people && <div className="hidden w-64 sm:block"><EmployeeSearch /></div>}
+      {(access?.people || access?.team) && <div className="hidden w-64 sm:block"><EmployeeSearch /></div>}
       {showAlerts && (
         <button
           type="button"

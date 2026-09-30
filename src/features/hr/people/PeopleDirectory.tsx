@@ -100,6 +100,7 @@ export function PeopleDirectory() {
   ].filter(Boolean) as Array<{ key: string; label: string }>;
   const faces = (data.employees ?? []).filter((employee) => employee.photoUrl && employee.status === 'active').slice(0, 8).map((employee) => ({ name: displayName(employee, lang), photoUrl: employee.photoUrl }));
   const odooInfo = data.odoo;
+  const teamOnly = data.scope === 'team';
 
   const columns: Array<Column<EmployeeSummary & { id: string }>> = [
     {
@@ -127,8 +128,10 @@ export function PeopleDirectory() {
     <div className="space-y-6">
       <PageHeader
         eyebrow={t('الموارد البشرية', 'Human resources')}
-        title={t('الموظفون', 'People')}
-        description={t('ملف HR هو السجل، وOdoo يضيف المسمى والقسم والمدير والصورة والإجازة اليوم — والربط بكود الموظف.', 'The HR file is the record; Odoo adds the job, department, manager, photo and today\'s leave — joined on the employee code.')}
+        title={teamOnly ? t('فريقي', 'My team') : t('الموظفون', 'People')}
+        description={teamOnly
+          ? t('كل من تحتك في هيكل Odoo بكل المستويات — ويتحدّث الفريق تلقائياً عند تغيير المدير في Odoo.', 'Everyone below you in Odoo\'s manager tree, at every level — it follows Odoo when a manager changes.')
+          : t('ملف HR هو السجل، وOdoo يضيف المسمى والقسم والمدير والصورة والإجازة اليوم — والربط بكود الموظف.', 'The HR file is the record; Odoo adds the job, department, manager, photo and today\'s leave — joined on the employee code.')}
         faces={faces}
         stats={odooInfo?.connected ? (
           <>
@@ -138,6 +141,14 @@ export function PeopleDirectory() {
           </>
         ) : undefined}
       />
+
+      {teamOnly && (odooInfo?.teamUnlinked || !odooInfo?.connected) && (
+        <p className="rounded-xl bg-amber-50 px-4 py-3 text-[13px] font-semibold text-amber-800">
+          {odooInfo?.connected
+            ? t('حسابك غير مربوط بموظف في Odoo، لذلك لا يظهر فريقك. اطلب من HR ربط حسابك بكود الموظف.', 'Your account is not linked to an Odoo employee, so your team cannot be shown. Ask HR to link your account to your employee code.')
+            : t('Odoo غير متاح الآن، وسيظهر فريقك عند عودته.', 'Odoo is unavailable right now; your team will show once it is back.')}
+        </p>
+      )}
 
       {analytics && (
         <div className="hr-stagger grid grid-cols-1 gap-4 lg:grid-cols-3">

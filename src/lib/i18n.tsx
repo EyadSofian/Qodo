@@ -977,6 +977,7 @@ const CORE_STRINGS = {
   'perm.tasks.delete_any': { ar: 'حذف المؤرشف نهائياً', en: 'Permanently delete archived tasks' },
   'perm.tasks.export': { ar: 'تصدير مهام الفريق', en: 'Export team tasks' },
   'perm.hr.view': { ar: 'رؤية ملفات موظفي HR', en: 'View HR employee records' },
+  'perm.hr.people.team': { ar: 'الموظفون: رؤية فريقه فقط (كل من تحته في Odoo)', en: 'People: only their own team (everyone below them in Odoo)' },
   'perm.hr.manage': { ar: 'تحديث وتعديل بيانات HR', en: 'Import and edit HR data' },
   'perm.hr.payroll': { ar: 'رؤية وتعديل الرواتب والتأمينات', en: 'View and edit payroll and insurance' },
   'perm.hr.recruitment.view': { ar: 'التوظيف: رؤية مكتب التوظيف كاملاً', en: 'Recruitment: see the whole recruitment desk' },

@@ -32,6 +32,7 @@ import {
   updatePersonnelCase,
 } from '../hr/personnel.js';
 import { odooEmployeeByKey, odooEmployeeFor, odooEmployeeIndex, odooPhoto } from '../hr/odooPeople.js';
+import { inTeam } from '../hr/teamReach.js';
 
 const router = Router();
 const uploadBody = express.raw({ type: () => true, limit: MAX_HR_WORKBOOK_BYTES });
@@ -177,7 +178,8 @@ router.get('/dashboard', async (req, res) => {
 
 router.get('/employees/:employeeCode', async (req, res) => {
   try {
-    res.json({ employee: await hrEmployeeFor(req.user, req.params.employeeCode) });
+    const team = await inTeam(req.user, req.params.employeeCode);
+    res.json({ employee: await hrEmployeeFor(req.user, req.params.employeeCode, { team }) });
   } catch (error) {
     // Someone Odoo has and the HR file does not still opens, for HR viewers.
     if (error?.code === 'hr_employee_not_found') {
@@ -297,7 +299,7 @@ router.get('/people/:employeeCode/photo', async (req, res) => {
       || can(user, PERMISSIONS.HR_RECRUITMENT_ASSIGN)
       || can(user, PERMISSIONS.HR_RECRUITMENT_APPROVE)
       || can(user, PERMISSIONS.HR_PERSONNEL_VIEW);
-    if (!staff && !(profile && profile.linkedUserId === user.id)) return res.status(403).end();
+    if (!staff && !(profile && profile.linkedUserId === user.id) && !(await inTeam(user, req.params.employeeCode))) return res.status(403).end();
     const index = await odooEmployeeIndex({ timeoutMs: 8000 });
     // The HR file's person first; someone only Odoo has, by `o<id>` or their Odoo code.
     const odoo = profile ? odooEmployeeFor(profile, index) : odooEmployeeByKey(req.params.employeeCode, index);

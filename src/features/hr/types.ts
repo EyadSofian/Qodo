@@ -23,6 +23,8 @@ export interface HRAccess {
   /** The caller's own employee code, when their account is linked to an HR record. */
   employeeCode: string | null;
   people: boolean;
+  /** People limited to the caller's own team in Odoo's manager tree (`hr.people.team`). */
+  team: boolean;
   manage: boolean;
   payroll: boolean;
   recruitment: boolean;
@@ -715,8 +717,10 @@ export interface WorkforceAnalytics {
 export interface PeopleData {
   employees: EmployeeSummary[];
   analytics: WorkforceAnalytics | null;
+  /** Everyone (`hr.view`), the caller's Odoo team (`hr.people.team`), or only themselves. */
+  scope?: 'all' | 'team' | 'self';
   selfOnly: boolean;
-  odoo?: { connected: boolean; odooOnly: number | null; onLeaveToday: number | null };
+  odoo?: { connected: boolean; odooOnly: number | null; onLeaveToday: number | null; teamUnlinked?: boolean };
 }
 
 export interface HomeData {

@@ -25,6 +25,9 @@ export const PERMISSIONS = {
   TASKS_DELETE_ANY: 'tasks.delete_any',
   TASKS_EXPORT: 'tasks.export',
   HR_VIEW: 'hr.view',
+  // People for a manager: only the employees below them in Odoo's manager tree,
+  // every level. Granted one person at a time; `hr.view` (everyone) wins over it.
+  HR_PEOPLE_TEAM: 'hr.people.team',
   HR_MANAGE: 'hr.manage',
   HR_PAYROLL: 'hr.payroll',
   // HR V2 — recruitment is its own desk with its own chain of authority. The
@@ -296,6 +299,7 @@ function deriveLegacyAuthority(permissions) {
 
 /** Every key HR V2 introduced. An array carrying any of them was saved after the split. */
 export const HR_V2_PERMISSIONS = [
+  PERMISSIONS.HR_PEOPLE_TEAM,
   PERMISSIONS.HR_RECRUITMENT_VIEW,
   PERMISSIONS.HR_RECRUITMENT_REQUEST,
   PERMISSIONS.HR_RECRUITMENT_REVIEW,

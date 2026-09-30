@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { __test as people, matchOdooEmployees, odooEmployeeByKey, odooEmployeeFor, odooOnlyCode } from './hr/odooPeople.js';
 import { odooResolver, timeOffView } from './hr/odooHR.js';
+import { ownOdooEmployee, teamOdooIds, teamReach } from './hr/teamReach.js';
 
 const row = (id, fields) => ({ id, active: true, name: `Person ${id}`, work_email: false, registration_number: false, department_id: [7, 'HR SECTOR'], parent_id: false, ...fields });
 
@@ -69,4 +70,46 @@ test('time off: HR sees everyone, anyone else only themselves; away-from-desk is
   const nobody = timeOffView(data, resolver, { everyone: false, ownOdooId: null, today: '2026-09-25' });
   assert.equal(nobody.requests.length, 0);
   assert.deepEqual(timeOffView(null, resolver, { everyone: true }), { connected: false });
+});
+
+test('a team is everyone below a manager in Odoo, every level, active only, and a loop cannot hang it', () => {
+  const rows = [
+    row(1, {}),
+    row(2, { parent_id: [1, 'Boss'] }),
+    row(3, { parent_id: [2, 'Lead'] }),
+    row(4, { parent_id: [3, 'Senior'] }),
+    row(5, { parent_id: [1, 'Boss'], active: false }),
+    row(6, { parent_id: [9, 'Elsewhere'] }),
+    row(7, { parent_id: [8, 'Loop'] }),
+    row(8, { parent_id: [7, 'Loop'] }),
+  ];
+  assert.deepEqual([...teamOdooIds(rows, 1)].sort(), [2, 3, 4], 'a resigned report is history, not team');
+  assert.deepEqual([...teamOdooIds(rows, 3)], [4]);
+  assert.deepEqual([...teamOdooIds(rows, 7)], [8]);
+});
+
+test('the team scope finds the manager through the HR link or a unique work e-mail, and reads only their tree', () => {
+  const index = indexOf([
+    row(1, { registration_number: '216', work_email: 'boss@test.local' }),
+    row(2, { registration_number: '300', parent_id: [1, 'Boss'] }),
+    row(3, { parent_id: [2, 'Lead'] }),
+    row(4, { registration_number: '400' }),
+  ]);
+  const profiles = [
+    { employeeCode: '216', linkedUserId: 'u-boss' },
+    { employeeCode: '300', linkedUserId: null },
+    { employeeCode: '400', linkedUserId: null },
+  ];
+  const resolver = odooResolver(profiles, index);
+  const manager = { id: 'u-boss', role: 'member', status: 'active', email: 'someone@test.local', permissions: ['hr.people.team'] };
+  const reach = teamReach(manager, profiles, resolver, index);
+  assert.deepEqual([...reach.codes].sort(), ['300', 'o3'], 'HR codes and Odoo-only people below them, not a peer');
+
+  const byEmail = { id: 'u-x', role: 'member', status: 'active', email: 'BOSS@test.local', permissions: ['hr.people.team'] };
+  assert.equal(ownOdooEmployee(byEmail, profiles.map((p) => ({ ...p, linkedUserId: null })), resolver, index).id, 1);
+
+  const stranger = { id: 'u-y', role: 'member', status: 'active', email: 'nobody@test.local', permissions: ['hr.people.team'] };
+  assert.equal(teamReach(stranger, profiles, resolver, index).codes.size, 0, 'no Odoo employee means no team, never everyone');
+  assert.equal(teamReach({ ...manager, permissions: ['hr.view', 'hr.people.team'] }, profiles, resolver, index), null, 'hr.view already reads everyone');
+  assert.equal(teamReach({ ...manager, permissions: [] }, profiles, resolver, index), null);
 });

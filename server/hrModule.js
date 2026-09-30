@@ -591,16 +591,21 @@ function stripSensitive(profile, includeSensitive, includePayroll) {
   return result;
 }
 
-export async function hrEmployeeFor(user, employeeCode) {
+/**
+ * `team` is the route's answer to "is this person below the caller in Odoo's
+ * manager tree" (`hr.people.team`). A manager reads their own people in full,
+ * pay included — the owner's decision — the same as the person themselves.
+ */
+export async function hrEmployeeFor(user, employeeCode, { team = false } = {}) {
   const state = await organizationState(organizationOf(user));
   const profile = state.profiles.get(String(employeeCode));
   if (!profile) throw new HRWorkbookError('hr_employee_not_found', 404);
   const self = profile.linkedUserId === user.id;
-  if (!self && !can(user, PERMISSIONS.HR_VIEW)) throw new HRWorkbookError('forbidden', 403);
+  if (!self && !team && !can(user, PERMISSIONS.HR_VIEW)) throw new HRWorkbookError('forbidden', 403);
   return stripSensitive(
     profile,
-    self || can(user, PERMISSIONS.HR_MANAGE),
-    self || can(user, PERMISSIONS.HR_PAYROLL)
+    self || team || can(user, PERMISSIONS.HR_MANAGE),
+    self || team || can(user, PERMISSIONS.HR_PAYROLL)
   );
 }
 
