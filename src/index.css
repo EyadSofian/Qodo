@@ -1467,6 +1467,380 @@
     background: #a7e3c4;
   }
 
+  /* ── Vivid layer (2026-09-30, by request: "not plain — contrast, colour,
+     motion"). Same simple layout; colour carries the area and the state,
+     motion is short and off under prefers-reduced-motion. ─────────── */
+  .lps {
+    background:
+      radial-gradient(1100px 480px at 100% -8%, rgb(var(--lp-a1, 79 70 229) / 0.11), transparent 62%),
+      radial-gradient(900px 520px at -8% 18%, rgb(var(--lp-a2, 147 51 234) / 0.08), transparent 60%),
+      #f3f4fa;
+    background-attachment: fixed;
+  }
+  .lps-panel {
+    border-color: #e4e6f0;
+    box-shadow:
+      0 1px 2px rgb(15 23 42 / 0.04),
+      0 14px 34px -26px rgb(30 27 75 / 0.35);
+  }
+
+  /* The module bar: deep navy into the area's colour, white text. */
+  .lps-bar {
+    background: linear-gradient(100deg, #0b1026 0%, #1e1b4b 48%, rgb(var(--lp-a1, 79 70 229)) 135%);
+    border-color: transparent;
+    color: #fff;
+    box-shadow: 0 12px 30px -20px rgb(15 23 42 / 0.75);
+  }
+  .lps-bar::before {
+    top: auto;
+    bottom: 0;
+    height: 2px;
+    opacity: 0.9;
+  }
+  .lps-bar .lps-place {
+    color: rgb(255 255 255 / 0.66);
+  }
+  .lps-bar .lps-place:hover,
+  .lps-bar .lps-place[aria-current='page'] {
+    color: #fff;
+  }
+  .lps-bar .lps-place[aria-current='page']::after {
+    display: none;
+  }
+  .lps-place-pill {
+    position: absolute;
+    z-index: -1;
+    inset: 10px 0;
+    border-radius: 12px;
+    background: rgb(255 255 255 / 0.13);
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.2);
+  }
+  .lps-bar .lps-count {
+    background: rgb(255 255 255 / 0.18);
+    color: #fff;
+  }
+  .lps-bar .lps-count-attention {
+    background: #fbbf24;
+    color: #451a03;
+  }
+  .lps-bar .lps-btn-quiet {
+    color: rgb(255 255 255 / 0.8);
+  }
+  .lps-bar .lps-btn-quiet:hover:not(:disabled) {
+    background: rgb(255 255 255 / 0.12);
+    color: #fff;
+  }
+  .lps-bar .lps-btn-primary {
+    background: #fff;
+    color: #312e81;
+    box-shadow: 0 8px 20px -10px rgb(0 0 0 / 0.5);
+  }
+  .lps-bar .lps-btn-primary:hover:not(:disabled) {
+    background: #eef2ff;
+  }
+
+  /* Primary action: the area's gradient, with a light sweep on hover. */
+  .lps-btn-primary {
+    background: var(--lps-grad);
+    box-shadow: 0 10px 22px -12px rgb(var(--lp-a1, 79 70 229) / 0.9);
+  }
+  .lps-btn-primary:hover:not(:disabled) {
+    background: var(--lps-grad);
+    filter: saturate(1.15) brightness(1.05);
+  }
+  .lps-btn-primary::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: linear-gradient(100deg, transparent 20%, rgb(255 255 255 / 0.35) 50%, transparent 80%);
+    transform: translateX(-100%);
+  }
+  .lps-btn-primary:hover:not(:disabled)::after {
+    animation: lps-sheen 0.9s ease;
+  }
+
+  /* Page hero: a band in the area's colours. */
+  .lps-hero-band {
+    position: relative;
+    isolation: isolate;
+    z-index: 5;
+    border-radius: 24px;
+    padding: 22px 22px 20px;
+    color: #fff;
+    background: linear-gradient(125deg, rgb(var(--lp-a1, 79 70 229)) 0%, rgb(var(--lp-a2, 147 51 234)) 100%);
+    box-shadow: 0 26px 50px -30px rgb(var(--lp-a1, 79 70 229) / 0.95);
+    animation: lps-rise 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  @media (min-width: 640px) {
+    .lps-hero-band {
+      padding: 26px 30px 24px;
+    }
+  }
+  .lps-hero-deco {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    overflow: hidden;
+    border-radius: inherit;
+    pointer-events: none;
+  }
+  .lps-hero-orb {
+    position: absolute;
+    z-index: -1;
+    border-radius: 9999px;
+    filter: blur(42px);
+    pointer-events: none;
+    animation: lps-drift 18s ease-in-out infinite alternate;
+  }
+  .lps-hero-orb-1 {
+    width: 340px;
+    height: 340px;
+    top: -150px;
+    inset-inline-start: -80px;
+    background: rgb(255 255 255 / 0.3);
+  }
+  .lps-hero-orb-2 {
+    width: 280px;
+    height: 280px;
+    bottom: -170px;
+    inset-inline-end: 8%;
+    background: rgb(244 114 182 / 0.38);
+    animation-duration: 25s;
+  }
+  .lps-hero-grid {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background-image:
+      linear-gradient(rgb(255 255 255 / 0.08) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(255 255 255 / 0.08) 1px, transparent 1px);
+    background-size: 30px 30px;
+    -webkit-mask-image: linear-gradient(to bottom, #000 10%, transparent 90%);
+    mask-image: linear-gradient(to bottom, #000 10%, transparent 90%);
+  }
+  .lps-hero-title {
+    @apply font-display text-[24px] font-bold leading-tight sm:text-[30px];
+    color: #fff;
+    text-shadow: 0 2px 18px rgb(0 0 0 / 0.18);
+  }
+  .lps-hero-sub {
+    @apply mt-1.5 text-[14.5px];
+    color: rgb(255 255 255 / 0.85);
+  }
+  .lps-hero-back {
+    @apply mb-2 inline-flex max-w-full items-center gap-1.5 text-[13px] font-medium transition-colors;
+    color: rgb(255 255 255 / 0.78);
+  }
+  .lps-hero-back:hover {
+    color: #fff;
+  }
+  .lps-hero-chip {
+    @apply inline-flex items-center gap-2 rounded-2xl px-3.5 py-2 text-start text-[13px] font-medium transition-transform duration-200;
+    background: rgb(255 255 255 / 0.15);
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.24);
+    color: #fff;
+  }
+  button.lps-hero-chip:hover,
+  a.lps-hero-chip:hover {
+    transform: translateY(-2px);
+    background: rgb(255 255 255 / 0.22);
+  }
+  .lps-hero-chip strong {
+    @apply font-display text-[22px] font-bold leading-none;
+  }
+  .lps-hero-chip-alert {
+    background: #fff;
+    color: #be123c;
+    box-shadow: 0 10px 24px -14px rgb(0 0 0 / 0.5);
+  }
+  .lps-hero-band .lps-btn,
+  .lps-hero-band .lps-btn-quiet {
+    background: rgb(255 255 255 / 0.16);
+    border-color: rgb(255 255 255 / 0.3);
+    color: #fff;
+  }
+  .lps-hero-band .lps-btn:hover:not(:disabled),
+  .lps-hero-band .lps-btn-quiet:hover:not(:disabled) {
+    background: rgb(255 255 255 / 0.26);
+  }
+  .lps-hero-band .lps-btn-primary {
+    background: #fff;
+    color: rgb(var(--lp-a1, 79 70 229));
+  }
+  .lps-hero-band .lps-input {
+    background: #fff;
+    border-color: transparent;
+    box-shadow: 0 8px 20px -14px rgb(0 0 0 / 0.5);
+  }
+  .lps-hero-band .lps-dot {
+    background: rgb(255 255 255 / 0.95);
+  }
+
+  /* States: a tinted pill with a dot — readable at a glance. */
+  .lps-dot {
+    @apply rounded-full py-0.5 pe-2.5 ps-2 font-semibold;
+    background: #eef0f4;
+    color: #475569;
+  }
+  .lps-dot-ok { background: #dcfce7; color: #047857; }
+  .lps-dot-progress { background: #dbeafe; color: #1d4ed8; }
+  .lps-dot-review { background: #ede9fe; color: #6d28d9; }
+  .lps-dot-attention { background: #fef3c7; color: #b45309; }
+  .lps-dot-danger { background: #ffe4e6; color: #be123c; }
+  .lps-dot-danger > span {
+    animation: lps-pulse 1.8s ease-out infinite;
+  }
+  .lps-dot-idle { background: #f1f5f9; color: #64748b; }
+
+  /* A coloured edge on a line, by what it needs. */
+  .lps-edge-review { box-shadow: inset -4px 0 0 #8b5cf6; }
+  .lps-edge-attention { box-shadow: inset -4px 0 0 #f59e0b; }
+  .lps-edge-danger { box-shadow: inset -4px 0 0 #e11d48; }
+  .lps-edge-progress { box-shadow: inset -4px 0 0 #3b82f6; }
+  .lps-edge-ok { box-shadow: inset -4px 0 0 #10b981; }
+  .lps-edge-idle { box-shadow: inset -4px 0 0 #cbd5e1; }
+  [dir='ltr'] .lps-edge-review { box-shadow: inset 4px 0 0 #8b5cf6; }
+  [dir='ltr'] .lps-edge-attention { box-shadow: inset 4px 0 0 #f59e0b; }
+  [dir='ltr'] .lps-edge-danger { box-shadow: inset 4px 0 0 #e11d48; }
+  [dir='ltr'] .lps-edge-progress { box-shadow: inset 4px 0 0 #3b82f6; }
+  [dir='ltr'] .lps-edge-ok { box-shadow: inset 4px 0 0 #10b981; }
+  [dir='ltr'] .lps-edge-idle { box-shadow: inset 4px 0 0 #cbd5e1; }
+
+  /* Action buttons by what they do. */
+  .lps-act {
+    @apply inline-flex min-h-[36px] items-center justify-center gap-1.5 rounded-xl px-4 text-[13px] font-bold text-white transition-transform duration-200;
+    box-shadow: 0 10px 20px -12px rgb(15 23 42 / 0.6);
+  }
+  .group:hover .lps-act {
+    transform: translateX(-3px);
+  }
+  [dir='ltr'] .group:hover .lps-act {
+    transform: translateX(3px);
+  }
+  .lps-act-review { background: linear-gradient(135deg, #8b5cf6, #6d28d9); }
+  .lps-act-fix { background: linear-gradient(135deg, #f59e0b, #ea580c); }
+  .lps-act-assign { background: linear-gradient(135deg, #3b82f6, #4f46e5); }
+  .lps-act-publish { background: linear-gradient(135deg, #10b981, #059669); }
+  .lps-act-go {
+    background: #fff;
+    color: var(--lps-ink);
+    box-shadow: inset 0 0 0 1px var(--lps-line-strong);
+  }
+
+  /* Section title with a coloured icon. */
+  .lps-icon-chip {
+    @apply grid h-8 w-8 shrink-0 place-items-center rounded-xl text-white;
+    box-shadow: 0 8px 18px -10px currentColor;
+  }
+  .lps-icon-violet { background: linear-gradient(135deg, #a78bfa, #7c3aed); color: #fff; }
+  .lps-icon-orange { background: linear-gradient(135deg, #fbbf24, #f97316); color: #fff; }
+  .lps-icon-blue { background: linear-gradient(135deg, #60a5fa, #4f46e5); color: #fff; }
+  .lps-icon-green { background: linear-gradient(135deg, #34d399, #059669); color: #fff; }
+  .lps-icon-rose { background: linear-gradient(135deg, #fb7185, #e11d48); color: #fff; }
+  .lps-icon-slate { background: linear-gradient(135deg, #94a3b8, #475569); color: #fff; }
+
+  /* Lists come in one after another. */
+  .lps-list > li {
+    animation: lps-row 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .lps-list > li:nth-child(2) { animation-delay: 30ms; }
+  .lps-list > li:nth-child(3) { animation-delay: 60ms; }
+  .lps-list > li:nth-child(4) { animation-delay: 90ms; }
+  .lps-list > li:nth-child(5) { animation-delay: 120ms; }
+  .lps-list > li:nth-child(6) { animation-delay: 150ms; }
+  .lps-list > li:nth-child(n + 7) { animation-delay: 180ms; }
+  .lps-line {
+    transition:
+      background-color 0.15s ease,
+      transform 0.2s ease;
+  }
+
+  /* Course cards. */
+  .lps-card {
+    @apply relative flex h-full flex-col gap-3 overflow-hidden rounded-[18px] border bg-white p-4 pt-5 sm:p-5 sm:pt-6;
+    border-color: #e4e6f0;
+    box-shadow: 0 14px 34px -26px rgb(30 27 75 / 0.35);
+    transition:
+      transform 0.25s cubic-bezier(0.22, 1, 0.36, 1),
+      box-shadow 0.25s ease;
+  }
+  .lps-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 26px 44px -26px var(--card-glow, rgb(79 70 229 / 0.6));
+  }
+  .lps-card-strip {
+    position: absolute;
+    inset-inline: 0;
+    top: 0;
+    height: 5px;
+  }
+  .lps-card-icon {
+    @apply grid h-10 w-10 shrink-0 place-items-center rounded-2xl text-white transition-transform duration-300;
+  }
+  .lps-card:hover .lps-card-icon {
+    transform: rotate(-8deg) scale(1.08);
+  }
+
+  /* Meters: a gradient that fills in. */
+  .lps-meter {
+    height: 9px;
+    background: #eceef5;
+  }
+  .lps-meter > span::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(100deg, transparent 30%, rgb(255 255 255 / 0.45) 50%, transparent 70%);
+    background-size: 200% 100%;
+    animation: lps-shimmer 2.6s ease-in-out infinite;
+  }
+
+  /* Stage track: the current stage glows. */
+  .lps-track > span {
+    height: 10px;
+    transition: transform 0.2s ease;
+  }
+  .lps-track > span:hover {
+    transform: scaleY(1.5);
+  }
+  .lps-track > span[data-current='true'] {
+    animation: lps-glow 2.2s ease-in-out infinite;
+  }
+
+  /* Lesson steps: the chosen one takes the area's colour. */
+  .lps-step-link-active {
+    background: var(--lps-grad);
+    box-shadow: 0 14px 28px -16px rgb(var(--lp-a1, 79 70 229) / 0.9);
+    color: #fff;
+  }
+  .lps-step-link-active .lps-step-mark:not(.lps-step-mark-done) {
+    background: #fff;
+    border-color: #fff;
+    color: rgb(var(--lp-a1, 79 70 229));
+  }
+  .lps-step-link-active .lps-step-mark-done {
+    background: #fff;
+    border-color: #fff;
+    color: #059669;
+  }
+  .lps-step-link-active span[class*='text-'],
+  .lps-step-link-active .lps-faint,
+  .lps-step-link-active .lps-muted {
+    color: rgb(255 255 255 / 0.85) !important;
+  }
+  .lps-step-mark-review { animation: lps-glow 2.4s ease-in-out infinite; }
+
+  /* Side cards on the course page. */
+  .lps-drawer::before {
+    background: var(--lps-grad);
+  }
+  .lps-side-title {
+    @apply mb-3 flex items-center gap-2.5 text-[14.5px] font-bold;
+  }
+
   .lps-bidi {
     unicode-bidi: plaintext;
     text-align: left;
@@ -1501,8 +1875,20 @@
     .lps-meter > span,
     .lps-meter > span::after,
     .lps-step::before,
-    .lps-count-attention {
+    .lps-count-attention,
+    .lps-hero-band,
+    .lps-hero-orb,
+    .lps-list > li,
+    .lps-dot-danger > span,
+    .lps-track > span,
+    .lps-step-mark-review {
       animation: none !important;
+    }
+    .lps-card:hover,
+    .group:hover .lps-act,
+    .lps-card:hover .lps-card-icon,
+    button.lps-hero-chip:hover {
+      transform: none !important;
     }
     .lps-lift:hover,
     .lps-btn:hover:not(:disabled) {
@@ -1603,4 +1989,9 @@
 @keyframes lps-row {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: none; }
+}
+
+@keyframes lps-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }

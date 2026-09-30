@@ -9,17 +9,18 @@
 
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Check, SkipForward, Undo2 } from 'lucide-react';
+import { Check, SkipForward, Undo2, Zap } from 'lucide-react';
 import { useI18n, type StringKey } from '../../../lib/i18n';
 import { runsApi } from '../../../lib/learningProduction/runApi';
 import { invalidate } from '../../../lib/learningProduction/hooks';
 import { lpErrorKey } from '../../../lib/learningProduction/format';
 import type { RunView, StageView, TaskSummary } from '../../../lib/learningProduction/runTypes';
 import { useToast } from '../../../components/ui';
-import { BlockerList, Disclosure, Dot, ReasonPrompt, toneOfStatus, useDay, usePick, type DotTone } from '../../../components/learning-production/studio';
+import { BlockerList, Disclosure, Dot, EDGE_CLASS, IconChip, ReasonPrompt, toneOfStatus, useDay, usePick, type DotTone, type EdgeTone } from '../../../components/learning-production/studio';
 import { cx } from '../../../lib/utils';
 
 const CLOSED = new Set(['DONE', 'APPROVED', 'WAIVED']);
+const EDGE_OF: Record<DotTone, EdgeTone> = { ok: 'ok', progress: 'progress', review: 'review', attention: 'attention', danger: 'danger', idle: 'idle' };
 
 /** Open work first, finished work last; the order of the plan otherwise. */
 function ordered(tasks: TaskSummary[]) {
@@ -44,7 +45,7 @@ export function RunStages({ view }: { view: RunView }) {
           <p className="text-[13px] lps-muted">
             {current ? t('lp.run.stageOf', { n: currentIndex + 1, total: stages.length }) : t('lp.course.where')}
           </p>
-          <h2 id="lp-where" className="font-display mt-0.5 text-[20px] font-bold leading-snug">
+          <h2 id="lp-where" className="font-display lps-gradient-text mt-0.5 text-[22px] font-bold leading-snug">
             {view.run.status === 'RELEASED' ? t('lp.course.released') : current ? pick(current.label) : t('lp.course.allStagesDone')}
           </h2>
           {next && <p className="mt-1 text-[13px] lps-muted">{t('lp.course.thenStage', { stage: pick(next.label) })}</p>}
@@ -60,7 +61,10 @@ export function RunStages({ view }: { view: RunView }) {
 
       {current && (
         <div className="mt-5">
-          <h3 className="mb-1 text-[14px] font-bold">{t('lp.course.needsNow')}</h3>
+          <h3 className="mb-2 flex items-center gap-2.5 text-[15px] font-bold">
+            <IconChip icon={Zap} tone="orange" size={15} />
+            {t('lp.course.needsNow')}
+          </h3>
           {current.blockers.length > 0 && (
             <div className="mb-2 text-[13px]">
               <BlockerList blockers={current.blockers} people={view.people} courseId={view.course.id} dense />
@@ -226,7 +230,7 @@ export function TaskLines({ tasks, view }: { tasks: TaskSummary[]; view: RunView
         const late = task.dueState === 'OVERDUE' && !closed;
         return (
           <li key={task.id}>
-            <button type="button" className="lps-line w-full text-start hover:bg-[#f8f9fb]" onClick={() => open(task.id)}>
+            <button type="button" className={cx('lps-line group w-full text-start hover:bg-[#f8f9fb]', !closed && EDGE_CLASS[late ? 'danger' : waiting ? 'idle' : EDGE_OF[toneOfStatus(task.display)]])} onClick={() => open(task.id)}>
               <span className="min-w-0 flex-1">
                 <span className={cx('block text-[14px] font-medium', closed && 'lps-muted')}>{pick(task.label)}</span>
                 <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px]">

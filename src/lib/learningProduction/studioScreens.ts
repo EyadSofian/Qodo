@@ -732,4 +732,6 @@ export const SCREEN_STRINGS: Record<string, Pair> = {
   'lp.taskPage.editAssignment': { ar: 'تعديل', en: 'Change' },
   'lp.taskPage.details': { ar: 'التفاصيل والسجل', en: 'Details and history' },
   'lp.taskPage.classification': { ar: 'التصنيف', en: 'Classification' },
+  'lp.home.lateChip': { ar: 'متأخر', en: 'late' },
+  'lp.lessonPage.ofApproved': { ar: 'من {total} ملفات معتمدة', en: 'of {total} files approved' },
 };

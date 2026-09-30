@@ -16,6 +16,7 @@ import { stageKey, stageSlug, statusKey } from '../../lib/learningProduction/for
 import { assetTypeFromSlug } from '@shared/learningProduction/constants';
 import type { AssetSummary, AssetType, LessonDetail } from '../../lib/learningProduction/types';
 import { ErrorPanel, SkeletonRows } from '../../components/learning-production/kit';
+import { CountUp, Hero } from '../../components/learning-production/studio';
 import { AssetWorkspace } from './AssetWorkspace';
 
 type StepTone = 'done' | 'review' | 'changes' | 'progress' | 'waiting' | 'idle' | 'na';
@@ -80,18 +81,28 @@ export function LessonWorkspace() {
 
   return (
     <div className="space-y-5">
-      <header>
-        <Link to={`/learning-production/courses/${courseId}`} className="mb-2 inline-flex max-w-full items-center gap-1.5 text-[13px] font-medium lps-muted hover:text-[color:var(--lps-ink)]">
-          <Back size={15} aria-hidden="true" className="shrink-0" />
-          <span className="lps-bidi truncate">{data.course.name}</span>
-        </Link>
-        <h1 className="lps-title lps-bidi">{data.lesson.name}</h1>
-        <p className="mt-1.5 flex flex-wrap gap-x-2 text-[14px] lps-muted">
-          {data.lesson.moduleName && <span className="lps-bidi">{data.lesson.moduleName}</span>}
-          {data.lesson.moduleName && <span aria-hidden="true">·</span>}
-          <span>{t('lp.lessonPage.filesApproved', { done: approved, total: applicable.length })}</span>
-        </p>
-      </header>
+      <Hero
+        back={
+          <Link to={`/learning-production/courses/${courseId}`} className="lps-hero-back">
+            <Back size={15} aria-hidden="true" className="shrink-0" />
+            <span className="lps-bidi truncate">{data.course.name}</span>
+          </Link>
+        }
+        title={data.lesson.name}
+        subtitle={data.lesson.moduleName ? <span className="lps-bidi">{data.lesson.moduleName}</span> : undefined}
+      >
+        <span className="lps-hero-chip">
+          <strong>
+            <CountUp value={approved} />
+          </strong>
+          {t('lp.lessonPage.ofApproved', { total: applicable.length })}
+        </span>
+        <span className="lps-hero-chip min-w-[160px] flex-1 sm:max-w-[260px]">
+          <span className="relative h-2 w-full overflow-hidden rounded-full bg-white/25">
+            <span className="absolute inset-y-0 start-0 rounded-full bg-white transition-[width] duration-700" style={{ width: `${applicable.length ? Math.round((approved / applicable.length) * 100) : 0}%` }} />
+          </span>
+        </span>
+      </Hero>
 
       <nav aria-label={t('lp.lesson.stages')} className="lps-panel no-scrollbar relative overflow-x-auto px-2 py-2">
         <ol className="flex min-w-max items-stretch sm:min-w-0">

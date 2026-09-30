@@ -14,9 +14,9 @@
  * A course with several runs shows the run in flight; `?run=` pins another.
  */
 
-import { createContext, useContext, useState, type ReactNode } from 'react';
+import { createContext, useContext, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link, useNavigate, useOutlet, useParams, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, CheckCircle2, FolderOpen, MoreHorizontal, Pause, Play, Plus, Settings2, ShieldCheck, Users, XCircle } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CheckCircle2, FolderOpen, MoreHorizontal, Pause, Play, Plus, Settings2, ShieldCheck, TrendingUp, Users, XCircle } from 'lucide-react';
 import { useI18n, type StringKey } from '../../lib/i18n';
 import { paths } from '../../lib/learningProduction/api';
 import { runPaths, runsApi } from '../../lib/learningProduction/runApi';
@@ -25,7 +25,7 @@ import { lpErrorKey, type CoursePanel } from '../../lib/learningProduction/forma
 import type { CourseDetail } from '../../lib/learningProduction/types';
 import type { RunView, RunsResponse } from '../../lib/learningProduction/runTypes';
 import { Avatar, useToast } from '../../components/ui';
-import { Dot, Drawer, ErrorNote, LoadingRows, Menu, MenuItem, Meter, ReasonPrompt, useDay, type DotTone } from '../../components/learning-production/studio';
+import { Dot, Drawer, ErrorNote, Hero, IconChip, LoadingRows, Menu, MenuItem, Meter, ReasonPrompt, useDay, type DotTone, type IconTone } from '../../components/learning-production/studio';
 import { SCENARIO_THEME } from '../../lib/learningProduction/theme';
 import { useLpTheme } from './Layout';
 import { RunStages } from './course/RunStages';
@@ -74,7 +74,8 @@ export function CourseWorkspace() {
   const [prompt, setPrompt] = useState<'cancel' | null>(null);
   const [busy, setBusy] = useState(false);
   // Before any early return: a hook must run on every render.
-  useLpTheme(run ? SCENARIO_THEME[run.run.scenario] : null);
+  const scenarioTheme = run ? SCENARIO_THEME[run.run.scenario] : null;
+  useLpTheme(scenarioTheme);
 
   if (loading && !detail) {
     return (
@@ -145,22 +146,16 @@ export function CourseWorkspace() {
   return (
     <CourseContext.Provider value={value}>
       <div className="lps-stagger space-y-5">
-        <header>
-          <Link to="/learning-production/courses" className="mb-2 inline-flex items-center gap-1.5 text-[13px] font-medium lps-muted hover:text-[color:var(--lps-ink)]">
-            <Back size={15} aria-hidden="true" />
-            {t('lp.nav.courses')}
-          </Link>
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0">
-              <h1 className="lps-title lps-bidi">{course.name}</h1>
-              <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[14px] lps-muted">
-                {facts.map((fact) => (
-                  <span key={fact}>{fact}</span>
-                ))}
-                {run && run.run.status !== 'ACTIVE' && <Dot tone={run.run.status === 'RELEASED' ? 'ok' : 'idle'}>{t(`lp.runStatus.${run.run.status}` as StringKey)}</Dot>}
-                {run && !legacy && run.run.status === 'ACTIVE' && <Dot tone={HEALTH_DOT[run.health.health] ?? 'idle'}>{t(`lp.health.${run.health.health}` as StringKey)}</Dot>}
-              </p>
-            </div>
+        <Hero
+          style={scenarioTheme ? ({ '--lp-a1': scenarioTheme.a1, '--lp-a2': scenarioTheme.a2 } as CSSProperties) : undefined}
+          back={
+            <Link to="/learning-production/courses" className="lps-hero-back">
+              <Back size={15} aria-hidden="true" />
+              {t('lp.nav.courses')}
+            </Link>
+          }
+          title={course.name}
+          actions={
             <div className="flex flex-wrap items-center gap-2">
               {canStartAnother && (
                 <Link to={`/learning-production/runs/new?course=${course.id}${run?.run.status === 'RELEASED' || legacy ? '&scenario=REVAMP' : ''}`} className="lps-btn">
@@ -204,8 +199,16 @@ export function CourseWorkspace() {
                 </Menu>
               )}
             </div>
-          </div>
-        </header>
+          }
+        >
+          {facts.map((fact) => (
+            <span key={fact} className="lps-hero-chip">
+              {fact}
+            </span>
+          ))}
+          {run && run.run.status !== 'ACTIVE' && <Dot tone={run.run.status === 'RELEASED' ? 'ok' : 'idle'} className="!py-2 !pe-3.5 !ps-3 text-[13px]">{t(`lp.runStatus.${run.run.status}` as StringKey)}</Dot>}
+          {run && !legacy && run.run.status === 'ACTIVE' && <Dot tone={HEALTH_DOT[run.health.health] ?? 'idle'} className="!py-2 !pe-3.5 !ps-3 text-[13px]">{t(`lp.health.${run.health.health}` as StringKey)}</Dot>}
+        </Hero>
 
         {created && (
           <div className="lps-callout-info flex flex-wrap items-center justify-between gap-2" role="status">
@@ -234,7 +237,7 @@ export function CourseWorkspace() {
               {run && <QualityCard view={run} onOpen={() => openPanel('qa')} />}
               <TeamCard detail={detail} onOpen={() => openPanel('team')} />
               <button type="button" className="lps-panel lps-lift flex w-full items-center gap-3 px-4 py-3.5 text-start" onClick={() => openPanel('files')}>
-                <FolderOpen size={18} aria-hidden="true" className="shrink-0 lps-muted" />
+                <IconChip icon={FolderOpen} tone="orange" size={15} />
                 <span className="min-w-0 flex-1">
                   <span className="block text-[14px] font-semibold">{t('lp.tab.files')}</span>
                   <span className="block text-[12.5px] lps-muted">{t('lp.course.filesHint')}</span>
@@ -281,10 +284,13 @@ export function CourseWorkspace() {
 /* Side cards                                                           */
 /* ------------------------------------------------------------------ */
 
-function SideCard({ title, children, action }: { title: string; children: ReactNode; action?: ReactNode }) {
+function SideCard({ title, icon, tone, children, action }: { title: string; icon: typeof Users; tone: IconTone; children: ReactNode; action?: ReactNode }) {
   return (
     <section className="lps-panel px-4 py-4">
-      <h2 className="mb-3 text-[14px] font-bold">{title}</h2>
+      <h2 className="lps-side-title">
+        <IconChip icon={icon} tone={tone} size={15} />
+        {title}
+      </h2>
       {children}
       {action && <div className="mt-3">{action}</div>}
     </section>
@@ -295,7 +301,7 @@ function ProgressCard({ view }: { view: RunView }) {
   const { t } = useI18n();
   const { content, workflow } = view.progress;
   return (
-    <SideCard title={t('lp.overview.progress')}>
+    <SideCard title={t('lp.overview.progress')} icon={TrendingUp} tone="green">
       <div className="space-y-3.5">
         <div>
           <div className="mb-1.5 flex items-baseline justify-between text-[13px]">
@@ -329,6 +335,8 @@ function QualityCard({ view, onOpen }: { view: RunView; onOpen: () => void }) {
   return (
     <SideCard
       title={t('lp.tab.qa')}
+      icon={ShieldCheck}
+      tone={blocking ? 'rose' : 'violet'}
       action={
         <button type="button" className="lps-btn w-full" onClick={onOpen}>
           <ShieldCheck size={15} aria-hidden="true" />
@@ -360,6 +368,8 @@ function TeamCard({ detail, onOpen }: { detail: CourseDetail; onOpen: () => void
   return (
     <SideCard
       title={t('lp.tab.team')}
+      icon={Users}
+      tone="blue"
       action={
         <button type="button" className="lps-btn w-full" onClick={onOpen}>
           <Users size={15} aria-hidden="true" />

@@ -15,6 +15,7 @@
 
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import { Bell, BookOpen, Database, Layers, MoreHorizontal, PanelTopClose, PanelTopOpen, Plus, Settings2 } from 'lucide-react';
 import { useShellChrome } from '../../components/Shell';
 import { useI18n } from '../../lib/i18n';
@@ -94,13 +95,18 @@ export function LearningProductionLayout() {
                 <span className="lps-logo">
                   <Layers size={17} aria-hidden="true" />
                 </span>
-                <span className="font-display text-[15px] font-bold">{t('lp.module')}</span>
+                <span className="font-display text-[15px] font-bold text-white">{t('lp.module')}</span>
               </Link>
               <nav aria-label={t('lp.module')} className="lps-places min-w-0 flex-1 md:ms-4">
                 {places.map((place) => (
-                  <NavLink key={place.to} to={place.to} end={place.end} className="lps-place">
-                    {place.label}
-                    {place.count ? <span className={cx('lps-count', place.attention && 'lps-count-attention')}>{place.count}</span> : null}
+                  <NavLink key={place.to} to={place.to} end={place.end} className="lps-place isolate">
+                    {({ isActive }) => (
+                      <>
+                        {isActive && <motion.span layoutId="lp-place" className="lps-place-pill" transition={{ type: 'spring', stiffness: 420, damping: 34 }} />}
+                        {place.label}
+                        {place.count ? <span className={cx('lps-count', place.attention && 'lps-count-attention')}>{place.count}</span> : null}
+                      </>
+                    )}
                   </NavLink>
                 ))}
               </nav>

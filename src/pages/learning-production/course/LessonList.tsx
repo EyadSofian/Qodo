@@ -10,13 +10,13 @@
 
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { ListPlus, Pencil, Table2 } from 'lucide-react';
+import { BookOpen, ListPlus, Pencil, Table2 } from 'lucide-react';
 import { useI18n } from '../../../lib/i18n';
 import { paths } from '../../../lib/learningProduction/api';
 import { useLpQuery } from '../../../lib/learningProduction/hooks';
 import { STAGES, stageKey } from '../../../lib/learningProduction/format';
 import type { AssetSummary, AssetType, CourseCapabilities, MatrixLesson, MatrixResponse } from '../../../lib/learningProduction/types';
-import { ErrorNote, LoadingRows } from '../../../components/learning-production/studio';
+import { ErrorNote, IconChip, LoadingRows } from '../../../components/learning-production/studio';
 import { nextStep } from './CourseLessons';
 
 function pipTone(asset: AssetSummary | undefined) {
@@ -51,7 +51,8 @@ export function LessonList({ courseId, capabilities, onOpen }: { courseId: strin
     <section className="lps-panel" aria-labelledby="lp-lessons">
       <header className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3.5 sm:px-5" style={{ borderColor: 'var(--lps-line)' }}>
         <div>
-          <h2 id="lp-lessons" className="text-[16px] font-bold">
+          <h2 id="lp-lessons" className="flex items-center gap-2.5 text-[16px] font-bold">
+            <IconChip icon={BookOpen} tone="blue" size={15} />
             {t('lp.course.lessons')}
           </h2>
           {data && data.lessons.length > 0 && <p className="mt-0.5 text-[12.5px] lps-muted">{t('lp.course.lessonsDone', { done: complete, total: data.lessons.length })}</p>}

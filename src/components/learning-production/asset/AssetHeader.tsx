@@ -17,7 +17,7 @@ import { isTextAsset } from '@shared/learningProduction/constants';
 import type { AssetAction, AssetDetail, Priority } from '../../../lib/learningProduction/types';
 import { Modal, Spinner, useToast } from '../../ui';
 import { ConfirmDialog, PersonSelect, PriorityChip, ProvenanceField, usePeople } from '../kit';
-import { Dot, Menu, MenuItem, toneOfStatus } from '../studio';
+import { Dot, EDGE_CLASS, Menu, MenuItem, toneOfStatus } from '../studio';
 import { runsApi } from '../../../lib/learningProduction/runApi';
 import { invalidate } from '../../../lib/learningProduction/hooks';
 import { useAsset } from './AssetContext';
@@ -107,7 +107,7 @@ export function AssetHeader() {
   const tone = evaluation.blocked ? 'idle' : toneOfStatus(asset.status);
 
   return (
-    <header className="lps-panel mb-4 px-4 py-3.5 sm:px-5">
+    <header className={cx('lps-panel mb-4 px-4 py-3.5 sm:px-5', EDGE_CLASS[due === 'OVERDUE' && tone !== 'ok' ? 'danger' : tone === 'danger' ? 'danger' : tone])}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <h2 className="flex flex-wrap items-center gap-x-3 gap-y-1">

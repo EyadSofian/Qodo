@@ -246,9 +246,9 @@ export function OriginBadge({ origin, source, compact = false }: { origin: Origi
 /* ------------------------------------------------------------------ */
 
 const METER_FILL = {
-  accent: 'var(--lps-action)',
-  ok: '#10b981',
-  attention: '#f59e0b',
+  accent: 'var(--lps-grad)',
+  ok: 'linear-gradient(90deg, #6ee7b7, #10b981 45%, #059669)',
+  attention: 'linear-gradient(90deg, #fcd34d, #f59e0b)',
 } as const;
 
 export function Meter({ value, label, tone = 'accent' }: { value: number; label?: string; tone?: 'accent' | 'ok' | 'attention' }) {
@@ -859,3 +859,65 @@ export function Disclosure({ title, count, children, defaultOpen = false, classN
     </details>
   );
 }
+
+/* ------------------------------------------------------------------ */
+/* Hero band and coloured titles                                        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The top of a page: a band in the area's colours (or the page's own, via
+ * `style`) with the title, one line under it, the page's actions, and room
+ * for a row of chips.
+ */
+export function Hero({ back, title, subtitle, actions, children, style }: { back?: ReactNode; title: ReactNode; subtitle?: ReactNode; actions?: ReactNode; children?: ReactNode; style?: CSSProperties }) {
+  return (
+    <header className="lps-hero-band" style={style}>
+      {/* The decoration is clipped on its own layer, so a menu opened from the band can spill out of it. */}
+      <span className="lps-hero-deco" aria-hidden="true">
+        <span className="lps-hero-grid" />
+        <span className="lps-hero-orb lps-hero-orb-1" />
+        <span className="lps-hero-orb lps-hero-orb-2" />
+      </span>
+      {back}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="lps-hero-title lps-bidi">{title}</h1>
+          {subtitle && <div className="lps-hero-sub">{subtitle}</div>}
+        </div>
+        {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+      </div>
+      {children && <div className="mt-5 flex flex-wrap gap-2">{children}</div>}
+    </header>
+  );
+}
+
+export type IconTone = 'violet' | 'orange' | 'blue' | 'green' | 'rose' | 'slate';
+
+const ICON_TONE: Record<IconTone, string> = {
+  violet: 'lps-icon-violet',
+  orange: 'lps-icon-orange',
+  blue: 'lps-icon-blue',
+  green: 'lps-icon-green',
+  rose: 'lps-icon-rose',
+  slate: 'lps-icon-slate',
+};
+
+/** A small gradient square with an icon — the colour of a section. */
+export function IconChip({ icon: Icon, tone, size = 16 }: { icon: LucideIcon; tone: IconTone; size?: number }) {
+  return (
+    <span className={cx('lps-icon-chip', ICON_TONE[tone])} aria-hidden="true">
+      <Icon size={size} />
+    </span>
+  );
+}
+
+export type EdgeTone = 'review' | 'attention' | 'danger' | 'progress' | 'ok' | 'idle';
+
+export const EDGE_CLASS: Record<EdgeTone, string> = {
+  review: 'lps-edge-review',
+  attention: 'lps-edge-attention',
+  danger: 'lps-edge-danger',
+  progress: 'lps-edge-progress',
+  ok: 'lps-edge-ok',
+  idle: 'lps-edge-idle',
+};
