@@ -1,30 +1,67 @@
 /**
- * One lesson: a compact header and its five stages as tabs. The stage is in
- * the URL — `/lessons/:lessonId/ppt` — so a link to "Lesson 8's PPT" opens
- * exactly that. `?asset=ppt` works too, for links written by hand.
+ * One lesson: its name, a way back to the course, and its five files as
+ * steps in production order — outline, slides, script, voice-over, video.
+ * Each step says its state in a word; the chosen one opens below. The step is
+ * in the URL — `/lessons/:lessonId/ppt` — so a link to "Lesson 8's slides"
+ * opens exactly that. `?asset=ppt` works too, for links written by hand.
  */
 
-import { Navigate, NavLink, useParams, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, NavLink, useParams, useSearchParams } from 'react-router-dom';
+import { ArrowLeft, ArrowRight, Check } from 'lucide-react';
 import { useI18n } from '../../lib/i18n';
-import { cx, formatDate } from '../../lib/utils';
+import { cx } from '../../lib/utils';
 import { paths } from '../../lib/learningProduction/api';
 import { useLpQuery } from '../../lib/learningProduction/hooks';
-import { BLOCKED_META, STAGE_COLOR, STAGE_ICON, STATUS_META, stageKey, stageSlug, statusKey } from '../../lib/learningProduction/format';
+import { stageKey, stageSlug, statusKey } from '../../lib/learningProduction/format';
 import { assetTypeFromSlug } from '@shared/learningProduction/constants';
-import type { AssetType, LessonDetail } from '../../lib/learningProduction/types';
-import { ErrorPanel, PageHeader, PersonChip, ProgressBar, SkeletonRows } from '../../components/learning-production/kit';
+import type { AssetSummary, AssetType, LessonDetail } from '../../lib/learningProduction/types';
+import { ErrorPanel, SkeletonRows } from '../../components/learning-production/kit';
 import { AssetWorkspace } from './AssetWorkspace';
 
+type StepTone = 'done' | 'review' | 'changes' | 'progress' | 'waiting' | 'idle' | 'na';
+
+function stepTone(asset: AssetSummary): StepTone {
+  if (asset.applicable === false) return 'na';
+  if (asset.status === 'APPROVED' || asset.status === 'LOCKED') return 'done';
+  if (asset.blocked) return 'waiting';
+  if (['SUBMITTED', 'UNDER_REVIEW', 'RESUBMITTED'].includes(asset.status)) return 'review';
+  if (asset.status === 'CHANGES_REQUESTED') return 'changes';
+  if (asset.status === 'IN_PROGRESS') return 'progress';
+  return 'idle';
+}
+
+// Written out whole so Tailwind keeps them.
+const WORD_CLASS: Record<StepTone, string> = {
+  done: 'text-emerald-700',
+  review: 'text-violet-700',
+  changes: 'text-amber-700',
+  progress: 'text-blue-700',
+  waiting: 'lps-faint',
+  idle: 'lps-muted',
+  na: 'lps-faint',
+};
+
+const MARK_CLASS: Record<StepTone, string> = {
+  done: 'lps-step-mark-done',
+  review: 'lps-step-mark-review',
+  changes: 'lps-step-mark-changes',
+  progress: 'lps-step-mark-progress',
+  waiting: 'lps-step-mark-waiting',
+  idle: 'lps-step-mark-idle',
+  na: 'lps-step-mark-na',
+};
+
 export function LessonWorkspace() {
-  const { t, lang } = useI18n();
+  const { t, dir } = useI18n();
   const { courseId = '', lessonId = '', stage } = useParams();
   const [params] = useSearchParams();
   const { data, error, loading, reload } = useLpQuery<LessonDetail>(paths.lesson(lessonId));
+  const Back = dir === 'rtl' ? ArrowRight : ArrowLeft;
 
   if (loading && !data) {
     return (
       <>
-        <div className="skeleton mb-3 h-16 w-full rounded-2xl" />
+        <div className="skeleton mb-3 h-16 w-2/3 rounded-2xl" />
         <SkeletonRows rows={5} />
       </>
     );
@@ -38,77 +75,51 @@ export function LessonWorkspace() {
     return <Navigate to={`/learning-production/courses/${courseId}/lessons/${lessonId}/${stageSlug(fallback)}`} replace />;
   }
   const asset = data.assets.find((entry) => entry.assetType === requested);
+  const applicable = data.assets.filter((entry) => entry.applicable !== false);
+  const approved = applicable.filter((entry) => entry.status === 'APPROVED' || entry.status === 'LOCKED').length;
 
   return (
-    <>
-      <PageHeader
-        breadcrumbs={[
-          { label: t('lp.nav.courses'), to: '/learning-production/courses' },
-          { label: data.course.name, to: `/learning-production/courses/${courseId}` },
-          ...(data.lesson.moduleName ? [{ label: data.lesson.moduleName }] : []),
-          { label: data.lesson.name },
-          { label: t(stageKey(requested)) },
-        ]}
-        title={data.lesson.name}
-        meta={
-          <>
-            <span className="flex items-center gap-2 text-[12.5px] text-ink-muted">
-              <span className="w-24">
-                <ProgressBar value={data.progress.percent} label={t('lp.progress')} />
-              </span>
-              <span className="font-semibold tabular-nums text-ink">{data.progress.percent}%</span>
-            </span>
-            {data.currentStage && (
-              <span className="text-[12.5px] text-ink-muted">
-                {t('lp.lesson.currentStage')}: <span className="font-semibold text-ink">{t(stageKey(data.currentStage))}</span>
-              </span>
-            )}
-            {data.lesson.ownerUserId && (
-              <span className="text-[12.5px] text-ink-muted">
-                <PersonChip userId={data.lesson.ownerUserId} people={data.people} size={20} />
-              </span>
-            )}
-            {data.lesson.targetDate && (
-              <span className="text-[12.5px] text-ink-muted">
-                {t('lp.dueDate')}: {formatDate(data.lesson.targetDate, lang)}
-              </span>
-            )}
-          </>
-        }
-      />
+    <div className="space-y-5">
+      <header>
+        <Link to={`/learning-production/courses/${courseId}`} className="mb-2 inline-flex max-w-full items-center gap-1.5 text-[13px] font-medium lps-muted hover:text-[color:var(--lps-ink)]">
+          <Back size={15} aria-hidden="true" className="shrink-0" />
+          <span className="lps-bidi truncate">{data.course.name}</span>
+        </Link>
+        <h1 className="lps-title lps-bidi">{data.lesson.name}</h1>
+        <p className="mt-1.5 flex flex-wrap gap-x-2 text-[14px] lps-muted">
+          {data.lesson.moduleName && <span className="lps-bidi">{data.lesson.moduleName}</span>}
+          {data.lesson.moduleName && <span aria-hidden="true">·</span>}
+          <span>{t('lp.lessonPage.filesApproved', { done: approved, total: applicable.length })}</span>
+        </p>
+      </header>
 
-      <nav aria-label={t('lp.lesson.stages')} className="no-scrollbar relative mb-4 flex gap-1 overflow-x-auto rounded-2xl border border-surface-line bg-white p-1">
-        {data.assets.map((entry) => {
-          const meta = entry.blocked ? BLOCKED_META : STATUS_META[entry.status];
-          const StatusIcon = meta.icon;
-          const StageIcon = STAGE_ICON[entry.assetType];
-          return (
-            <NavLink
-              key={entry.assetType}
-              to={`/learning-production/courses/${courseId}/lessons/${lessonId}/${stageSlug(entry.assetType)}`}
-              className={({ isActive }) =>
-                cx(
-                  'flex min-w-[130px] flex-1 items-center gap-2 rounded-xl px-3 py-2 text-[13px] font-semibold transition-colors',
-                  isActive ? 'bg-navy text-white' : 'text-ink hover:bg-surface-sunken'
-                )
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  <StageIcon size={15} className={isActive ? undefined : STAGE_COLOR[entry.assetType]} aria-hidden="true" />
-                  <span className="flex-1 truncate">{t(stageKey(entry.assetType))}</span>
-                  <span className="flex items-center gap-1 text-[11px] font-normal opacity-80" title={entry.blocked ? t('lp.blocked') : t(statusKey(entry.status))}>
-                    <StatusIcon size={12} aria-hidden="true" />
-                    <span className="sr-only">{entry.blocked ? t('lp.blocked') : t(statusKey(entry.status))}</span>
+      <nav aria-label={t('lp.lesson.stages')} className="lps-panel no-scrollbar relative overflow-x-auto px-2 py-2">
+        <ol className="flex min-w-max items-stretch sm:min-w-0">
+          {data.assets.map((entry, index) => {
+            const tone = stepTone(entry);
+            const word = entry.applicable === false ? t('lp.lessonPage.notNeeded') : entry.blocked ? t('lp.lessonPage.notYet') : t(statusKey(entry.status));
+            return (
+              <li key={entry.assetType} className="flex flex-1 items-center">
+                <NavLink
+                  to={`/learning-production/courses/${courseId}/lessons/${lessonId}/${stageSlug(entry.assetType)}`}
+                  className={({ isActive }) => cx('lps-step-link', isActive && 'lps-step-link-active')}
+                >
+                  <span className={cx('lps-step-mark', MARK_CLASS[tone])} aria-hidden="true">
+                    {tone === 'done' ? <Check size={14} strokeWidth={3} /> : index + 1}
                   </span>
-                </>
-              )}
-            </NavLink>
-          );
-        })}
+                  <span className="min-w-0 text-start">
+                    <span className="block whitespace-nowrap text-[13.5px] font-semibold">{t(stageKey(entry.assetType))}</span>
+                    <span className={cx('block whitespace-nowrap text-[12px]', WORD_CLASS[tone])}>{word}</span>
+                  </span>
+                </NavLink>
+                {index < data.assets.length - 1 && <span aria-hidden="true" className={cx('lps-step-join', tone === 'done' && 'lps-step-join-done')} />}
+              </li>
+            );
+          })}
+        </ol>
       </nav>
 
       {asset ? <AssetWorkspace key={asset.id} assetId={asset.id} /> : null}
-    </>
+    </div>
   );
 }

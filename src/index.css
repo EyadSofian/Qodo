@@ -1430,6 +1430,43 @@
   .lps-pips > span[data-tone='attention'] { background: #f59e0b; }
   .lps-pips > span[data-tone='na'] { background: transparent; border: 1px dashed #cbd5e1; }
 
+  /* The five files of a lesson, as steps. */
+  .lps-step-link {
+    @apply flex min-w-0 flex-1 items-center gap-2.5 rounded-xl px-3 py-2.5 transition-colors;
+    color: var(--lps-ink);
+  }
+  .lps-step-link:hover {
+    background: #f5f6f8;
+  }
+  .lps-step-link-active {
+    background: #eef2ff;
+    box-shadow: inset 0 0 0 1.5px #c7d2fe;
+  }
+  .lps-step-mark {
+    @apply grid h-8 w-8 shrink-0 place-items-center rounded-full text-[13px] font-bold;
+    border: 1.5px solid #d5d9e0;
+    background: #fff;
+    color: var(--lps-muted);
+  }
+  .lps-step-mark-done { background: #10b981; border-color: #10b981; color: #fff; }
+  .lps-step-mark-review { border-color: #8b5cf6; color: #6d28d9; }
+  .lps-step-mark-changes { border-color: #f59e0b; color: #b45309; }
+  .lps-step-mark-progress { border-color: #3b82f6; color: #1d4ed8; }
+  .lps-step-mark-waiting { border-style: dashed; color: var(--lps-faint); }
+  .lps-step-mark-na { border-style: dashed; color: var(--lps-faint); opacity: 0.6; }
+  .lps-step-link-active .lps-step-mark:not(.lps-step-mark-done) {
+    background: var(--lps-action);
+    border-color: var(--lps-action);
+    color: #fff;
+  }
+  .lps-step-join {
+    @apply mx-1 hidden h-[2px] w-6 shrink-0 rounded-full sm:block lg:w-10;
+    background: #e6e8ec;
+  }
+  .lps-step-join-done {
+    background: #a7e3c4;
+  }
+
   .lps-bidi {
     unicode-bidi: plaintext;
     text-align: left;

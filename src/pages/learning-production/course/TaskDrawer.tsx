@@ -51,15 +51,17 @@ import {
   BlockerList,
   Busy,
   Drawer,
-  DueTag,
   ErrorNote,
   LoadingRows,
   OriginBadge,
   PersonLine,
   Pill,
   ReasonPrompt,
-  StageStatusPill,
-  TaskStatusPill,
+  Disclosure,
+  Dot,
+  Menu,
+  MenuItem,
+  toneOfStatus,
   useDay,
   usePick,
 } from '../../../components/learning-production/studio';
@@ -85,12 +87,9 @@ export function TaskDrawer({ taskId, onClose }: { taskId: string; onClose: () =>
       title={data ? pick(data.task.label) : t('lp.task.loading')}
       subtitle={
         data ? (
-          <span className="flex flex-wrap items-center gap-1.5 text-[12px]">
+          <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]">
             <span className="lps-muted">{pick(data.stage.label)}</span>
-            <StageStatusPill status={data.stage.status} />
-            <TaskStatusPill display={data.task.display} />
-            {data.task.classification !== 'REQUIRED' && <Pill tone="outline">{t(`lp.classification.${data.task.classification}` as StringKey)}</Pill>}
-            <OriginBadge origin={data.task.origin} source={data.task.source} />
+            <Dot tone={data.task.display === 'BLOCKED' ? 'idle' : toneOfStatus(data.task.display)}>{t(`lp.taskStatus.${data.task.display}` as StringKey)}</Dot>
           </span>
         ) : null
       }
@@ -113,7 +112,6 @@ function TaskBody({ detail, replace, onDirty }: { detail: TaskDetail; replace: (
   const [evidenceTarget, setEvidenceTarget] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
   const [overrideReason, setOverrideReason] = useState('');
-  const [menu, setMenu] = useState(false);
   const { task, evaluation: ev, primary } = detail;
   const actions = ev.actions;
   const people = detail.people;
@@ -318,26 +316,25 @@ function TaskBody({ detail, replace, onDirty }: { detail: TaskDetail; replace: (
       <section aria-label={t('lp.task.next')} className="space-y-2">
         {primaryBlock}
         {secondary.length > 0 && (
-          <div className="relative">
-            <button type="button" className="lps-btn-quiet !min-h-8" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu((value) => !value)}>
-              <MoreHorizontal size={15} aria-hidden="true" />
-              {t('lp.task.moreActions')}
-            </button>
-            {menu && (
-              <div role="menu" className="lps-panel absolute start-0 z-10 mt-1 w-56 py-1 shadow-panel">
-                {secondary.map((item) => (
-                  <button key={item.key} type="button" role="menuitem" className="flex w-full items-center gap-2 px-3 py-2 text-start text-[13px] hover:bg-[color:var(--lps-sunken)]" onClick={() => { setMenu(false); item.onClick(); }}>
-                    <item.icon size={14} aria-hidden="true" />
-                    {item.label}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+          <Menu label={t('lp.task.moreActions')} icon={MoreHorizontal} buttonClassName="lps-btn-quiet !min-h-8" showLabel align="start">
+            {(close) =>
+              secondary.map((item) => (
+                <MenuItem
+                  key={item.key}
+                  icon={item.icon}
+                  label={item.label}
+                  onClick={() => {
+                    close();
+                    item.onClick();
+                  }}
+                />
+              ))
+            }
+          </Menu>
         )}
       </section>
 
-      <About detail={detail} />
+      <What detail={detail} />
       <Assignment detail={detail} onChange={(body) => run('assign', () => runsApi.assignTask(task.id, body), 'lp.task.saved')} />
       {detail.checklist.length > 0 && (
         <Checklist
@@ -372,12 +369,17 @@ function TaskBody({ detail, replace, onDirty }: { detail: TaskDetail; replace: (
       )}
       {detail.submissions.length > 0 && <Submissions detail={detail} />}
       <Discussion detail={detail} onPost={(body) => run('comment', () => runsApi.comment(task.id, body))} />
-      <section aria-labelledby="task-history">
-        <h3 id="task-history" className="lps-eyebrow mb-2">
-          {t('lp.task.history')}
-        </h3>
-        <ActivityFeed entries={detail.activity} people={people} showWhere={false} />
-      </section>
+      <Disclosure title={t('lp.taskPage.details')}>
+        <div className="space-y-5">
+          <About detail={detail} />
+          <section aria-labelledby="task-history">
+            <h3 id="task-history" className="lps-eyebrow mb-2">
+              {t('lp.task.history')}
+            </h3>
+            <ActivityFeed entries={detail.activity} people={people} showWhere={false} />
+          </section>
+        </div>
+      </Disclosure>
 
       <ReasonPrompt
         open={prompt === 'waive'}
@@ -470,100 +472,127 @@ function Block({ id, title, children, action }: { id: string; title: string; chi
   );
 }
 
-function About({ detail }: { detail: TaskDetail }) {
+/** What the task asks for, in plain words — the first thing after the action. */
+function What({ detail }: { detail: TaskDetail }) {
   const { t } = useI18n();
   const pick = usePick();
   const { task } = detail;
+  if (!task.description && !task.condition && !task.note && !task.sensitive && !task.externalTool && !(task.requiresEvidence && task.evidenceLabel)) return null;
+  return (
+    <section className="space-y-2 text-[14px] leading-relaxed">
+      {task.description && <p>{pick(task.description)}</p>}
+      {task.condition && (
+        <p>
+          <strong>{t('lp.task.condition')}</strong> {pick(task.condition)}
+        </p>
+      )}
+      {task.requiresEvidence && task.evidenceLabel && (
+        <p>
+          <strong>{t('lp.task.deliverable')}:</strong> {pick(task.evidenceLabel)}
+        </p>
+      )}
+      {task.note && <p className="lps-callout !text-[13px]">{pick(task.note)}</p>}
+      {task.sensitive && (
+        <p className="flex items-center gap-2 text-[13px] lps-muted">
+          <EyeOff size={14} aria-hidden="true" />
+          {t('lp.task.sensitiveNote')}
+        </p>
+      )}
+      {task.externalTool && (
+        <p className="flex items-center gap-2 text-[13px] lps-muted">
+          <ExternalLink size={14} aria-hidden="true" />
+          {t('lp.task.externalTool', { tool: task.externalTool })}
+        </p>
+      )}
+    </section>
+  );
+}
+
+/** Where the task comes from and how it is classified — reference, folded away. */
+function About({ detail }: { detail: TaskDetail }) {
+  const { t } = useI18n();
+  const { task } = detail;
   const source = task.source;
   return (
-    <Block id="task-about" title={t('lp.task.about')}>
-      <div className="space-y-2 text-[13px]">
-        {task.description && <p>{pick(task.description)}</p>}
-        {task.condition && (
-          <p>
-            <strong>{t('lp.task.condition')}</strong> {pick(task.condition)}
-          </p>
-        )}
-        {task.note && <p className="lps-callout !text-[12.5px]">{pick(task.note)}</p>}
-        {task.sensitive && (
-          <p className="flex items-center gap-2 text-[12.5px] lps-muted">
-            <EyeOff size={14} aria-hidden="true" />
-            {t('lp.task.sensitiveNote')}
-          </p>
-        )}
-        {task.externalTool && (
-          <p className="flex items-center gap-2 text-[12.5px] lps-muted">
-            <ExternalLink size={14} aria-hidden="true" />
-            {t('lp.task.externalTool', { tool: task.externalTool })}
-          </p>
-        )}
-        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[12.5px]">
-          <dt className="lps-muted">{t('lp.task.kind')}</dt>
-          <dd>{t(`lp.taskKind.${task.kind}` as StringKey)}</dd>
-          <dt className="lps-muted">{t('lp.task.source')}</dt>
-          <dd className="min-w-0">
-            <OriginBadge origin={task.origin} source={source} />
-            {source?.sheet && <span className="ms-2 lps-muted">{source.sheet}</span>}
+    <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-[13px]">
+      <dt className="lps-muted">{t('lp.task.kind')}</dt>
+      <dd>{t(`lp.taskKind.${task.kind}` as StringKey)}</dd>
+      {task.classification !== 'REQUIRED' && (
+        <>
+          <dt className="lps-muted">{t('lp.taskPage.classification')}</dt>
+          <dd>{t(`lp.classification.${task.classification}` as StringKey)}</dd>
+        </>
+      )}
+      <dt className="lps-muted">{t('lp.task.source')}</dt>
+      <dd className="min-w-0">
+        <OriginBadge origin={task.origin} source={source} />
+        {source?.sheet && <span className="ms-2 lps-muted">{source.sheet}</span>}
+      </dd>
+      {task.requiresApproval && (
+        <>
+          <dt className="lps-muted">{t('lp.task.approval')}</dt>
+          <dd>
+            {t(`lp.role.${task.reviewerRole}` as StringKey)}
+            {task.approvalOrigin === 'PROPOSED' && <Pill tone="attention" className="ms-2">{t('lp.origin.PROPOSED')}</Pill>}
           </dd>
-          {task.requiresApproval && (
-            <>
-              <dt className="lps-muted">{t('lp.task.approval')}</dt>
-              <dd>
-                {t(`lp.role.${task.reviewerRole}` as StringKey)}
-                {task.approvalOrigin === 'PROPOSED' && <Pill tone="attention" className="ms-2">{t('lp.origin.PROPOSED')}</Pill>}
-              </dd>
-            </>
-          )}
-          {task.requiresEvidence && task.evidenceLabel && (
-            <>
-              <dt className="lps-muted">{t('lp.task.deliverable')}</dt>
-              <dd>{pick(task.evidenceLabel)}</dd>
-            </>
-          )}
-        </dl>
-      </div>
-    </Block>
+        </>
+      )}
+    </dl>
   );
 }
 
 function Assignment({ detail, onChange }: { detail: TaskDetail; onChange: (body: Record<string, unknown>) => void }) {
   const { t } = useI18n();
+  const day = useDay();
   const { task } = detail;
   const canAssign = detail.evaluation.actions.ASSIGN.allowed;
-  const people = usePeople(canAssign);
+  const [editing, setEditing] = useState(false);
+  const people = usePeople(canAssign && editing);
   if (task.kind === 'AUTO') return null;
+  const name = (id: string | null, role: string | null) =>
+    id ? detail.people[id]?.name ?? t('common.removedUser') : role ? t(`lp.role.${role}` as StringKey) : t('lp.people.unassigned');
+  const late = task.dueState === 'OVERDUE' && !['DONE', 'APPROVED', 'WAIVED'].includes(task.status);
+
   return (
-    <Block id="task-assignment" title={t('lp.task.assignment')}>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <label className="block min-w-0">
-          <span className="lps-label">{t('lp.col.owner')}</span>
-          {canAssign ? (
-            <PersonSelect className="lps-input" value={task.assigneeUserId} people={people} exclude={task.reviewerUserId} placeholder={t('lp.people.unassigned')} onChange={(value) => onChange({ assigneeUserId: value })} />
-          ) : (
-            <PersonLine userId={task.assigneeUserId} people={detail.people} fallback={task.role ? t(`lp.role.${task.role}` as StringKey) : undefined} />
+    <section aria-labelledby="task-assignment" className="rounded-xl px-3.5 py-3" style={{ background: 'var(--lps-sunken)' }}>
+      <h3 id="task-assignment" className="sr-only">
+        {t('lp.task.assignment')}
+      </h3>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-[13.5px]">
+          <span>{t('lp.assetBar.maker', { name: name(task.assigneeUserId, task.role) })}</span>
+          {task.requiresApproval && <span className="before:mx-1.5 before:content-['·']">{t('lp.taskPage.approver', { name: name(task.reviewerUserId, task.reviewerRole) })}</span>}
+          {task.dueDate && (
+            <span className={cx("before:mx-1.5 before:content-['·']", late && 'font-semibold text-[color:var(--lps-danger)]')}>
+              {t(late ? 'lp.assetBar.late' : 'lp.assetBar.due', { day: day(task.dueDate) })}
+            </span>
           )}
-        </label>
-        {task.requiresApproval && (
-          <label className="block min-w-0">
-            <span className="lps-label">{t('lp.col.approver')}</span>
-            {canAssign ? (
-              <PersonSelect className="lps-input" value={task.reviewerUserId} people={people} exclude={task.assigneeUserId} placeholder={t('lp.people.unassigned')} onChange={(value) => onChange({ reviewerUserId: value })} />
-            ) : (
-              <PersonLine userId={task.reviewerUserId} people={detail.people} fallback={task.reviewerRole ? t(`lp.role.${task.reviewerRole}` as StringKey) : undefined} />
-            )}
-          </label>
+          {(task.priority === 'HIGH' || task.priority === 'URGENT') && <span className="before:mx-1.5 before:content-['·'] font-semibold text-amber-700">{t(`lp.priority.${task.priority}` as StringKey)}</span>}
+        </p>
+        {canAssign && (
+          <button type="button" className="lps-btn-quiet !min-h-8 !px-2" aria-expanded={editing} onClick={() => setEditing((value) => !value)}>
+            {editing ? t('common.close') : t('lp.taskPage.editAssignment')}
+          </button>
         )}
-        <label className="block min-w-0">
-          <span className="lps-label">{t('lp.col.due')}</span>
-          {canAssign ? (
-            <input type="date" className="lps-input" defaultValue={task.dueDate ?? ''} onBlur={(event) => event.target.value !== (task.dueDate ?? '') && onChange({ dueDate: event.target.value || null })} />
-          ) : (
-            <DueTag dueDate={task.dueDate} dueState={task.dueState} />
+      </div>
+      {editing && (
+        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <label className="block min-w-0">
+            <span className="lps-label">{t('lp.col.owner')}</span>
+            <PersonSelect className="lps-input" value={task.assigneeUserId} people={people} exclude={task.reviewerUserId} placeholder={t('lp.people.unassigned')} onChange={(value) => onChange({ assigneeUserId: value })} />
+          </label>
+          {task.requiresApproval && (
+            <label className="block min-w-0">
+              <span className="lps-label">{t('lp.col.approver')}</span>
+              <PersonSelect className="lps-input" value={task.reviewerUserId} people={people} exclude={task.assigneeUserId} placeholder={t('lp.people.unassigned')} onChange={(value) => onChange({ reviewerUserId: value })} />
+            </label>
           )}
-        </label>
-        <label className="block min-w-0">
-          <span className="lps-label">{t('lp.col.priority')}</span>
-          {canAssign ? (
+          <label className="block min-w-0">
+            <span className="lps-label">{t('lp.col.due')}</span>
+            <input type="date" className="lps-input" defaultValue={task.dueDate ?? ''} onBlur={(event) => event.target.value !== (task.dueDate ?? '') && onChange({ dueDate: event.target.value || null })} />
+          </label>
+          <label className="block min-w-0">
+            <span className="lps-label">{t('lp.col.priority')}</span>
             <select className="lps-input" value={task.priority} onChange={(event) => onChange({ priority: event.target.value })}>
               {['LOW', 'NORMAL', 'HIGH', 'URGENT'].map((value) => (
                 <option key={value} value={value}>
@@ -571,12 +600,10 @@ function Assignment({ detail, onChange }: { detail: TaskDetail; onChange: (body:
                 </option>
               ))}
             </select>
-          ) : (
-            <span className="text-[13px]">{t(`lp.priority.${task.priority}` as StringKey)}</span>
-          )}
-        </label>
-      </div>
-    </Block>
+          </label>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -619,7 +646,7 @@ function Checklist({
             {group.label && <p className="mb-1 text-[12px] font-semibold lps-muted">{group.label}</p>}
             <ul className="lps-panel divide-y" style={{ borderColor: 'var(--lps-line)' }}>
               {group.lines.map((line) => (
-                <li key={line.id} className="flex items-start gap-2.5 px-3 py-2" style={{ borderColor: 'var(--lps-line)' }}>
+                <li key={line.id} className="group flex items-start gap-2.5 px-3 py-2.5" style={{ borderColor: 'var(--lps-line)' }}>
                   <input
                     type="checkbox"
                     className="mt-1 h-4 w-4 shrink-0 accent-[color:var(--lps-accent)]"
@@ -634,7 +661,6 @@ function Checklist({
                       {!line.required && <span className="ms-1.5 text-[11.5px] lps-faint">({t('lp.checklist.optional')})</span>}
                     </p>
                     <span className="mt-0.5 flex flex-wrap items-center gap-1.5">
-                      {line.origin !== 'WORKBOOK' && <OriginBadge origin={line.origin} source={line.source} compact />}
                       {line.status === 'ISSUE' && (
                         <Link to={`/learning-production/courses/${detail.course.id}?panel=qa&issue=${line.issueId ?? ''}`} className="inline-flex">
                           <Pill tone="attention" icon={Flag}>{t('lp.checklist.issueLogged')}</Pill>
@@ -645,7 +671,8 @@ function Checklist({
                     </span>
                   </div>
                   {editable && busyKey !== line.id && (
-                    <div className="flex shrink-0 gap-1">
+                    // "Not applicable" and "log an issue" show on hover or focus: most lines are simply ticked.
+                    <div className={cx('flex shrink-0 gap-1', line.status === 'PENDING' && 'transition-opacity [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:focus-within:opacity-100 [@media(hover:hover)]:group-hover:opacity-100')}>
                       {line.status === 'PENDING' && (
                         <>
                           <button type="button" className="lps-btn-quiet !min-h-7 !px-1.5 text-[12px]" onClick={() => onNotApplicable(line)} title={t('lp.checklist.markNa')}>

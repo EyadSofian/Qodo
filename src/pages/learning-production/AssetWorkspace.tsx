@@ -110,10 +110,29 @@ export function AssetWorkspace({ assetId }: { assetId: string }) {
   const canUpload = Boolean(data.upload) && data.evaluation.actions.UPLOAD_VERSION.allowed;
   const showUpload = canUpload && (uploadOpen || (!data.currentVersion && data.asset.status !== 'NOT_STARTED' && data.asset.status !== 'ASSIGNED'));
 
+  // Notes only have somewhere to go once there is a version, or once someone
+  // has written one; before that the side panel would be an empty box.
+  const hasNotes = data.versions.length > 0 || (commentsQuery.data?.comments.length ?? 0) > 0;
+  const withSidebar = hasNotes && sidebarOpen;
+  // A file whose turn has not come, with nothing in it yet: one sentence, not an empty editor.
+  const waiting = data.evaluation.blocked && data.versions.length === 0 && !data.currentVersion;
+
+  if (waiting) {
+    return (
+      <AssetContext.Provider value={value}>
+        <AssetHeader />
+        <div className="lps-panel px-6 py-12 text-center">
+          <p className="text-[15px] font-semibold">{t('lp.assetBar.waitingTitle')}</p>
+          <p className="mx-auto mt-1 max-w-md text-[13.5px] lps-muted">{t('lp.assetBar.waitingBody')}</p>
+        </div>
+      </AssetContext.Provider>
+    );
+  }
+
   return (
     <AssetContext.Provider value={value}>
       <AssetHeader />
-      <div className={sidebarOpen ? 'grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]' : 'relative'}>
+      <div className={withSidebar ? 'grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]' : 'relative'}>
         <div className="min-w-0">
           {showUpload && <UploadPanel onClose={data.currentVersion ? () => setUploadOpen(false) : undefined} />}
           {viewVersionId && (
@@ -131,7 +150,7 @@ export function AssetWorkspace({ assetId }: { assetId: string }) {
           {type === 'VOICE_OVER' && !(showUpload && !data.currentVersion) && <AudioReviewer key={assetId} />}
           {type === 'VIDEO' && !(showUpload && !data.currentVersion) && <VideoReviewer key={assetId} />}
         </div>
-        {sidebarOpen ? (
+        {!hasNotes ? null : sidebarOpen ? (
           <ReviewSidebar onCollapse={() => setSidebarOpen(false)} />
         ) : (
           <button type="button" className="btn-navy btn-sm fixed bottom-24 end-4 z-30 shadow-lift md:bottom-6" onClick={() => setSidebarOpen(true)}>
