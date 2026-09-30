@@ -850,10 +850,11 @@
   }
 
   /* ── E-Learning Production studio ─────────────────────────────────────
-     Calm glass (2026-09-30, after "the colours tire the eye and mislead"):
-     a faint wash of the area's colour behind frosted sheets, dark text on
-     light surfaces, one indigo for actions, and colour otherwise only where
-     it means something — green done, amber needs a person, rose late,
+     Calm and flat (2026-09-30, after "the colours tire the eye" and then
+     "still not restful"): a plain light canvas, white sheets with hairline
+     borders, the title with no box around it, underlined navigation,
+     one indigo for actions, and colour otherwise only where it means
+     something — green done, amber needs a person, rose late,
      indigo in progress, grey waiting. Motion is a short rise-in and the
      sliding tab; nothing pulses or floats. `--lp-a1` / `--lp-a2` ("r g b") are the area gradient; the
      layout puts them on <body> (class `lp-theme`) so drawers, which portal
@@ -890,8 +891,12 @@
     --lps-tab-active: #1e293b;
     position: relative;
     isolation: isolate;
+    background: #f5f6f8;
     color: var(--lps-ink);
     font-variant-numeric: tabular-nums;
+  }
+  .lps-bar .lps-tab {
+    min-height: 52px;
   }
   [dir='rtl'] .lps {
     --lps-slide-from: -100%;
@@ -933,15 +938,13 @@
     color: transparent;
   }
 
-  /* Sheets */
+  /* Sheets — flat white on a plain canvas, a hairline border, almost no
+     shadow. Fewer layers is what makes a dense screen restful. */
   .lps-panel {
-    @apply rounded-2xl border;
-    background: var(--lps-panel);
-    border-color: rgb(255 255 255 / 0.85);
-    box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.95),
-      0 1px 2px rgb(15 23 42 / 0.04),
-      0 22px 44px -30px rgb(49 46 129 / 0.45);
+    @apply rounded-[14px] border;
+    background: #fff;
+    border-color: #e6e8ec;
+    box-shadow: 0 1px 2px rgb(15 23 42 / 0.03);
   }
   .lps-panel-head {
     @apply flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3;
@@ -949,65 +952,73 @@
   }
   .lps-lift {
     transition:
-      transform 0.22s cubic-bezier(0.22, 1, 0.36, 1),
-      box-shadow 0.22s ease;
+      border-color 0.2s ease,
+      box-shadow 0.2s ease;
   }
   .lps-lift:hover {
-    transform: translateY(-1px);
-    box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.95),
-      0 18px 36px -26px rgb(15 23 42 / 0.35);
+    border-color: #d5d9e0;
+    box-shadow: 0 4px 14px -8px rgb(15 23 42 / 0.18);
   }
 
-  /* The module bar: frosted, over the aurora. Holds no fixed children. */
+  /* The module bar: plain white with a hairline. Holds no fixed children. */
   .lps-bar {
-    @apply border-b backdrop-blur-xl backdrop-saturate-150;
-    background: rgb(255 255 255 / 0.66);
-    border-color: rgb(255 255 255 / 0.8);
-    box-shadow: 0 10px 30px -24px rgb(49 46 129 / 0.5);
+    @apply border-b;
+    background: #fff;
+    border-color: #e6e8ec;
   }
   .lps-logo {
     @apply grid h-9 w-9 place-items-center rounded-xl text-white;
     background: var(--lps-tab-active);
   }
 
-  /* Tabs — the active one wears the area gradient (a shared, sliding pill). */
+  /* Tabs. Navigation (module and course sections) is underlined; a filter
+     inside a page is a segmented control. The indicator slides between
+     options (framer layoutId). */
   .lps-tabs {
     @apply no-scrollbar relative flex min-w-0 gap-1 overflow-x-auto;
   }
   .lps-tab {
-    @apply relative inline-flex min-h-[38px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl px-3.5 text-[13.5px] font-semibold transition-colors duration-200;
+    @apply relative inline-flex min-h-[40px] shrink-0 items-center gap-1.5 whitespace-nowrap px-3 text-[13.5px] font-semibold transition-colors duration-150;
     color: var(--lps-muted);
   }
   .lps-tab:hover {
     color: var(--lps-ink);
-    background: rgb(255 255 255 / 0.6);
   }
   .lps-tab[aria-current='page'],
   .lps-tab[aria-selected='true'] {
-    color: #fff;
+    color: var(--lps-ink);
   }
   .lps-tab-pill {
     position: absolute;
-    inset: 0;
     z-index: -1;
-    border-radius: 12px;
+    inset-inline: 10px;
+    bottom: 0;
+    height: 2px;
+    border-radius: 2px;
     background: var(--lps-tab-active);
   }
   .lps-tab .lps-count {
-    background: rgb(15 23 42 / 0.07);
+    background: rgb(15 23 42 / 0.06);
     color: var(--lps-muted);
   }
-  .lps-tab[aria-current='page'] .lps-count,
-  .lps-tab[aria-selected='true'] .lps-count {
-    background: rgb(255 255 255 / 0.25);
-    color: #fff;
-  }
   .lps-tabs-sheet {
-    @apply rounded-2xl border p-1;
-    background: rgb(255 255 255 / 0.6);
-    border-color: rgb(255 255 255 / 0.85);
-    box-shadow: 0 14px 30px -26px rgb(49 46 129 / 0.5);
+    @apply border-b;
+    border-color: #e6e8ec;
+  }
+  /* Segmented filters: a light track, the chosen option a white chip. */
+  .lps-segmented {
+    @apply inline-flex max-w-full gap-0.5 overflow-x-auto rounded-xl p-1;
+    background: #eef0f3;
+  }
+  .lps-segmented .lps-tab {
+    @apply min-h-[32px] rounded-lg px-3 text-[13px];
+  }
+  .lps-segmented .lps-tab-pill {
+    inset: 0;
+    height: auto;
+    border-radius: 8px;
+    background: #fff;
+    box-shadow: 0 1px 2px rgb(15 23 42 / 0.12);
   }
   .lps-count {
     @apply inline-flex min-w-[20px] items-center justify-center rounded-full px-1.5 text-[11px] font-bold leading-[18px];
@@ -1116,7 +1127,7 @@
   }
   .lps-table th {
     @apply sticky top-0 z-[1] whitespace-nowrap border-b px-3 py-2.5 text-start text-[11.5px] font-semibold;
-    background: rgb(248 250 252 / 0.96);
+    background: #f8f9fb;
     border-color: var(--lps-line);
     color: var(--lps-muted);
   }
@@ -1139,40 +1150,24 @@
     background: rgb(255 255 255 / 0.97);
   }
 
-  /* Heroes — the page's title on a light glass band. The area's colour
-     appears only in the icon chip and a thin wash in the corner. */
+  /* Page header — the title straight on the canvas, no box. The area's
+     colour appears once, in the small icon chip. */
   .lps-hero {
-    @apply relative rounded-3xl border px-5 py-5 sm:px-6;
-    background:
-      radial-gradient(120% 140% at 100% 0%, rgb(var(--lp-a1, 79 70 229) / 0.07), transparent 55%),
-      rgb(255 255 255 / 0.82);
-    border-color: rgb(255 255 255 / 0.9);
-    box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.95),
-      0 22px 44px -32px rgb(15 23 42 / 0.4);
+    @apply relative pb-1 pt-1;
   }
-  [dir='rtl'] .lps-hero {
-    background:
-      radial-gradient(120% 140% at 0% 0%, rgb(var(--lp-a1, 79 70 229) / 0.07), transparent 55%),
-      rgb(255 255 255 / 0.82);
-  }
-  .lps-hero-art {
+  .lps-hero-art,
+  .lps-hero-accent {
     display: none;
   }
   .lps-hero-icon {
-    @apply grid h-11 w-11 shrink-0 place-items-center rounded-2xl text-white;
+    @apply grid h-10 w-10 shrink-0 place-items-center rounded-xl text-white;
     background: var(--lps-grad);
-    box-shadow: 0 8px 16px -10px rgb(var(--lp-a1, 79 70 229) / 0.9);
   }
   .lps-hero-stat {
-    @apply rounded-2xl border px-3.5 py-2.5;
-    background: rgb(248 250 252 / 0.9);
-    border-color: var(--lps-line);
+    @apply rounded-xl border px-3.5 py-2.5;
+    background: #fff;
+    border-color: #e6e8ec;
     color: var(--lps-ink);
-  }
-  .lps-hero-accent {
-    @apply absolute inset-x-6 top-0 h-[3px] rounded-b-full;
-    background: var(--lps-grad);
   }
 
   /* Figures — each with a gradient chip in its tone. */
@@ -1267,18 +1262,12 @@
   /* The older production screens (asset workspace, matrix, settings,
      reports) use the workspace kit; inside the module it wears the glass. */
   body.lp-theme .lps .card {
-    background: rgb(255 255 255 / 0.8);
-    border-color: rgb(255 255 255 / 0.85);
-    box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.95),
-      0 22px 44px -30px rgb(49 46 129 / 0.45);
+    background: #fff;
+    border-color: #e6e8ec;
+    box-shadow: 0 1px 2px rgb(15 23 42 / 0.03);
   }
   body.lp-theme .lps [class~='rounded-2xl'][class~='bg-white'][class~='border-surface-line'] {
-    background: rgb(255 255 255 / 0.82);
-    border-color: rgb(255 255 255 / 0.85);
-    box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.95),
-      0 22px 44px -30px rgb(49 46 129 / 0.45);
+    border-color: #e6e8ec;
   }
   body.lp-theme .lps .btn-primary {
     background: var(--lps-action);

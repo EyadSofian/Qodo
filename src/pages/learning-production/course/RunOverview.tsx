@@ -35,7 +35,6 @@ import {
   usePick,
 } from '../../../components/learning-production/studio';
 import { useCourse } from '../CourseWorkspace';
-import { cx } from '../../../lib/utils';
 
 export function RunOverview() {
   const { t } = useI18n();
@@ -66,34 +65,65 @@ export function RunOverview() {
 
 /* ------------------------------------------------------------------ */
 
-export function StageStrip({ stages, current, courseId, compact = false }: { stages: StageView[]; current: string | null; courseId: string; compact?: boolean }) {
+/**
+ * Where the run is, in one line: a thin bar with one segment per stage
+ * (colour only for done, current, attention), and a sentence naming the
+ * current stage and the one after it. Every stage's name is on the bar's
+ * tooltip and in full on the plan — never squeezed into fourteen columns.
+ */
+export function StageStrip({ stages, current, courseId }: { stages: StageView[]; current: string | null; courseId: string; compact?: boolean }) {
   const { t } = useI18n();
   const pick = usePick();
+  const index = stages.findIndex((stage) => stage.key === current);
+  const stage = index >= 0 ? stages[index] : null;
+  const next = index >= 0 ? stages.slice(index + 1).find((entry) => entry.status !== 'SKIPPED') ?? null : null;
+  const done = stages.filter((entry) => entry.status === 'DONE' || entry.status === 'SKIPPED').length;
+  const tone = (entry: StageView) =>
+    entry.key === current
+      ? 'var(--lps-action)'
+      : entry.issues.blocking > 0
+        ? '#f59e0b'
+        : entry.status === 'DONE'
+          ? '#10b981'
+          : entry.status === 'SKIPPED'
+            ? 'repeating-linear-gradient(90deg, #cbd5e1 0 4px, transparent 4px 7px)'
+            : entry.status === 'IN_PROGRESS' || entry.status === 'READY'
+              ? '#a5b4fc'
+              : '#e5e7eb';
   return (
-    <ol className="no-scrollbar flex gap-1.5 overflow-x-auto pb-1" aria-label={t('lp.plan.stages')}>
-      {stages.map((stage, index) => (
-        <li
-          key={stage.id}
-          className={cx('lps-step', compact ? 'min-w-[92px]' : 'min-w-[118px]')}
-          data-state={stage.status}
-          data-current={stage.key === current}
-          data-attention={stage.issues.blocking > 0}
-          aria-current={stage.key === current ? 'step' : undefined}
-        >
-          <Link to={`/learning-production/courses/${courseId}/plan?stage=${stage.key}`} className="block w-full min-w-0 hover:underline" title={pick(stage.label)}>
-            <span className="block text-[11px] lps-faint">
-              {index + 1} · {t(`lp.stageStatus.${stage.status}` as StringKey)}
-            </span>
-            <span className={cx('block truncate text-[12.5px]', stage.key === current ? 'font-semibold' : 'lps-muted')}>{pick(stage.label)}</span>
-            {!compact && stage.progress.total > 0 && (
-              <span className="block text-[11px] lps-faint">
-                {stage.progress.done}/{stage.progress.total}
-              </span>
-            )}
+    <div>
+      <ol className="flex gap-1" aria-label={t('lp.plan.stages')}>
+        {stages.map((entry, position) => (
+          <li
+            key={entry.id}
+            className="h-2 min-w-0 flex-1 rounded-full"
+            style={{ background: tone(entry) }}
+            title={`${position + 1}. ${pick(entry.label)} — ${t(`lp.stageStatus.${entry.status}` as StringKey)}`}
+            aria-label={`${position + 1}. ${pick(entry.label)} — ${t(`lp.stageStatus.${entry.status}` as StringKey)}`}
+            aria-current={entry.key === current ? 'step' : undefined}
+          />
+        ))}
+      </ol>
+      <div className="mt-3 flex flex-wrap items-end justify-between gap-2">
+        <div className="min-w-0">
+          {stage ? (
+            <>
+              <p className="text-[12px] lps-muted">{t('lp.run.stageOf', { n: index + 1, total: stages.length })}</p>
+              <p className="font-display text-[16px] font-bold">{pick(stage.label)}</p>
+              {next && <p className="mt-0.5 text-[12.5px] lps-muted">{t('lp.strip.next', { stage: pick(next.label) })}</p>}
+            </>
+          ) : (
+            <p className="font-semibold">{t('lp.run.allStagesDone')}</p>
+          )}
+        </div>
+        <div className="flex items-center gap-3 text-[12.5px]">
+          <span className="lps-muted">{t('lp.strip.done', { done, total: stages.length })}</span>
+          <Link to={`/learning-production/courses/${courseId}/plan${stage ? `?stage=${stage.key}` : ''}`} className="lps-btn">
+            {t('lp.strip.openPlan')}
           </Link>
-        </li>
-      ))}
-    </ol>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -338,7 +368,7 @@ export function Readiness({ view }: { view: RunView }) {
             <span className={check.ok ? '' : 'font-medium'}>{t(`lp.readiness.${check.id}` as StringKey)}</span>
             <span className="sr-only"> — {check.ok ? t('lp.readiness.met') : t('lp.readiness.notMet')}</span>
             {!check.ok && check.id === 'STAGES_COMPLETE' && check.open?.length ? (
-              <span className="block lps-muted">{t('lp.readiness.openStages', { stages: check.open.map((key) => t(`lp.stageKey.${key}` as StringKey)).join('، ') })}</span>
+              <span className="block lps-muted">{t('lp.readiness.openStages', { stages: [...check.open.slice(0, 2).map((key) => t(`lp.stageKey.${key}` as StringKey)), ...(check.open.length > 2 ? [t('lp.readiness.andMore', { n: check.open.length - 2 })] : [])].join(t('lp.listSeparator')) })}</span>
             ) : null}
             {check.id === 'CONTENT_APPROVED' && check.total !== undefined ? (
               <span className="block lps-muted">{t('lp.progress.contentExplain', { done: check.done ?? 0, total: check.total })}</span>

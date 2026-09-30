@@ -79,9 +79,10 @@ export function Pill({ tone = 'neutral', icon: Icon, children, title, className 
   return (
     <span className={cx('lps-pill', `lps-pill-${tone}`, className)} title={title}>
       {Icon && <Icon size={12} aria-hidden="true" className="shrink-0" />}
-      {/* No ellipsis: Chromium adds one to shaped Arabic at sub-pixel widths
-          even when the word fits. The pill clips instead, and only if it must. */}
-      <span className="min-w-0 overflow-hidden">{children}</span>
+      {/* Neither an ellipsis nor a clip: Chromium measures shaped Arabic a
+          fraction short, so either one eats the last letter of a word that
+          fits. Pill labels are short; they take the width they need. */}
+      <span>{children}</span>
     </span>
   );
 }
@@ -244,9 +245,9 @@ export function OriginBadge({ origin, source, compact = false }: { origin: Origi
 /* ------------------------------------------------------------------ */
 
 const METER_FILL = {
-  accent: 'linear-gradient(90deg, rgb(var(--lp-a1, 79 70 229)), rgb(var(--lp-a2, 147 51 234)))',
-  ok: 'linear-gradient(90deg, #34d399, #059669)',
-  attention: 'linear-gradient(90deg, #fbbf24, #f97316)',
+  accent: 'var(--lps-action)',
+  ok: '#10b981',
+  attention: '#f59e0b',
 } as const;
 
 export function Meter({ value, label, tone = 'accent' }: { value: number; label?: string; tone?: 'accent' | 'ok' | 'attention' }) {
@@ -552,7 +553,7 @@ export function Choice<T extends string>({ value, options, onChange, label }: { 
   const group = useId();
   return (
     <LayoutGroup id={group}>
-      <div role="tablist" aria-label={label} className="lps-tabs">
+      <div role="tablist" aria-label={label} className="lps-segmented no-scrollbar">
         {options.map((option) => (
           <button
             key={option.value}

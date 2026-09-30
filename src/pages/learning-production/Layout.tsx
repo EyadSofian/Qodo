@@ -1,10 +1,10 @@
 /**
  * E-Learning Production — the module frame.
  *
- * A frosted bar under the workspace header — the module's name, its five
+ * A plain bar under the workspace header — the module's name, its five
  * places (Dashboard, Courses, My Work, Reviews, Reports) with the counts that
  * matter to the reader, and the one thing a manager starts from here, a new
- * production run — over an aurora in the current area's colours.
+ * production run — over a plain, light canvas.
  *
  * The colours live on <body> (class `lp-theme`, `--lp-a1` / `--lp-a2`) while
  * the module is open, so drawers, which portal there, wear them too. A page
@@ -46,36 +46,6 @@ export function useLpTheme(theme: LpTheme | null) {
   }, [set, a1, a2]);
 }
 
-/**
- * The colour behind every page: a faint wash of the area's colour, drifting
- * slowly, under a faint dot grid. Sheets of frosted white sit on it. Kept
- * quiet on purpose — it tells you where you are, it does not compete.
- */
-function Aurora() {
-  return (
-    <div aria-hidden="true" className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
-      <div className="absolute inset-0 bg-[linear-gradient(160deg,#f4f5fa_0%,#f6f5fb_45%,#f3f6fb_100%)]" />
-      <div
-        className="lps-aurora-blob absolute -top-[24%] start-[2%] h-[54vw] w-[54vw] rounded-full blur-3xl transition-[background] duration-700"
-        style={{ background: 'radial-gradient(circle, rgb(var(--lp-a1) / 0.13), transparent 64%)' }}
-      />
-      <div
-        className="lps-aurora-blob absolute top-[24%] -end-[14%] h-[46vw] w-[46vw] rounded-full blur-3xl transition-[background] duration-700"
-        style={{ animationDelay: '-9s', background: 'radial-gradient(circle, rgb(var(--lp-a2) / 0.1), transparent 64%)' }}
-      />
-      <div
-        className="lps-aurora-blob absolute -bottom-[26%] start-[24%] h-[40vw] w-[40vw] rounded-full blur-3xl"
-        style={{ animationDelay: '-16s', background: 'radial-gradient(circle, rgb(148 163 184 / 0.12), transparent 64%)' }}
-      />
-      <div
-        className="lps-aurora-blob absolute top-[6%] end-[28%] h-[26vw] w-[26vw] rounded-full blur-3xl"
-        style={{ animationDelay: '-4s', background: 'radial-gradient(circle, rgb(148 163 184 / 0.1), transparent 64%)' }}
-      />
-      <div className="absolute inset-0 opacity-30 [background-image:radial-gradient(rgb(15_23_42/0.08)_1px,transparent_1px)] [background-size:22px_22px]" />
-    </div>
-  );
-}
-
 export function LearningProductionLayout() {
   const { t, dir } = useI18n();
   const location = useLocation();
@@ -114,9 +84,8 @@ export function LearningProductionLayout() {
     <MeContext.Provider value={me}>
       <ThemeContext.Provider value={setOverride}>
         <div className="lps flex min-h-0 flex-1 flex-col" dir={dir}>
-          <Aurora />
           <div className="lps-bar sticky top-0 z-20">
-            <div className="mx-auto flex w-full max-w-[1480px] items-center gap-3 px-4 py-2 sm:px-6">
+            <div className="mx-auto flex w-full max-w-[1480px] items-center gap-3 px-4 sm:px-6">
               <Link to="/learning-production" className="hidden shrink-0 items-center gap-2.5 md:flex" aria-label={t('lp.module')}>
                 <span className="lps-logo">
                   <Layers size={17} aria-hidden="true" />
