@@ -734,4 +734,8 @@ export const SCREEN_STRINGS: Record<string, Pair> = {
   'lp.taskPage.classification': { ar: 'التصنيف', en: 'Classification' },
   'lp.home.lateChip': { ar: 'متأخر', en: 'late' },
   'lp.lessonPage.ofApproved': { ar: 'من {total} ملفات معتمدة', en: 'of {total} files approved' },
+  'lp.course.stageLater': { ar: 'لاحقًا', en: 'Later' },
+  'lp.course.startsWhen': { ar: 'تبدأ بعد:', en: 'Starts after:' },
+  'lp.course.showStages': { ar: 'عرض', en: 'Show' },
+  'lp.course.hideStages': { ar: 'إخفاء', en: 'Hide' },
 };

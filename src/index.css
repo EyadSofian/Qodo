@@ -1694,19 +1694,123 @@
   }
   .lps-dot-idle { background: #f1f5f9; color: #64748b; }
 
-  /* A coloured edge on a line, by what it needs. */
-  .lps-edge-review { box-shadow: inset -4px 0 0 #8b5cf6; }
-  .lps-edge-attention { box-shadow: inset -4px 0 0 #f59e0b; }
-  .lps-edge-danger { box-shadow: inset -4px 0 0 #e11d48; }
-  .lps-edge-progress { box-shadow: inset -4px 0 0 #3b82f6; }
-  .lps-edge-ok { box-shadow: inset -4px 0 0 #10b981; }
-  .lps-edge-idle { box-shadow: inset -4px 0 0 #cbd5e1; }
-  [dir='ltr'] .lps-edge-review { box-shadow: inset 4px 0 0 #8b5cf6; }
-  [dir='ltr'] .lps-edge-attention { box-shadow: inset 4px 0 0 #f59e0b; }
-  [dir='ltr'] .lps-edge-danger { box-shadow: inset 4px 0 0 #e11d48; }
-  [dir='ltr'] .lps-edge-progress { box-shadow: inset 4px 0 0 #3b82f6; }
-  [dir='ltr'] .lps-edge-ok { box-shadow: inset 4px 0 0 #10b981; }
-  [dir='ltr'] .lps-edge-idle { box-shadow: inset 4px 0 0 #cbd5e1; }
+  /* A coloured edge on a line, by what it needs: a short rounded bar on the
+     reading-start side, drawn on its own so rounded corners never bend it. */
+  .lps-edge-review,
+  .lps-edge-attention,
+  .lps-edge-danger,
+  .lps-edge-progress,
+  .lps-edge-ok,
+  .lps-edge-idle {
+    position: relative;
+  }
+  .lps-edge-review::before,
+  .lps-edge-attention::before,
+  .lps-edge-danger::before,
+  .lps-edge-progress::before,
+  .lps-edge-ok::before,
+  .lps-edge-idle::before {
+    content: '';
+    position: absolute;
+    inset-block: 12px;
+    inset-inline-start: 0;
+    width: 4px;
+    border-start-end-radius: 4px;
+    border-end-end-radius: 4px;
+    pointer-events: none;
+  }
+  .lps-edge-review::before { background: #8b5cf6; }
+  .lps-edge-attention::before { background: #f59e0b; }
+  .lps-edge-danger::before { background: #e11d48; }
+  .lps-edge-progress::before { background: #3b82f6; }
+  .lps-edge-ok::before { background: #10b981; }
+  .lps-edge-idle::before { background: #cbd5e1; }
+
+  /* A task as a small card: the holder's face, the task, its state. */
+  .lps-task-card {
+    @apply flex w-full items-center gap-3 overflow-hidden rounded-2xl border bg-white py-3 pe-3 ps-4 text-start;
+    border-color: #e4e6f0;
+    transition:
+      transform 0.2s cubic-bezier(0.22, 1, 0.36, 1),
+      box-shadow 0.2s ease,
+      border-color 0.2s ease;
+  }
+  .lps-task-card:hover {
+    transform: translateY(-2px);
+    border-color: #d4d8ea;
+    box-shadow: 0 16px 30px -22px rgb(30 27 75 / 0.55);
+  }
+  .lps-task-avatar {
+    @apply grid h-[34px] w-[34px] place-items-center rounded-full;
+  }
+  .lps-task-avatar-empty {
+    border: 1.5px dashed #cbd5e1;
+    color: var(--lps-faint);
+    background: #f8fafc;
+  }
+
+  /* All stages as a timeline: a dot per stage on one line. */
+  .lps-timeline > li + li {
+    margin-top: 2px;
+  }
+  .lps-tl-item {
+    position: relative;
+  }
+  .lps-tl-item:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    inset-inline-start: 27px;
+    top: 46px;
+    bottom: -8px;
+    width: 2px;
+    border-radius: 2px;
+    background: #e4e6f0;
+  }
+  .lps-tl-item[data-state='DONE']:not(:last-child)::after {
+    background: linear-gradient(#34d399, #a7f3d0);
+  }
+  .lps-tl-head {
+    @apply relative flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-start transition-colors;
+  }
+  .lps-tl-head:hover {
+    background: #f5f6fb;
+  }
+  .lps-tl-item[data-current='true'] > .lps-tl-head {
+    background: linear-gradient(100deg, rgb(var(--lp-a1, 79 70 229) / 0.12), rgb(var(--lp-a2, 147 51 234) / 0.06));
+    box-shadow: inset 0 0 0 1px rgb(var(--lp-a1, 79 70 229) / 0.18);
+  }
+  .lps-tl-dot {
+    @apply relative z-[1] grid h-8 w-8 shrink-0 place-items-center rounded-full text-[12.5px] font-bold;
+    background: #fff;
+    border: 1.5px solid #d5d9e0;
+    color: var(--lps-muted);
+  }
+  .lps-tl-item[data-state='DONE'] .lps-tl-dot {
+    background: linear-gradient(135deg, #34d399, #059669);
+    border-color: transparent;
+    color: #fff;
+  }
+  .lps-tl-item[data-state='SKIPPED'] .lps-tl-dot {
+    border-style: dashed;
+  }
+  .lps-tl-item[data-current='true'] .lps-tl-dot {
+    background: var(--lps-grad);
+    border-color: transparent;
+    color: #fff;
+    animation: lps-glow 2.2s ease-in-out infinite;
+  }
+  .lps-tl-body {
+    @apply pb-3 pe-2 pt-2;
+    padding-inline-start: 56px;
+  }
+  .lps-tl-mini {
+    @apply relative inline-block h-1.5 w-14 overflow-hidden rounded-full;
+    background: #e4e6f0;
+  }
+  .lps-tl-mini > span {
+    @apply absolute inset-y-0 start-0 rounded-full;
+    background: linear-gradient(90deg, #6ee7b7, #10b981);
+  }
 
   /* Action buttons by what they do. */
   .lps-act {
@@ -1881,13 +1985,15 @@
     .lps-list > li,
     .lps-dot-danger > span,
     .lps-track > span,
-    .lps-step-mark-review {
+    .lps-step-mark-review,
+    .lps-tl-item[data-current='true'] .lps-tl-dot {
       animation: none !important;
     }
     .lps-card:hover,
     .group:hover .lps-act,
     .lps-card:hover .lps-card-icon,
-    button.lps-hero-chip:hover {
+    button.lps-hero-chip:hover,
+    .lps-task-card:hover {
       transform: none !important;
     }
     .lps-lift:hover,
