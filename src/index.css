@@ -1800,8 +1800,14 @@
     animation: lps-glow 2.2s ease-in-out infinite;
   }
   .lps-tl-body {
-    @apply pb-3 pe-2 pt-2;
-    padding-inline-start: 56px;
+    @apply pb-3 pe-1 pt-2;
+    padding-inline-start: 12px;
+  }
+  @media (min-width: 640px) {
+    .lps-tl-body {
+      padding-inline-start: 56px;
+      padding-inline-end: 8px;
+    }
   }
   .lps-tl-mini {
     @apply relative inline-block h-1.5 w-14 overflow-hidden rounded-full;

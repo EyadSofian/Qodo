@@ -738,4 +738,11 @@ export const SCREEN_STRINGS: Record<string, Pair> = {
   'lp.course.startsWhen': { ar: 'تبدأ بعد:', en: 'Starts after:' },
   'lp.course.showStages': { ar: 'عرض', en: 'Show' },
   'lp.course.hideStages': { ar: 'إخفاء', en: 'Hide' },
+  'lp.newRun.pm': { ar: 'مدير المشروع', en: 'Project manager' },
+  'lp.newRun.pmHint': { ar: 'شخص واحد يدير الدورة: يوزّع الشغل على فريقه من صفحة الكورس، وتصله أي مهمة لم تُسند لأحد.', en: 'One person runs the run: hands out the work from the course page, and receives any task nobody holds.' },
+  'lp.newRun.keyRoles': { ar: 'أهم الأدوار في هذه الطريقة', en: 'The key roles for this way' },
+  'lp.newRun.keyRolesHint': { ar: 'اختيارية — حدّدها الآن إن كنت تعرف أصحابها، أو اتركها لمدير المشروع.', en: 'Optional — name them now if you know who, or leave them to the project manager.' },
+  'lp.newRun.otherRoles': { ar: 'باقي الأدوار (اختياري)', en: 'Other roles (optional)' },
+  'lp.newRun.otherRolesHint': { ar: 'لا حاجة لملئها الآن؛ يسندها مدير المشروع لاحقًا من صفحة الكورس.', en: 'No need to fill these now; the project manager assigns them later from the course page.' },
+  'lp.newRun.unassignedGoToPm': { ar: 'أي مهمة بلا شخص ستظهر لـ {name} في «مهامي» ليسندها.', en: 'Any task without a person will appear in {name}’s My tasks to assign.' },
 };
