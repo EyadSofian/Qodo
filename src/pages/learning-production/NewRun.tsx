@@ -12,7 +12,7 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, BookOpenCheck, Check, Crown, Lightbulb, RotateCcw, Sparkles, Users, type LucideIcon } from 'lucide-react';
+import { ArrowLeft, ArrowRight, BookOpenCheck, Check, Crown, FileText, Lightbulb, ListChecks, RotateCcw, Route, Sparkles, Users, type LucideIcon } from 'lucide-react';
 import { useI18n, type StringKey } from '../../lib/i18n';
 import { useAuth } from '../../lib/auth';
 import { paths } from '../../lib/learningProduction/api';
@@ -22,7 +22,7 @@ import type { CourseWithStats } from '../../lib/learningProduction/types';
 import type { Release, Scenario, TemplateSummary } from '../../lib/learningProduction/runTypes';
 import { PersonSelect, usePeople } from '../../components/learning-production/kit';
 import { SCENARIO_THEME, gradient } from '../../lib/learningProduction/theme';
-import { Busy, Disclosure, ErrorNote, Hero, IconChip, OriginBadge, Panel, Pill, usePick } from '../../components/learning-production/studio';
+import { Busy, Disclosure, ErrorNote, Hero, IconChip, JourneyMap, OriginBadge, Panel, Pill, usePick } from '../../components/learning-production/studio';
 import { cx } from '../../lib/utils';
 
 type Way = Exclude<Scenario, 'LEGACY'>;
@@ -36,6 +36,7 @@ const WAYS: Array<{ value: Way; icon: LucideIcon; letter: string }> = [
 ];
 const STEPS = ['way', 'basics', 'team', 'review'] as const;
 type Step = (typeof STEPS)[number];
+const STEP_ICON: Record<Step, LucideIcon> = { way: Route, basics: FileText, team: Users, review: ListChecks };
 
 export function NewRun() {
   const { t } = useI18n();
@@ -207,20 +208,24 @@ export function NewRun() {
         subtitle={t('lp.newRun.lede')}
       />
 
-      <ol className="lps-panel flex gap-3 px-4 pb-3 pt-4" aria-label={t('lp.newRun.steps')}>
-        {STEPS.map((entry, position) => (
-          <li
-            key={entry}
-            className="lps-step"
-            data-state={position < index ? 'DONE' : position === index ? 'IN_PROGRESS' : 'BLOCKED'}
-            data-current={position === index}
-            aria-current={position === index ? 'step' : undefined}
-          >
-            <span className="text-[11.5px] lps-faint">{t('lp.newRun.stepN', { n: position + 1 })}</span>
-            <span className="text-[13px] font-semibold">{t(`lp.newRun.step.${entry}` as StringKey)}</span>
-          </li>
-        ))}
-      </ol>
+      <div className="lps-panel px-2 sm:px-3">
+        <JourneyMap
+          label={t('lp.newRun.steps')}
+          nowLabel={t('lp.plan.now')}
+          selected={step}
+          onSelect={(key) => {
+            // Back to any earlier step; forward only with "Next".
+            if (STEPS.indexOf(key as Step) < index) setStep(key as Step);
+          }}
+          nodes={STEPS.map((entry, position) => ({
+            key: entry,
+            label: t(`lp.newRun.step.${entry}` as StringKey),
+            sub: t('lp.newRun.stepN', { n: position + 1 }),
+            state: position < index ? 'done' : position === index ? 'current' : 'later',
+            icon: STEP_ICON[entry],
+          }))}
+        />
+      </div>
 
       {error ? <ErrorNote error={error} /> : null}
 

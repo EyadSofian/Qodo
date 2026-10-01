@@ -9,14 +9,14 @@
  */
 
 import { useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle2, FileSpreadsheet, HelpCircle, Workflow } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, FileSpreadsheet, HelpCircle } from 'lucide-react';
 import { useI18n, type StringKey } from '../../lib/i18n';
 import { invalidate, useLpQuery } from '../../lib/learningProduction/hooks';
 import { runPaths, runsApi } from '../../lib/learningProduction/runApi';
 import { lpErrorKey } from '../../lib/learningProduction/format';
 import type { TemplatesResponse, TraceabilityResponse } from '../../lib/learningProduction/runTypes';
 import { useToast } from '../../components/ui';
-import { Busy, Choice, ErrorNote, LoadingRows, OriginBadge, PageHero, Panel, Pill, ScenarioBadge, useDay, usePick } from '../../components/learning-production/studio';
+import { Busy, ErrorNote, Hero, LoadingRows, OriginBadge, Panel, Pill, ScenarioBadge, useDay, usePick } from '../../components/learning-production/studio';
 
 type Tab = 'templates' | 'trace' | 'decisions';
 
@@ -25,19 +25,13 @@ export function Templates() {
   const [tab, setTab] = useState<Tab>('templates');
   return (
     <div className="lps-stagger space-y-4">
-      <PageHero icon={Workflow} title={t('lp.templates.title')} lede={t('lp.templates.lede')} />
-      <div className="lps-tabs-sheet w-fit max-w-full">
-      <Choice<Tab>
-        label={t('lp.templates.title')}
-        value={tab}
-        onChange={setTab}
-        options={[
-          { value: 'templates', label: t('lp.templates.tab.templates') },
-          { value: 'trace', label: t('lp.templates.tab.trace') },
-          { value: 'decisions', label: t('lp.templates.tab.decisions') },
-        ]}
-      />
-      </div>
+      <Hero title={t('lp.templates.title')} subtitle={t('lp.templates.lede')}>
+        <select className="lps-input !w-auto min-w-[200px]" value={tab} onChange={(event) => setTab(event.target.value as Tab)} aria-label={t('lp.templates.title')}>
+          <option value="templates">{t('lp.templates.tab.templates')}</option>
+          <option value="trace">{t('lp.templates.tab.trace')}</option>
+          <option value="decisions">{t('lp.templates.tab.decisions')}</option>
+        </select>
+      </Hero>
       {tab === 'templates' ? <TemplateList /> : <Trace tab={tab} />}
     </div>
   );
@@ -79,15 +73,23 @@ function TemplateList() {
   if (!data) return null;
   return (
     <div className="space-y-4">
-      <Choice
-        label={t('lp.templates.scenario')}
-        value={scenario}
-        onChange={(value) => {
-          setScenario(value);
-          setDraft(null);
-        }}
-        options={data.templates.map((item) => ({ value: item.scenario, label: pick(item.label) }))}
-      />
+      <label className="flex flex-wrap items-center gap-2">
+        <span className="lps-label !mb-0">{t('lp.templates.scenario')}</span>
+        <select
+          className="lps-input !w-auto"
+          value={scenario}
+          onChange={(event) => {
+            setScenario(event.target.value);
+            setDraft(null);
+          }}
+        >
+          {data.templates.map((item) => (
+            <option key={item.scenario} value={item.scenario}>
+              {pick(item.label)}
+            </option>
+          ))}
+        </select>
+      </label>
       {current && (
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
           <Panel

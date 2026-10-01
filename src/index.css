@@ -2142,6 +2142,174 @@
     animation: lps-rail-in 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
   }
 
+  /* Free text in either language: each paragraph takes the direction of
+     what was typed, so English punctuation stays at the end in Arabic. */
+  .lps textarea,
+  .lps input:not([type]),
+  .lps input[type='text'],
+  .lps input[type='search'] {
+    unicode-bidi: plaintext;
+  }
+
+  /* ── Journey map: a road of stations (course stages, lesson files). ── */
+  .lps-journey {
+    @apply relative overflow-x-auto;
+    padding: 30px 4px 6px;
+    scroll-snap-type: x proximity;
+  }
+  .lps-journey-road {
+    @apply flex min-w-max items-start;
+  }
+  @media (min-width: 1024px) {
+    .lps-journey-road {
+      min-width: 100%;
+    }
+  }
+  .lps-jn {
+    @apply relative flex flex-1 justify-center;
+    min-width: 108px;
+    scroll-snap-align: center;
+  }
+  /* The road to the next station. */
+  .lps-jn:not(:last-child)::before {
+    content: '';
+    position: absolute;
+    top: 21px;
+    inset-inline-start: calc(50% + 26px);
+    width: calc(100% - 52px);
+    height: 5px;
+    border-radius: 5px;
+    background: repeating-linear-gradient(90deg, #cfd5e4 0 8px, transparent 8px 14px);
+  }
+  .lps-jn[data-state='done']:not(:last-child)::before {
+    background: linear-gradient(90deg, #34d399, #10b981);
+  }
+  .lps-jn[data-state='current']:not(:last-child)::before {
+    background: linear-gradient(90deg, rgb(var(--lp-a1, 79 70 229) / 0.7), #cfd5e4);
+  }
+  .lps-jn-hit {
+    @apply relative flex w-full flex-col items-center gap-1 rounded-2xl px-1.5 pb-2 text-center transition-colors;
+  }
+  .lps-jn-hit:hover .lps-jn-dot {
+    transform: translateY(-2px) scale(1.06);
+  }
+  .lps-jn-dot {
+    @apply relative z-[1] grid h-[46px] w-[46px] place-items-center rounded-full transition-transform duration-200;
+    background: #fff;
+    border: 2px solid #cfd5e4;
+    color: var(--lps-muted);
+    box-shadow: 0 6px 14px -10px rgb(15 23 42 / 0.5);
+  }
+  .lps-jn[data-state='done'] .lps-jn-dot {
+    background: linear-gradient(135deg, #34d399, #059669);
+    border-color: transparent;
+    color: #fff;
+  }
+  .lps-jn[data-state='current'] .lps-jn-dot {
+    width: 52px;
+    height: 52px;
+    margin-top: -3px;
+    background: var(--lps-grad);
+    border-color: #fff;
+    color: #fff;
+    box-shadow: 0 0 0 4px rgb(var(--lp-a1, 79 70 229) / 0.22), 0 14px 26px -12px rgb(var(--lp-a1, 79 70 229) / 0.9);
+    animation: lps-glow 2.4s ease-in-out infinite;
+  }
+  .lps-jn[data-state='review'] .lps-jn-dot { border-color: #8b5cf6; color: #6d28d9; background: #f5f3ff; }
+  .lps-jn[data-state='attention'] .lps-jn-dot { border-color: #f59e0b; color: #b45309; background: #fffbeb; }
+  .lps-jn[data-state='next'] .lps-jn-dot { border-color: #93c5fd; color: #1d4ed8; background: #eff6ff; }
+  .lps-jn[data-state='later'] .lps-jn-dot { border-style: dashed; color: #7c8799; }
+  .lps-jn[data-state='skipped'] .lps-jn-dot { border-style: dashed; color: #94a3b8; background: #f8fafc; }
+  .lps-jn[data-selected='true'] .lps-jn-hit {
+    background: #fff;
+    box-shadow: 0 0 0 1.5px rgb(var(--lp-a1, 79 70 229) / 0.35), 0 16px 30px -22px rgb(30 27 75 / 0.6);
+  }
+  .lps-jn-num {
+    @apply mt-1 text-[11px] font-bold;
+    color: var(--lps-faint);
+  }
+  .lps-jn-label {
+    @apply text-[13px] font-semibold leading-snug;
+    max-width: 128px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .lps-jn[data-state='later'] .lps-jn-label,
+  .lps-jn[data-state='skipped'] .lps-jn-label {
+    color: var(--lps-muted);
+    font-weight: 500;
+  }
+  .lps-jn[data-state='current'] .lps-jn-label {
+    color: rgb(var(--lp-a1, 79 70 229));
+    font-weight: 700;
+  }
+  .lps-jn-sub {
+    @apply text-[11.5px];
+    color: var(--lps-faint);
+  }
+  .lps-jn-flag {
+    @apply absolute rounded-full px-2.5 py-0.5 text-[11px] font-bold text-white;
+    top: -26px;
+    background: var(--lps-grad);
+    box-shadow: 0 6px 14px -8px rgb(var(--lp-a1, 79 70 229) / 0.9);
+  }
+  .lps-jn-flag::after {
+    content: '';
+    position: absolute;
+    bottom: -4px;
+    inset-inline-start: calc(50% - 4px);
+    width: 8px;
+    height: 8px;
+    transform: rotate(45deg);
+    background: rgb(var(--lp-a1, 79 70 229));
+    z-index: -1;
+  }
+
+  [dir='rtl'] .lps-jn[data-state='current']:not(:last-child)::before {
+    background: linear-gradient(270deg, rgb(var(--lp-a1, 79 70 229) / 0.7), #cfd5e4);
+  }
+  [dir='rtl'] .lps-jn[data-state='done']:not(:last-child)::before {
+    background: linear-gradient(270deg, #34d399, #10b981);
+  }
+  /* The chosen station's detail, right under the road. */
+  .lps-stage-detail {
+    @apply mx-3 mb-3 mt-1 rounded-2xl px-4 py-4 sm:mx-4 sm:mb-4 sm:px-5;
+    background: linear-gradient(160deg, rgb(var(--lp-a1, 79 70 229) / 0.08), rgb(var(--lp-a2, 147 51 234) / 0.04) 60%, #f6f7fb);
+    border: 1px solid rgb(var(--lp-a1, 79 70 229) / 0.14);
+  }
+
+  .lps-journey-arrow {
+    @apply absolute z-[2] grid h-9 w-9 place-items-center rounded-full bg-white;
+    top: 36px;
+    color: var(--lps-ink);
+    box-shadow: 0 8px 20px -8px rgb(15 23 42 / 0.45), inset 0 0 0 1px #d3d9e8;
+  }
+  .lps-journey-arrow:hover {
+    background: #eef2ff;
+  }
+  .lps-journey-arrow-start {
+    inset-inline-start: 2px;
+  }
+  .lps-journey-arrow-end {
+    inset-inline-end: 2px;
+  }
+  .lps-journey-fade-start.lps-journey-fade-end {
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 56px, #000 calc(100% - 56px), transparent);
+    mask-image: linear-gradient(90deg, transparent, #000 56px, #000 calc(100% - 56px), transparent);
+  }
+  [dir='ltr'] .lps-journey-fade-end:not(.lps-journey-fade-start),
+  [dir='rtl'] .lps-journey-fade-start:not(.lps-journey-fade-end) {
+    -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 56px), transparent);
+    mask-image: linear-gradient(90deg, #000 calc(100% - 56px), transparent);
+  }
+  [dir='rtl'] .lps-journey-fade-end:not(.lps-journey-fade-start),
+  [dir='ltr'] .lps-journey-fade-start:not(.lps-journey-fade-end) {
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 56px);
+    mask-image: linear-gradient(90deg, transparent, #000 56px);
+  }
+
   .lps-bidi {
     unicode-bidi: plaintext;
     text-align: left;
@@ -2183,7 +2351,8 @@
     .lps-dot-danger > span,
     .lps-track > span,
     .lps-step-mark-review,
-    .lps-tl-item[data-current='true'] .lps-tl-dot {
+    .lps-tl-item[data-current='true'] .lps-tl-dot,
+    .lps-jn[data-state='current'] .lps-jn-dot {
       animation: none !important;
     }
     .lps-card:hover,

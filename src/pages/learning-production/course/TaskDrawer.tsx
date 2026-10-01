@@ -945,7 +945,7 @@ function Discussion({ detail, onPost }: { detail: TaskDetail; onPost: (body: str
               <p className="text-[12px] lps-muted">
                 <strong className="text-[color:var(--lps-ink)]">{detail.people[comment.userId]?.name ?? t('common.removedUser')}</strong> · {day(comment.createdAt)}
               </p>
-              <p className="lps-bidi mt-0.5 whitespace-pre-wrap">{comment.body}</p>
+              <p dir="auto" className="mt-0.5 whitespace-pre-wrap text-start">{comment.body}</p>
             </li>
           ))}
         </ul>

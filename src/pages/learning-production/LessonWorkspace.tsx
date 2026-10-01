@@ -6,17 +6,16 @@
  * opens exactly that. `?asset=ppt` works too, for links written by hand.
  */
 
-import { Link, Navigate, NavLink, useParams, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, Check } from 'lucide-react';
+import { Link, Navigate, useParams, useSearchParams } from 'react-router-dom';
+import { ArrowLeft, ArrowRight, Route } from 'lucide-react';
 import { useI18n } from '../../lib/i18n';
-import { cx } from '../../lib/utils';
 import { paths } from '../../lib/learningProduction/api';
 import { useLpQuery } from '../../lib/learningProduction/hooks';
-import { stageKey, stageSlug, statusKey } from '../../lib/learningProduction/format';
+import { STAGE_ICON, stageKey, stageSlug, statusKey } from '../../lib/learningProduction/format';
 import { assetTypeFromSlug } from '@shared/learningProduction/constants';
 import type { AssetSummary, AssetType, LessonDetail } from '../../lib/learningProduction/types';
 import { ErrorPanel, SkeletonRows } from '../../components/learning-production/kit';
-import { CountUp, Hero } from '../../components/learning-production/studio';
+import { CountUp, Hero, IconChip, JourneyMap, type JourneyState } from '../../components/learning-production/studio';
 import { AssetWorkspace } from './AssetWorkspace';
 
 type StepTone = 'done' | 'review' | 'changes' | 'progress' | 'waiting' | 'idle' | 'na';
@@ -31,26 +30,7 @@ function stepTone(asset: AssetSummary): StepTone {
   return 'idle';
 }
 
-// Written out whole so Tailwind keeps them.
-const WORD_CLASS: Record<StepTone, string> = {
-  done: 'text-emerald-700',
-  review: 'text-violet-700',
-  changes: 'text-amber-700',
-  progress: 'text-blue-700',
-  waiting: 'lps-faint',
-  idle: 'lps-muted',
-  na: 'lps-faint',
-};
 
-const MARK_CLASS: Record<StepTone, string> = {
-  done: 'lps-step-mark-done',
-  review: 'lps-step-mark-review',
-  changes: 'lps-step-mark-changes',
-  progress: 'lps-step-mark-progress',
-  waiting: 'lps-step-mark-waiting',
-  idle: 'lps-step-mark-idle',
-  na: 'lps-step-mark-na',
-};
 
 export function LessonWorkspace() {
   const { t, dir } = useI18n();
@@ -104,31 +84,30 @@ export function LessonWorkspace() {
         </span>
       </Hero>
 
-      <nav aria-label={t('lp.lesson.stages')} className="lps-panel no-scrollbar relative overflow-x-auto px-2 py-2">
-        <ol className="flex min-w-max items-stretch sm:min-w-0">
-          {data.assets.map((entry, index) => {
+      <section className="lps-panel px-2 pb-1 sm:px-3" aria-label={t('lp.lesson.stages')}>
+        <h2 className="flex items-center gap-2.5 px-2 pt-4 text-[15px] font-bold sm:px-3">
+          <IconChip icon={Route} tone="blue" size={15} />
+          {t('lp.lessonPage.journey')}
+        </h2>
+        <JourneyMap
+          label={t('lp.lessonPage.journey')}
+          nowLabel={t('lp.plan.now')}
+          selected={requested}
+          nodes={data.assets.map((entry) => {
             const tone = stepTone(entry);
-            const word = entry.applicable === false ? t('lp.lessonPage.notNeeded') : entry.blocked ? t('lp.lessonPage.notYet') : t(statusKey(entry.status));
-            return (
-              <li key={entry.assetType} className="flex flex-1 items-center">
-                <NavLink
-                  to={`/learning-production/courses/${courseId}/lessons/${lessonId}/${stageSlug(entry.assetType)}`}
-                  className={({ isActive }) => cx('lps-step-link', isActive && 'lps-step-link-active')}
-                >
-                  <span className={cx('lps-step-mark', MARK_CLASS[tone])} aria-hidden="true">
-                    {tone === 'done' ? <Check size={14} strokeWidth={3} /> : index + 1}
-                  </span>
-                  <span className="min-w-0 text-start">
-                    <span className="block whitespace-nowrap text-[13.5px] font-semibold">{t(stageKey(entry.assetType))}</span>
-                    <span className={cx('block whitespace-nowrap text-[12px]', WORD_CLASS[tone])}>{word}</span>
-                  </span>
-                </NavLink>
-                {index < data.assets.length - 1 && <span aria-hidden="true" className={cx('lps-step-join', tone === 'done' && 'lps-step-join-done')} />}
-              </li>
-            );
+            const state: JourneyState =
+              tone === 'done' ? 'done' : tone === 'na' ? 'skipped' : entry.assetType === data.currentStage ? 'current' : tone === 'review' ? 'review' : tone === 'changes' ? 'attention' : tone === 'progress' ? 'next' : 'later';
+            return {
+              key: entry.assetType,
+              label: t(stageKey(entry.assetType)),
+              sub: entry.applicable === false ? t('lp.lessonPage.notNeeded') : entry.blocked ? t('lp.lessonPage.notYet') : t(statusKey(entry.status)),
+              state,
+              icon: STAGE_ICON[entry.assetType],
+              to: `/learning-production/courses/${courseId}/lessons/${lessonId}/${stageSlug(entry.assetType)}`,
+            };
           })}
-        </ol>
-      </nav>
+        />
+      </section>
 
       {asset ? <AssetWorkspace key={asset.id} assetId={asset.id} /> : null}
     </div>

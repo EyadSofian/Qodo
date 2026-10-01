@@ -184,7 +184,8 @@ function BlockCard({
       <header className="flex flex-wrap items-center gap-2 border-b border-surface-line px-4 py-2">
         <span className="rounded-md bg-brand-50 px-2 py-0.5 text-[12px] font-bold text-brand-700">{t(unit as never, { n: number })}</span>
         <input
-          className="min-w-0 flex-1 bg-transparent text-[14px] font-semibold text-ink outline-none placeholder:text-ink-faint read-only:cursor-default"
+          dir="auto"
+          className="min-w-0 flex-1 bg-transparent text-start text-[14px] font-semibold text-ink outline-none placeholder:text-ink-faint read-only:cursor-default"
           value={block.title}
           readOnly={!editable}
           onChange={(event) => onChange({ title: event.target.value })}

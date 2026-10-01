@@ -750,4 +750,10 @@ export const SCREEN_STRINGS: Record<string, Pair> = {
   'lp.rail.collapse': { ar: 'طي الشريط', en: 'Collapse the bar' },
   'lp.rail.expand': { ar: 'توسيع الشريط', en: 'Expand the bar' },
   'lp.rail.open': { ar: 'فتح القائمة', en: 'Open the menu' },
+  'lp.rail.workspace': { ar: 'العودة لمساحة العمل', en: 'Back to the workspace' },
+  'lp.course.journey': { ar: 'رحلة الإنتاج', en: 'Production journey' },
+  'lp.course.stageTasks': { ar: 'مهام هذه المرحلة', en: 'This stage’s tasks' },
+  'lp.lessonPage.journey': { ar: 'رحلة الدرس', en: 'The lesson’s journey' },
+  'lp.journey.earlier': { ar: 'المراحل السابقة', en: 'Earlier stations' },
+  'lp.journey.later': { ar: 'المراحل التالية', en: 'Later stations' },
 };

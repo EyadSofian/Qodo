@@ -16,7 +16,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { BarChart3, Bell, BookOpen, Database, Layers, Library, ListTodo, Menu as MenuIcon, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, PanelTopClose, PanelTopOpen, Plus, Settings2, X } from 'lucide-react';
+import { BarChart3, Bell, BookOpen, Database, LayoutGrid, Layers, Library, ListTodo, Menu as MenuIcon, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, PanelTopClose, PanelTopOpen, Plus, Settings2, X } from 'lucide-react';
 import { useShellChrome } from '../../components/Shell';
 import { useI18n } from '../../lib/i18n';
 import { ApiError } from '../../lib/api';
@@ -160,6 +160,7 @@ export function LearningProductionLayout() {
       )}
 
       <div className="mt-auto space-y-1 border-t border-white/10 px-3 pb-3 pt-3">
+        <RailButton compact={compact} icon={LayoutGrid} label={t('lp.rail.workspace')} to="/" />
         <RailButton compact={compact} icon={BookOpen} label={t('lp.nav.guide')} to="/learning-production/guide" />
         {me?.canManageTemplates && <RailButton compact={compact} icon={Settings2} label={t('lp.nav.templates')} to="/learning-production/templates" />}
         <RailButton compact={compact} icon={Bell} label={t('lp.prefs.title')} onClick={() => setPrefs(true)} />
@@ -249,7 +250,7 @@ function RailButton({ icon: Icon, label, to, onClick, compact, className }: { ic
   );
   if (to) {
     return (
-      <NavLink to={to} className={cx('lps-rail-link lps-rail-quiet', className)} title={compact ? label : undefined}>
+      <NavLink to={to} end className={cx('lps-rail-link lps-rail-quiet', className)} title={compact ? label : undefined}>
         {body}
       </NavLink>
     );

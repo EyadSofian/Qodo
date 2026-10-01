@@ -15,8 +15,11 @@ import { Link, NavLink, useLocation } from 'react-router-dom';
 import {
   AlertTriangle,
   BookOpenCheck,
+  Check,
   CheckCircle2,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Circle,
   CircleDashed,
   CircleDot,
@@ -994,5 +997,115 @@ export function FilePips({ types, assets }: { types: readonly AssetType[]; asset
         return <span key={type} data-tone={fileTone(asset)} title={`${t(`lp.stage.${type}` as StringKey)} — ${asset ? t(`lp.status.${asset.status}` as StringKey) : '—'}`} />;
       })}
     </span>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Journey map                                                          */
+/* ------------------------------------------------------------------ */
+
+export type JourneyState = 'done' | 'current' | 'review' | 'attention' | 'next' | 'later' | 'skipped';
+
+export interface JourneyNode {
+  key: string;
+  label: string;
+  sub?: string;
+  state: JourneyState;
+  icon: LucideIcon;
+  /** A link instead of a button — the lesson's files are places with their own URL. */
+  to?: string;
+}
+
+/**
+ * A journey as a road of stations: done ones green, the current one in the
+ * area's colour with a "now" flag, the rest waiting. Each station opens its
+ * detail; on a narrow screen the road scrolls and keeps the chosen one in view.
+ */
+export function JourneyMap({ nodes, selected, onSelect, label, nowLabel }: { nodes: JourneyNode[]; selected: string | null; onSelect?: (key: string) => void; label: string; nowLabel: string }) {
+  const { t, dir } = useI18n();
+  const road = useRef<HTMLOListElement>(null);
+  const box = useRef<HTMLDivElement>(null);
+  // Which ends of the road have stations out of sight, so the arrows show only when needed.
+  const [hidden, setHidden] = useState({ start: false, end: false });
+  const measure = useCallback(() => {
+    const el = box.current;
+    if (!el) return;
+    const max = el.scrollWidth - el.clientWidth;
+    const travelled = Math.abs(el.scrollLeft);
+    setHidden({ start: max > 2 && travelled > 2, end: max > 2 && travelled < max - 2 });
+  }, []);
+  useEffect(() => {
+    const active = road.current?.querySelector<HTMLElement>('[data-selected="true"]');
+    const el = box.current;
+    if (active && el && el.scrollWidth > el.clientWidth) {
+      // Bring the chosen station to the middle; measured on screen, so it holds in either direction.
+      const a = active.getBoundingClientRect();
+      const b = el.getBoundingClientRect();
+      el.scrollBy({ left: a.left + a.width / 2 - (b.left + b.width / 2) });
+    }
+    measure();
+  }, [selected, measure, dir]);
+  useEffect(() => {
+    window.addEventListener('resize', measure);
+    return () => {
+      window.removeEventListener('resize', measure);
+    };
+  }, [measure]);
+  // Scroll toward the reading end (+1) or back toward the start (-1).
+  const nudge = (towardEnd: number) => {
+    const el = box.current;
+    if (!el) return;
+    const step = Math.max(220, el.clientWidth * 0.6) * towardEnd * (dir === 'rtl' ? -1 : 1);
+    el.scrollBy({ left: step, behavior: 'smooth' });
+  };
+  const Back = dir === 'rtl' ? ChevronRight : ChevronLeft;
+  const Forward = dir === 'rtl' ? ChevronLeft : ChevronRight;
+  return (
+    <div className="relative">
+      {hidden.start && (
+        <button type="button" className="lps-journey-arrow lps-journey-arrow-start" onClick={() => nudge(-1)} aria-label={t('lp.journey.earlier')}>
+          <Back size={18} aria-hidden="true" />
+        </button>
+      )}
+      {hidden.end && (
+        <button type="button" className="lps-journey-arrow lps-journey-arrow-end" onClick={() => nudge(1)} aria-label={t('lp.journey.later')}>
+          <Forward size={18} aria-hidden="true" />
+        </button>
+      )}
+    <div ref={box} className={cx('lps-journey no-scrollbar', hidden.start && 'lps-journey-fade-start', hidden.end && 'lps-journey-fade-end')} role="group" aria-label={label} onScroll={measure}>
+      <ol ref={road} className="lps-journey-road">
+        {nodes.map((node, index) => {
+          const Icon = node.state === 'done' ? Check : node.state === 'skipped' ? SkipForward : node.icon;
+          const isSelected = node.key === selected;
+          const inner = (
+            <>
+              {node.state === 'current' && <span className="lps-jn-flag">{nowLabel}</span>}
+              <span className="lps-jn-dot" aria-hidden="true">
+                <Icon size={node.state === 'done' ? 18 : 17} strokeWidth={node.state === 'done' ? 3 : 2} />
+              </span>
+              <span className="lps-jn-num" aria-hidden="true">
+                {index + 1}
+              </span>
+              <span className="lps-jn-label">{node.label}</span>
+              {node.sub && <span className="lps-jn-sub">{node.sub}</span>}
+            </>
+          );
+          return (
+            <li key={node.key} className="lps-jn" data-state={node.state} data-selected={isSelected ? 'true' : undefined}>
+              {node.to ? (
+                <Link to={node.to} className="lps-jn-hit" aria-current={isSelected ? 'step' : undefined}>
+                  {inner}
+                </Link>
+              ) : (
+                <button type="button" className="lps-jn-hit" aria-pressed={isSelected} onClick={() => onSelect?.(node.key)}>
+                  {inner}
+                </button>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+    </div>
   );
 }

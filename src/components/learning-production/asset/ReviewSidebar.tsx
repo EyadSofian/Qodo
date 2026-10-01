@@ -162,7 +162,7 @@ function CommentThread({ comment, people }: { comment: ReviewComment; people: Pe
         {typeof comment.anchor?.quote === 'string' && (
           <blockquote className="mt-2 border-s-2 border-surface-line ps-2 text-[12px] italic text-ink-muted line-clamp-3">{comment.anchor.quote as string}</blockquote>
         )}
-        <p className="mt-1.5 whitespace-pre-line text-[13px] leading-relaxed text-ink">{comment.body}</p>
+        <p dir="auto" className="mt-1.5 whitespace-pre-line text-start text-[13px] leading-relaxed text-ink">{comment.body}</p>
         {comment.suggestionText !== null && comment.commentType === 'SUGGESTION' && (
           <p className="mt-1.5 rounded-lg bg-status-okBg px-2 py-1.5 text-[12.5px] text-green-800">
             → {comment.suggestionText || t('lp.comment.suggestDelete')}
@@ -177,7 +177,7 @@ function CommentThread({ comment, people }: { comment: ReviewComment; people: Pe
               <p className="text-[12px] font-semibold text-ink">
                 {people[reply.userId]?.name ?? t('common.removedUser')} <span className="font-normal text-ink-faint">· {timeAgo(reply.createdAt, t)}</span>
               </p>
-              <p className="whitespace-pre-line text-[13px] text-ink">{reply.body}</p>
+              <p dir="auto" className="whitespace-pre-line text-start text-[13px] text-ink">{reply.body}</p>
             </li>
           ))}
         </ul>

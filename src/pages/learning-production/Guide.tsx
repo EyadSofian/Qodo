@@ -8,13 +8,13 @@
 
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, BookOpen, Check, ChevronLeft } from 'lucide-react';
+import { ArrowLeft, Check, ChevronLeft } from 'lucide-react';
 import { useI18n, type StringKey } from '../../lib/i18n';
 import { useLpQuery } from '../../lib/learningProduction/hooks';
 import { runPaths } from '../../lib/learningProduction/runApi';
 import type { TemplatesResponse } from '../../lib/learningProduction/runTypes';
 import { GUIDE } from '../../lib/learningProduction/guideContent';
-import { Choice, LoadingRows, OriginBadge, PageHero, Panel, usePick } from '../../components/learning-production/studio';
+import { Hero, LoadingRows, OriginBadge, Panel, usePick } from '../../components/learning-production/studio';
 
 const WHERE: Record<string, string> = {
   newRun: '/learning-production/runs/new',
@@ -28,7 +28,7 @@ export function Guide() {
   const pick = usePick();
   return (
     <div className="lps-stagger mx-auto max-w-[1100px] space-y-4">
-      <PageHero icon={BookOpen} title={pick(GUIDE.title)} lede={pick(GUIDE.lede)} />
+      <Hero title={pick(GUIDE.title)} subtitle={pick(GUIDE.lede)} />
 
       <Panel title={pick(GUIDE.model.title)}>
         <ol className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
@@ -154,12 +154,13 @@ function Ways() {
       bodyClassName="p-0"
       action={
         templates.length > 0 && current ? (
-          <Choice
-            label={pick(GUIDE.ways.title)}
-            value={current.scenario}
-            onChange={setPicked}
-            options={templates.map((entry) => ({ value: entry.scenario, label: t(`lp.scenarioShort.${entry.scenario}` as StringKey) }))}
-          />
+          <select className="lps-input !w-auto" value={current.scenario} onChange={(event) => setPicked(event.target.value as typeof current.scenario)} aria-label={pick(GUIDE.ways.title)}>
+            {templates.map((entry) => (
+              <option key={entry.scenario} value={entry.scenario}>
+                {t(`lp.scenarioShort.${entry.scenario}` as StringKey)}
+              </option>
+            ))}
+          </select>
         ) : undefined
       }
     >
