@@ -147,9 +147,11 @@ handoffs, deadlines, issues, releases) and set deadline reminders from My Work.
 
 ## Screens
 
-The module bar has three places — **My tasks**, **Courses**, **Reports**
-(managers) — plus *New production run* and a small *More* menu (guide,
-templates, notification settings, the workspace-bar toggle). No page has tabs
+A side rail (on the reading-start side; it folds to icons, and opens over
+the page on phones) holds the three places — **My tasks**, **Courses**,
+**Reports** (managers) — with *New production run* above them, up to five
+active courses as shortcuts, and the guide, templates, notification
+settings and workspace-bar toggle at its foot. No page has tabs
 inside it: secondary tools open in drawers named in the URL.
 
 | Route | What it answers |

@@ -746,4 +746,8 @@ export const SCREEN_STRINGS: Record<string, Pair> = {
   'lp.newRun.otherRolesHint': { ar: 'لا حاجة لملئها الآن؛ يسندها مدير المشروع لاحقًا من صفحة الكورس.', en: 'No need to fill these now; the project manager assigns them later from the course page.' },
   'lp.newRun.unassignedGoToPm': { ar: 'أي مهمة بلا شخص ستظهر لـ {name} في «مهامي» ليسندها.', en: 'Any task without a person will appear in {name}’s My tasks to assign.' },
   'lp.course.ofFiles': { ar: '{done} من {total} ملف', en: '{done} of {total} files' },
+  'lp.rail.active': { ar: 'كورسات جارية', en: 'Active courses' },
+  'lp.rail.collapse': { ar: 'طي الشريط', en: 'Collapse the bar' },
+  'lp.rail.expand': { ar: 'توسيع الشريط', en: 'Expand the bar' },
+  'lp.rail.open': { ar: 'فتح القائمة', en: 'Open the menu' },
 };
