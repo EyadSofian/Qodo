@@ -25,7 +25,8 @@ import { lpErrorKey, type CoursePanel } from '../../lib/learningProduction/forma
 import type { CourseDetail } from '../../lib/learningProduction/types';
 import type { RunView, RunsResponse } from '../../lib/learningProduction/runTypes';
 import { Avatar, useToast } from '../../components/ui';
-import { Dot, Drawer, ErrorNote, Hero, IconChip, LoadingRows, Menu, MenuItem, Meter, ReasonPrompt, useDay, type DotTone, type IconTone } from '../../components/learning-production/studio';
+import { Dot, Drawer, ErrorNote, Hero, IconChip, LoadingRows, Menu, MenuItem, ReasonPrompt, Ring, useDay, type DotTone, type IconTone } from '../../components/learning-production/studio';
+import { cx } from '../../lib/utils';
 import { SCENARIO_THEME } from '../../lib/learningProduction/theme';
 import { useLpTheme } from './Layout';
 import { RunStages } from './course/RunStages';
@@ -236,12 +237,13 @@ export function CourseWorkspace() {
               {run && <ProgressCard view={run} />}
               {run && <QualityCard view={run} onOpen={() => openPanel('qa')} />}
               <TeamCard detail={detail} onOpen={() => openPanel('team')} />
-              <button type="button" className="lps-panel lps-lift flex w-full items-center gap-3 px-4 py-3.5 text-start" onClick={() => openPanel('files')}>
+              <button type="button" className="lps-side lps-lift flex w-full items-center gap-3 px-4 py-3.5 text-start lps-tint-orange" onClick={() => openPanel('files')}>
                 <IconChip icon={FolderOpen} tone="orange" size={15} />
                 <span className="min-w-0 flex-1">
-                  <span className="block text-[14px] font-semibold">{t('lp.tab.files')}</span>
-                  <span className="block text-[12.5px] lps-muted">{t('lp.course.filesHint')}</span>
+                  <span className="block text-[15px] font-bold">{t('lp.tab.files')}</span>
+                  <span className="block text-[12.5px] opacity-80">{t('lp.course.filesHint')}</span>
                 </span>
+                {dir === 'rtl' ? <ArrowLeft size={17} aria-hidden="true" /> : <ArrowRight size={17} aria-hidden="true" />}
               </button>
             </aside>
           </div>
@@ -284,15 +286,28 @@ export function CourseWorkspace() {
 /* Side cards                                                           */
 /* ------------------------------------------------------------------ */
 
+// Written out whole so Tailwind keeps them.
+const TINT: Record<IconTone, string> = {
+  green: 'lps-tint-green',
+  violet: 'lps-tint-violet',
+  rose: 'lps-tint-rose',
+  blue: 'lps-tint-blue',
+  orange: 'lps-tint-orange',
+  slate: 'lps-tint-blue',
+};
+
+/** A side card: a tinted band with its title, then a white body. */
 function SideCard({ title, icon, tone, children, action }: { title: string; icon: typeof Users; tone: IconTone; children: ReactNode; action?: ReactNode }) {
   return (
-    <section className="lps-panel px-4 py-4">
-      <h2 className="lps-side-title">
+    <section className="lps-side">
+      <h2 className={cx('lps-side-head', TINT[tone])}>
         <IconChip icon={icon} tone={tone} size={15} />
         {title}
       </h2>
-      {children}
-      {action && <div className="mt-3">{action}</div>}
+      <div className="lps-side-body">
+        {children}
+        {action && <div className="mt-4">{action}</div>}
+      </div>
     </section>
   );
 }
@@ -300,25 +315,20 @@ function SideCard({ title, icon, tone, children, action }: { title: string; icon
 function ProgressCard({ view }: { view: RunView }) {
   const { t } = useI18n();
   const { content, workflow } = view.progress;
+  const legacy = view.run.scenario === 'LEGACY';
   return (
     <SideCard title={t('lp.overview.progress')} icon={TrendingUp} tone="green">
-      <div className="space-y-3.5">
-        <div>
-          <div className="mb-1.5 flex items-baseline justify-between text-[13px]">
-            <span>{t('lp.course.contentApproved')}</span>
-            <strong>{content.total ? `${content.percent}%` : '—'}</strong>
-          </div>
-          <Meter value={content.percent} tone="ok" label={t('lp.course.contentApproved')} />
-          <p className="mt-1 text-[12px] lps-faint">{content.total ? t('lp.progress.contentExplain', { done: content.done, total: content.total }) : t('lp.progress.contentNone')}</p>
+      <div className={cx('grid gap-3 text-center', legacy ? 'grid-cols-1' : 'grid-cols-2')}>
+        <div className="flex flex-col items-center gap-2">
+          <Ring value={content.percent} label={t('lp.course.contentApproved')} />
+          <span className="text-[13.5px] font-semibold">{t('lp.course.contentApproved')}</span>
+          <span className="text-[12.5px] lps-muted">{content.total ? t('lp.course.ofFiles', { done: content.done, total: content.total }) : t('lp.progress.contentNone')}</span>
         </div>
-        {view.run.scenario !== 'LEGACY' && (
-          <div>
-            <div className="mb-1.5 flex items-baseline justify-between text-[13px]">
-              <span>{t('lp.course.tasksProgress')}</span>
-              <strong>{workflow.percent}%</strong>
-            </div>
-            <Meter value={workflow.percent} label={t('lp.course.tasksProgress')} />
-            <p className="mt-1 text-[12px] lps-faint">{t('lp.course.tasksDone', { done: workflow.done, total: workflow.total })}</p>
+        {!legacy && (
+          <div className="flex flex-col items-center gap-2">
+            <Ring value={workflow.percent} tone="accent" label={t('lp.course.tasksProgress')} />
+            <span className="text-[13.5px] font-semibold">{t('lp.course.tasksProgress')}</span>
+            <span className="text-[12.5px] lps-muted">{t('lp.course.tasksDone', { done: workflow.done, total: workflow.total })}</span>
           </div>
         )}
       </div>

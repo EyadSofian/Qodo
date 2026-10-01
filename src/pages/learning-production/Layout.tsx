@@ -147,7 +147,7 @@ export function LearningProductionLayout() {
             </div>
           </div>
 
-          <main className="min-h-0 flex-1 overflow-y-auto">
+          <main className="lps-canvas min-h-0 flex-1 overflow-y-auto">
             <div className="mx-auto w-full max-w-[1280px] px-4 py-5 sm:px-6 sm:py-7">
               {unavailable ? (
                 <div className="lps-panel">

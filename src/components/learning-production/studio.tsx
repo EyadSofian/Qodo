@@ -37,8 +37,8 @@ import {
 } from 'lucide-react';
 import { useI18n, type StringKey } from '../../lib/i18n';
 import { cx } from '../../lib/utils';
-import { lpErrorKey } from '../../lib/learningProduction/format';
-import type { DueState, People } from '../../lib/learningProduction/types';
+import { fileTone, lpErrorKey } from '../../lib/learningProduction/format';
+import type { AssetSummary, AssetType, DueState, People } from '../../lib/learningProduction/types';
 import type { Blocker, Origin, Pair, Scenario, Source } from '../../lib/learningProduction/runTypes';
 import { Avatar } from '../ui';
 
@@ -921,3 +921,78 @@ export const EDGE_CLASS: Record<EdgeTone, string> = {
   ok: 'lps-edge-ok',
   idle: 'lps-edge-idle',
 };
+
+/* ------------------------------------------------------------------ */
+/* Ring, file marks, module colours                                     */
+/* ------------------------------------------------------------------ */
+
+/** A progress ring with the percentage in the middle. */
+export function Ring({ value, size = 88, tone = 'ok', label }: { value: number; size?: number; tone?: 'ok' | 'accent'; label: string }) {
+  const id = useId();
+  const clamped = Math.max(0, Math.min(100, Math.round(value)));
+  const stroke = 9;
+  const radius = (size - stroke) / 2;
+  const length = 2 * Math.PI * radius;
+  const [shown, setShown] = useState(0);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setShown(clamped));
+    return () => cancelAnimationFrame(frame);
+  }, [clamped]);
+  const gradientId = `ring${id.replace(/[^a-zA-Z0-9]/g, '')}${tone}`;
+  return (
+    <span className="relative inline-grid shrink-0 place-items-center" style={{ width: size, height: size }} role="img" aria-label={`${label}: ${clamped}%`}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90" aria-hidden="true">
+        <defs>
+          <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="1">
+            {tone === 'ok' ? (
+              <>
+                <stop offset="0%" stopColor="#6ee7b7" />
+                <stop offset="100%" stopColor="#059669" />
+              </>
+            ) : (
+              <>
+                <stop offset="0%" stopColor="rgb(var(--lp-a1, 79 70 229))" />
+                <stop offset="100%" stopColor="rgb(var(--lp-a2, 147 51 234))" />
+              </>
+            )}
+          </linearGradient>
+        </defs>
+        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" strokeWidth={stroke} className="lps-ring-track" />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          strokeWidth={stroke}
+          strokeLinecap="round"
+          stroke={`url(#${gradientId})`}
+          strokeDasharray={length}
+          strokeDashoffset={length * (1 - shown / 100)}
+          className="lps-ring-value"
+        />
+      </svg>
+      <span className="font-display absolute text-[18px] font-bold" aria-hidden="true">
+        {clamped}%
+      </span>
+    </span>
+  );
+}
+
+// Written out whole so Tailwind keeps them.
+const MODULE_CLASS = ['lps-mod-0', 'lps-mod-1', 'lps-mod-2', 'lps-mod-3', 'lps-mod-4', 'lps-mod-5'];
+
+/** Each module gets one of six colours, in order, so neighbours never match. */
+export const moduleClass = (index: number) => MODULE_CLASS[index % MODULE_CLASS.length];
+
+/** A lesson's files as five small marks in production order, coloured by state. */
+export function FilePips({ types, assets }: { types: readonly AssetType[]; assets: Partial<Record<AssetType, AssetSummary>> }) {
+  const { t } = useI18n();
+  return (
+    <span className="lps-pips">
+      {types.map((type) => {
+        const asset = assets[type];
+        return <span key={type} data-tone={fileTone(asset)} title={`${t(`lp.stage.${type}` as StringKey)} — ${asset ? t(`lp.status.${asset.status}` as StringKey) : '—'}`} />;
+      })}
+    </span>
+  );
+}

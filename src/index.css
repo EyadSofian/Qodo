@@ -868,12 +868,12 @@
     --lps-canvas: transparent;
     --lps-panel: rgb(255 255 255 / 0.78);
     --lps-panel-solid: #ffffff;
-    --lps-sunken: rgb(241 245 249 / 0.72);
-    --lps-line: rgb(15 23 42 / 0.08);
-    --lps-line-strong: rgb(15 23 42 / 0.16);
+    --lps-sunken: #eef1f7;
+    --lps-line: rgb(15 23 42 / 0.1);
+    --lps-line-strong: rgb(15 23 42 / 0.2);
     --lps-ink: #0f172a;
-    --lps-muted: #475569;
-    --lps-faint: #7c8799;
+    --lps-muted: #3b475a;
+    --lps-faint: #5d6a7f;
     --lps-accent: #4f46e5;
     --lps-accent-strong: #4338ca;
     --lps-accent-soft: #eef2ff;
@@ -1949,6 +1949,100 @@
   }
   .lps-side-title {
     @apply mb-3 flex items-center gap-2.5 text-[14.5px] font-bold;
+  }
+
+  /* ── Clearer canvas (2026-10-01, "elements not clear, my eyes hurt"):
+     a tinted backdrop with soft shapes so white sheets stand out, firmer
+     borders, darker secondary text. ─────────────────────────────── */
+  .lps {
+    background:
+      radial-gradient(760px 380px at 92% -4%, rgb(var(--lp-a1, 79 70 229) / 0.26), transparent 62%),
+      radial-gradient(680px 460px at -6% 26%, rgb(var(--lp-a2, 147 51 234) / 0.16), transparent 62%),
+      radial-gradient(620px 420px at 104% 78%, rgb(14 165 233 / 0.14), transparent 62%),
+      radial-gradient(520px 360px at 20% 104%, rgb(245 158 11 / 0.1), transparent 62%),
+      linear-gradient(180deg, #e6e9f4 0%, #dfe4f1 100%);
+    background-attachment: scroll;
+  }
+  /* A faint dot grid over the backdrop — texture, not noise. */
+  .lps-canvas {
+    background-image: radial-gradient(rgb(30 27 75 / 0.075) 1px, transparent 1.2px);
+    background-size: 22px 22px;
+  }
+  .lps-panel,
+  .lps-card,
+  .lps-disclosure,
+  .lps-task-card {
+    border-color: #d3d9e8;
+  }
+  .lps-panel {
+    box-shadow:
+      0 1px 2px rgb(15 23 42 / 0.06),
+      0 12px 30px -16px rgb(30 27 75 / 0.32);
+  }
+  .lps-list > li + li {
+    border-top-color: #e3e7f1;
+  }
+
+  /* Side cards: a tinted band with the title, a white body. */
+  .lps-side {
+    @apply overflow-hidden rounded-[18px] border bg-white;
+    border-color: #d3d9e8;
+    box-shadow:
+      0 1px 2px rgb(15 23 42 / 0.06),
+      0 12px 30px -16px rgb(30 27 75 / 0.32);
+  }
+  .lps-side-head {
+    @apply flex items-center gap-2.5 px-4 py-3 text-[15px] font-bold;
+    border-bottom: 1px solid rgb(15 23 42 / 0.07);
+  }
+  .lps-side-body {
+    @apply px-4 py-4;
+  }
+  .lps-tint-green { background: linear-gradient(100deg, #d1fae5, #ecfdf5); color: #065f46; }
+  .lps-tint-violet { background: linear-gradient(100deg, #ede9fe, #f5f3ff); color: #4c1d95; }
+  .lps-tint-rose { background: linear-gradient(100deg, #ffe4e6, #fff1f2); color: #9f1239; }
+  .lps-tint-blue { background: linear-gradient(100deg, #dbeafe, #eff6ff); color: #1e3a8a; }
+  .lps-tint-orange { background: linear-gradient(100deg, #ffedd5, #fff7ed); color: #9a3412; }
+
+  /* Modules: a card each, with a numbered header in its own colour. */
+  .lps-module {
+    @apply overflow-hidden rounded-[18px] border bg-white;
+    border-color: #d3d9e8;
+    box-shadow:
+      0 1px 2px rgb(15 23 42 / 0.06),
+      0 12px 30px -18px rgb(30 27 75 / 0.3);
+  }
+  .lps-module-head {
+    @apply flex w-full items-center gap-3 px-4 py-3 text-start sm:px-5;
+    background: linear-gradient(100deg, var(--mod-soft), #fff 85%);
+    border-bottom: 1px solid rgb(15 23 42 / 0.07);
+  }
+  .lps-module-num {
+    @apply grid h-9 w-9 shrink-0 place-items-center rounded-xl text-[14px] font-bold text-white;
+    background: var(--mod-grad);
+    box-shadow: 0 8px 18px -10px var(--mod-ink);
+  }
+  .lps-module-bar {
+    @apply relative h-1.5 w-24 overflow-hidden rounded-full;
+    background: rgb(15 23 42 / 0.09);
+  }
+  .lps-module-bar > span {
+    @apply absolute inset-y-0 start-0 rounded-full;
+    background: var(--mod-grad);
+  }
+  .lps-mod-0 { --mod-soft: #ede9fe; --mod-ink: #6d28d9; --mod-grad: linear-gradient(135deg, #a78bfa, #6d28d9); }
+  .lps-mod-1 { --mod-soft: #dbeafe; --mod-ink: #1d4ed8; --mod-grad: linear-gradient(135deg, #60a5fa, #1d4ed8); }
+  .lps-mod-2 { --mod-soft: #ffedd5; --mod-ink: #c2410c; --mod-grad: linear-gradient(135deg, #fdba74, #ea580c); }
+  .lps-mod-3 { --mod-soft: #d1fae5; --mod-ink: #047857; --mod-grad: linear-gradient(135deg, #6ee7b7, #059669); }
+  .lps-mod-4 { --mod-soft: #ffe4e6; --mod-ink: #be123c; --mod-grad: linear-gradient(135deg, #fda4af, #e11d48); }
+  .lps-mod-5 { --mod-soft: #e0f2fe; --mod-ink: #0369a1; --mod-grad: linear-gradient(135deg, #7dd3fc, #0284c7); }
+
+  /* A progress ring. */
+  .lps-ring-track {
+    stroke: rgb(15 23 42 / 0.09);
+  }
+  .lps-ring-value {
+    transition: stroke-dashoffset 0.9s cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   .lps-bidi {

@@ -42,12 +42,12 @@ import {
   ErrorPanel,
   PersonChip,
   SkeletonRows,
-  StageCell,
 } from '../../../components/learning-production/kit';
+import { FilePips, moduleClass } from '../../../components/learning-production/studio';
 import { useCourse } from '../CourseWorkspace';
 
-/** Lesson columns: the name, the five stages, how many are approved. */
-const ROW_GRID = 'grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 lg:grid-cols-[minmax(260px,1.7fr)_repeat(5,minmax(96px,0.75fr))_64px]';
+/** Lesson row: the name and next step, then its five file marks and how many are approved. */
+const ROW_GRID = 'grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3';
 
 type Translate = (key: StringKey, vars?: Record<string, string | number>) => string;
 
@@ -208,7 +208,7 @@ export function CourseLessons() {
         />
       ) : (
         <div className="space-y-3">
-          {groups.map((group) => {
+          {groups.map((group, groupIndex) => {
             const key = group.id ?? 'none';
             const isCollapsed = collapsed.has(key);
             const totals = group.lessons.reduce(
@@ -220,11 +220,11 @@ export function CourseLessons() {
             return (
               <section
                 key={key}
-                className="overflow-hidden rounded-2xl border border-surface-line bg-white"
+                className={cx('lps-module', moduleClass(groupIndex))}
                 onDragOver={(event) => canEdit && dragging && event.preventDefault()}
                 onDrop={() => dropOn(group, null)}
               >
-                <header className="flex items-center gap-2 border-b border-surface-line bg-surface-bg/60 px-3 py-2.5">
+                <header className="lps-module-head !gap-2 !py-2.5">
                   <button
                     type="button"
                     className="btn-quiet !min-h-8 rounded-lg px-1.5"
@@ -241,9 +241,12 @@ export function CourseLessons() {
                   >
                     <ChevronDown size={16} className={cx('transition-transform', isCollapsed && '-rotate-90 rtl:rotate-90')} />
                   </button>
+                  <span className="lps-module-num !h-8 !w-8 !text-[13px]" aria-hidden="true">
+                    {groupIndex + 1}
+                  </span>
                   <div className="min-w-0 flex-1">
-                    <h3 className="truncate text-[14px] font-bold text-ink">{group.name}</h3>
-                    <p className="text-[11.5px] text-ink-faint">
+                    <h3 className="truncate text-[14.5px] font-bold text-ink">{group.name}</h3>
+                    <p className="text-[12px] lps-muted">
                       {t('lp.course.lessonsCount', { n: group.lessons.length })} · {t('lp.lessons.moduleComplete', { n: percent })}
                     </p>
                   </div>
@@ -266,17 +269,6 @@ export function CourseLessons() {
                   )}
                 </header>
 
-                {!isCollapsed && group.lessons.length > 0 && (
-                  <div className={cx(ROW_GRID, 'hidden border-b border-surface-line px-3 py-1.5 text-[11.5px] font-semibold text-ink-faint lg:grid')} aria-hidden="true">
-                    <span className="ps-8">{t('lp.col.lesson')}</span>
-                    {types.map((type) => (
-                      <span key={type} className="truncate px-1">
-                        {t(stageKey(type))}
-                      </span>
-                    ))}
-                    <span>{t('lp.col.approvedShort')}</span>
-                  </div>
-                )}
                 {!isCollapsed && (
                   <ul>
                     {group.lessons.length === 0 && <li className="px-4 py-5 text-[13px] text-ink-faint">{t('lp.lessons.moduleEmpty')}</li>}
@@ -326,13 +318,10 @@ export function CourseLessons() {
                               </div>
                             </div>
 
-                            {types.map((type) => (
-                              <div key={type} className="hidden min-w-0 lg:block">
-                                <StageCell type={type} asset={lesson.assets[type]} courseId={courseId} lessonId={lesson.id} people={data.people} showLabel={false} />
-                              </div>
-                            ))}
-
-                            <div className="flex items-center justify-end gap-2 lg:justify-start">
+                            <div className="flex items-center justify-end gap-2.5">
+                              <span className="hidden sm:inline-flex">
+                                <FilePips types={types} assets={lesson.assets} />
+                              </span>
                               <Chip tone={lesson.progress.percent === 100 ? 'ok' : 'neutral'}>
                                 {t('lp.lessons.progressOf', { done: lesson.progress.complete, total: lesson.progress.total })}
                               </Chip>
@@ -394,14 +383,6 @@ export function CourseLessons() {
                             </div>
                           </div>
 
-                          {/* Phone and tablet: the five stages become their own
-                              band under the lesson, so the row never becomes a
-                              horizontal scroller. */}
-                          <div className="mt-2 grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:hidden">
-                            {types.map((type) => (
-                              <StageCell key={type} type={type} asset={lesson.assets[type]} courseId={courseId} lessonId={lesson.id} people={data.people} />
-                            ))}
-                          </div>
                         </li>
                       );
                     })}

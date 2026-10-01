@@ -745,4 +745,5 @@ export const SCREEN_STRINGS: Record<string, Pair> = {
   'lp.newRun.otherRoles': { ar: 'باقي الأدوار (اختياري)', en: 'Other roles (optional)' },
   'lp.newRun.otherRolesHint': { ar: 'لا حاجة لملئها الآن؛ يسندها مدير المشروع لاحقًا من صفحة الكورس.', en: 'No need to fill these now; the project manager assigns them later from the course page.' },
   'lp.newRun.unassignedGoToPm': { ar: 'أي مهمة بلا شخص ستظهر لـ {name} في «مهامي» ليسندها.', en: 'Any task without a person will appear in {name}’s My tasks to assign.' },
+  'lp.course.ofFiles': { ar: '{done} من {total} ملف', en: '{done} of {total} files' },
 };

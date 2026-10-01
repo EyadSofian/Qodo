@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 import { ApiError } from '../api';
 import type { StringKey } from '../i18n';
-import type { AssetStatus, AssetType, CourseHealth, DueState, Priority } from './types';
+import type { AssetStatus, AssetSummary, AssetType, CourseHealth, DueState, Priority } from './types';
 import { ASSET_SLUGS, ASSET_TYPES } from '@shared/learningProduction/constants';
 
 export type Tone = 'neutral' | 'info' | 'review' | 'warn' | 'ok' | 'bad';
@@ -174,6 +174,17 @@ export function courseRoute(courseId: string, params: Record<string, string | nu
 
 export const taskRoute = (courseId: string, taskId: string) => courseRoute(courseId, { task: taskId });
 export const panelRoute = (courseId: string, panel: CoursePanel, extra: Record<string, string | null | undefined> = {}) => courseRoute(courseId, { panel, ...extra });
+
+/** The colour a lesson file's mark takes: approved, in review, sent back, being made, not needed, or nothing yet. */
+export function fileTone(asset: AssetSummary | undefined): 'ok' | 'review' | 'attention' | 'progress' | 'na' | undefined {
+  if (!asset) return undefined;
+  if (asset.applicable === false) return 'na';
+  if (asset.status === 'APPROVED' || asset.status === 'LOCKED') return 'ok';
+  if (['SUBMITTED', 'UNDER_REVIEW', 'RESUBMITTED'].includes(asset.status)) return 'review';
+  if (asset.status === 'CHANGES_REQUESTED') return 'attention';
+  if (asset.status === 'IN_PROGRESS') return 'progress';
+  return undefined;
+}
 
 const KNOWN_ERRORS = new Set([
   'DEMO_DISABLED',

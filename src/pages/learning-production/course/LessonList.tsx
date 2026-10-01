@@ -8,26 +8,17 @@
  * from the buttons above the list.
  */
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { BookOpen, ListPlus, Pencil, Table2 } from 'lucide-react';
+import { BookOpen, ChevronDown, ListPlus, Pencil, Table2 } from 'lucide-react';
 import { useI18n } from '../../../lib/i18n';
 import { paths } from '../../../lib/learningProduction/api';
 import { useLpQuery } from '../../../lib/learningProduction/hooks';
-import { STAGES, stageKey } from '../../../lib/learningProduction/format';
-import type { AssetSummary, AssetType, CourseCapabilities, MatrixLesson, MatrixResponse } from '../../../lib/learningProduction/types';
-import { ErrorNote, IconChip, LoadingRows } from '../../../components/learning-production/studio';
+import { STAGES, fileTone, stageKey } from '../../../lib/learningProduction/format';
+import { cx } from '../../../lib/utils';
+import type { AssetType, CourseCapabilities, MatrixLesson, MatrixResponse } from '../../../lib/learningProduction/types';
+import { ErrorNote, FilePips, IconChip, LoadingRows, moduleClass } from '../../../components/learning-production/studio';
 import { nextStep } from './CourseLessons';
-
-function pipTone(asset: AssetSummary | undefined) {
-  if (!asset) return undefined;
-  if (asset.applicable === false) return 'na';
-  if (asset.status === 'APPROVED' || asset.status === 'LOCKED') return 'ok';
-  if (['SUBMITTED', 'UNDER_REVIEW', 'RESUBMITTED'].includes(asset.status)) return 'review';
-  if (asset.status === 'CHANGES_REQUESTED') return 'attention';
-  if (asset.status === 'IN_PROGRESS') return 'progress';
-  return undefined;
-}
 
 export function LessonList({ courseId, capabilities, onOpen }: { courseId: string; capabilities: CourseCapabilities; onOpen: (panel: 'lessons' | 'matrix', add?: boolean) => void }) {
   const { t, dir } = useI18n();
@@ -45,11 +36,10 @@ export function LessonList({ courseId, capabilities, onOpen }: { courseId: strin
 
   const types: readonly AssetType[] = data?.assetTypes?.length ? data.assetTypes : STAGES;
   const complete = data?.lessons.filter((lesson) => lesson.state === 'COMPLETE').length ?? 0;
-  let number = 0;
 
   return (
-    <section className="lps-panel" aria-labelledby="lp-lessons">
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3.5 sm:px-5" style={{ borderColor: 'var(--lps-line)' }}>
+    <section className="space-y-3" aria-labelledby="lp-lessons">
+      <header className="lps-panel flex flex-wrap items-center justify-between gap-2 px-4 py-3.5 sm:px-5">
         <div>
           <h2 id="lp-lessons" className="flex items-center gap-2.5 text-[16px] font-bold">
             <IconChip icon={BookOpen} tone="blue" size={15} />
@@ -80,54 +70,78 @@ export function LessonList({ courseId, capabilities, onOpen }: { courseId: strin
       </header>
 
       {error && !data ? (
-        <div className="p-4">
-          <ErrorNote error={error} onRetry={reload} />
-        </div>
+        <ErrorNote error={error} onRetry={reload} />
       ) : loading && !data ? (
-        <LoadingRows rows={4} />
+        <div className="lps-panel">
+          <LoadingRows rows={4} />
+        </div>
       ) : !data || data.lessons.length === 0 ? (
-        <div className="px-5 py-10 text-center">
+        <div className="lps-panel px-5 py-10 text-center">
           <p className="text-[14.5px] font-semibold">{t('lp.lessons.emptyTitle')}</p>
           <p className="mx-auto mt-1 max-w-md text-[13px] lps-muted">{t('lp.lessons.emptyBody')}</p>
         </div>
       ) : (
         <>
-          <p className="px-4 pt-3 text-[12px] lps-faint sm:px-5">{t('lp.course.pipsHint', { order: types.map((type) => t(stageKey(type))).join(dir === 'rtl' ? ' ← ' : ' → ') })}</p>
-          {groups.map((group) => (
-            <div key={group.id ?? 'loose'} className="pt-2">
-              {groups.length > 1 && <h3 className="lps-bidi px-4 pb-1 pt-2 text-[12.5px] font-bold lps-muted sm:px-5">{group.name}</h3>}
-              <ul className="lps-list">
-                {group.lessons.map((lesson) => {
-                  number += 1;
-                  const step = nextStep(lesson, types, data.people, t);
-                  const approved = types.filter((type) => pipTone(lesson.assets[type]) === 'ok').length;
-                  const applicable = types.filter((type) => lesson.assets[type] && lesson.assets[type]?.applicable !== false).length;
-                  return (
-                    <li key={lesson.id}>
-                      <Link to={`/learning-production/courses/${courseId}/lessons/${lesson.id}`} className="lps-line">
-                        <span className="w-6 shrink-0 text-center text-[12.5px] font-semibold lps-faint">{number}</span>
-                        <span className="min-w-0 flex-1">
-                          <span className="lps-bidi block truncate text-[14px] font-semibold">{lesson.name}</span>
-                          {step.text && <span className={`mt-0.5 block truncate text-[12.5px] ${step.tone}`}>{step.text}</span>}
-                        </span>
-                        <span className="hidden shrink-0 items-center gap-2.5 sm:flex">
-                          <span className="lps-pips">
-                            {types.map((type) => (
-                              <span key={type} data-tone={pipTone(lesson.assets[type])} title={`${t(stageKey(type))} — ${lesson.assets[type] ? t(`lp.status.${lesson.assets[type]!.status}` as never) : '—'}`} />
-                            ))}
-                          </span>
-                          <span className="w-9 text-end text-[12.5px] font-semibold lps-muted">
-                            {approved}/{applicable}
-                          </span>
-                        </span>
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
+          <p className="px-1 text-[12.5px] lps-muted">{t('lp.course.pipsHint', { order: types.map((type) => t(stageKey(type))).join(dir === 'rtl' ? ' ← ' : ' → ') })}</p>
+          {groups.map((group, groupIndex) => (
+            <ModuleCard key={group.id ?? 'loose'} index={groupIndex} name={group.name} lessons={group.lessons} startAt={groups.slice(0, groupIndex).reduce((sum, entry) => sum + entry.lessons.length, 0)} types={types} data={data} courseId={courseId} />
           ))}
         </>
+      )}
+    </section>
+  );
+}
+
+/** One module: a coloured, numbered header with its progress, and its lessons. Complete modules start folded. */
+function ModuleCard({ index, name, lessons, startAt, types, data, courseId }: { index: number; name: string; lessons: MatrixLesson[]; startAt: number; types: readonly AssetType[]; data: MatrixResponse; courseId: string }) {
+  const { t } = useI18n();
+  const complete = lessons.filter((lesson) => lesson.state === 'COMPLETE').length;
+  const [open, setOpen] = useState(complete < lessons.length);
+  const percent = lessons.length ? Math.round((complete / lessons.length) * 100) : 0;
+  return (
+    <section className={cx('lps-module', moduleClass(index))}>
+      <button type="button" className="lps-module-head" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
+        <span className="lps-module-num" aria-hidden="true">
+          {index + 1}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="lps-bidi block truncate text-[15px] font-bold">{name}</span>
+          <span className="mt-1 flex items-center gap-2.5 text-[12.5px] lps-muted">
+            <span className="lps-module-bar" aria-hidden="true">
+              <span style={{ width: `${percent}%` }} />
+            </span>
+            {t('lp.course.lessonsDone', { done: complete, total: lessons.length })}
+          </span>
+        </span>
+        <ChevronDown size={18} aria-hidden="true" className={cx('shrink-0 lps-faint transition-transform duration-200', open && 'rotate-180')} />
+      </button>
+      {open && (
+        <ul className="lps-list">
+          {lessons.map((lesson, position) => {
+            const step = nextStep(lesson, types, data.people, t);
+            const approved = types.filter((type) => fileTone(lesson.assets[type]) === 'ok').length;
+            const applicable = types.filter((type) => lesson.assets[type] && lesson.assets[type]?.applicable !== false).length;
+            return (
+              <li key={lesson.id}>
+                <Link to={`/learning-production/courses/${courseId}/lessons/${lesson.id}`} className="lps-line">
+                  <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-[12px] font-bold" style={{ background: 'var(--mod-soft)', color: 'var(--mod-ink)' }}>
+                    {startAt + position + 1}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="lps-bidi block truncate text-[14.5px] font-semibold">{lesson.name}</span>
+                    {step.text && <span className={`mt-0.5 block truncate text-[13px] ${step.tone}`}>{step.text}</span>}
+                  </span>
+                  <span className="hidden shrink-0 items-center gap-2.5 sm:flex">
+                    <FilePips types={types} assets={lesson.assets} />
+                    <span className="w-9 text-end text-[13px] font-bold lps-muted">
+                      {approved}/{applicable}
+                    </span>
+                  </span>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
       )}
     </section>
   );

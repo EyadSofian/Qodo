@@ -15,7 +15,7 @@ import { formatTimecode } from '@shared/learningProduction/review';
 import type { ActivityEntry, People, ReviewComment } from '../../../lib/learningProduction/types';
 import { Avatar, useToast } from '../../ui';
 import { ActivityFeed, Chip, ConfirmDialog, SkeletonRows } from '../kit';
-import { Disclosure } from '../studio';
+import { Disclosure, IconChip } from '../studio';
 import { useAsset } from './AssetContext';
 import { CommentComposer } from './CommentComposer';
 import { DiffView } from './DiffView';
@@ -32,9 +32,10 @@ export function ReviewSidebar({ onCollapse }: { onCollapse: () => void }) {
     // The module now scrolls inside its own pane (Layout.tsx), not the
     // document under the fixed topbar, so this sticks relative to that
     // pane's scrollport (padded `py-5`) rather than the viewport itself.
-    <aside className="flex min-h-[420px] flex-col rounded-2xl border border-surface-line bg-white lg:sticky lg:top-3 lg:max-h-[calc(100dvh-var(--topbar-h)-56px)]">
-      <div className="flex items-center gap-2 border-b border-surface-line px-4 py-3">
-        <h2 className="text-[14px] font-bold">{t('lp.sidebar.comments')}</h2>
+    <aside className="lps-side flex min-h-[420px] flex-col lg:sticky lg:top-3 lg:max-h-[calc(100dvh-var(--topbar-h)-56px)]">
+      <div className="lps-side-head lps-tint-violet !py-2.5">
+        <IconChip icon={MessageSquare} tone="violet" size={15} />
+        <h2 className="text-[15px] font-bold">{t('lp.sidebar.comments')}</h2>
         {detail.openComments > 0 && <span className="rounded-full bg-status-warnBg px-1.5 text-[11px] font-semibold text-accent-700">{detail.openComments}</span>}
         <button type="button" className="btn-quiet ms-auto !min-h-8 rounded-lg px-1.5" onClick={onCollapse} aria-label={t('lp.sidebar.collapse')}>
           <PanelRightClose size={16} className="rtl:rotate-180" />
