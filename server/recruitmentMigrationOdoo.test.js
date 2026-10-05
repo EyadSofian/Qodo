@@ -206,7 +206,7 @@ test('Odoo is the only source: one request per published job, everything else ar
   const ghost = { id: 99, name: 'Left the company' };
   const snapshot = {
     connected: true,
-    jobs: [job(1, 'CFM Instructor', yasmin, 2), job(2, 'Video Editor', ghost), job(3, 'IT Manager', null), job(4, 'Accountant', yasmin)],
+    jobs: [{ ...job(1, 'CFM Instructor', yasmin, 2), activeDate: '2026-10-01', hiringPeriodDays: 30, salaryFrom: 1500, salaryTo: 2500 }, job(2, 'Video Editor', ghost), job(3, 'IT Manager', null), job(4, 'Accountant', yasmin)],
     team: [{ id: 11, name: 'Yasmin', employeeCode: '420' }, { id: 99, name: 'Left the company', employeeCode: '522' }],
   };
   const profiles = new Map([['420', { employeeCode: '420', status: 'active' }], ['522', { employeeCode: '522', status: 'inactive' }]]);
@@ -222,18 +222,22 @@ test('Odoo is the only source: one request per published job, everything else ar
     request(odooRequestId(org, 3), 'odoo', 'hiring', { title: 'IT Manager', department: 'Training', departmentId: 'training', headcount: 1, unresolvedAssignees: [], archivedAt: '2026-10-01T00:00:00Z', archiveReason: ARCHIVE_UNPUBLISHED }),
   ];
   const links = new Map([['leg-linked', { odooJobId: 1 }], ['qodo-approved', { odooJobId: 4 }]]);
-  const plan = planOdooSync({ organizationId: org, snapshot, requests, links, profiles, today: '2026-10-05', stamp: '2026-10-05T10:00:00.000Z' });
+  const calendar = { weekend: [5, 6], holidays: [] };
+  const plan = planOdooSync({ organizationId: org, snapshot, requests, links, profiles, today: '2026-10-05', calendar, stamp: '2026-10-05T10:00:00.000Z' });
 
   assert.equal(plan.skipped, null);
   assert.deepEqual(plan.create.map((item) => item.document.reference), ['ODOO-1', 'ODOO-2'], 'a workbook row linked to the job is not that job\'s request');
   const cfm = plan.create[0].document;
-  assert.deepEqual([cfm.source, cfm.status, cfm.title, cfm.headcount, cfm.recruiterCode, cfm.priority, cfm.sla], ['odoo', 'hiring', 'CFM Instructor', 2, '420', null, null], 'Odoo gives the job, seats and owner; priority and clock are Qodo\'s');
+  assert.deepEqual([cfm.source, cfm.status, cfm.title, cfm.headcount, cfm.recruiterCode], ['odoo', 'hiring', 'CFM Instructor', 2, '420'], 'Odoo gives the job, seats and owner');
+  assert.deepEqual([cfm.priority, cfm.hiringPeriodDays, cfm.sla.startDate, cfm.sla.currentDueDate, cfm.targetWorkingDays], ['required', 30, '2026-10-01', '2026-11-01', 21], 'the Active Date starts the clock and the Hiring Period, in calendar days, sets the due date and the priority');
+  assert.deepEqual(cfm.salaryRange, { min: 1500, max: 2500, currency: null, text: '' });
   assert.equal(cfm.odoo.firstSeen, '2026-10-05');
   const video = plan.create[1].document;
   assert.deepEqual([video.recruiterCode, video.unresolvedAssignees], [null, ['Left the company']], 'an owner who left owns nothing here, and is named');
+  assert.deepEqual([video.priority, video.sla], [null, null], 'no period in Odoo: no priority and no clock until one is set');
 
   assert.deepEqual(plan.restore.map((item) => item.id), [odooRequestId(org, 3)], 'a job published again gets its own request back');
-  assert.deepEqual(plan.update.map((item) => [item.id, Object.keys(item.patch).sort()]), [['qodo-approved', ['department', 'departmentId', 'title', 'unresolvedAssignees']]], 'an approved Qodo request confirmed against the job is adopted and follows Odoo');
+  assert.deepEqual(plan.update.map((item) => [item.id, Object.keys(item.patch).sort()]), [[odooRequestId(org, 3), ['odoo']], ['qodo-approved', ['department', 'departmentId', 'odoo', 'title', 'unresolvedAssignees']]], 'an approved Qodo request confirmed against the job is adopted and follows Odoo');
 
   const archived = Object.fromEntries(plan.archive.map((item) => [item.id, item.reason]));
   assert.deepEqual(archived, {
@@ -246,14 +250,27 @@ test('Odoo is the only source: one request per published job, everything else ar
 
   // A second run over the result changes nothing.
   const after = [
-    ...requests.filter((item) => !archived[item.id]).map((item) => (item.id === odooRequestId(org, 3) ? { ...item, archivedAt: null, archiveReason: null } : item.id === 'qodo-approved' ? { ...item, ...plan.update[0].patch } : item)),
-    ...plan.create.map((item) => item.document),
+    ...requests.filter((item) => !archived[item.id]).map((item) => ({ ...item, ...(item.id === odooRequestId(org, 3) ? { archivedAt: null, archiveReason: null } : {}), ...(plan.update.find((update) => update.id === item.id)?.patch ?? {}) })),
+    // A jsonb column hands keys back in its own order; that must not read as a change.
+    ...plan.create.map((item) => ({ ...item.document, odoo: Object.fromEntries(Object.entries(item.document.odoo).reverse()), salaryRange: Object.fromEntries(Object.entries(item.document.salaryRange).reverse()) })),
   ];
-  const again = planOdooSync({ organizationId: org, snapshot, requests: after, links, profiles, today: '2026-10-06' });
+  const again = planOdooSync({ organizationId: org, snapshot, requests: after, links, profiles, today: '2026-10-06', calendar });
   assert.deepEqual([again.create.length, again.restore.length, again.update.length, again.archive.length], [0, 0, 0, 0]);
 
+  // A priority changed in Qodo stands while Odoo's own values stay put…
+  const cfmId = odooRequestId(org, 1);
+  const edited = after.map((item) => (item.id === cfmId ? { ...item, priority: 'critical', prioritySource: 'manual', sla: { ...item.sla, extendedWorkingDays: 5 } } : item));
+  assert.equal(planOdooSync({ organizationId: org, snapshot, requests: edited, links, profiles, today: '2026-10-06', calendar }).update.length, 0);
+  // …and Odoo wins again the moment HR moves the date or the period there. The extension is kept.
+  const moved = { ...snapshot, jobs: snapshot.jobs.map((item) => (item.id === 1 ? { ...item, activeDate: '2026-10-04', hiringPeriodDays: 15 } : item)) };
+  const follow = planOdooSync({ organizationId: org, snapshot: moved, requests: edited, links, profiles, today: '2026-10-06', calendar }).update;
+  assert.deepEqual(follow.map((item) => item.id), [cfmId]);
+  const { patch } = follow[0];
+  assert.deepEqual([patch.priority, patch.prioritySource, patch.hiringPeriodDays, patch.sla.startDate, patch.sla.originalDueDate, patch.sla.extendedWorkingDays], ['critical', 'odoo_hiring_period', 15, '2026-10-04', '2026-10-19', 5]);
+  assert.ok(patch.sla.currentDueDate > patch.sla.originalDueDate, 'the extension still pushes the due date out');
+
   // An outage or an empty answer never archives the desk.
-  assert.equal(planOdooSync({ organizationId: org, snapshot: null, requests, links, profiles, today: '2026-10-05' }).skipped, 'odoo_unavailable');
+  assert.equal(planOdooSync({ organizationId: org, snapshot: null, requests, links, profiles, today: '2026-10-05', calendar }).skipped, 'odoo_unavailable');
   const empty = planOdooSync({ organizationId: org, snapshot: { connected: true, jobs: [], team: [] }, requests, links, profiles, today: '2026-10-05' });
   assert.deepEqual([empty.skipped, empty.archive.length], ['no_published_jobs', 0]);
 });

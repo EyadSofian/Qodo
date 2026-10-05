@@ -7,7 +7,8 @@
  * card shows both and neither replaces the other.
  */
 
-import { searchRead, odooConfigured } from '../../odoo.js';
+import { existingFields, searchRead, odooConfigured } from '../../odoo.js';
+import { isIsoDate } from '../../../shared/recruitment/sla.js';
 
 const COMPANY_ID = 2;
 const COMPANY_NAME = 'Egypt - Engoaad';
@@ -15,7 +16,18 @@ const CACHE_MS = 90_000;
 let cache = null;
 let refreshing = null;
 
+/**
+ * The schedule HR keeps on the job in Odoo — Engosoft's own fields, not stock
+ * Odoo, so they are asked for only where the database has them:
+ *   active_date     the day the clock starts
+ *   hiring_period   15 / 30 / 45 / 60 days to fill it
+ *   seniority, salary_range_from/to, recruitment_status, published_date
+ */
+const SCHEDULE_FIELDS = ['active_date', 'hiring_period', 'seniority', 'salary_range_from', 'salary_range_to', 'recruitment_status', 'published_date'];
+
 const relation = (value) => Array.isArray(value) ? { id: Number(value[0]), name: String(value[1] || '') } : null;
+const isoDate = (value) => (isIsoDate(String(value || '').slice(0, 10)) ? String(value).slice(0, 10) : null);
+const positive = (value) => (Number(value) > 0 ? Number(value) : null);
 const baseUrl = () => String(process.env.ODOO_URL || '').replace(/\/+$/, '');
 
 export async function publishedJobs({ refresh = false } = {}) {
@@ -24,6 +36,7 @@ export async function publishedJobs({ refresh = false } = {}) {
 
   // Match the shared Odoo kanban: company cids=2, Published and active jobs.
   // The server domain is authoritative; a browser filter cannot widen it.
+  const schedule = await existingFields('hr.job', SCHEDULE_FIELDS);
   const rows = await searchRead('hr.job', [
     ['company_id', '=', COMPANY_ID],
     ['is_published', '=', true],
@@ -31,7 +44,7 @@ export async function publishedJobs({ refresh = false } = {}) {
   ], [
     'name', 'company_id', 'is_published', 'active', 'user_id', 'department_id',
     'no_of_recruitment', 'application_count', 'new_application_count',
-    'applicant_hired', 'website_url',
+    'applicant_hired', 'website_url', ...schedule,
   ], { limit: 200, order: 'id desc', context: { allowed_company_ids: [COMPANY_ID] } });
 
   const root = baseUrl();
@@ -45,6 +58,13 @@ export async function publishedJobs({ refresh = false } = {}) {
     applications: Math.max(0, Number(row.application_count) || 0),
     newApplications: Math.max(0, Number(row.new_application_count) || 0),
     hired: Math.max(0, Number(row.applicant_hired) || 0),
+    activeDate: isoDate(row.active_date),
+    hiringPeriodDays: positive(row.hiring_period),
+    seniority: row.seniority ? String(row.seniority) : null,
+    salaryFrom: positive(row.salary_range_from),
+    salaryTo: positive(row.salary_range_to),
+    recruitmentStatus: row.recruitment_status ? String(row.recruitment_status) : null,
+    publishedDate: isoDate(row.published_date),
     published: true,
     odooUrl: `${root}/web#id=${row.id}&model=hr.job&view_type=form&cids=${COMPANY_ID}`,
     jobUrl: row.website_url && String(row.website_url).startsWith('/') ? `${root}${row.website_url}` : null,

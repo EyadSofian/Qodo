@@ -226,12 +226,28 @@ history if the job is published again). A job closed in Qodo under this
 regime stays as history. An approved Qodo request HR had confirmed against a
 published job is adopted as that job's request; a workbook row never is.
 
-* Odoo decides the job, its title, department, seats and owner; reassigning
-  and linking are therefore off for these requests. Qodo owns priority,
-  deadline, hold, extension, hires recorded, KPI and rewards.
-* A job arrives with no priority and no clock. Setting its first priority
-  needs no reason and dates the clock from `odoo.firstSeen`, the day the job
-  reached the desk.
+* Odoo decides the job, its title, department, seats, owner and salary
+  figures; reassigning and linking are therefore off for these requests.
+  Qodo owns hold, extension, hires recorded, KPI and rewards.
+* **The schedule comes from Odoo too.** HR keeps two custom fields on
+  `hr.job`: `active_date` and `hiring_period` (15 / 30 / 45 / 60 days). The
+  clock starts on the Active Date; the job is due that many *calendar* days
+  later (the next working day when that lands on a weekend), stored as the
+  equivalent working-day target so the SLA engine is unchanged; the period
+  names the priority (15 Critical, 30 Required, 45 and 60 Planned). The
+  fields are Engosoft's, not stock Odoo, so they are read through
+  `existingFields`.
+* Last writer wins between the two systems: `request.odoo` remembers the
+  Active Date and period Qodo last saw, and the schedule is re-applied only
+  when Odoo's own values move. A priority or deadline changed in Qodo
+  therefore stands until HR changes the job in Odoo. Extensions and holds
+  are kept on top of Odoo's dates.
+* A job with no Hiring Period in Odoo arrives with no priority and no clock.
+  Setting its first priority in Qodo needs no reason and dates the clock from
+  `odoo.firstSeen`, the day the job reached the desk.
+* `request.odoo` and `salaryRange` are compared canonically (sorted keys):
+  a jsonb column returns keys in its own order, and a plain `JSON.stringify`
+  comparison would rewrite every job on every tick.
 * The sync runs at boot (not awaited), on every recruitment clock tick (10
   min) and on "Refresh from Odoo". It never acts on a failed or empty read.
 * While it is on (`recruitmentSourceIsOdoo()`: Odoo configured and

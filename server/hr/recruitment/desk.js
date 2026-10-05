@@ -69,7 +69,7 @@ function deskJobs(ctx, snapshot, jobs) {
     return {
       ...job,
       ownerCode: (job.recruiter && codeByOdooUser.get(job.recruiter.id)) || null,
-      request: request ? { id: request.id, reference: request.reference, status: request.status, priority: request.priority ?? null } : null,
+      request: request ? { id: request.id, reference: request.reference, status: request.status, priority: request.priority ?? null, dueDate: request.sla?.currentDueDate ?? null } : null,
     };
   });
 }

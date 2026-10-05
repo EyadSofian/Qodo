@@ -100,12 +100,18 @@ export interface OdooJob {
   applications: number;
   newApplications: number;
   hired: number;
+  /** HR's schedule on the job in Odoo: the day the clock starts and the days to fill it. */
+  activeDate: string | null;
+  hiringPeriodDays: number | null;
+  seniority: string | null;
+  recruitmentStatus: string | null;
+  publishedDate: string | null;
   published: boolean;
   odooUrl: string;
   jobUrl: string | null;
   /** The owner's HR code when they are on Qodo's recruitment desk, else null. */
   ownerCode: string | null;
-  request: { id: string; reference: string; status: RequestStatus; priority: Priority | null } | null;
+  request: { id: string; reference: string; status: RequestStatus; priority: Priority | null; dueDate: string | null } | null;
 }
 
 export interface OdooRecruiter {

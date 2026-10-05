@@ -10,7 +10,7 @@
 
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ExternalLink, FilePlus2, Globe2, Pencil, RefreshCw, Search, X } from 'lucide-react';
+import { CalendarClock, ExternalLink, FilePlus2, Globe2, Pencil, RefreshCw, Search, X } from 'lucide-react';
 import { api, errorMessage } from '../../../../lib/api';
 import { cx } from '../../../../lib/utils';
 import { hrApi, useHRQuery } from '../../api';
@@ -140,6 +140,18 @@ export function OdooPublishedJobs() {
                         <div className="rounded-2xl bg-white/70 py-2 ring-1 ring-slate-100"><dt className="text-[10.5px] font-semibold text-slate-500">{t('متقدمون', 'Applications')}</dt><dd className="text-[17px] font-extrabold tabular-nums text-navy">{num(job.applications, lang)}</dd></div>
                         <div className="rounded-2xl bg-white/70 py-2 ring-1 ring-slate-100"><dt className="text-[10.5px] font-semibold text-slate-500">{t('تم تعيينهم', 'Hired')}</dt><dd className="text-[17px] font-extrabold tabular-nums text-navy">{num(job.hired, lang)}</dd></div>
                       </dl>
+
+                      <p className={cx('mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-2xl px-3 py-2 text-[12px] font-semibold', job.hiringPeriodDays ? 'bg-violet-50 text-violet-900 ring-1 ring-violet-100' : 'bg-amber-50 text-amber-800 ring-1 ring-amber-100')}>
+                        <CalendarClock size={14} className="shrink-0" aria-hidden="true" />
+                        {job.hiringPeriodDays ? (
+                          <>
+                            <span>{t('تفعيل', 'Active')} {job.activeDate ? date(job.activeDate, lang) : '—'}</span>
+                            <span aria-hidden="true">·</span>
+                            <span>{t(`المدة ${num(job.hiringPeriodDays, lang)} يوم`, `${num(job.hiringPeriodDays, lang)}-day period`)}</span>
+                            {job.request?.dueDate && <><span aria-hidden="true">·</span><span>{t('الاستحقاق', 'Due')} {date(job.request.dueDate, lang)}</span></>}
+                          </>
+                        ) : t('لا توجد مدة توظيف (Hiring Period) على الوظيفة في Odoo — المهلة لم تبدأ.', 'No Hiring Period on the job in Odoo — the deadline has not started.')}
+                      </p>
 
                       <div className="mt-4 flex items-center gap-2.5">
                         {job.recruiter ? (

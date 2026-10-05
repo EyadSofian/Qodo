@@ -73,7 +73,7 @@ export function RecruitmentOverview() {
         eyebrow={t('التوظيف', 'Recruitment')}
         title={t('مكتب التوظيف', 'Recruitment desk')}
         description={fromOdoo
-          ? t('الوظائف هنا هي المنشورة في Odoo لشركة Egypt - Engoaad فقط، كل وظيفة مع مسؤولها في Odoo. الأولوية والمهلة تُحدَّدان هنا.', 'The jobs here are exactly those Odoo publishes for Egypt - Engoaad, each with its Odoo owner. Priority and deadline are set here.')
+          ? t('الوظائف هنا هي المنشورة في Odoo لشركة Egypt - Engoaad فقط، كل وظيفة بمسؤولها وتاريخ تفعيلها ومدة توظيفها من Odoo.', 'The jobs here are exactly those Odoo publishes for Egypt - Engoaad, each with its owner, Active Date and Hiring Period from Odoo.')
           : t('الفريق وحمله وتقدمه أولاً، ثم الأرقام — وكل رقم يفتح الوظائف التي خلفه.', 'The team, their load and their progress first — then the figures, each one opening the jobs behind it.')}
         actions={
           <>

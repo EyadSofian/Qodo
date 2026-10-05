@@ -118,7 +118,13 @@ export async function runRecruitmentClock(organizationId, { withKpiChecks = true
   running = true;
   try {
     // The desk follows Odoo's published board first, so alerts and rewards read today's jobs.
-    await syncOdooJobs(organizationId).catch((error) => console.warn('[hr] Odoo job sync skipped:', error?.message ?? error));
+    const synced = await syncOdooJobs(organizationId).catch((error) => {
+      console.warn('[hr] Odoo job sync skipped:', error?.message ?? error);
+      return null;
+    });
+    if (synced && (synced.created || synced.restored || synced.updated || synced.archived)) {
+      console.log(`[hr] Odoo job sync for ${organizationId}: ${synced.created} new, ${synced.restored} back, ${synced.updated} updated, ${synced.archived} archived`);
+    }
     const created = await syncRewardBatches(organizationId);
     const ctx = await recruitmentContext(systemActor(organizationId));
     const batches = await find('recruitmentRewardBatches', (batch) => batch.organizationId === organizationId);

@@ -181,7 +181,7 @@ export function StatusBadge({ status }: { status: RequestStatus }) {
 export function SlaMeter({ sla, compact = false, source }: { sla: SlaSnapshot; compact?: boolean; source?: string }) {
   const { t, lang, pick } = useHRText();
   const reduce = useReducedMotion();
-  if (!sla?.started) return <span className="text-[12px] text-slate-400">{source === 'odoo' ? t('حدّد الأولوية لتبدأ المهلة', 'Set a priority to start the deadline') : t('يبدأ بعد الاعتماد', 'Starts at approval')}</span>;
+  if (!sla?.started) return <span className="text-[12px] text-slate-400">{source === 'odoo' ? t('أضف مدة التوظيف في Odoo لتبدأ المهلة', 'Add a Hiring Period in Odoo to start the deadline') : t('يبدأ بعد الاعتماد', 'Starts at approval')}</span>;
   const tone = SLA_TONE[sla.state];
   const target = sla.targetWorkingDays ?? 0;
   const elapsed = sla.elapsedWorkingDays ?? 0;

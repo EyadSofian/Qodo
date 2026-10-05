@@ -8,11 +8,18 @@
  * longer publishes are archived (never deleted — the row, its activity and
  * its link stay, and Settings can still list them).
  *
- * Odoo says which jobs exist, what they are called, how many seats and who
- * owns them. Qodo still owns everything Odoo has no field for: the priority,
- * the deadline that follows from it, holds, extensions, hires recorded, KPI
- * and rewards. A job arrives with no priority, and its clock is dated from the
- * day it reached the desk once somebody sets one.
+ * Odoo says which jobs exist, what they are called, how many seats, who owns
+ * them, and their schedule: HR keeps an Active Date and a Hiring Period (15 /
+ * 30 / 45 / 60 days) on each job. The clock starts on the Active Date, the
+ * job is due that many calendar days later (the next working day when that
+ * lands on a weekend), and the period names the priority — 15 Critical, 30
+ * Required, 45 and 60 Planned. Whenever either value changes in Odoo, Qodo
+ * follows; a change made in Qodo stands until Odoo's value changes again.
+ * Extensions and holds are Qodo's and are kept on top of Odoo's dates.
+ *
+ * Qodo still owns what Odoo has no field for: holds, extensions, hires
+ * recorded, KPI and rewards. A job Odoo gives no period to arrives with no
+ * priority and no clock until somebody sets one here.
  *
  * The sync never acts on a failed or empty read: an Odoo outage must not
  * archive the desk. A job that drops out and comes back gets its own request
@@ -21,9 +28,11 @@
 
 import { create, find, getStore } from '../../store.js';
 import { classificationFromTitle } from '../../../shared/recruitment/classification.js';
-import { localDay } from '../../../shared/recruitment/sla.js';
-import { COMMITTED_STATUSES } from '../../../shared/recruitment/workflow.js';
+import { addCalendarDays, currentDueDate, localDay, nextWorkingDayOnOrAfter, priorityForHiringPeriod, workingDaysBetween } from '../../../shared/recruitment/sla.js';
+import { recruitmentPolicy } from '../../../shared/recruitment/settings.js';
+import { COMMITTED_STATUSES, OPEN_STATUSES } from '../../../shared/recruitment/workflow.js';
 import { organizationState } from '../../hrModule.js';
+import { hrSettingsFor } from '../settings.js';
 import { appendActivity, odooLinksFor, requestsFor, setOdooLink, stableId } from './data.js';
 import { departmentIdFor } from './migration.js';
 import { publishedJobs, recruitmentSourceIsOdoo } from './odooJobs.js';
@@ -33,9 +42,16 @@ export const ARCHIVE_UNPUBLISHED = 'odoo_unpublished';
 
 export const odooRequestId = (organizationId, jobId) => stableId('rrq-odoo', organizationId, String(jobId));
 
-/** What Odoo decides about a request, as the fields Qodo stores. */
-function mirrored(job, recruiterCode) {
-  return {
+/** Key order survives neither jsonb nor a spread, so objects are compared canonically. */
+function canonical(value) {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
+  if (value && typeof value === 'object') return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`).join(',')}}`;
+  return JSON.stringify(value ?? null);
+}
+
+/** What Odoo decides about a request on every sync, as the fields Qodo stores. */
+function mirrored(job, recruiterCode, request = null) {
+  const fields = {
     title: job.name,
     department: job.department || '',
     departmentId: departmentIdFor(job.department),
@@ -43,10 +59,58 @@ function mirrored(job, recruiterCode) {
     recruiterCode,
     unresolvedAssignees: job.recruiter && !recruiterCode ? [job.recruiter.name] : [],
   };
+  if (job.salaryFrom || job.salaryTo) {
+    // Odoo holds the figures only; the currency stays whatever Qodo knows.
+    fields.salaryRange = { min: job.salaryFrom ?? null, max: job.salaryTo ?? null, currency: request?.salaryRange?.currency ?? null, text: request?.salaryRange?.text ?? '' };
+  }
+  return fields;
 }
 
-function newRequest({ organizationId, job, recruiterCode, today, stamp }) {
+/** What Qodo last saw in Odoo — the values a later change is measured against. */
+function seen(job, previous = {}) {
+  return {
+    ...previous,
+    jobId: job.id,
+    activeDate: job.activeDate ?? null,
+    hiringPeriod: job.hiringPeriodDays ?? null,
+    seniority: job.seniority ?? null,
+    status: job.recruitmentStatus ?? null,
+    publishedDate: job.publishedDate ?? null,
+  };
+}
+
+/**
+ * Odoo's Active Date and Hiring Period as Qodo's priority and clock, or null
+ * when the job has no period. `sla` is the clock already running, whose
+ * extensions and holds are kept.
+ */
+export function scheduleFromOdoo(job, { calendar, fallbackStart, sla = null }) {
+  const period = job.hiringPeriodDays;
+  if (!period) return null;
+  const startDate = job.activeDate ?? fallbackStart;
+  const due = nextWorkingDayOnOrAfter(addCalendarDays(startDate, period), calendar);
+  const target = Math.max(1, workingDaysBetween(startDate, due, calendar) ?? 0);
+  const next = {
+    extendedWorkingDays: 0,
+    pausedWorkingDays: 0,
+    pausedSince: null,
+    completedAt: null,
+    actualWorkingDays: null,
+    slaMet: null,
+    ...(sla ?? {}),
+    startDate,
+    targetWorkingDays: target,
+    targetSource: 'odoo_hiring_period',
+    originalDueDate: due,
+  };
+  next.currentDueDate = currentDueDate(next, calendar);
+  const priority = priorityForHiringPeriod(period);
+  return { priority, prioritySource: priority ? 'odoo_hiring_period' : null, targetWorkingDays: target, hiringPeriodDays: period, sla: next };
+}
+
+function newRequest({ organizationId, job, recruiterCode, today, stamp, calendar }) {
   const classification = classificationFromTitle(job.name);
+  const schedule = scheduleFromOdoo(job, { calendar, fallbackStart: today });
   return {
     id: odooRequestId(organizationId, job.id),
     organizationId,
@@ -54,14 +118,13 @@ function newRequest({ organizationId, job, recruiterCode, today, stamp }) {
     source: 'odoo',
     status: 'hiring',
     statusChangedAt: stamp,
+    salaryRange: { min: null, max: null, currency: null, text: '' },
     ...mirrored(job, recruiterCode),
     location: 'Egypt',
     locationCode: 'EG',
     accepted: 0,
     classification,
     classificationSource: classification ? 'derived_from_title' : null,
-    priority: null,
-    prioritySource: null,
     reason: '',
     reasonNote: '',
     responsibilities: '',
@@ -70,8 +133,6 @@ function newRequest({ organizationId, job, recruiterCode, today, stamp }) {
     requirements: '',
     requirementChecks: { demo: false, technicalTest: false, offer: false },
     presentationRequirement: '',
-    salaryRange: { min: null, max: null, currency: null, text: '' },
-    targetWorkingDays: null,
     supportRecruiterCodes: [],
     assignedAt: recruiterCode ? stamp : null,
     interviewManager: { name: '', userId: null },
@@ -79,9 +140,15 @@ function newRequest({ organizationId, job, recruiterCode, today, stamp }) {
     requestedByName: 'Odoo',
     notes: '',
     legacyValidation: '',
-    // No priority yet, so no clock. `firstSeen` is the day the clock is dated from.
+    // No period in Odoo means no priority and no clock yet; `firstSeen` is the
+    // day a clock set here later is dated from.
+    priority: null,
+    prioritySource: null,
+    targetWorkingDays: null,
+    hiringPeriodDays: null,
     sla: null,
-    odoo: { jobId: job.id, firstSeen: today },
+    ...(schedule ?? {}),
+    odoo: seen(job, { firstSeen: today }),
     revision: 1,
   };
 }
@@ -90,7 +157,7 @@ function newRequest({ organizationId, job, recruiterCode, today, stamp }) {
  * What a sync would do — pure, so the rules are tested without Odoo or a
  * store. `requests` includes archived ones; `links` is requestId → link row.
  */
-export function planOdooSync({ organizationId, snapshot, requests, links, profiles, today, stamp = new Date().toISOString() }) {
+export function planOdooSync({ organizationId, snapshot, requests, links, profiles, today, calendar = {}, stamp = new Date().toISOString() }) {
   const plan = { skipped: null, create: [], restore: [], update: [], archive: [] };
   if (!snapshot?.connected) return { ...plan, skipped: 'odoo_unavailable' };
   if (!snapshot.jobs.length) return { ...plan, skipped: 'no_published_jobs' };
@@ -116,17 +183,27 @@ export function planOdooSync({ organizationId, snapshot, requests, links, profil
     const own = byId.get(odooRequestId(organizationId, job.id)) ?? null;
     const request = own && !(own.archivedAt && own.archiveReason !== ARCHIVE_UNPUBLISHED) ? own : adopted.get(job.id) ?? null;
     if (!request) {
-      plan.create.push({ job, document: newRequest({ organizationId, job, recruiterCode, today, stamp }) });
+      plan.create.push({ job, document: newRequest({ organizationId, job, recruiterCode, today, stamp, calendar }) });
       continue;
     }
     kept.add(request.id);
     if (request.archivedAt) plan.restore.push({ id: request.id, job });
-    const wanted = mirrored(job, recruiterCode);
+    const wanted = mirrored(job, recruiterCode, request);
     const patch = {};
     for (const [key, value] of Object.entries(wanted)) {
-      if (JSON.stringify(request[key] ?? null) !== JSON.stringify(value ?? null)) patch[key] = value;
+      if (canonical(request[key]) !== canonical(value)) patch[key] = value;
     }
     if ('recruiterCode' in patch) patch.assignedAt = recruiterCode ? stamp : null;
+    const tracked = seen(job, request.odoo ?? { firstSeen: today });
+    if (canonical(request.odoo) !== canonical(tracked)) {
+      patch.odoo = tracked;
+      // The schedule follows Odoo when Odoo's own values moved — not on every
+      // tick, so a priority or deadline changed in Qodo is not undone.
+      const moved = (request.odoo?.activeDate ?? null) !== tracked.activeDate || (request.odoo?.hiringPeriod ?? null) !== tracked.hiringPeriod;
+      if (moved && OPEN_STATUSES.includes(request.status)) {
+        Object.assign(patch, scheduleFromOdoo(job, { calendar, fallbackStart: tracked.firstSeen ?? today, sla: request.sla }) ?? {});
+      }
+    }
     if (Object.keys(patch).length) plan.update.push({ id: request.id, job, patch, previousRecruiterCode: request.recruiterCode ?? null });
   }
 
@@ -147,13 +224,14 @@ export async function syncOdooJobs(organizationId, { snapshot = null } = {}) {
   running = true;
   try {
     const read = snapshot ?? (await publishedJobs({ refresh: true }));
-    const [state, requests, links] = await Promise.all([
+    const [state, requests, links, { settings }] = await Promise.all([
       organizationState(organizationId),
       requestsFor(organizationId, { includeArchived: true }),
       odooLinksFor(organizationId),
+      hrSettingsFor(organizationId),
     ]);
     const stamp = new Date().toISOString();
-    const plan = planOdooSync({ organizationId, snapshot: read, requests, links, profiles: state.profiles, today: localDay(new Date(), 'Africa/Cairo'), stamp });
+    const plan = planOdooSync({ organizationId, snapshot: read, requests, links, profiles: state.profiles, today: localDay(new Date(), 'Africa/Cairo'), calendar: recruitmentPolicy(settings).calendar, stamp });
     if (plan.skipped) return { skipped: plan.skipped, created: 0, restored: 0, updated: 0, archived: 0 };
 
     const store = await getStore();
@@ -167,7 +245,7 @@ export async function syncOdooJobs(organizationId, { snapshot = null } = {}) {
     for (const { job, document } of plan.create) {
       await create('recruitmentRequests', document);
       await link(document.id, job);
-      await appendActivity({ organizationId, requestId: document.id, type: 'created_from_odoo', meta: { jobId: job.id, name: job.name, recruiter: job.recruiter?.name ?? null, recruiterCode: document.recruiterCode } });
+      await appendActivity({ organizationId, requestId: document.id, type: 'created_from_odoo', meta: { jobId: job.id, name: job.name, recruiter: job.recruiter?.name ?? null, recruiterCode: document.recruiterCode, activeDate: job.activeDate ?? null, hiringPeriod: job.hiringPeriodDays ?? null } });
     }
     for (const { id, job } of plan.restore) {
       await store.update('recruitmentRequests', id, { archivedAt: null, archivedBy: null, archiveReason: null, revision: bump(id) });
@@ -176,7 +254,7 @@ export async function syncOdooJobs(organizationId, { snapshot = null } = {}) {
     for (const { id, job, patch, previousRecruiterCode } of plan.update) {
       await store.update('recruitmentRequests', id, { ...patch, revision: bump(id) });
       if (!links.has(id) || Number(links.get(id).odooJobId) !== job.id) await link(id, job);
-      await appendActivity({ organizationId, requestId: id, type: 'odoo_synced', meta: { jobId: job.id, fields: Object.keys(patch), ...('recruiterCode' in patch ? { previousRecruiterCode, recruiterCode: patch.recruiterCode } : {}) } });
+      await appendActivity({ organizationId, requestId: id, type: 'odoo_synced', meta: { jobId: job.id, fields: Object.keys(patch), ...('recruiterCode' in patch ? { previousRecruiterCode, recruiterCode: patch.recruiterCode } : {}), ...(patch.sla ? { activeDate: job.activeDate ?? null, hiringPeriod: job.hiringPeriodDays ?? null, dueDate: patch.sla.currentDueDate, priority: patch.priority } : {}) } });
     }
     for (const { id, reason } of plan.archive) {
       await store.update('recruitmentRequests', id, { archivedAt: stamp, archivedBy: null, archiveReason: reason, revision: bump(id) });
