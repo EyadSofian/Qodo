@@ -133,6 +133,7 @@ export const TEAM_REASON_LABEL: Record<string, Localised> = {
   title: { ar: 'المسمى الوظيفي', en: 'Job title' },
   odoo: { ar: 'قسم التوظيف في Odoo', en: 'Odoo recruiting department' },
   assignments: { ar: 'مسؤول عن طلبات', en: 'Owns requests' },
+  odoo_jobs: { ar: 'مسؤول عن وظائف منشورة في Odoo', en: 'Owns published Odoo jobs' },
   manual: { ar: 'أُضيف يدوياً', en: 'Added in settings' },
 };
 

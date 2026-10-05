@@ -4,12 +4,13 @@
  * Production has no reliable single field for "recruiter": the recruiters have
  * no Qodo accounts, Odoo's recruiter field is stale (it still names people who
  * have left), and the HR manager and an HR admin carry real requests without a
- * recruitment title. So membership is the union of three facts about an
+ * recruitment title. So membership is the union of four facts about an
  * *active* employee, plus an explicit Settings list for anything they miss:
  *
  *   title        the HR database calls them a recruitment/talent specialist
  *   odoo         Odoo places them in the Recruiting department
  *   assignments  they own a Qodo recruitment request (live, or within a year)
+ *   odoo_jobs    they own a job published in Odoo today (or lead that board)
  *   manual       HR added them in Settings → Recruitment team
  *
  * and minus anybody HR excluded there. Every member carries the reasons, so the
@@ -17,6 +18,7 @@
  */
 
 import { knownPhoto, odooDepartmentName, odooEmployeeFor, odooEmployeeIndex } from '../odooPeople.js';
+import { odooJobsByEmployee, publishedJobsSnapshot } from './odooJobs.js';
 
 const RECRUITMENT_TITLE = /recruit|talent\s*acqu|توظيف|استقطاب/i;
 const RECRUITING_DEPARTMENT = /recruit|talent/i;
@@ -48,8 +50,9 @@ function recentlyOwned(request, now) {
  * @param {object[]} input.requests  recruitment requests
  * @param {{include: string[], exclude: string[]}} input.team  Settings overrides
  * @param {object|null} [input.odooIndex]  from `odooEmployeeIndex`
+ * @param {string[]} [input.odooJobOwners]  employee codes owning published Odoo jobs
  */
-export function deriveRecruitmentTeam({ profiles, requests, team = { include: [], exclude: [] }, odooIndex = null, now = Date.now() }) {
+export function deriveRecruitmentTeam({ profiles, requests, team = { include: [], exclude: [] }, odooIndex = null, odooJobOwners = [], now = Date.now() }) {
   const reasons = new Map();
   const add = (code, reason) => {
     if (!code) return;
@@ -68,6 +71,7 @@ export function deriveRecruitmentTeam({ profiles, requests, team = { include: []
     if (!recentlyOwned(request, now)) continue;
     for (const code of [request.recruiterCode, ...(request.supportRecruiterCodes ?? [])]) add(code, 'assignments');
   }
+  for (const code of odooJobOwners) add(String(code), 'odoo_jobs');
   for (const code of team.include ?? []) add(String(code), 'manual');
 
   const excluded = new Set((team.exclude ?? []).map(String));
@@ -99,6 +103,6 @@ export function deriveRecruitmentTeam({ profiles, requests, team = { include: []
 
 /** Team members plus the non-blocking Odoo index (photos, departments) when it is warm. */
 export async function recruitmentTeamFor({ profiles, requests, settings }) {
-  const odooIndex = await odooEmployeeIndex({ timeoutMs: 2500 });
-  return deriveRecruitmentTeam({ profiles, requests, team: settings.recruitment.team, odooIndex });
+  const [odooIndex, published] = await Promise.all([odooEmployeeIndex({ timeoutMs: 2500 }), publishedJobsSnapshot()]);
+  return deriveRecruitmentTeam({ profiles, requests, team: settings.recruitment.team, odooIndex, odooJobOwners: [...odooJobsByEmployee(published).keys()] });
 }

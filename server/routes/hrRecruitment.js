@@ -25,9 +25,8 @@ import {
   transition,
   updateRequest,
 } from '../hr/recruitment/requests.js';
-import { capacityBoard, recruitmentAlerts, recruitmentOverview, recruitmentSummary, recruitmentTeam } from '../hr/recruitment/desk.js';
+import { capacityBoard, odooPublishedJobs, recruitmentAlerts, recruitmentOverview, recruitmentSummary, recruitmentTeam } from '../hr/recruitment/desk.js';
 import { pipelineSummaries, recruitmentOdooOverview, requestPipeline } from '../hr/recruitment/odooPipeline.js';
-import { odooPublishedJobs } from '../hr/recruitment/odooJobs.js';
 import { createKpiEvent, kpiDetail, kpiOverview, voidKpiEvent } from '../hr/recruitment/kpi.js';
 import { decideRewardBatch, rewardsOverview } from '../hr/recruitment/rewards.js';
 

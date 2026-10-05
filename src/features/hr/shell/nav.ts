@@ -40,8 +40,11 @@ export const HR_NAV: HRNavItem[] = [
 ];
 
 export const RECRUITMENT_NAV: SubNavItem[] = [
-  { to: '/hr/recruitment', end: true, label: { ar: 'وظائف Odoo المنشورة', en: 'Published Odoo Jobs' }, visible: (a) => a.recruitment || a.kpiReview || a.rewards },
-  { to: '/hr/recruitment/requests', label: { ar: 'الطلبات الداخلية', en: 'Internal Requests' }, visible: () => true },
+  { to: '/hr/recruitment', end: true, label: { ar: 'نظرة عامة', en: 'Overview' }, visible: (a) => a.recruitment || a.kpiReview || a.rewards },
+  { to: '/hr/recruitment/requests', label: { ar: 'طلبات الوظائف', en: 'Job Requests' }, visible: () => true },
+  { to: '/hr/recruitment/hiring', label: { ar: 'التوظيف النشط', en: 'Active Hiring' }, visible: (a) => a.recruitment },
+  { to: '/hr/recruitment/capacity', label: { ar: 'سعة الفريق', en: 'Team Capacity' }, visible: (a) => a.recruitment },
+  { to: '/hr/recruitment/odoo-jobs', label: { ar: 'وظائف Odoo المنشورة', en: 'Published Odoo Jobs' }, visible: (a) => a.recruitment },
   { to: '/hr/recruitment/kpi', label: { ar: 'مؤشرات التوظيف', en: 'Recruitment KPI' }, visible: (a) => a.recruitment || a.kpiReview },
   { to: '/hr/recruitment/rewards', label: { ar: 'المكافآت', en: 'Rewards' }, visible: (a) => a.recruitment || a.rewards },
 ];

@@ -1,13 +1,17 @@
 /**
- * One recruiter: who they are, what they carry against their limits, how the
- * month is going, and how close the next reward is. The card lifts when it is
- * the focused slide, and wears an amber or red edge when a limit is full or
- * broken — a highlight, never a shake.
+ * One recruiter: who they are, what needs attention, what they carry against
+ * their limits, how the month is going, what Odoo publishes under their name
+ * and how close the next reward is.
+ *
+ * The flags come first — overdue jobs and a broken or full limit are the
+ * reason somebody opens this page — and the card wears a red or amber edge to
+ * match. A highlight, never a shake. The whole card opens their jobs.
  */
 
 import { motion } from 'framer-motion';
+import { ChevronLeft, ChevronRight, CircleCheck, Gift, Globe2, Hourglass, TimerOff, TriangleAlert } from 'lucide-react';
 import { cx } from '../../../../lib/utils';
-import { shortName, useHRText } from '../../format';
+import { num, shortName, useHRText } from '../../format';
 import { PRIORITY_LABEL } from '../../labels';
 import type { RecruiterCardData } from '../../types';
 import { useMotion } from '../../ui/motion';
@@ -22,6 +26,15 @@ export function RecruiterCard({ card, active = false, onOpen }: { card: Recruite
   const over = level.critical === 'over' || level.required === 'over';
   const full = !over && (level.critical === 'full' || level.required === 'full');
   const levelTone = (key: 'critical' | 'required') => (level[key] === 'over' ? 'critical' : level[key] === 'full' ? 'warning' : key === 'critical' ? 'critical' : 'warning');
+  const rewardReady = card.reward.ready > 0;
+  const Open = lang === 'en' ? ChevronRight : ChevronLeft;
+
+  const flags = [
+    card.overdue > 0 && { key: 'overdue', tone: 'critical' as const, icon: TimerOff, label: t(`${num(card.overdue, lang)} متأخرة`, `${num(card.overdue, lang)} overdue`) },
+    over && { key: 'over', tone: 'critical' as const, icon: TriangleAlert, label: t('فوق الحد', 'Over limit') },
+    full && { key: 'full', tone: 'warning' as const, icon: TriangleAlert, label: t('السعة ممتلئة', 'At limit') },
+    card.pipeline > 0 && { key: 'pipeline', tone: 'info' as const, icon: Hourglass, label: t(`${num(card.pipeline, lang)} قيد الاعتماد`, `${num(card.pipeline, lang)} pending approval`) },
+  ].filter(Boolean) as Array<{ key: string; tone: 'critical' | 'warning' | 'info'; icon: typeof TimerOff; label: string }>;
 
   return (
     <motion.button
@@ -30,26 +43,40 @@ export function RecruiterCard({ card, active = false, onOpen }: { card: Recruite
       animate={motionPresets.reduce ? undefined : { y: active ? -4 : 0 }}
       transition={motionPresets.spring}
       className={cx(
-        'flex h-full w-full flex-col rounded-2xl border bg-white p-4 text-start outline-none transition-[box-shadow,border-color] duration-200',
-        active ? 'shadow-[0_18px_40px_-22px_rgba(11,37,69,0.45)]' : 'shadow-[0_1px_2px_rgba(11,37,69,0.04)] hover:shadow-[0_12px_28px_-20px_rgba(11,37,69,0.4)]',
-        over ? 'border-red-300 ring-1 ring-red-100' : full ? 'border-amber-300 ring-1 ring-amber-100' : 'border-[#E6ECF3]'
+        'group relative flex h-full w-full flex-col overflow-hidden rounded-3xl border bg-white/90 p-4 text-start outline-none backdrop-blur transition-[box-shadow,border-color] duration-200 focus-visible:ring-2 focus-visible:ring-[rgb(var(--hr-a1)/0.5)]',
+        active ? 'shadow-[0_22px_44px_-24px_rgb(var(--hr-a1)/0.65)]' : 'shadow-[0_1px_2px_rgba(11,37,69,0.05)] hover:shadow-[0_16px_32px_-22px_rgb(var(--hr-a1)/0.55)]',
+        over || card.overdue > 0 ? 'border-red-300' : full ? 'border-amber-300' : 'border-white/90'
       )}
-      aria-label={t(`فتح أداء ${name}`, `Open ${name}'s workload`)}
+      aria-label={t(`فتح وظائف ${name}`, `Open ${name}'s jobs`)}
     >
-      <div className="flex items-center gap-3">
+      <span
+        aria-hidden="true"
+        className={cx('absolute inset-x-0 top-0 h-1.5', over || card.overdue > 0 ? 'bg-gradient-to-r from-red-500 to-rose-400' : full ? 'bg-gradient-to-r from-amber-400 to-orange-400' : 'bg-[linear-gradient(90deg,rgb(var(--hr-a1)),rgb(var(--hr-a2)))]')}
+      />
+
+      <div className="mt-1.5 flex items-center gap-3">
         <PersonAvatar name={name} photoUrl={member.photoUrl} size={52} />
         <div className="min-w-0 flex-1">
           <p className="hr-bidi truncate text-[14.5px] font-bold text-navy" title={name}>{shortName(member.shortName, lang) || name}</p>
           <p className="hr-bidi truncate text-[12px] text-[#5A6C82]" title={member.title}>{member.title || t('فريق التوظيف', 'Recruitment team')}</p>
         </div>
-        {(over || full) && (
-          <span className={cx('shrink-0 rounded-full px-2 py-0.5 text-[10.5px] font-bold', over ? `${TONE.critical.bg} ${TONE.critical.text}` : `${TONE.warning.bg} ${TONE.warning.text}`)}>
-            {over ? t('فوق الحد', 'Over limit') : t('ممتلئ', 'At limit')}
+      </div>
+
+      <div className="mt-3 flex min-h-[1.625rem] flex-wrap items-center gap-1.5">
+        {flags.length ? flags.map((flag) => (
+          <span key={flag.key} className={cx('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-bold', TONE[flag.tone].bg, TONE[flag.tone].text, TONE[flag.tone].border)}>
+            <flag.icon size={12} aria-hidden="true" />
+            {flag.label}
+          </span>
+        )) : (
+          <span className={cx('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-bold', TONE.success.bg, TONE.success.text, TONE.success.border)}>
+            <CircleCheck size={12} aria-hidden="true" />
+            {t('لا شيء متأخر', 'Nothing overdue')}
           </span>
         )}
       </div>
 
-      <dl className="mt-4 space-y-2.5 border-t border-[#EEF2F7] pt-3.5">
+      <dl className="mt-3 space-y-2.5 border-t border-[#EEF2F7] pt-3.5">
         {(['critical', 'required'] as const).map((key) => (
           <div key={key} className="grid grid-cols-[5.5rem_1fr_auto] items-center gap-2.5">
             <dt className="text-[12px] font-semibold text-[#5A6C82]">{pick(PRIORITY_LABEL[key])}</dt>
@@ -81,21 +108,37 @@ export function RecruiterCard({ card, active = false, onOpen }: { card: Recruite
         </div>
       </dl>
 
-      <div className="mt-3.5 flex items-center justify-between gap-2 rounded-xl bg-[#F6F8FB] px-3 py-2.5">
-        <div className="min-w-0">
-          <p className="text-[11px] font-semibold text-[#5A6C82]">{t('تقدم المكافأة', 'Reward progress')}</p>
-          <p className="mt-0.5 truncate text-[12px] font-bold text-navy">
-            {card.reward.ready > 0
-              ? t('دفعة مكافأة جاهزة', 'Reward batch ready')
-              : t(`${card.reward.done} / ${card.reward.of} وظائف`, `${card.reward.done} / ${card.reward.of} jobs`)}
-            {card.reward.category ? <span className="font-medium text-ink-faint"> · {pick(card.reward.category)}</span> : null}
-          </p>
+      {card.odoo && (
+        <div className="mt-3.5 flex items-center gap-2.5 rounded-2xl bg-violet-50 px-3 py-2.5 ring-1 ring-violet-100">
+          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-violet-600 text-white"><Globe2 size={14} aria-hidden="true" /></span>
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] font-semibold text-violet-700">{t('منشور في Odoo', 'Published in Odoo')}</p>
+            <p className="mt-0.5 truncate text-[12px] font-bold text-navy">{t(`${num(card.odoo.jobs, lang)} وظيفة · ${num(card.odoo.toRecruit, lang)} مقعد`, `${num(card.odoo.jobs, lang)} jobs · ${num(card.odoo.toRecruit, lang)} seats`)}</p>
+          </div>
+          {card.odoo.newApplications > 0 && <span className="shrink-0 rounded-full bg-violet-600 px-2 py-0.5 text-[11px] font-bold text-white">{t(`${num(card.odoo.newApplications, lang)} جديد`, `${num(card.odoo.newApplications, lang)} new`)}</span>}
         </div>
-        <ProgressDots done={card.reward.ready > 0 ? card.reward.of : card.reward.done} of={card.reward.of} label={t(`${card.reward.done} من ${card.reward.of}`, `${card.reward.done} of ${card.reward.of}`)} />
-      </div>
-      {card.overdue > 0 && (
-        <p className={cx('mt-2.5 text-[11.5px] font-semibold', TONE.critical.text)}>{t(`${card.overdue} وظيفة متأخرة`, `${card.overdue} overdue`)}</p>
       )}
+
+      <div className={cx('mt-2.5 flex items-center justify-between gap-2 rounded-2xl px-3 py-2.5 ring-1', rewardReady ? 'bg-emerald-50 ring-emerald-200' : 'bg-[#F6F8FB] ring-transparent')}>
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span className={cx('grid h-7 w-7 shrink-0 place-items-center rounded-lg text-white', rewardReady ? 'bg-emerald-600' : 'bg-slate-400')}><Gift size={14} aria-hidden="true" /></span>
+          <div className="min-w-0">
+            <p className={cx('text-[11px] font-semibold', rewardReady ? 'text-emerald-700' : 'text-[#5A6C82]')}>{t('المكافأة', 'Reward')}</p>
+            <p className="mt-0.5 truncate text-[12px] font-bold text-navy">
+              {rewardReady
+                ? t('دفعة مكافأة جاهزة', 'Reward batch ready')
+                : t(`${card.reward.done} / ${card.reward.of} وظائف`, `${card.reward.done} / ${card.reward.of} jobs`)}
+              {card.reward.category ? <span className="font-medium text-ink-faint"> · {pick(card.reward.category)}</span> : null}
+            </p>
+          </div>
+        </div>
+        <ProgressDots done={rewardReady ? card.reward.of : card.reward.done} of={card.reward.of} label={t(`${card.reward.done} من ${card.reward.of}`, `${card.reward.done} of ${card.reward.of}`)} />
+      </div>
+
+      <span className="mt-auto flex items-center justify-center gap-1 pt-3.5 text-[12px] font-bold text-[rgb(var(--hr-a1))]">
+        {t('افتح الوظائف', 'Open jobs')}
+        <Open size={14} className="transition-transform duration-200 group-hover:translate-x-0.5 rtl:group-hover:-translate-x-0.5" aria-hidden="true" />
+      </span>
     </motion.button>
   );
 }

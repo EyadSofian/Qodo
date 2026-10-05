@@ -168,3 +168,32 @@ test('only real raster photos are served — never an SVG placeholder', () => {
   assert.equal(people.sniff(Buffer.from('<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg"></svg>')), null);
   assert.equal(people.sniff(Buffer.from('<svg onload="alert(1)"></svg>')), null);
 });
+
+test('published Odoo jobs put their owners on the desk and count per employee code', async () => {
+  const { deriveRecruitmentTeam } = await import('./hr/recruitment/team.js');
+  const { odooJobsByEmployee, odooJobTotals } = await import('./hr/recruitment/odooJobs.js');
+  const job = (id, recruiter, toRecruit, newApplications) => ({ id, name: `Job ${id}`, recruiter, toRecruit, applications: newApplications + 5, newApplications, hired: 0 });
+  const snapshot = {
+    connected: true,
+    jobs: [job(1, { id: 11, name: 'Yasmin' }, 2, 3), job(2, { id: 11, name: 'Yasmin' }, 1, 0), job(3, { id: 99, name: 'Left the company' }, 4, 1), job(4, null, 1, 0)],
+    team: [
+      { id: 11, name: 'Yasmin', employeeCode: '420' },
+      { id: 12, name: 'Salah', employeeCode: '389' },
+      { id: 99, name: 'Left the company', employeeCode: null },
+    ],
+  };
+  const byCode = odooJobsByEmployee(snapshot);
+  assert.deepEqual([...byCode.keys()], ['420', '389'], 'an owner Odoo cannot tie to an employee code owns nothing here');
+  assert.deepEqual(odooJobTotals(byCode.get('420')), { jobs: 2, toRecruit: 3, newApplications: 3, applications: 13 });
+  assert.deepEqual(odooJobTotals(byCode.get('389')), { jobs: 0, toRecruit: 0, newApplications: 0, applications: 0 }, 'the team manager has a card with no job');
+  assert.equal(odooJobsByEmployee(null).size, 0);
+  assert.equal(odooJobsByEmployee({ connected: false, jobs: [], team: [] }).size, 0);
+
+  const profile = (employeeCode, title, status = 'active') => ({ employeeCode, nameArabic: '', nameEnglish: `Person ${employeeCode}`, title, department: 'HR', status, sources: { master: true } });
+  const profiles = new Map([['420', profile('420', 'HR Generalist')], ['389', profile('389', 'HR Manager')], ['500', profile('500', 'Accountant')], ['522', profile('522', 'HR Admin', 'inactive')]]);
+  const team = deriveRecruitmentTeam({ profiles, requests: [], odooJobOwners: ['420', '389', '522', '999'] });
+  assert.deepEqual(team.map((member) => member.employeeCode).sort(), ['389', '420'], 'active HR-file people only; a leaver or an unknown code is not on the desk');
+  assert.deepEqual(team.find((member) => member.employeeCode === '389').reasons, ['odoo_jobs']);
+  const excluded = deriveRecruitmentTeam({ profiles, requests: [], odooJobOwners: ['420', '389'], team: { include: [], exclude: ['389'] } });
+  assert.deepEqual(excluded.map((member) => member.employeeCode), ['420'], 'Settings can still take someone off the desk');
+});

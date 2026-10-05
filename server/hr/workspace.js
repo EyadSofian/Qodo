@@ -30,7 +30,7 @@ import { odooTimeOff, timeOffFreshness } from './odooTimeOff.js';
 import { odooResolver, timeOffView } from './odooHR.js';
 import { inTeam, teamReach } from './teamReach.js';
 import { photoUrlFor } from './recruitment/team.js';
-import { odooPublishedJobsForHome } from './recruitment/odooJobs.js';
+import { recruitmentOverview } from './recruitment/desk.js';
 import { performanceOverview } from './performance.js';
 import { PAYROLL_TYPES } from './personnel.js';
 
@@ -277,8 +277,8 @@ export async function hrHome(user) {
   const fx = r.payroll ? await usdEgpRate() : null;
   const payroll = r.payroll ? payrollAnalytics(profiles, fx) : null;
   const readsPeople = r.people || r.personnel;
-  const [odooJobs, personnelCases, performance, index, timeOff] = await Promise.all([
-    r.recruitment ? odooPublishedJobsForHome().catch(() => null) : null,
+  const [recruitment, personnelCases, performance, index, timeOff] = await Promise.all([
+    r.recruitment ? recruitmentOverview(user).catch(() => null) : null,
     // Salary increases and insurance operations are payroll data, even as a count.
     r.personnel || r.manage ? find('personnelRequests', (item) => organizationOf(item) === organizationId && (r.payroll || !PAYROLL_TYPES.has(item.type))) : [],
     r.people || r.performance ? performanceOverview(user).catch(() => null) : null,
@@ -290,7 +290,7 @@ export async function hrHome(user) {
   const active = profiles.filter((profile) => profile.status === 'active' && profile.sources.master);
   const leave = leaveAnalytics(state.bySource.leave);
   const gaps = r.manage ? reconciliation(state.profiles, state.positions) : null;
-  const published = odooJobs?.connected ? odooJobs.jobs : null;
+  const alerts = recruitment?.alerts ?? [];
   return {
     selfOnly: false,
     metrics: {
@@ -299,19 +299,25 @@ export async function hrHome(user) {
       female: workforce.gender.female,
       newEmployees: workforce.newHires,
       period: workforce.period,
-      openJobs: published?.length ?? null,
-      openSeats: published?.reduce((sum, job) => sum + job.toRecruit, 0) ?? null,
+      openJobs: recruitment?.summary.activeJobs ?? null,
+      openSeats: recruitment?.summary.openSeats ?? null,
       insuredEmployees: workforce.socialInsured,
       payrollUsd: payroll ? payroll.totalUsd : null,
       payrollRate: payroll ? payroll.rate : null,
     },
-    recruitment: published
+    recruitment: recruitment
       ? {
-          jobs: published.length,
-          toRecruit: published.reduce((sum, job) => sum + job.toRecruit, 0),
-          newApplications: published.reduce((sum, job) => sum + job.newApplications, 0),
-          applications: published.reduce((sum, job) => sum + job.applications, 0),
-          recruiters: [...new Set(published.map((job) => job.recruiter?.name).filter(Boolean))].length,
+          overdue: recruitment.summary.overdue,
+          dueSoon: recruitment.summary.dueSoon,
+          critical: recruitment.summary.critical,
+          pendingApproval: recruitment.summary.pendingApproval,
+          pendingReview: recruitment.summary.pendingReview,
+          slaSuccess: recruitment.summary.slaSuccess,
+          capacityAlerts: alerts.filter((alert) => alert.type.startsWith('capacity_')).length,
+          criticalAlerts: alerts.filter((alert) => alert.severity === 'critical').length,
+          topAlerts: alerts.slice(0, 4),
+          // Odoo's published board beside Qodo's own clock: jobs, seats, new applicants.
+          odoo: recruitment.odoo,
         }
       : null,
     personnel: {

@@ -34,6 +34,7 @@ Read-only discovery against production (Postgres session opened with
 /hr/recruitment/requests     Job Requests (+ /new wizard, /:id detail)
 /hr/recruitment/hiring       Active Hiring
 /hr/recruitment/capacity     Team Capacity
+/hr/recruitment/odoo-jobs    Published Odoo Jobs (read-only, live)
 /hr/recruitment/kpi          Recruitment KPI
 /hr/recruitment/rewards      Rewards
 /hr/people[/:employeeCode]   People
@@ -186,6 +187,33 @@ the key Railway injects; nothing in HR writes to Odoo.
   HR and Personnel viewers see everyone; anyone else only themselves. Leave
   descriptions (`name`, `private_name`) are never read.
 
+### Published jobs and the recruiter cards
+
+`recruitment/odooJobs.js` reads the active, published `hr.job` rows of
+Egypt - Engoaad (company 2) with their owner (`user_id`), and the employee
+behind each owner for the HR code. It only reads Odoo; `desk.js` joins it to
+Qodo's own picture, and neither replaces the other:
+
+* A recruiter card always shows Qodo's side — flags (overdue, over or at a
+  limit, pending approval), the capacity bars, month, SLA, KPI and reward
+  progress — and adds one violet line for what Odoo publishes under that
+  person. The card opens a drawer with their jobs, where priority, deadline
+  and assignment can be changed in place (the request page's own dialogs),
+  then their published Odoo jobs.
+* Owning a published job puts an active HR-file employee on the desk (team
+  reason `odoo_jobs`); the team manager (code 389) is included with no job.
+  Settings → Recruitment team can still exclude anyone.
+* Each Odoo job carries the Qodo request confirmed against it (`odoo-link`).
+  The request is where the deadline and every edit live; a job without one
+  is not timed yet. `ownerCode` is null when the Odoo owner is not on the
+  desk here.
+* Pages never wait on this read after the first one: `publishedJobsSnapshot`
+  serves the last copy and refreshes behind it (90 s). `?refresh=1` on
+  `GET /hr/recruitment/odoo/jobs` re-reads now and reports a failure.
+
+The Overview, Active Hiring and Team Capacity pages are Qodo's desk and must
+not be replaced by the Odoo list — it has its own tab.
+
 ## 8. Capacity
 
 Per recruiter, counting `hiring` + `on_hold` jobs (configurable): Critical ≤ 2,
@@ -314,7 +342,7 @@ and KPI deductions. Reading Settings needs `hr.manage` or
 | --- | --- |
 | Shell | `GET /hr/access` · `GET /hr/overview` |
 | People | `GET /hr/people` · `GET /hr/people/:code/photo[?size=512]` · `GET /hr/employees/:code` (falls back to Odoo-only) · `GET /hr/employees/:code/odoo` (manager, reports, time off) · `PATCH /hr/employees/:code/:section` · `PUT /hr/employees/:code/link` |
-| Recruitment | `GET /hr/recruitment/overview · team · summary · alerts · capacity · capacity/check` · `GET·POST /hr/recruitment/requests` · `GET·PATCH /hr/recruitment/requests/:id` · `POST …/:id/submit · review · approve · assign · priority · extend · hold · resume · cancel · accepted` · `GET …/:id/odoo` · `PUT …/:id/odoo-link` · `GET /hr/recruitment/odoo · odoo/pipelines` · `GET /hr/recruitment/kpi[/:code]` · `POST /hr/recruitment/kpi/events` · `POST …/kpi/events/:id/void` · `GET /hr/recruitment/rewards` · `POST …/rewards/batches/:id/decision` |
+| Recruitment | `GET /hr/recruitment/overview · team · summary · alerts · capacity · capacity/check` · `GET·POST /hr/recruitment/requests` · `GET·PATCH /hr/recruitment/requests/:id` · `POST …/:id/submit · review · approve · assign · priority · extend · hold · resume · cancel · accepted` · `GET …/:id/odoo` · `PUT …/:id/odoo-link` · `GET /hr/recruitment/odoo · odoo/jobs · odoo/pipelines` · `GET /hr/recruitment/kpi[/:code]` · `POST /hr/recruitment/kpi/events` · `POST …/kpi/events/:id/void` · `GET /hr/recruitment/rewards` · `POST …/rewards/batches/:id/decision` |
 | Personnel | `GET·POST /hr/personnel` · `GET /hr/personnel/leave` · `GET·PATCH /hr/personnel/:id` · `POST /hr/personnel/:id/checklist/:itemId` · `POST /hr/personnel/:id/form` |
 | Public form | `GET·POST /hr-forms/:token` |
 | Payroll | `GET /hr/payroll` (`hr.payroll`) |
