@@ -47,7 +47,7 @@ export function OdooPublishedJobs() {
     return (data?.jobs ?? [])
       .filter((job) => !owner || (owner === 'none' ? !job.ownerCode : String(job.recruiter?.id ?? '') === owner))
       .filter((job) => !onlyNew || job.newApplications > 0)
-      .filter((job) => !link || (link === 'linked' ? Boolean(job.request) : !job.request))
+      .filter((job) => !link || (link === 'linked' ? Boolean(job.request?.approved) : !job.request?.approved))
       .filter((job) => !needle || `${job.name} ${job.department} ${job.recruiter?.name ?? ''} ${job.request?.reference ?? ''}`.toLocaleLowerCase().includes(needle))
       .sort((left, right) => right.newApplications - left.newApplications || left.name.localeCompare(right.name));
   }, [data, owner, onlyNew, link, q]);
@@ -71,7 +71,7 @@ export function OdooPublishedJobs() {
   const connected = data.configured && data.connected;
   const totalSeats = data.jobs.reduce((sum, job) => sum + job.toRecruit, 0);
   const totalNew = data.jobs.reduce((sum, job) => sum + job.newApplications, 0);
-  const unlinked = data.jobs.filter((job) => !job.request).length;
+  const unlinked = data.jobs.filter((job) => !job.request?.approved).length;
   const chip = (pressed: boolean) => cx('inline-flex min-h-8 items-center gap-1.5 rounded-full px-3 text-[12px] font-semibold transition-colors', pressed ? 'bg-[linear-gradient(135deg,rgb(var(--hr-a1)),rgb(var(--hr-a2)))] text-white shadow-[0_8px_16px_-10px_rgb(var(--hr-a1)/0.9)]' : 'bg-white/80 text-slate-700 ring-1 ring-slate-200 hover:text-navy');
   const filtered = Boolean(owner || onlyNew || link || q);
 
@@ -80,13 +80,13 @@ export function OdooPublishedJobs() {
       <PageHeader
         eyebrow={t('التوظيف · Odoo', 'Recruitment · Odoo')}
         title={t('وظائف Odoo المنشورة', 'Published Odoo jobs')}
-        description={t('مباشرة من Odoo: وظائف Egypt - Engoaad النشطة والمنشورة فقط، ومع كل وظيفة الطلب المرتبط بها في Qodo حيث المهلة والتعديل.', 'Live from Odoo: active, published Egypt - Engoaad jobs only, each with the Qodo request that carries its deadline and edits.')}
+        description={t('مباشرة من Odoo: وظائف Egypt - Engoaad النشطة والمنشورة فقط. الوظيفة التي لها طلب معتمد تتبع مهلة الاعتماد، والتي بلا طلب تتبع مواعيد Odoo.', 'Live from Odoo: active, published Egypt - Engoaad jobs only. A job with an approved request follows the approval\'s deadline; one without follows Odoo\'s dates.')}
         stats={connected ? (
           <>
             <HeroStat value={num(data.jobs.length, lang)} label={t('وظيفة منشورة', 'published jobs')} />
             <HeroStat value={num(totalSeats, lang)} label={t('مقعد مطلوب', 'seats to recruit')} />
             <HeroStat value={num(totalNew, lang)} label={t('طلب تقديم جديد', 'new applications')} to="/hr/recruitment/odoo-jobs?new=1" />
-            {unlinked > 0 && <HeroStat value={num(unlinked, lang)} label={t('بلا طلب في Qodo', 'with no Qodo request')} to="/hr/recruitment/odoo-jobs?link=unlinked" />}
+            {unlinked > 0 && <HeroStat value={num(unlinked, lang)} label={t('بدون طلب معتمد', 'with no approved request')} to="/hr/recruitment/odoo-jobs?link=unlinked" />}
           </>
         ) : undefined}
         actions={<button type="button" className="btn-ghost btn-sm" disabled={refreshing} onClick={() => void refresh()}><RefreshCw size={15} className={refreshing ? 'animate-spin' : ''} />{t('تحديث من Odoo', 'Refresh from Odoo')}</button>}
@@ -112,7 +112,7 @@ export function OdooPublishedJobs() {
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <button type="button" aria-pressed={onlyNew} onClick={() => set('new', onlyNew ? '' : '1')} className={chip(onlyNew)}>{t('بها طلبات جديدة', 'With new applications')}</button>
-              <button type="button" aria-pressed={link === 'unlinked'} onClick={() => set('link', link === 'unlinked' ? '' : 'unlinked')} className={chip(link === 'unlinked')}>{t('بلا طلب في Qodo', 'No Qodo request')}</button>
+              <button type="button" aria-pressed={link === 'unlinked'} onClick={() => set('link', link === 'unlinked' ? '' : 'unlinked')} className={chip(link === 'unlinked')}>{t('بدون طلب معتمد', 'No approved request')}</button>
               <button type="button" aria-pressed={owner === 'none'} onClick={() => set('owner', owner === 'none' ? '' : 'none')} className={chip(owner === 'none')}>{t('بلا مسؤول من الفريق', 'No team owner')}</button>
               {filtered && <button type="button" onClick={() => setParams(new URLSearchParams(), { replace: true })} className="inline-flex min-h-8 items-center gap-1 px-1 text-[12px] font-semibold text-[rgb(var(--hr-a1))] hover:underline"><X size={13} aria-hidden="true" />{t('مسح الفلاتر', 'Clear filters')}</button>}
               <span className="ms-auto text-[11.5px] text-ink-faint">{t(`${num(jobs.length, lang)} وظيفة`, `${num(jobs.length, lang)} jobs`)}{data.fetchedAt ? ` · ${t('آخر قراءة', 'Last read')} ${date(data.fetchedAt, lang)}` : ''}</span>
@@ -170,7 +170,7 @@ export function OdooPublishedJobs() {
                       {job.request ? (
                         <Link to={`/hr/recruitment/requests/${encodeURIComponent(job.request.id)}`} className="inline-flex items-center gap-1.5 text-[rgb(var(--hr-a1))] hover:underline">
                           <Pencil size={13} aria-hidden="true" />
-                          {t(`طلب ${job.request.reference}`, `Request ${job.request.reference}`)}
+                          {job.request.approved ? t(`طلب معتمد ${job.request.reference}`, `Approved request ${job.request.reference}`) : t(`${job.request.reference} · بدون طلب معتمد`, `${job.request.reference} · no approved request`)}
                         </Link>
                       ) : (
                         <span className="inline-flex items-center gap-1.5 text-slate-500"><FilePlus2 size={13} aria-hidden="true" />{t('غير مرتبطة بطلب في Qodo', 'No Qodo request linked')}</span>

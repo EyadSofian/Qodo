@@ -198,8 +198,8 @@ test('published Odoo jobs put their owners on the desk and count per employee co
   assert.deepEqual(excluded.map((member) => member.employeeCode), ['420'], 'Settings can still take someone off the desk');
 });
 
-test('Odoo is the only source: one request per published job, everything else archived', async () => {
-  const { planOdooSync, odooRequestId, ARCHIVE_NOT_FROM_ODOO, ARCHIVE_UNPUBLISHED } = await import('./hr/recruitment/odooSync.js');
+test('the desk follows Odoo: one request per published job, the workbook archived, Qodo requests kept', async () => {
+  const { planOdooSync, odooRequestId, ARCHIVE_NOT_FROM_ODOO, ARCHIVE_UNPUBLISHED, ARCHIVE_REPLACED } = await import('./hr/recruitment/odooSync.js');
   const org = 'org-1';
   const job = (id, name, recruiter, toRecruit = 1) => ({ id, name, department: 'Training', recruiter, toRecruit, applications: 0, newApplications: 0, hired: 0 });
   const yasmin = { id: 11, name: 'Yasmin' };
@@ -216,7 +216,9 @@ test('Odoo is the only source: one request per published job, everything else ar
     request('leg-2', 'legacy_workbook', 'completed'),
     request('leg-linked', 'legacy_workbook', 'hiring'),
     request('qodo-draft', 'qodo', 'draft'),
-    request('qodo-approved', 'qodo', 'hiring', { title: 'Accountant (old title)', headcount: 1, recruiterCode: '420' }),
+    request('qodo-swept', 'qodo', 'pending_approval', { archivedAt: '2026-10-05T11:00:00Z', archiveReason: ARCHIVE_NOT_FROM_ODOO }),
+    request('qodo-approved', 'qodo', 'hiring', { title: 'Accountant (as approved)', headcount: 1, recruiterCode: '257', priority: 'critical' }),
+    request(odooRequestId(org, 4), 'odoo', 'hiring', { title: 'Accountant' }),
     request(odooRequestId(org, 7), 'odoo', 'hiring', { title: 'Unpublished since' }),
     request(odooRequestId(org, 8), 'odoo', 'completed', { title: 'Filled and closed' }),
     request(odooRequestId(org, 3), 'odoo', 'hiring', { title: 'IT Manager', department: 'Training', departmentId: 'training', headcount: 1, unresolvedAssignees: [], archivedAt: '2026-10-01T00:00:00Z', archiveReason: ARCHIVE_UNPUBLISHED }),
@@ -226,7 +228,7 @@ test('Odoo is the only source: one request per published job, everything else ar
   const plan = planOdooSync({ organizationId: org, snapshot, requests, links, profiles, today: '2026-10-05', calendar, stamp: '2026-10-05T10:00:00.000Z' });
 
   assert.equal(plan.skipped, null);
-  assert.deepEqual(plan.create.map((item) => item.document.reference), ['ODOO-1', 'ODOO-2'], 'a workbook row linked to the job is not that job\'s request');
+  assert.deepEqual(plan.create.map((item) => item.document.reference), ['ODOO-1', 'ODOO-2'], 'a workbook row linked to the job is not that job\'s request; an approved Qodo request is');
   const cfm = plan.create[0].document;
   assert.deepEqual([cfm.source, cfm.status, cfm.title, cfm.headcount, cfm.recruiterCode], ['odoo', 'hiring', 'CFM Instructor', 2, '420'], 'Odoo gives the job, seats and owner');
   assert.deepEqual([cfm.priority, cfm.hiringPeriodDays, cfm.sla.startDate, cfm.sla.currentDueDate, cfm.targetWorkingDays], ['required', 30, '2026-10-01', '2026-11-12', 30], 'the Active Date starts the clock; the Hiring Period is working days (no Friday, no Saturday) and names the priority');
@@ -236,26 +238,30 @@ test('Odoo is the only source: one request per published job, everything else ar
   assert.deepEqual([video.recruiterCode, video.unresolvedAssignees], [null, ['Left the company']], 'an owner who left owns nothing here, and is named');
   assert.deepEqual([video.priority, video.sla], [null, null], 'no period in Odoo: no priority and no clock until one is set');
 
-  assert.deepEqual(plan.restore.map((item) => item.id), [odooRequestId(org, 3)], 'a job published again gets its own request back');
-  assert.deepEqual(plan.update.map((item) => [item.id, Object.keys(item.patch).sort()]), [[odooRequestId(org, 3), ['odoo']], ['qodo-approved', ['department', 'departmentId', 'odoo', 'title', 'unresolvedAssignees']]], 'an approved Qodo request confirmed against the job is adopted and follows Odoo');
+  assert.deepEqual(plan.restore.map((item) => item.id), [odooRequestId(org, 3), 'qodo-swept'], 'a job published again gets its own request back, and a Qodo request swept away by the first Odoo-only deploy returns');
+  assert.deepEqual(plan.update.map((item) => [item.id, Object.keys(item.patch).sort()]), [[odooRequestId(org, 3), ['odoo']]], 'the approved Qodo request is left exactly as approved: its recruiter, priority and clock are not Odoo\'s to change');
 
   const archived = Object.fromEntries(plan.archive.map((item) => [item.id, item.reason]));
   assert.deepEqual(archived, {
     'leg-1': ARCHIVE_NOT_FROM_ODOO,
     'leg-2': ARCHIVE_NOT_FROM_ODOO,
     'leg-linked': ARCHIVE_NOT_FROM_ODOO,
-    'qodo-draft': ARCHIVE_NOT_FROM_ODOO,
+    [odooRequestId(org, 4)]: ARCHIVE_REPLACED,
     [odooRequestId(org, 7)]: ARCHIVE_UNPUBLISHED,
-  }, 'a job closed under Odoo stays as history; everything else leaves the desk');
+  }, 'the workbook leaves the desk; a draft made in Qodo stays; the request kept for a job steps aside for the approved one');
 
   // A second run over the result changes nothing.
   const after = [
-    ...requests.filter((item) => !archived[item.id]).map((item) => ({ ...item, ...(item.id === odooRequestId(org, 3) ? { archivedAt: null, archiveReason: null } : {}), ...(plan.update.find((update) => update.id === item.id)?.patch ?? {}) })),
+    ...requests.map((item) => ({ ...item, ...(archived[item.id] ? { archivedAt: '2026-10-05T10:00:00.000Z', archiveReason: archived[item.id] } : {}), ...(plan.restore.some((restore) => restore.id === item.id) ? { archivedAt: null, archiveReason: null } : {}), ...(plan.update.find((update) => update.id === item.id)?.patch ?? {}) })),
     // A jsonb column hands keys back in its own order; that must not read as a change.
     ...plan.create.map((item) => ({ ...item.document, odoo: Object.fromEntries(Object.entries(item.document.odoo).reverse()), salaryRange: Object.fromEntries(Object.entries(item.document.salaryRange).reverse()) })),
   ];
   const again = planOdooSync({ organizationId: org, snapshot, requests: after, links, profiles, today: '2026-10-06', calendar });
   assert.deepEqual([again.create.length, again.restore.length, again.update.length, again.archive.length], [0, 0, 0, 0]);
+
+  // The link is removed (or the approved request is cancelled): the job's own request comes back.
+  const unclaimed = planOdooSync({ organizationId: org, snapshot, requests: after, links: new Map([['leg-linked', { odooJobId: 1 }]]), profiles, today: '2026-10-06', calendar });
+  assert.deepEqual([unclaimed.restore.map((item) => item.id), unclaimed.create.length, unclaimed.archive.length], [[odooRequestId(org, 4)], 0, 0]);
 
   // A priority changed in Qodo stands while Odoo's own values stay put…
   const cfmId = odooRequestId(org, 1);

@@ -214,49 +214,73 @@ Qodo's own picture, and neither replaces the other:
 The Overview, Active Hiring and Team Capacity pages are Qodo's desk and must
 not be replaced by the Odoo list — it has its own tab.
 
-### Odoo is the only source of jobs (owner's decision, 2026-10-05)
+### The desk follows Odoo, and requests are approved in Qodo (owner, 2026-10-05)
 
-The recruitment workbook is over. `recruitment/odooSync.js` keeps exactly one
-request per published Egypt - Engoaad job (`source: 'odoo'`, reference
-`ODOO-<job id>`, status `hiring`), owned by the job's Odoo owner when that
-person is an active HR-file employee. Everything else is archived, never
-deleted: workbook rows and requests typed into Qodo (`not_from_odoo`), and
-Odoo jobs no longer published (`odoo_unpublished`, restored with clock and
-history if the job is published again). A job closed in Qodo under this
-regime stays as history. An approved Qodo request HR had confirmed against a
-published job is adopted as that job's request; a workbook row never is.
+Two decisions, taken the same day and in this order:
 
-* Odoo decides the job, its title, department, seats, owner and salary
-  figures; reassigning and linking are therefore off for these requests.
-  Qodo owns hold, extension, hires recorded, KPI and rewards.
-* **The schedule comes from Odoo too.** HR keeps two custom fields on
-  `hr.job`: `active_date` and `hiring_period` (15 / 30 / 45 / 60 days). The
-  clock starts on the Active Date and the job is due that many *working*
-  days later — the approved classification table counts neither Friday nor
-  Saturday — so the period is the SLA target as it stands and names the
-  priority (15 Critical, 30 Required, 45 and 60 Planned). The fields are
-  Engosoft's, not stock Odoo, so they are read through `existingFields`.
-  (`odoo.scheduleRule` names the reading; jobs dated under the one-deploy
-  calendar-day reading are re-dated once, unless their priority was set by
-  hand.)
-* Last writer wins between the two systems: `request.odoo` remembers the
-  Active Date and period Qodo last saw, and the schedule is re-applied only
-  when Odoo's own values move. A priority or deadline changed in Qodo
-  therefore stands until HR changes the job in Odoo. Extensions and holds
-  are kept on top of Odoo's dates.
-* A job with no Hiring Period in Odoo arrives with no priority and no clock.
-  Setting its first priority in Qodo needs no reason and dates the clock from
-  `odoo.firstSeen`, the day the job reached the desk.
-* `request.odoo` and `salaryRange` are compared canonically (sorted keys):
-  a jsonb column returns keys in its own order, and a plain `JSON.stringify`
+1. The recruitment workbook is over. The desk shows what Odoo publishes for
+   Egypt - Engoaad; workbook rows are archived (`not_from_odoo`), never
+   deleted.
+2. The request flow of the original brief stays as written: a manager asks
+   for a hire → the department manager reviews → the final approver approves
+   → work starts and the clock is counted **from the approval day**.
+
+`recruitment/odooSync.js` reconciles the two. A published job has exactly one
+request on the desk:
+
+* **The approved Qodo request HR confirmed against it** (`odoo-link`), when
+  there is one. It is Qodo's in full — recruiter (with the capacity check),
+  priority, the clock from approval — and the sync changes none of it. It
+  speaks for the job while `hiring`, `on_hold` or `completed`, so a filled job
+  that stays published does not come back as new work.
+* **Failing that, a request the sync keeps for it** (`source: 'odoo'`,
+  reference `ODOO-<job id>`, status `hiring`): somebody published a job
+  without going through the request flow. It still has to be worked and
+  timed, so it takes Odoo's owner (when that person is an active HR-file
+  employee), title, department, seats and salary figures, and Odoo's
+  schedule — HR keeps `active_date` and `hiring_period` (15 / 30 / 45 / 60)
+  on `hr.job`. The clock starts on the Active Date and runs that many
+  *working* days (the classification table counts neither Friday nor
+  Saturday); the period names the priority (15 Critical, 30 Required, 45 and
+  60 Planned). Reassigning and linking are off for it: Odoo decides. The
+  screens mark it "no approved request".
+
+Moving between the two: when an approved request is linked to a job, the
+kept request is archived (`replaced_by_approved_request`); if the link is
+removed it comes back. A kept request whose job is unpublished is archived
+(`odoo_unpublished`) and restored, clock and history intact, when the job is
+published again; one completed in Qodo stays as history.
+
+Requests made in Qodo are never archived by the sync, at any stage. One
+approved and not yet published is on its recruiter's desk with its clock
+running, marked "not published in Odoo" (the existing `odoo_unlinked` alert
+and KPI check cover it).
+
+Details that bit once:
+
+* The schedule fields are Engosoft's, not stock Odoo — read through
+  `existingFields`. Always run `fields_get` on a customised model before
+  deciding a field does not exist.
+* Last writer wins for a kept request: `request.odoo` remembers the Active
+  Date and period Qodo last saw, and the schedule is re-applied only when
+  Odoo's own values move, so a priority or deadline changed in Qodo stands
+  until then. Extensions and holds are kept on top of Odoo's dates.
+  `odoo.scheduleRule` names how a period becomes a due date (it was calendar
+  days for one deploy); a rule change re-dates once, unless the priority was
+  set by hand.
+* A job with no Hiring Period arrives with no priority and no clock; its
+  first priority set in Qodo needs no reason and dates the clock from
+  `odoo.firstSeen`.
+* `request.odoo` and `salaryRange` are compared canonically (sorted keys): a
+  jsonb column returns keys in its own order, and a plain `JSON.stringify`
   comparison would rewrite every job on every tick.
 * The sync runs at boot (not awaited), on every recruitment clock tick (10
-  min) and on "Refresh from Odoo". It never acts on a failed or empty read.
-* While it is on (`recruitmentSourceIsOdoo()`: Odoo configured and
-  `HR_RECRUITMENT_SOURCE` not `manual`), creating a request, restoring from
-  the archive, importing the workbook into requests and applying a workbook
-  snapshot all answer `409 recruitment_source_is_odoo`, and the UI hides
-  them. A deployment without Odoo keeps the request → review → approval flow.
+  min), on "Refresh from Odoo", and right after a link change or an approval
+  of a linked request. It never acts on a failed or empty read.
+* `recruitmentSourceIsOdoo()` is Odoo configured and `HR_RECRUITMENT_SOURCE`
+  not `manual`. While on, the workbook import creates nothing, the workbook
+  snapshot cannot be applied, and restoring a workbook row or an unpublished
+  Odoo job answers `409 recruitment_source_is_odoo`.
 
 ## 8. Capacity
 

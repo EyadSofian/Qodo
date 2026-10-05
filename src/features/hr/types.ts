@@ -111,7 +111,8 @@ export interface OdooJob {
   jobUrl: string | null;
   /** The owner's HR code when they are on Qodo's recruitment desk, else null. */
   ownerCode: string | null;
-  request: { id: string; reference: string; status: RequestStatus; priority: Priority | null; dueDate: string | null } | null;
+  /** `approved`: reviewed and approved in Qodo, not one kept for a job published without a request. */
+  request: { id: string; reference: string; status: RequestStatus; priority: Priority | null; dueDate: string | null; approved: boolean } | null;
 }
 
 export interface OdooRecruiter {
@@ -134,7 +135,8 @@ export interface OdooJobsData {
 }
 
 /** One recruiter on the capacity board: the card, their Qodo jobs, their Odoo jobs. */
-export type RecruiterBoardRow = RecruiterCardData & { jobs: JobRequest[]; odooJobs: OdooJob[] };
+export type BoardJob = JobRequest & { posting?: OdooJob | null };
+export type RecruiterBoardRow = RecruiterCardData & { jobs: BoardJob[]; odooJobs: OdooJob[] };
 
 export interface SlaSnapshot {
   started: boolean;
@@ -296,7 +298,7 @@ export interface RecruitmentContext {
   perms: Record<string, boolean>;
   employeeCode: string | null;
   team: TeamMember[];
-  /** 'odoo': jobs come only from Odoo's published board; nobody creates one in Qodo. */
+  /** 'odoo': the desk follows Odoo's published board; the workbook is off. Requests are still made and approved in Qodo. */
   jobSource?: 'odoo' | 'manual';
 }
 

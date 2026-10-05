@@ -52,6 +52,8 @@ export async function deskData(user) {
   return { ctx, scope, events, batches, rules, flags, odoo };
 }
 
+const approvedInQodo = (request) => request.source === 'qodo' && ['hiring', 'on_hold', 'completed'].includes(request.status);
+
 /**
  * An Odoo job as the desk shows it: Odoo's own counts, plus the Qodo request
  * confirmed against it — the thing that carries its deadline and can be edited.
@@ -62,14 +64,19 @@ function deskJobs(ctx, snapshot, jobs) {
   const requestByJob = new Map();
   for (const [requestId, link] of ctx.links) {
     const request = ctx.requests.find((item) => item.id === requestId);
-    if (request && canSee(ctx, request)) requestByJob.set(Number(link.odooJobId), request);
+    if (!request || !canSee(ctx, request)) continue;
+    // An approved request speaks for the job ahead of the one the sync keeps.
+    const jobId = Number(link.odooJobId);
+    if (!requestByJob.has(jobId) || approvedInQodo(request)) requestByJob.set(jobId, request);
   }
   return jobs.map((job) => {
     const request = requestByJob.get(job.id) ?? null;
     return {
       ...job,
       ownerCode: (job.recruiter && codeByOdooUser.get(job.recruiter.id)) || null,
-      request: request ? { id: request.id, reference: request.reference, status: request.status, priority: request.priority ?? null, dueDate: request.sla?.currentDueDate ?? null } : null,
+      // `approved`: the request went through review and final approval in Qodo,
+      // as opposed to one the sync keeps for a job published without a request.
+      request: request ? { id: request.id, reference: request.reference, status: request.status, priority: request.priority ?? null, dueDate: request.sla?.currentDueDate ?? null, approved: approvedInQodo(request) } : null,
     };
   });
 }
@@ -184,17 +191,22 @@ export async function capacityBoard(user) {
   const { ctx } = data;
   const cards = teamCards(data);
   const odooJobs = odooJobsByEmployee(data.odoo);
+  // Each job with its Odoo posting, whoever owns the posting in Odoo: an
+  // approved request keeps the recruiter Qodo assigned.
+  const postings = new Map(deskJobs(ctx, data.odoo, data.odoo?.connected ? data.odoo.jobs : []).map((job) => [job.id, job]));
+  const withPosting = (request) => ({ ...publicRequest(ctx, request), posting: postings.get(Number(ctx.links.get(request.id)?.odooJobId)) ?? null });
   return {
+    odooConnected: Boolean(data.odoo?.connected),
     recruiters: cards.map((card) => ({
       ...card,
       odooJobs: deskJobs(ctx, data.odoo, odooJobs.get(card.member.employeeCode) ?? []),
       jobs: ctx.requests
         .filter((request) => request.recruiterCode === card.member.employeeCode && (COMMITTED_STATUSES.includes(request.status) || PENDING_STATUSES.includes(request.status)))
-        .map((request) => publicRequest(ctx, request)),
+        .map(withPosting),
     })),
     unassigned: ctx.requests
       .filter((request) => !request.recruiterCode && ['pending_review', 'pending_approval', 'hiring', 'on_hold'].includes(request.status) && canSee(ctx, request))
-      .map((request) => publicRequest(ctx, request)),
+      .map(withPosting),
     context: publicContext(ctx),
   };
 }

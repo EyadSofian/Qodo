@@ -58,7 +58,7 @@ export function JobRequests() {
   if (error && !data) return <ErrorBlock error={error} onRetry={reload} />;
   if (loading && !data) return <PageSkeleton rows={1} />;
   const fromOdoo = data?.context.jobSource === 'odoo';
-  const canCreate = !fromOdoo && Boolean(data?.context.perms.request || data?.context.perms.assign);
+  const canCreate = Boolean(data?.context.perms.request || data?.context.perms.assign);
   const canManageArchive = Boolean(data?.context.perms.settings);
   const restore = async (id: string) => {
     setRestoring(id);
@@ -105,7 +105,7 @@ export function JobRequests() {
       <PageHeader
         eyebrow={t('التوظيف', 'Recruitment')}
         title={archived ? t('أرشيف طلبات الوظائف', 'Archived job requests') : t('طلبات الوظائف', 'Job requests')}
-        description={archived ? (fromOdoo ? t('كل ما ليس منشوراً في Odoo الآن محفوظ هنا للرجوع إليه. الوظيفة ترجع تلقائياً عند نشرها في Odoo.', 'Everything Odoo does not publish now is kept here for reference. A job returns by itself when it is published in Odoo.') : t('الطلبات المؤرشفة محفوظة ويمكن إرجاعها إلى قائمة التوظيف.', 'Archived requests are kept here and can be restored to recruitment.')) : fromOdoo ? t('وظيفة واحدة لكل وظيفة منشورة في Odoo لشركة Egypt - Engoaad. المهلة والأولوية من تاريخ التفعيل ومدة التوظيف في Odoo.', 'One job per position Odoo publishes for Egypt - Engoaad. Deadline and priority come from the Active Date and Hiring Period in Odoo.') : t('من الطلب إلى مراجعة القسم إلى الاعتماد النهائي — الـSLA لا يبدأ قبل الاعتماد.', 'From request to department review to final approval — the SLA never starts before approval.')}
+        description={archived ? (fromOdoo ? t('كل ما ليس منشوراً في Odoo الآن محفوظ هنا للرجوع إليه. الوظيفة ترجع تلقائياً عند نشرها في Odoo.', 'Everything Odoo does not publish now is kept here for reference. A job returns by itself when it is published in Odoo.') : t('الطلبات المؤرشفة محفوظة ويمكن إرجاعها إلى قائمة التوظيف.', 'Archived requests are kept here and can be restored to recruitment.')) : t('من الطلب إلى مراجعة القسم إلى الاعتماد النهائي — الـSLA لا يبدأ قبل الاعتماد.', 'From request to department review to final approval — the SLA never starts before approval.')}
         actions={archived
           ? <Link to="/hr/recruitment/requests" className="btn-secondary btn-sm">{t('العودة للطلبات', 'Back to requests')}</Link>
           : <span className="flex flex-wrap items-center gap-2">{canManageArchive && <Link to="/hr/recruitment/requests?scope=archived" className="btn-ghost btn-sm"><Archive size={15} />{t('الأرشيف', 'Archive')}</Link>}{canCreate && <Link to="/hr/recruitment/requests/new" className="btn-primary btn-sm"><Plus size={16} />{t('طلب وظيفة جديد', 'New job request')}</Link>}</span>}

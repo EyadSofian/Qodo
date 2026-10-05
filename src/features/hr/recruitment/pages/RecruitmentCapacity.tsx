@@ -14,21 +14,22 @@ import { cx } from '../../../../lib/utils';
 import { hrApi, invalidateHR, useHRQuery } from '../../api';
 import { num, shortName, useHRText } from '../../format';
 import { PRIORITY_LABEL } from '../../labels';
-import type { JobRequest, RecruiterBoardRow, RecruitmentContext } from '../../types';
+import type { BoardJob, JobRequest, RecruiterBoardRow, RecruitmentContext } from '../../types';
 import { useMotion } from '../../ui/motion';
 import { Badge, CapacityBar, Card, PageHeader, PersonAvatar, PriorityBadge, SectionTitle, SlaMeter, StatusBadge } from '../../ui/primitives';
 import { EmptyBlock, ErrorBlock, PageSkeleton } from '../../ui/states';
 import { TONE } from '../../ui/tones';
 import { AssignDialog } from '../components/dialogs';
-import { OdooJobRow } from '../components/RecruiterDrawer';
+import { JobOrigin, OdooJobRow } from '../components/RecruiterDrawer';
 
 interface Board {
+  odooConnected?: boolean;
   recruiters: RecruiterBoardRow[];
-  unassigned: JobRequest[];
+  unassigned: BoardJob[];
   context: RecruitmentContext;
 }
 
-function JobRow({ job, canAssign, onAssign }: { job: JobRequest; canAssign: boolean; onAssign: () => void }) {
+function JobRow({ job, canAssign, onAssign, odooConnected }: { job: BoardJob; canAssign: boolean; onAssign: () => void; odooConnected: boolean }) {
   const { t } = useHRText();
   return (
     <li className="grid grid-cols-1 items-center gap-3 rounded-xl border border-[#EEF2F7] px-3.5 py-2.5 sm:grid-cols-[minmax(0,1.3fr)_auto_minmax(0,1fr)_auto]">
@@ -36,7 +37,7 @@ function JobRow({ job, canAssign, onAssign }: { job: JobRequest; canAssign: bool
         <p className="hr-bidi truncate text-[13px] font-bold text-navy">{job.title}</p>
         <p className="truncate text-[11.5px] text-ink-faint">{job.reference} · {job.department || '—'}</p>
       </Link>
-      <div className="flex gap-1.5"><PriorityBadge priority={job.priority} />{job.status !== 'hiring' && <StatusBadge status={job.status} />}</div>
+      <div className="flex flex-wrap gap-1.5"><PriorityBadge priority={job.priority} />{job.status !== 'hiring' && <StatusBadge status={job.status} />}<JobOrigin job={job} odooConnected={odooConnected} /></div>
       <SlaMeter sla={job.slaSnapshot} source={job.source} />
       {canAssign && job.abilities.assign ? <button type="button" className="btn-ghost btn-sm !min-h-8" onClick={onAssign}><UserPlus size={14} />{t('إعادة إسناد', 'Reassign')}</button> : <span />}
     </li>
@@ -124,7 +125,7 @@ export function RecruitmentCapacity() {
               {expanded && (
                 <div className="border-t border-[#EEF2F7] p-4 pt-3">
                   {card.jobs.length ? (
-                    <ul className="space-y-2">{card.jobs.map((job) => <JobRow key={job.id} job={job} canAssign={canAssign} onAssign={() => setAssigning(job)} />)}</ul>
+                    <ul className="space-y-2">{card.jobs.map((job) => <JobRow key={job.id} job={job} canAssign={canAssign} onAssign={() => setAssigning(job)} odooConnected={Boolean(data.odooConnected)} />)}</ul>
                   ) : <p className="text-[12.5px] text-ink-faint">{t('لا توجد وظائف مسندة.', 'No jobs assigned.')}</p>}
                   {card.odooJobs.length > 0 && data.context.jobSource !== 'odoo' && (
                     <div className="mt-4">
@@ -143,7 +144,7 @@ export function RecruitmentCapacity() {
       <Card>
         <SectionTitle title={t('وظائف بلا مسؤول', 'Jobs without a recruiter')} hint={data.context.jobSource === 'odoo' ? t('وظائف منشورة في Odoo بلا مسؤول، أو مسؤولها ليس موظفاً نشطاً في ملف HR. المسؤول يتغيّر من Odoo.', 'Published in Odoo with no owner, or an owner who is not an active employee in the HR file. The owner is changed in Odoo.') : t('الوظائف الحرجة بلا مسؤول تظهر كتنبيه حرج.', 'A Critical job without a recruiter raises a critical alert.')} />
         {data.unassigned.length ? (
-          <ul className="space-y-2">{data.unassigned.map((job) => <JobRow key={job.id} job={job} canAssign={canAssign} onAssign={() => setAssigning(job)} />)}</ul>
+          <ul className="space-y-2">{data.unassigned.map((job) => <JobRow key={job.id} job={job} canAssign={canAssign} onAssign={() => setAssigning(job)} odooConnected={Boolean(data.odooConnected)} />)}</ul>
         ) : <p className="text-[12.5px] text-emerald-700">{t('كل الوظائف لها مسؤول.', 'Every job has a recruiter.')}</p>}
       </Card>
 

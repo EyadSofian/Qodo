@@ -1,26 +1,35 @@
 /**
- * Odoo is the only source of recruitment jobs.
+ * The recruitment desk: Odoo's published jobs, and the requests management
+ * approved.
  *
- * The owner's decision (2026-10-05): the recruitment workbook is over, and the
- * desk carries exactly what Odoo publishes for Egypt - Engoaad — one Qodo
- * request per published job, owned by whoever owns it in Odoo. Nothing else
- * is on the desk: workbook rows, requests typed into Qodo and jobs Odoo no
- * longer publishes are archived (never deleted — the row, its activity and
- * its link stay, and Settings can still list them).
+ * Two decisions by the owner on 2026-10-05, in this order:
  *
- * Odoo says which jobs exist, what they are called, how many seats, who owns
- * them, and their schedule: HR keeps an Active Date and a Hiring Period (15 /
- * 30 / 45 / 60 days) on each job. The clock starts on the Active Date and the
- * job is due that many *working* days later — the approved job-classification
- * table counts neither Friday nor Saturday — and the period names the
- * priority: 15 Critical, 30 Required, 45 and 60 Planned. Whenever either
- * value changes in Odoo, Qodo follows; a change made in Qodo stands until
- * Odoo's value changes again.
- * Extensions and holds are Qodo's and are kept on top of Odoo's dates.
+ *  1. The recruitment workbook is over. The desk shows what Odoo publishes
+ *     for Egypt - Engoaad, owned by whoever owns it in Odoo. Workbook rows are
+ *     archived (never deleted — the row, its activity and its link stay).
+ *  2. The request flow of the original brief stays: a manager asks for a
+ *     hire, the department manager reviews, the final approver approves, and
+ *     *that* is when work starts and the clock is counted.
  *
- * Qodo still owns what Odoo has no field for: holds, extensions, hires
- * recorded, KPI and rewards. A job Odoo gives no period to arrives with no
- * priority and no clock until somebody sets one here.
+ * So a published job has exactly one request on the desk:
+ *
+ *   - the approved Qodo request HR confirmed against it, when there is one.
+ *     That request is Qodo's in full — who recruits, the priority, the clock
+ *     from the approval day — and Odoo changes none of it; or
+ *   - failing that, a request this sync keeps for it (`source: 'odoo'`,
+ *     `ODOO-<job id>`): a job somebody published without going through the
+ *     request flow. It still has to be worked and timed, so it takes Odoo's
+ *     owner and Odoo's schedule — HR keeps an Active Date and a Hiring Period
+ *     (15 / 30 / 45 / 60) on each job; the clock starts on the Active Date and
+ *     runs that many *working* days (the approved classification table counts
+ *     neither Friday nor Saturday), and the period names the priority. Odoo's
+ *     schedule is re-applied only when Odoo's own values move, so a change
+ *     made in Qodo stands until then. The screens mark such a job as having
+ *     no approved request.
+ *
+ * Requests made in Qodo are never archived here, whatever their stage: a
+ * draft, one waiting for approval, or one approved and not published yet (it
+ * is on its recruiter's desk and the screens say it is not in Odoo yet).
  *
  * The sync never acts on a failed or empty read: an Odoo outage must not
  * archive the desk. A job that drops out and comes back gets its own request
@@ -31,15 +40,21 @@ import { create, find, getStore } from '../../store.js';
 import { classificationFromTitle } from '../../../shared/recruitment/classification.js';
 import { addWorkingDays, currentDueDate, localDay, priorityForHiringPeriod } from '../../../shared/recruitment/sla.js';
 import { recruitmentPolicy } from '../../../shared/recruitment/settings.js';
-import { COMMITTED_STATUSES, OPEN_STATUSES } from '../../../shared/recruitment/workflow.js';
+import { OPEN_STATUSES } from '../../../shared/recruitment/workflow.js';
 import { organizationState } from '../../hrModule.js';
 import { hrSettingsFor } from '../settings.js';
 import { appendActivity, odooLinksFor, requestsFor, setOdooLink, stableId } from './data.js';
 import { departmentIdFor } from './migration.js';
 import { publishedJobs, recruitmentSourceIsOdoo } from './odooJobs.js';
 
+/** A workbook row: the workbook no longer feeds recruitment. */
 export const ARCHIVE_NOT_FROM_ODOO = 'not_from_odoo';
+/** An Odoo-kept request whose job is no longer published. */
 export const ARCHIVE_UNPUBLISHED = 'odoo_unpublished';
+/** An Odoo-kept request whose job now has an approved Qodo request. */
+export const ARCHIVE_REPLACED = 'replaced_by_approved_request';
+/** The stages of a Qodo request that speak for a published job. */
+const CLAIMING_STATUSES = ['hiring', 'on_hold', 'completed'];
 
 export const odooRequestId = (organizationId, jobId) => stableId('rrq-odoo', organizationId, String(jobId));
 
@@ -175,51 +190,66 @@ export function planOdooSync({ organizationId, snapshot, requests, links, profil
     if (member.employeeCode && profiles.get(member.employeeCode)?.status === 'active') codeByOdooUser.set(member.id, member.employeeCode);
   }
   const byId = new Map(requests.map((request) => [request.id, request]));
-  // An approved Qodo request HR already confirmed against a published job is
-  // that job's request. A workbook row never is: the workbook is over.
-  const adopted = new Map();
+  // An approved Qodo request HR confirmed against a published job speaks for
+  // that job — also once it is completed, so a filled job that stays published
+  // does not come back as new work. A workbook row never does.
+  const claimed = new Map();
   for (const request of requests) {
     const jobId = Number(links.get(request.id)?.odooJobId);
-    if (!jobId || request.archivedAt || request.source !== 'qodo' || !COMMITTED_STATUSES.includes(request.status)) continue;
-    if (!adopted.has(jobId)) adopted.set(jobId, request);
+    if (!jobId || request.archivedAt || request.source !== 'qodo' || !CLAIMING_STATUSES.includes(request.status)) continue;
+    if (!claimed.has(jobId)) claimed.set(jobId, request);
   }
 
   const kept = new Set();
   for (const job of snapshot.jobs) {
-    const recruiterCode = (job.recruiter && codeByOdooUser.get(job.recruiter.id)) || null;
     const own = byId.get(odooRequestId(organizationId, job.id)) ?? null;
-    const request = own && !(own.archivedAt && own.archiveReason !== ARCHIVE_UNPUBLISHED) ? own : adopted.get(job.id) ?? null;
-    if (!request) {
+    if (claimed.has(job.id)) {
+      // Qodo's request stands as approved; the one kept for the job steps aside.
+      if (own && !own.archivedAt && own.status !== 'completed') plan.archive.push({ id: own.id, reason: ARCHIVE_REPLACED });
+      if (own) kept.add(own.id);
+      continue;
+    }
+    const recruiterCode = (job.recruiter && codeByOdooUser.get(job.recruiter.id)) || null;
+    if (!own) {
       plan.create.push({ job, document: newRequest({ organizationId, job, recruiterCode, today, stamp, calendar }) });
       continue;
     }
-    kept.add(request.id);
-    if (request.archivedAt) plan.restore.push({ id: request.id, job });
-    const wanted = mirrored(job, recruiterCode, request);
+    kept.add(own.id);
+    if (own.archivedAt) plan.restore.push({ id: own.id, job });
+    const wanted = mirrored(job, recruiterCode, own);
     const patch = {};
     for (const [key, value] of Object.entries(wanted)) {
-      if (canonical(request[key]) !== canonical(value)) patch[key] = value;
+      if (canonical(own[key]) !== canonical(value)) patch[key] = value;
     }
     if ('recruiterCode' in patch) patch.assignedAt = recruiterCode ? stamp : null;
-    const tracked = seen(job, request.odoo ?? { firstSeen: today });
-    if (canonical(request.odoo) !== canonical(tracked)) {
+    const tracked = seen(job, own.odoo ?? { firstSeen: today });
+    if (canonical(own.odoo) !== canonical(tracked)) {
       patch.odoo = tracked;
       // The schedule follows Odoo when Odoo's own values moved — not on every
       // tick, so a priority or deadline changed in Qodo is not undone.
-      const redated = (request.odoo?.scheduleRule ?? null) !== tracked.scheduleRule && request.prioritySource !== 'manual';
-      const moved = redated || (request.odoo?.activeDate ?? null) !== tracked.activeDate || (request.odoo?.hiringPeriod ?? null) !== tracked.hiringPeriod;
-      if (moved && OPEN_STATUSES.includes(request.status)) {
-        Object.assign(patch, scheduleFromOdoo(job, { calendar, fallbackStart: tracked.firstSeen ?? today, sla: request.sla }) ?? {});
+      const redated = (own.odoo?.scheduleRule ?? null) !== tracked.scheduleRule && own.prioritySource !== 'manual';
+      const moved = redated || (own.odoo?.activeDate ?? null) !== tracked.activeDate || (own.odoo?.hiringPeriod ?? null) !== tracked.hiringPeriod;
+      if (moved && OPEN_STATUSES.includes(own.status)) {
+        Object.assign(patch, scheduleFromOdoo(job, { calendar, fallbackStart: tracked.firstSeen ?? today, sla: own.sla }) ?? {});
       }
     }
-    if (Object.keys(patch).length) plan.update.push({ id: request.id, job, patch, previousRecruiterCode: request.recruiterCode ?? null });
+    if (Object.keys(patch).length) plan.update.push({ id: own.id, job, patch, previousRecruiterCode: own.recruiterCode ?? null });
   }
 
   for (const request of requests) {
-    if (request.archivedAt || kept.has(request.id)) continue;
-    // A job closed under this regime is history its recruiter earned.
-    if (request.source === 'odoo' && request.status === 'completed') continue;
-    plan.archive.push({ id: request.id, reason: request.source === 'odoo' ? ARCHIVE_UNPUBLISHED : ARCHIVE_NOT_FROM_ODOO });
+    if (kept.has(request.id)) continue;
+    if (request.source === 'qodo') {
+      // The first Odoo-only deploy archived Qodo's own requests too; they come back.
+      if (request.archivedAt && request.archiveReason === ARCHIVE_NOT_FROM_ODOO) plan.restore.push({ id: request.id, job: null });
+      continue;
+    }
+    if (request.archivedAt) continue;
+    if (request.source === 'odoo') {
+      // A job closed under this regime is history its recruiter earned.
+      if (request.status !== 'completed') plan.archive.push({ id: request.id, reason: ARCHIVE_UNPUBLISHED });
+      continue;
+    }
+    plan.archive.push({ id: request.id, reason: ARCHIVE_NOT_FROM_ODOO });
   }
   return plan;
 }
@@ -257,7 +287,7 @@ export async function syncOdooJobs(organizationId, { snapshot = null } = {}) {
     }
     for (const { id, job } of plan.restore) {
       await store.update('recruitmentRequests', id, { archivedAt: null, archivedBy: null, archiveReason: null, revision: bump(id) });
-      await appendActivity({ organizationId, requestId: id, type: 'restored', meta: { reason: 'odoo_published_again', jobId: job.id } });
+      await appendActivity({ organizationId, requestId: id, type: 'restored', meta: job ? { reason: 'odoo_published_again', jobId: job.id } : { reason: 'qodo_request_kept' } });
     }
     for (const { id, job, patch, previousRecruiterCode } of plan.update) {
       await store.update('recruitmentRequests', id, { ...patch, revision: bump(id) });

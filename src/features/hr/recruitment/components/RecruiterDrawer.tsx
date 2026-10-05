@@ -15,7 +15,7 @@ import { cx } from '../../../../lib/utils';
 import { hrApi, invalidateHR, useHRQuery } from '../../api';
 import { num, shortName, useHRText } from '../../format';
 import { PRIORITY_LABEL } from '../../labels';
-import type { JobRequest, OdooJob, RecruiterBoardRow, RecruiterCardData, RecruitmentContext } from '../../types';
+import type { BoardJob, JobRequest, OdooJob, RecruiterBoardRow, RecruiterCardData, RecruitmentContext } from '../../types';
 import { Drawer } from '../../ui/Drawer';
 import { Badge, LinkArrow, PersonAvatar, PriorityBadge, ProgressDots, SlaMeter, StatusBadge } from '../../ui/primitives';
 import { EmptyBlock, Skeleton } from '../../ui/states';
@@ -23,8 +23,20 @@ import { TONE } from '../../ui/tones';
 import { AssignDialog, ExtendDialog, PriorityDialog } from './dialogs';
 
 interface CapacityBoard {
+  odooConnected?: boolean;
   recruiters: RecruiterBoardRow[];
   context: RecruitmentContext;
+}
+
+/**
+ * Where a job stands between Qodo's approval and Odoo's board: approved and
+ * published is the normal case and says nothing; the two gaps are named.
+ */
+export function JobOrigin({ job, odooConnected }: { job: BoardJob; odooConnected: boolean }) {
+  const { t } = useHRText();
+  if (job.source === 'odoo') return <Badge tone="neutral">{t('بدون طلب معتمد', 'No approved request')}</Badge>;
+  if (job.source === 'qodo' && odooConnected && ['hiring', 'on_hold'].includes(job.status) && !job.posting) return <Badge tone="warning">{t('غير منشورة في Odoo', 'Not published in Odoo')}</Badge>;
+  return null;
 }
 
 type Edit = { kind: 'priority' | 'extend' | 'assign'; job: JobRequest };
@@ -71,9 +83,8 @@ export function RecruiterDrawer({ card, onClose }: { card: RecruiterCardData | n
   const live = row ?? card;
   const jobs = row?.jobs ?? [];
   const odooJobs = row?.odooJobs ?? [];
-  // When Odoo is the source, a job and its Odoo posting are one thing: one list.
+  // When the desk follows Odoo, a job and its Odoo posting are one thing: one list.
   const fromOdoo = data?.context.jobSource === 'odoo';
-  const postingOf = new Map(odooJobs.filter((job) => job.request).map((job) => [job.request!.id, job]));
   const name = live ? (lang === 'en' ? live.member.nameEnglish : live.member.nameArabic) || shortName(live.member.shortName, lang) : '';
   const done = () => {
     setEdit(null);
@@ -115,7 +126,7 @@ export function RecruiterDrawer({ card, onClose }: { card: RecruiterCardData | n
                 <ul className="space-y-2">
                   {[...jobs].sort((left, right) => Number(right.slaSnapshot.state === 'overdue') - Number(left.slaSnapshot.state === 'overdue')).map((job) => {
                     const overdue = job.slaSnapshot.state === 'overdue';
-                    const posting = postingOf.get(job.id) ?? null;
+                    const posting = job.posting ?? null;
                     const actions = [
                       job.abilities.changePriority && { kind: 'priority' as const, icon: Flag, label: t('الأولوية', 'Priority') },
                       job.abilities.extend && { kind: 'extend' as const, icon: CalendarPlus, label: t('مد المهلة', 'Extend') },
@@ -128,7 +139,7 @@ export function RecruiterDrawer({ card, onClose }: { card: RecruiterCardData | n
                             <p className="hr-bidi truncate text-[13px] font-bold text-navy">{job.title}</p>
                             <p className="text-[11.5px] text-ink-faint">{job.reference} · {job.department || '—'}</p>
                           </Link>
-                          <div className="flex shrink-0 gap-1.5"><PriorityBadge priority={job.priority} />{job.status !== 'hiring' && <StatusBadge status={job.status} />}</div>
+                          <div className="flex shrink-0 flex-wrap justify-end gap-1.5"><PriorityBadge priority={job.priority} />{job.status !== 'hiring' && <StatusBadge status={job.status} />}<JobOrigin job={job} odooConnected={Boolean(data?.odooConnected)} /></div>
                         </div>
                         <div className="mt-2.5"><SlaMeter sla={job.slaSnapshot} source={job.source} /></div>
                         {posting && (

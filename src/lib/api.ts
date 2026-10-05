@@ -146,7 +146,7 @@ const ERRORS: Record<string, { ar: string; en: string }> = {
   recruitment_priority_unchanged: { ar: 'لم يتغير شيء في الأولوية أو المدة.', en: 'Neither the priority nor the target changed.' },
   recruitment_target_invalid: { ar: 'مدة الـSLA يجب أن تكون عدداً صحيحاً من أيام العمل.', en: 'The SLA target must be a whole number of working days.' },
   recruitment_target_out_of_band: { ar: 'مدة الـSLA خارج النطاق المعتمد لهذه الأولوية.', en: 'The SLA target is outside the approved band for this priority.' },
-  recruitment_source_is_odoo: { ar: 'وظائف التوظيف تأتي من Odoo فقط — انشر الوظيفة في Odoo لتظهر هنا.', en: 'Recruitment jobs come from Odoo only — publish the job in Odoo and it appears here.' },
+  recruitment_source_is_odoo: { ar: 'هذه الوظيفة تتبع Odoo — تُدار من Odoo وتظهر هنا عند نشرها.', en: 'This job follows Odoo — it is managed there and appears here when published.' },
   recruitment_reason_required: { ar: 'اكتب سبب التغيير.', en: 'Write the reason for the change.' },
   recruitment_extend_not_active: { ar: 'يمكن مد مهلة الوظائف النشطة فقط.', en: 'Only active jobs can be extended.' },
   recruitment_extension_days_invalid: { ar: 'عدد أيام العمل المضافة بين 1 و60.', en: 'Add between 1 and 60 working days.' },

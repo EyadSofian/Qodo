@@ -40,7 +40,7 @@ export function RecruitmentOverview() {
 
   const s = data.summary;
   const fromOdoo = data.context.jobSource === 'odoo';
-  const canRequest = !fromOdoo && Boolean(data.context.perms.request || data.context.perms.assign);
+  const canRequest = Boolean(data.context.perms.request || data.context.perms.assign);
   const tiles = [
     { key: 'active', icon: Briefcase, label: t('وظائف نشطة', 'Active jobs'), value: s.activeJobs, to: '/hr/recruitment/hiring', tone: 'info' as const },
     { key: 'critical', icon: Siren, label: t('حرجة', 'Critical'), value: s.critical, to: '/hr/recruitment/hiring?priority=critical', tone: 'critical' as const },
@@ -73,7 +73,7 @@ export function RecruitmentOverview() {
         eyebrow={t('التوظيف', 'Recruitment')}
         title={t('مكتب التوظيف', 'Recruitment desk')}
         description={fromOdoo
-          ? t('الوظائف هنا هي المنشورة في Odoo لشركة Egypt - Engoaad فقط، كل وظيفة بمسؤولها وتاريخ تفعيلها ومدة توظيفها من Odoo.', 'The jobs here are exactly those Odoo publishes for Egypt - Engoaad, each with its owner, Active Date and Hiring Period from Odoo.')
+          ? t('الطلب يمر بمدير القسم ثم الاعتماد النهائي، ومن يوم الاعتماد يبدأ العمل واحتساب الوقت. الوظيفة المنشورة في Odoo بلا طلب معتمد تظهر بمسؤولها ومواعيدها من Odoo.', 'A request goes to the department manager, then final approval — work and the clock start that day. A job published in Odoo with no approved request shows with Odoo\'s owner and dates.')
           : t('الفريق وحمله وتقدمه أولاً، ثم الأرقام — وكل رقم يفتح الوظائف التي خلفه.', 'The team, their load and their progress first — then the figures, each one opening the jobs behind it.')}
         actions={
           <>
@@ -174,15 +174,14 @@ export function RecruitmentOverview() {
         </Card>
 
         <Card>
-          <SectionTitle title={fromOdoo ? t('حالة الوظائف', 'Job status') : t('في الطريق للتوظيف', 'On the way to hiring')} action={<LinkArrow to="/hr/recruitment/requests">{fromOdoo ? t('كل الوظائف', 'All jobs') : t('كل الطلبات', 'All requests')}</LinkArrow>} />
+          <SectionTitle title={t('في الطريق للتوظيف', 'On the way to hiring')} action={<LinkArrow to="/hr/recruitment/requests">{t('كل الطلبات', 'All requests')}</LinkArrow>} />
           <ul className="space-y-2.5">
             {[
               { label: t('بانتظار مراجعة القسم', 'Awaiting department review'), value: s.pendingReview, to: '/hr/recruitment/requests?status=pending_review' },
               { label: t('بانتظار الاعتماد النهائي', 'Awaiting final approval'), value: s.pendingApproval, to: '/hr/recruitment/requests?status=pending_approval' },
               { label: t('معلّقة', 'On hold'), value: s.onHold, to: '/hr/recruitment/hiring?status=on_hold' },
               { label: t('أُغلقت هذا الشهر', 'Closed this month'), value: s.completedThisMonth, to: '/hr/recruitment/requests?status=completed' },
-              // No request or approval steps when Odoo is the source: a job is published or it is not.
-            ].filter((_, index) => !fromOdoo || index > 1).map((row) => (
+            ].map((row) => (
               <li key={row.label}>
                 <Link to={row.to} className="flex items-center justify-between gap-3 rounded-xl border border-[#EEF2F7] px-3.5 py-2.5 hover:border-brand-200 hover:bg-[#F7FAFD]">
                   <span className="flex items-center gap-2 text-[13px] font-semibold text-navy"><ClipboardCheck size={15} className="text-ink-faint" aria-hidden="true" />{row.label}</span>

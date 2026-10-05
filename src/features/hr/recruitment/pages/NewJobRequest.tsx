@@ -7,7 +7,7 @@
  */
 
 import { useMemo, useState, type ReactNode } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowLeft, ArrowRight, Check, Save, Send, ShieldAlert } from 'lucide-react';
 import { DEPARTMENTS } from '@shared/departments';
@@ -155,7 +155,6 @@ export function NewJobRequest() {
   if (error && !data) return <ErrorBlock error={error} onRetry={reload} />;
   if (loading && !data) return <PageSkeleton rows={1} />;
   if (!context) return null;
-  if (context.jobSource === 'odoo') return <Navigate to="/hr/recruitment" replace />;
 
   const steps = [t('الوظيفة', 'Position'), t('الاحتياج', 'Business need'), t('خطة التوظيف', 'Hiring plan'), t('المراجعة', 'Review')];
   const go = (next: number) => {

@@ -197,7 +197,7 @@ export function JobRequestDetail() {
               <span className="font-mono font-semibold text-ink-faint">{request.reference}</span>
               <StatusBadge status={request.status} />
               {request.source === 'legacy_workbook' && <Badge tone="neutral">{t('مستورد من ملف التوظيف', 'Imported from workbook')}</Badge>}
-              {request.source === 'odoo' && <Badge tone="info">{t('من Odoo', 'From Odoo')}</Badge>}
+              {request.source === 'odoo' && <Badge tone="warning">{t('منشورة في Odoo بدون طلب معتمد', 'Published in Odoo with no approved request')}</Badge>}
             </div>
             <h1 className="mt-2 text-[24px] font-bold leading-tight tracking-tight text-navy sm:text-[28px]">{request.title || t('طلب بدون عنوان', 'Untitled request')}</h1>
             <div className="mt-3 flex flex-wrap items-center gap-2">
