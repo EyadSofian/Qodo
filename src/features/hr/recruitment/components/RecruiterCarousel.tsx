@@ -9,18 +9,16 @@
  * Home/End, and dots. Four cards fit on a desktop, fewer as the screen narrows.
  */
 
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { cx } from '../../../../lib/utils';
-import { shortName, useHRText } from '../../format';
-import type { RecruiterCardData } from '../../types';
+import { useHRText } from '../../format';
 import { useMotion } from '../../ui/motion';
-import { RecruiterCard } from './RecruiterCard';
 
 const DRAG_THRESHOLD = 6;
 
-export function RecruiterCarousel({ cards, onOpen }: { cards: RecruiterCardData[]; onOpen: (card: RecruiterCardData) => void }) {
-  const { t, dir, lang } = useHRText();
+export function RecruiterCarousel<T>({ cards, onOpen, keyOf, labelOf, renderCard }: { cards: T[]; onOpen: (card: T) => void; keyOf: (card: T) => string | number; labelOf: (card: T) => string; renderCard: (card: T, active: boolean, onOpen: () => void) => ReactNode }) {
+  const { t, dir } = useHRText();
   const motionPresets = useMotion();
   const track = useRef<HTMLDivElement>(null);
   const [active, setActive] = useState(0);
@@ -177,14 +175,14 @@ export function RecruiterCarousel({ cards, onOpen }: { cards: RecruiterCardData[
       >
         {cards.map((card, index) => (
           <div
-            key={card.member.employeeCode}
+            key={keyOf(card)}
             data-slide
             role="group"
             aria-roledescription={t('شريحة', 'slide')}
-            aria-label={t(`${index + 1} من ${cards.length}: ${shortName(card.member.shortName, lang)}`, `${index + 1} of ${cards.length}: ${shortName(card.member.shortName, lang)}`)}
+            aria-label={t(`${index + 1} من ${cards.length}: ${labelOf(card)}`, `${index + 1} of ${cards.length}: ${labelOf(card)}`)}
             className="w-[84%] shrink-0 snap-start sm:w-[calc((100%-1rem)/2)] lg:w-[calc((100%-2rem)/3)] xl:w-[calc((100%-3rem)/4)]"
           >
-            <RecruiterCard card={card} active={index === active} onOpen={() => onOpen(card)} />
+            {renderCard(card, index === active, () => onOpen(card))}
           </div>
         ))}
       </div>
@@ -193,7 +191,7 @@ export function RecruiterCarousel({ cards, onOpen }: { cards: RecruiterCardData[
         <div className="mt-1 flex justify-center gap-1.5" aria-hidden="true">
           {cards.map((card, index) => (
             <button
-              key={card.member.employeeCode}
+              key={keyOf(card)}
               type="button"
               tabIndex={-1}
               onClick={() => goTo(index)}

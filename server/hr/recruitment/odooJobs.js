@@ -43,7 +43,28 @@ async function publishedJobs({ refresh = false } = {}) {
     odooUrl: `${root}/web#id=${row.id}&model=hr.job&view_type=form&cids=${COMPANY_ID}`,
     jobUrl: row.website_url && String(row.website_url).startsWith('/') ? `${root}${row.website_url}` : null,
   }));
-  const value = { configured: true, connected: true, companyId: COMPANY_ID, company: COMPANY_NAME, publishedOnly: true, fetchedAt: new Date().toISOString(), jobs };
+  const owners = new Map(jobs.filter((job) => job.recruiter).map((job) => [job.recruiter.id, job.recruiter.name]));
+  // Salah manages the team and must have a card even when no published job is
+  // assigned to him. The employee code is stable across Odoo and the HR file.
+  const employeeRows = await searchRead('hr.employee', [
+    '|', ['user_id', 'in', [...owners.keys()]], ['registration_number', '=', '389'],
+  ], ['name', 'user_id', 'registration_number', 'job_title', 'active'], { limit: 100 });
+  const employees = new Map(employeeRows.filter((row) => row.active && Array.isArray(row.user_id)).map((row) => [Number(row.user_id[0]), row]));
+  const salah = employeeRows.find((row) => row.active && String(row.registration_number) === '389' && Array.isArray(row.user_id));
+  if (salah) owners.set(Number(salah.user_id[0]), String(salah.user_id[1]));
+  const team = [...owners].map(([id, name]) => {
+    const employee = employees.get(id);
+    const code = employee?.registration_number ? String(employee.registration_number) : null;
+    return {
+      id,
+      name,
+      fullName: employee?.name ? String(employee.name) : name,
+      title: employee?.job_title ? String(employee.job_title) : '',
+      employeeCode: code,
+      photoUrl: code ? `/api/hr/people/${encodeURIComponent(code)}/photo` : null,
+    };
+  });
+  const value = { configured: true, connected: true, companyId: COMPANY_ID, company: COMPANY_NAME, publishedOnly: true, fetchedAt: new Date().toISOString(), jobs, team };
   cache = { at: Date.now(), value };
   return value;
 }
@@ -51,7 +72,14 @@ async function publishedJobs({ refresh = false } = {}) {
 export async function odooPublishedJobs(user, options = {}) {
   const ctx = await recruitmentContext(user, { withTeam: false });
   if (!hasRecruitmentAccess(ctx)) throw forbidden();
-  return publishedJobs(options);
+  const data = await publishedJobs(options);
+  return {
+    ...data,
+    team: (data.team ?? []).map((member) => {
+      const profile = member.employeeCode ? ctx.profiles.get(member.employeeCode) : null;
+      return { ...member, nameArabic: profile?.nameArabic || '', title: profile?.title || member.title };
+    }),
+  };
 }
 
 export async function odooPublishedJobsForHome() {
