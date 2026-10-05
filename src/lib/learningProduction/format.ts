@@ -7,7 +7,7 @@
  */
 
 import {
-  Ban,
+  Clock3,
   CheckCircle2,
   Circle,
   Clapperboard,
@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 import { ApiError } from '../api';
 import type { StringKey } from '../i18n';
-import type { AssetStatus, AssetType, CourseHealth, DueState, Priority } from './types';
+import type { AssetStatus, AssetSummary, AssetType, CourseHealth, DueState, Priority } from './types';
 import { ASSET_SLUGS, ASSET_TYPES } from '@shared/learningProduction/constants';
 
 export type Tone = 'neutral' | 'info' | 'review' | 'warn' | 'ok' | 'bad';
@@ -60,7 +60,7 @@ export const STATUS_META: Record<AssetStatus, { tone: Tone; icon: LucideIcon }> 
   LOCKED: { tone: 'ok', icon: Lock },
 };
 
-export const BLOCKED_META = { tone: 'neutral' as Tone, icon: Ban };
+export const BLOCKED_META = { tone: 'neutral' as Tone, icon: Clock3 };
 
 export const STAGE_ICON: Record<AssetType, LucideIcon> = {
   OUTLINE: ListTree,
@@ -156,6 +156,34 @@ export function stageSlug(type: AssetType) {
 
 export function assetRoute(courseId: string, lessonId: string, type: AssetType) {
   return `/learning-production/courses/${courseId}/lessons/${lessonId}/${ASSET_SLUGS[type]}`;
+}
+
+/**
+ * The course page is one page; its secondary tools open over it. These are
+ * the links into it — a task, or one of the panels — so every screen writes
+ * them the same way.
+ */
+export type CoursePanel = 'lessons' | 'matrix' | 'qa' | 'team' | 'files';
+
+export function courseRoute(courseId: string, params: Record<string, string | null | undefined> = {}) {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) if (value) search.set(key, value);
+  const text = search.toString();
+  return `/learning-production/courses/${courseId}${text ? `?${text}` : ''}`;
+}
+
+export const taskRoute = (courseId: string, taskId: string) => courseRoute(courseId, { task: taskId });
+export const panelRoute = (courseId: string, panel: CoursePanel, extra: Record<string, string | null | undefined> = {}) => courseRoute(courseId, { panel, ...extra });
+
+/** The colour a lesson file's mark takes: approved, in review, sent back, being made, not needed, or nothing yet. */
+export function fileTone(asset: AssetSummary | undefined): 'ok' | 'review' | 'attention' | 'progress' | 'na' | undefined {
+  if (!asset) return undefined;
+  if (asset.applicable === false) return 'na';
+  if (asset.status === 'APPROVED' || asset.status === 'LOCKED') return 'ok';
+  if (['SUBMITTED', 'UNDER_REVIEW', 'RESUBMITTED'].includes(asset.status)) return 'review';
+  if (asset.status === 'CHANGES_REQUESTED') return 'attention';
+  if (asset.status === 'IN_PROGRESS') return 'progress';
+  return undefined;
 }
 
 const KNOWN_ERRORS = new Set([

@@ -61,7 +61,7 @@ const ENUMS: Record<string, Pair> = {
   'lp.stageStatus.IN_PROGRESS': { ar: 'جارية', en: 'In progress' },
   'lp.stageStatus.DONE': { ar: 'مكتملة', en: 'Done' },
   'lp.stageStatus.SKIPPED': { ar: 'تم تخطيها', en: 'Skipped' },
-  'lp.taskStatus.BLOCKED': { ar: 'متوقفة', en: 'Blocked' },
+  'lp.taskStatus.BLOCKED': { ar: 'بانتظار ما قبلها', en: 'Waiting' },
   'lp.taskStatus.READY': { ar: 'جاهزة', en: 'Ready' },
   'lp.taskStatus.NOT_STARTED': { ar: 'لم تبدأ', en: 'Not started' },
   'lp.taskStatus.IN_PROGRESS': { ar: 'قيد التنفيذ', en: 'In progress' },

@@ -170,7 +170,8 @@ the key Railway injects; nothing in HR writes to Odoo.
   A code shared by two Odoo records prefers the unique active one (rehires).
 * **Odoo-only people** are addressed by their registration number, or
   `o<odoo id>` when they have none. `GET /hr/employees/:code` falls back to an
-  Odoo-only profile (needs `hr.view`); HR-file sections stay hidden on it.
+  Odoo-only profile (needs `hr.view`, or the person being in the caller's
+  team — see §11); HR-file sections stay hidden on it.
 * **Photos**: after the index loads, active employees' `image_128` is fetched
   in the background in batches of 40, so `knownPhoto(id)` answers
   has / has not / not yet known. A photo URL is only handed out when the photo
@@ -223,6 +224,15 @@ operational ones. The approve, extend, override, review, rewards and settings
 keys are never derived — they are granted one person at a time (and held by
 administrators, who hold every key). UI hiding is never the check: every
 endpoint re-checks.
+
+`hr.people.team` opens People for a manager's own team only: everyone below
+them in Odoo's manager tree (`parent_id`, every level, active employees only;
+`server/hr/teamReach.js`). The manager is found through their account's HR
+link, else the one active Odoo employee whose work e-mail is their login; no
+match means no team, never everyone. The directory, the profile (in full, pay
+included, by the owner's decision), its Odoo panel and the photo all re-check
+the tree. `hr.view` reads everyone and makes the key moot. Granted one person
+at a time.
 
 ## 12. Personnel
 

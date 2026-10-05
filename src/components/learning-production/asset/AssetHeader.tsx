@@ -7,16 +7,17 @@
 
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, Ban, Check, Lock, MoreHorizontal, Pencil, Play, RotateCcw, Send, Unlock, Upload, X } from 'lucide-react';
+import { AlertTriangle, Ban, Check, Lock, MoreHorizontal, Pencil, Play, RotateCcw, Send, Unlock, Upload, UserCog, X } from 'lucide-react';
 import { useI18n } from '../../../lib/i18n';
 import { cx } from '../../../lib/utils';
 import { lp } from '../../../lib/learningProduction/api';
-import { STAGE_HEX, assetRoute, lpErrorKey, priorityKey, stageKey, statusKey } from '../../../lib/learningProduction/format';
+import { assetRoute, formatDay, lpErrorKey, priorityKey, stageKey, statusKey } from '../../../lib/learningProduction/format';
 import { dueState, todayIn } from '@shared/learningProduction/workflow';
 import { isTextAsset } from '@shared/learningProduction/constants';
 import type { AssetAction, AssetDetail, Priority } from '../../../lib/learningProduction/types';
 import { Modal, Spinner, useToast } from '../../ui';
-import { Chip, CommentCount, ConfirmDialog, DueChip, PersonChip, PersonSelect, PriorityChip, ProvenanceField, StageLabel, StatusBadge, usePeople } from '../kit';
+import { ConfirmDialog, PersonSelect, PriorityChip, ProvenanceField, usePeople } from '../kit';
+import { Dot, EDGE_CLASS, Menu, MenuItem, toneOfStatus } from '../studio';
 import { runsApi } from '../../../lib/learningProduction/runApi';
 import { invalidate } from '../../../lib/learningProduction/hooks';
 import { useAsset } from './AssetContext';
@@ -36,13 +37,12 @@ const SLUG: Partial<Record<AssetAction, string>> = {
 type Dialog = 'submit' | 'approve' | 'changes' | 'reopen' | 'override' | 'lock' | 'revision' | 'assign' | 'notApplicable' | null;
 
 export function AssetHeader() {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const toast = useToast();
   const { assetId, detail, refresh, flushDraft, setUploadOpen } = useAsset();
   const { asset, evaluation, primary, people } = detail;
   const [dialog, setDialog] = useState<Dialog>(null);
   const [busy, setBusy] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
   const [lockOnApprove, setLockOnApprove] = useState(false);
   const [provenance, setProvenance] = useState<{ aiAssisted?: boolean; aiTool?: string }>({});
   const allowed = (action: AssetAction) => evaluation.actions[action]?.allowed;
@@ -83,7 +83,9 @@ export function AssetHeader() {
   const secondary = useMemo(
     () =>
       [
+        allowed('ASSIGN') && { key: 'assign', label: t('lp.action.editAssignment'), icon: UserCog },
         allowed('START_REVISION') && { key: 'revision', label: text ? t('lp.action.newRevision') : t('lp.action.newRevisionFile'), icon: Pencil },
+        allowed('OVERRIDE_DEPENDENCY') && { key: 'override', label: t('lp.action.override'), icon: X },
         allowed('LOCK') && primary.action !== 'LOCK' && { key: 'lock', label: t('lp.action.lock'), icon: Lock },
         allowed('REOPEN') && { key: 'reopen', label: t('lp.action.reopen'), icon: Unlock },
         detail.canManageApplicability && asset.applicable && !['SUBMITTED', 'UNDER_REVIEW', 'RESUBMITTED'].includes(asset.status) && {
@@ -96,34 +98,34 @@ export function AssetHeader() {
     [detail]
   );
 
+  const name = (id: string | null) => (id ? people[id]?.name ?? t('common.removedUser') : null);
+  const who = [
+    { text: t('lp.assetBar.maker', { name: name(asset.assigneeUserId) ?? t('lp.people.unassigned') }), late: false },
+    asset.reviewerUserId ? { text: t('lp.assetBar.reviewer', { name: name(asset.reviewerUserId)! }), late: false } : null,
+    asset.dueDate ? { text: t(due === 'OVERDUE' ? 'lp.assetBar.late' : 'lp.assetBar.due', { day: formatDay(asset.dueDate, lang) }), late: due === 'OVERDUE' } : null,
+  ].filter((part): part is { text: string; late: boolean } => Boolean(part));
+  const tone = evaluation.blocked ? 'idle' : toneOfStatus(asset.status);
+
   return (
-    <header className="mb-4 rounded-2xl border border-t-4 border-surface-line bg-white p-4" style={{ borderTopColor: STAGE_HEX[asset.assetType] }}>
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <header className={cx('lps-panel mb-4 px-4 py-3.5 sm:px-5', EDGE_CLASS[due === 'OVERDUE' && tone !== 'ok' ? 'danger' : tone === 'danger' ? 'danger' : tone])}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="flex flex-wrap items-center gap-2 text-lg font-bold text-ink">
-            <StageLabel type={asset.assetType} />
-            <StatusBadge status={asset.status} blocked={evaluation.blocked} />
-            {version && <span className="text-[13px] font-semibold text-ink-faint">v{version.versionNumber}</span>}
-            <CommentCount count={detail.openComments} />
-          </h1>
-          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[12.5px] text-ink-muted">
-            <span className="flex items-center gap-1.5">
-              {t('lp.assignee')}: <PersonChip userId={asset.assigneeUserId} people={people} size={20} />
-            </span>
-            <span className="flex items-center gap-1.5">
-              {t('lp.reviewer')}: <PersonChip userId={asset.reviewerUserId} people={people} size={20} empty="—" />
-            </span>
-            <span className="flex items-center gap-1.5">
-              {t('lp.dueDate')}: <DueChip dueDate={asset.dueDate} dueState={due} />
-            </span>
-            <PriorityChip priority={asset.priority} />
-            {allowed('ASSIGN') && (
-              <button type="button" className="inline-flex items-center gap-1 font-semibold text-brand-600 hover:underline" onClick={() => setDialog('assign')}>
-                <Pencil size={12} />
-                {t('lp.action.editAssignment')}
-              </button>
-            )}
-          </div>
+          <h2 className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="text-[17px] font-bold">{t(stageKey(asset.assetType))}</span>
+            {version && <span className="text-[13px] font-semibold lps-faint">v{version.versionNumber}</span>}
+            <Dot tone={tone} className="text-[13px]">
+              {evaluation.blocked ? t('lp.lessonPage.notYet') : t(statusKey(asset.status))}
+            </Dot>
+            {detail.openComments > 0 && <span className="text-[12.5px] font-semibold text-amber-700">{t('lp.work.openComments', { n: detail.openComments })}</span>}
+            {(asset.priority === 'HIGH' || asset.priority === 'URGENT') && <PriorityChip priority={asset.priority} />}
+          </h2>
+          <p className="mt-1 text-[13px] lps-muted">
+            {who.map((part, index) => (
+              <span key={index} className={cx(index > 0 && "before:mx-1.5 before:content-['·']", part.late && 'font-semibold text-[color:var(--lps-danger)]')}>
+                {part.text}
+              </span>
+            ))}
+          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -132,78 +134,71 @@ export function AssetHeader() {
             else if (action === 'SUBMIT') setDialog('submit');
             else if (action === 'UPLOAD_VERSION') setUploadOpen(true);
             else if (action === 'LOCK') setDialog('lock');
-            else if (action === 'OVERRIDE_DEPENDENCY') setDialog('override');
             else if (action === 'START_REVIEW') void run('START_REVIEW');
           }} onReview={(decision) => setDialog(decision)} />
           {secondary.length > 0 && (
-            <div className="relative">
-              <button type="button" className="btn-ghost btn-sm !px-2" onClick={() => setMenuOpen((open) => !open)} aria-expanded={menuOpen} aria-label={t('lp.action.more')}>
-                <MoreHorizontal size={16} />
-              </button>
-              {menuOpen && (
-                <div className="absolute end-0 top-[calc(100%+6px)] z-30 w-56 rounded-xl border border-surface-line bg-white p-1 shadow-panel" onMouseLeave={() => setMenuOpen(false)}>
-                  {secondary.map(({ key, label, icon: Icon }) => (
-                    <button
-                      key={key}
-                      type="button"
-                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-start text-[13px] font-semibold text-ink hover:bg-surface-sunken"
-                      onClick={() => {
-                        setMenuOpen(false);
-                        setDialog(key);
-                      }}
-                    >
-                      <Icon size={14} />
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+            <Menu label={t('lp.action.more')} icon={MoreHorizontal} buttonClassName="lps-btn !px-2.5">
+              {(close) =>
+                secondary.map(({ key, label, icon }) => (
+                  <MenuItem
+                    key={key}
+                    icon={icon}
+                    label={label}
+                    danger={key === 'override' || key === 'reopen'}
+                    onClick={() => {
+                      close();
+                      setDialog(key);
+                    }}
+                  />
+                ))
+              }
+            </Menu>
           )}
         </div>
       </div>
 
+      {evaluation.blocked && (
+        <p className="mt-3 border-t pt-3 text-[13.5px]" style={{ borderColor: 'var(--lps-line)' }}>
+          <span className="lps-muted">{t('lp.assetBar.startsAfter')} </span>
+          {evaluation.waitingFor.map((entry, index) => (
+            <span key={entry.assetType}>
+              {index > 0 && <span className="lps-muted">{t('lp.listSeparator')}</span>}
+              <Link to={assetRoute(detail.course.id, detail.lesson.id, entry.assetType)} className="font-semibold text-[color:var(--lps-action)] hover:underline">
+                {t(stageKey(entry.assetType))}
+              </Link>
+            </span>
+          ))}
+        </p>
+      )}
       {!asset.applicable && (
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-dashed border-surface-line bg-surface-sunken px-3 py-2.5 text-[13px]">
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t pt-3 text-[13.5px]" style={{ borderColor: 'var(--lps-line)' }}>
           <span>
             <strong>{t('lp.asset.notApplicable')}</strong>
-            {asset.notApplicableReason && <span className="text-ink-muted"> — “{asset.notApplicableReason}”</span>}
+            {asset.notApplicableReason && <span className="lps-muted"> — “{asset.notApplicableReason}”</span>}
           </span>
           {detail.canManageApplicability && (
-            <button type="button" className="btn-ghost btn-sm" disabled={busy} onClick={() => void setApplicable(true)}>
+            <button type="button" className="lps-btn" disabled={busy} onClick={() => void setApplicable(true)}>
               {t('lp.asset.bringBack')}
             </button>
           )}
         </div>
       )}
-      {evaluation.blocked && (
-        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-surface-sunken px-3 py-2.5 text-[13px] text-ink">
-          <Ban size={15} className="text-ink-muted" aria-hidden="true" />
-          <span className="font-semibold">{t('lp.blocked')}</span>
-          <span className="text-ink-muted">{t('lp.waitingFor')}:</span>
-          {evaluation.waitingFor.map((entry) => (
-            <Link key={entry.assetType} to={assetRoute(detail.course.id, detail.lesson.id, entry.assetType)} className="font-semibold text-brand-600 hover:underline">
-              {t('lp.approvalOf', { stage: t(stageKey(entry.assetType)) })} ({t(statusKey(entry.status))})
-            </Link>
-          ))}
-        </div>
-      )}
       {asset.dependencyOverrideAt && (
-        <p className="mt-3 text-[12.5px] text-ink-muted">
+        <p className="mt-3 text-[12.5px] lps-muted">
           {t('lp.overrideNote', { name: people[asset.dependencyOverrideBy ?? '']?.name ?? '' })} “{asset.dependencyOverrideReason}”
         </p>
       )}
       {asset.status === 'CHANGES_REQUESTED' && latestDecision?.decision === 'CHANGES_REQUESTED' && (
-        <div className="mt-3 rounded-xl border border-amber-200 bg-status-warnBg px-3 py-2.5 text-[13px] text-ink">
-          <p className="flex items-center gap-2 font-semibold text-accent-700">
+        <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-[13.5px]">
+          <p className="flex items-center gap-2 font-semibold text-amber-800">
             <RotateCcw size={14} aria-hidden="true" />
             {t('lp.changesBanner', { n: detail.openComments, name: people[latestDecision.reviewedBy ?? '']?.name ?? '' })}
           </p>
-          {latestDecision.notes && <p className="mt-1 whitespace-pre-line text-ink-muted">{latestDecision.notes}</p>}
+          {latestDecision.notes && <p className="mt-1 whitespace-pre-line lps-muted">{latestDecision.notes}</p>}
         </div>
       )}
       {asset.status === 'LOCKED' && (
-        <p className="mt-3 flex items-center gap-2 rounded-xl bg-status-okBg px-3 py-2 text-[13px] text-green-800">
+        <p className="mt-3 flex items-center gap-2 text-[13px] text-emerald-800">
           <Lock size={14} aria-hidden="true" />
           {t('lp.lockedBanner')}
         </p>
@@ -342,13 +337,13 @@ function PrimaryButton({
     return (
       <>
         {evaluation.actions.REQUEST_CHANGES.allowed && (
-          <button type="button" className="btn-ghost btn-sm" onClick={() => onReview('changes')} disabled={busy}>
+          <button type="button" className="lps-btn" onClick={() => onReview('changes')} disabled={busy}>
             <RotateCcw size={14} />
             {t('lp.action.requestChanges')}
           </button>
         )}
         {evaluation.actions.APPROVE.allowed && (
-          <button type="button" className="btn-sm btn bg-status-ok text-white hover:bg-green-700" onClick={() => onReview('approve')} disabled={busy}>
+          <button type="button" className="lps-btn !border-transparent !bg-emerald-600 !text-white hover:!bg-emerald-700" onClick={() => onReview('approve')} disabled={busy}>
             <Check size={14} />
             {t('lp.action.approve')}
           </button>
@@ -358,28 +353,23 @@ function PrimaryButton({
   }
   if (primary.kind === 'waiting') {
     return (
-      <Chip tone="review" className="!py-1.5 !text-[12.5px]">
-        <Send size={13} />
+      <span className="inline-flex items-center gap-1.5 rounded-xl bg-violet-50 px-3 py-2 text-[13px] font-semibold text-violet-700">
+        <Send size={14} aria-hidden="true" />
         {t('lp.waitingForReview')}
-      </Chip>
+      </span>
     );
   }
   if (primary.kind === 'done') {
     return primary.action === 'LOCK' ? (
-      <button type="button" className="btn-ghost btn-sm" onClick={() => onAction('LOCK')} disabled={busy}>
+      <button type="button" className="lps-btn" onClick={() => onAction('LOCK')} disabled={busy}>
         <Lock size={14} />
         {t('lp.action.lock')}
       </button>
     ) : null;
   }
-  if (primary.kind === 'blocked') {
-    return primary.action ? (
-      <button type="button" className="btn-ghost btn-sm" onClick={() => onAction('OVERRIDE_DEPENDENCY')} disabled={busy}>
-        <X size={14} />
-        {t('lp.action.override')}
-      </button>
-    ) : null;
-  }
+  // Waiting for an earlier file: nothing to press here. The override, for
+  // the few who may use it, is in the ⋯ menu.
+  if (primary.kind === 'blocked') return null;
   if (primary.kind !== 'action' || !primary.action) return null;
 
   const icon = { START: Play, SUBMIT: Send, UPLOAD_VERSION: Upload }[primary.action as 'START' | 'SUBMIT' | 'UPLOAD_VERSION'] ?? Play;
@@ -392,7 +382,7 @@ function PrimaryButton({
 
   return (
     <span className="flex flex-col items-end gap-1">
-      <button type="button" className={cx('btn-primary btn-sm')} onClick={() => onAction(primary.action!)} disabled={busy || Boolean(primary.disabledReason)}>
+      <button type="button" className="lps-btn-primary" onClick={() => onAction(primary.action!)} disabled={busy || Boolean(primary.disabledReason)}>
         {busy ? <Spinner size={14} /> : <Icon size={14} />}
         {label}
       </button>

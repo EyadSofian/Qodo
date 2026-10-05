@@ -177,7 +177,7 @@ export function ImpactPanel({ view }: { view: RunView }) {
           <div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-3" style={{ borderColor: 'var(--lps-line)' }}>
             <span className="flex flex-wrap items-center gap-2 text-[12.5px]">
               {impactTask && (
-                <Link to={`/learning-production/courses/${view.course.id}/plan?task=${impactTask.id}`} className="flex items-center gap-2 hover:underline">
+                <Link to={`/learning-production/courses/${view.course.id}?task=${impactTask.id}`} className="flex items-center gap-2 hover:underline">
                   {t('lp.impact.signoffTask')} <TaskStatusPill display={impactTask.display} />
                 </Link>
               )}

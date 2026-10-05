@@ -210,7 +210,7 @@ export function AudioReviewer() {
                       {formatTimecode(comment.audioMarker!.startSeconds)}
                       {comment.audioMarker!.endSeconds ? ` → ${formatTimecode(comment.audioMarker!.endSeconds)}` : ''}
                     </span>
-                    <span className={comment.status === 'RESOLVED' ? 'text-ink-faint line-through' : 'text-ink'}>{comment.body}</span>
+                    <span dir="auto" className={comment.status === 'RESOLVED' ? 'text-ink-faint line-through' : 'text-ink'}>{comment.body}</span>
                   </button>
                 </li>
               ))}

@@ -45,6 +45,7 @@ export function areaOf(pathname: string): LpArea {
   if (segment === 'reports') return 'reports';
   if (segment === 'templates') return 'templates';
   if (segment === 'runs') return 'newRun';
+  if (segment === 'guide') return 'templates';
   return 'dashboard';
 }
 

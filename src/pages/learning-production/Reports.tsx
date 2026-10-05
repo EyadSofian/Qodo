@@ -12,8 +12,9 @@ import { paths } from '../../lib/learningProduction/api';
 import { useLpQuery } from '../../lib/learningProduction/hooks';
 import { HEALTH_TONE, STAGE_HEX, healthKey, stageKey } from '../../lib/learningProduction/format';
 import type { CourseWithStats, People, ReportsResponse } from '../../lib/learningProduction/types';
-import { Chip, ErrorPanel, PageHeader, PersonChip, ProgressBar, Section, SkeletonRows, StageLabel } from '../../components/learning-production/kit';
+import { Chip, ErrorPanel, PersonChip, ProgressBar, Section, SkeletonRows, StageLabel } from '../../components/learning-production/kit';
 import { WorkList } from '../../components/learning-production/WorkList';
+import { Hero } from '../../components/learning-production/studio';
 
 function hours(value: number | null, t: ReturnType<typeof useI18n>['t']) {
   if (value === null) return '—';
@@ -65,13 +66,18 @@ export function Reports() {
 
   return (
     <>
-      <PageHeader
+      <Hero
         title={t('lp.reports.title')}
-        description={t('lp.reports.subtitle')}
+        subtitle={t('lp.reports.subtitle')}
         actions={
-          <>
+          <button type="button" className="lps-btn" onClick={exportCsv} disabled={!data}>
+            <Download size={15} aria-hidden="true" />
+            {t('lp.reports.export')}
+          </button>
+        }
+      >
             <select
-              className="field !w-auto"
+              className="lps-input !w-auto min-w-[220px]"
               value={courseId}
               onChange={(event) => {
                 const next = new URLSearchParams(params);
@@ -88,13 +94,8 @@ export function Reports() {
                 </option>
               ))}
             </select>
-            <button type="button" className="btn-ghost btn-sm" onClick={exportCsv} disabled={!data}>
-              <Download size={14} />
-              {t('lp.reports.export')}
-            </button>
-          </>
-        }
-      />
+      </Hero>
+      <div className="h-4" />
 
       {loading && !data ? (
         <SkeletonRows rows={6} height="h-16" />

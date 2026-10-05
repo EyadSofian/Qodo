@@ -20,6 +20,7 @@ import {
   taskDueState,
 } from '../../../shared/learningProduction/runs.js';
 import { normalizeSettings } from '../../../shared/learningProduction/workflow.js';
+import { STAGE_DEPENDENCIES } from '../../../shared/learningProduction/constants.js';
 import { SCHEMA as S, direct } from '../db.js';
 import { visibleCourseCondition } from '../access.js';
 import { PREFERENCE_EVENTS, issueLink, releaseLink, taskLink, assetLink } from '../notifications.js';
@@ -210,9 +211,85 @@ const urgency = (a, b) => {
  *            holds that;
  *   done     what I finished in the last fortnight.
  */
+/** Courses the actor runs: their run's manager, or a production/course manager on the team. */
+const MANAGED_SQL = `(r.manager_user_id = $2 OR EXISTS (
+    SELECT 1 FROM ${S}.learning_course_members m
+     WHERE m.course_id = c.id AND m.user_id = $2
+       AND m.roles && ARRAY['PRODUCTION_MANAGER', 'COURSE_MANAGER']::text[]))`;
+
+/** The lesson files an asset waits for, as SQL — the same rule as STAGE_DEPENDENCIES. */
+const DEPENDENCY_SQL = `CASE a.asset_type
+    ${Object.entries(STAGE_DEPENDENCIES)
+      .filter(([, deps]) => deps.length)
+      .map(([type, deps]) => `WHEN '${type}' THEN ARRAY[${deps.map((dep) => `'${dep}'`).join(', ')}]::text[]`)
+      .join('\n    ')}
+    ELSE ARRAY[]::text[] END`;
+
+/**
+ * Work that is ready but has nobody on it, for the people who run the course:
+ * a stage task whose stage is open, and lesson files that could start now
+ * with no maker — one line per course and file type, not one per lesson.
+ * Without this, a role left empty when the run was created means work that
+ * sits silently in nobody's list.
+ */
+async function unownedWork(actor, day) {
+  const [taskRows, assetGroups] = await Promise.all([
+    direct.rows(
+      `${TASK_ROW_SQL}
+        WHERE t.organization_id = $1 AND t.assignee_user_id IS NULL AND r.status = 'ACTIVE'
+          AND t.kind <> 'AUTO' AND t.classification <> 'OPTIONAL'
+          AND t.status = 'NOT_STARTED' AND st.status IN ('READY', 'IN_PROGRESS')
+          AND ${MANAGED_SQL}
+        ORDER BY st.sort_order, t.sort_order LIMIT 100`,
+      [actor.organizationId, actor.userId]
+    ),
+    direct.rows(
+      `SELECT c.id AS course_id, c.name AS course_name, c.code AS course_code, a.asset_type, count(*)::int AS lessons,
+              min(a.due_date) AS due_date
+         FROM ${S}.learning_assets a
+         JOIN ${S}.learning_lessons l ON l.id = a.lesson_id AND l.archived_at IS NULL
+         JOIN ${S}.learning_courses c ON c.id = a.course_id AND c.archived_at IS NULL
+         JOIN ${S}.learning_production_runs r ON r.course_id = c.id AND r.status = 'ACTIVE'
+        WHERE a.organization_id = $1 AND a.assignee_user_id IS NULL AND a.applicable AND a.status = 'NOT_STARTED'
+          AND ${MANAGED_SQL}
+          AND NOT EXISTS (
+            SELECT 1 FROM ${S}.learning_assets d
+             WHERE d.lesson_id = a.lesson_id AND d.applicable AND d.status NOT IN ('APPROVED', 'LOCKED')
+               AND d.asset_type = ANY(${DEPENDENCY_SQL}))
+        GROUP BY c.id, c.name, c.code, a.asset_type
+        ORDER BY c.name, a.asset_type`,
+      [actor.organizationId, actor.userId]
+    ),
+  ]);
+  const computed = await blockersFor(taskRows);
+  const tasks = taskRows
+    .map((row) => ({ ...taskItem(row, computed.get(row.id), day, 'ASSIGN'), unowned: true }))
+    .filter((item) => !item.blocked);
+  const assets = assetGroups.map((row) => ({
+    kind: 'ASSET',
+    id: `${row.course_id}:${row.asset_type}:unowned`,
+    assetType: row.asset_type,
+    course: { id: row.course_id, name: row.course_name, code: row.course_code ?? null },
+    lesson: null,
+    status: 'NOT_STARTED',
+    display: 'NOT_STARTED',
+    priority: 'NORMAL',
+    dueDate: row.due_date ?? null,
+    dueState: row.due_date && row.due_date < day ? 'OVERDUE' : null,
+    blocked: false,
+    blockers: [],
+    assigneeUserId: null,
+    unowned: true,
+    count: row.lessons,
+    action: 'ASSIGN',
+    link: `/learning-production/courses/${row.course_id}/production`,
+  }));
+  return [...tasks, ...assets];
+}
+
 export async function myWork(actor) {
   const day = today();
-  const [taskRows, assetRows, doneAssets, doneTasks, issueRows, reviewSet] = await Promise.all([
+  const [taskRows, assetRows, doneAssets, doneTasks, issueRows, reviewSet, unowned] = await Promise.all([
     direct.rows(
       `${TASK_ROW_SQL}
         WHERE t.organization_id = $1 AND t.assignee_user_id = $2 AND r.status = 'ACTIVE'
@@ -246,6 +323,7 @@ export async function myWork(actor) {
       [actor.organizationId, actor.userId]
     ),
     reviews(actor),
+    unownedWork(actor, today()),
   ]);
 
   const computed = await blockersFor(taskRows);
@@ -261,7 +339,7 @@ export async function myWork(actor) {
   const issues = issueRows.map((row) => issueItem(row, day, 'FIX'));
 
   const all = [...tasks, ...assets];
-  const now = [...all.filter((item) => !item.blocked), ...issues].sort(urgency);
+  const now = [...all.filter((item) => !item.blocked), ...issues, ...unowned].sort(urgency);
   const blocked = all.filter((item) => item.blocked).sort(urgency);
   const done = [
     ...doneTasks.map((row) => taskItem(row, null, day, null)),

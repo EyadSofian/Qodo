@@ -12,7 +12,7 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, BookOpenCheck, Check, Lightbulb, RotateCcw, Sparkles, Users, Wand2, type LucideIcon } from 'lucide-react';
+import { ArrowLeft, ArrowRight, BookOpenCheck, Check, Crown, FileText, Lightbulb, ListChecks, RotateCcw, Route, Sparkles, Users, type LucideIcon } from 'lucide-react';
 import { useI18n, type StringKey } from '../../lib/i18n';
 import { useAuth } from '../../lib/auth';
 import { paths } from '../../lib/learningProduction/api';
@@ -22,10 +22,13 @@ import type { CourseWithStats } from '../../lib/learningProduction/types';
 import type { Release, Scenario, TemplateSummary } from '../../lib/learningProduction/runTypes';
 import { PersonSelect, usePeople } from '../../components/learning-production/kit';
 import { SCENARIO_THEME, gradient } from '../../lib/learningProduction/theme';
-import { Busy, ErrorNote, OriginBadge, PageHero, Panel, Pill, usePick } from '../../components/learning-production/studio';
+import { Busy, Disclosure, ErrorNote, Hero, IconChip, JourneyMap, OriginBadge, Panel, Pill, usePick } from '../../components/learning-production/studio';
 import { cx } from '../../lib/utils';
 
 type Way = Exclude<Scenario, 'LEGACY'>;
+const LESSON_ROLES = ['OUTLINE_WRITER', 'PPT_DESIGNER', 'SCRIPT_WRITER', 'VOICE_OVER_ARTIST', 'VIDEO_EDITOR'];
+const LESSON_REVIEWERS = ['SUBJECT_MATTER_EXPERT', 'QUALITY_REVIEWER'];
+
 const WAYS: Array<{ value: Way; icon: LucideIcon; letter: string }> = [
   { value: 'AI_NEW', icon: Sparkles, letter: 'A' },
   { value: 'EXPERT_NEW', icon: BookOpenCheck, letter: 'B1' },
@@ -33,6 +36,7 @@ const WAYS: Array<{ value: Way; icon: LucideIcon; letter: string }> = [
 ];
 const STEPS = ['way', 'basics', 'team', 'review'] as const;
 type Step = (typeof STEPS)[number];
+const STEP_ICON: Record<Step, LucideIcon> = { way: Route, basics: FileText, team: Users, review: ListChecks };
 
 export function NewRun() {
   const { t } = useI18n();
@@ -123,13 +127,35 @@ export function NewRun() {
 
   const basicsReady =
     (effectiveMode === 'new' ? name.trim().length > 0 : Boolean(courseId)) &&
-    Boolean(managerUserId) &&
     (!startDate || !targetDate || targetDate >= startDate) &&
     (scenario !== 'REVAMP' || Boolean(releaseChoice)) &&
     (!expertContracted || expertReason.trim().length > 0);
 
-  const roles = useMemo(() => (preview?.roles ?? []).filter((role) => role !== 'PRODUCTION_MANAGER'), [preview]);
-  const uncovered = roles.filter((role) => !team[role]);
+  // One person runs the run: the project manager. Beside them, the three
+  // roles this template leans on most (by the tasks it gives them) are worth
+  // naming now; everything else is optional here, and any task left without
+  // a person reaches the project manager to hand out from the course page.
+  const { keyRoles, otherRoles } = useMemo(() => {
+    const weight = new Map<string, number>();
+    for (const stage of preview?.stages ?? []) {
+      for (const task of stage.tasks) {
+        if (task.role) weight.set(task.role, (weight.get(task.role) ?? 0) + 1);
+        if (task.reviewerRole) weight.set(task.reviewerRole, (weight.get(task.reviewerRole) ?? 0) + 1);
+      }
+    }
+    const managed = ['PRODUCTION_MANAGER', 'COURSE_MANAGER'];
+    const program = (preview?.roles ?? []).filter((role) => !managed.includes(role) && !LESSON_ROLES.includes(role));
+    const ranked = [...program].sort((a, b) => (weight.get(b) ?? 0) - (weight.get(a) ?? 0));
+    const top = ranked.slice(0, 3);
+    const rest = [
+      'COURSE_MANAGER',
+      ...ranked.slice(3),
+      ...LESSON_ROLES,
+      ...LESSON_REVIEWERS.filter((role) => !program.includes(role)),
+    ];
+    return { keyRoles: top, otherRoles: rest };
+  }, [preview]);
+  const extraChosen = otherRoles.filter((role) => team[role]).length;
 
   async function create() {
     if (!scenario) return;
@@ -167,35 +193,39 @@ export function NewRun() {
   const index = STEPS.indexOf(step);
   const next = () => setStep(STEPS[Math.min(STEPS.length - 1, index + 1)]);
   const back = () => setStep(STEPS[Math.max(0, index - 1)]);
-  const canNext = step === 'way' ? Boolean(scenario) : step === 'basics' ? basicsReady : true;
+  const canNext = step === 'way' ? Boolean(scenario) : step === 'basics' ? basicsReady : step === 'team' ? Boolean(managerUserId) : true;
 
   return (
     <div className="lps-stagger mx-auto max-w-[980px] space-y-4">
-      <PageHero
-        icon={Wand2}
-        eyebrow={
-          <Link to="/learning-production" className="hover:underline">
-            {t('lp.nav.dashboard')}
+      <Hero
+        back={
+          <Link to="/learning-production/courses" className="lps-hero-back">
+            <ArrowRight size={15} aria-hidden="true" className="ltr:rotate-180" />
+            {t('lp.nav.courses')}
           </Link>
         }
         title={t('lp.run.new')}
-        lede={t('lp.newRun.lede')}
+        subtitle={t('lp.newRun.lede')}
       />
 
-      <ol className="lps-panel flex gap-3 px-4 pb-3 pt-4" aria-label={t('lp.newRun.steps')}>
-        {STEPS.map((entry, position) => (
-          <li
-            key={entry}
-            className="lps-step"
-            data-state={position < index ? 'DONE' : position === index ? 'IN_PROGRESS' : 'BLOCKED'}
-            data-current={position === index}
-            aria-current={position === index ? 'step' : undefined}
-          >
-            <span className="text-[11.5px] lps-faint">{t('lp.newRun.stepN', { n: position + 1 })}</span>
-            <span className="text-[13px] font-semibold">{t(`lp.newRun.step.${entry}` as StringKey)}</span>
-          </li>
-        ))}
-      </ol>
+      <div className="lps-panel px-2 sm:px-3">
+        <JourneyMap
+          label={t('lp.newRun.steps')}
+          nowLabel={t('lp.plan.now')}
+          selected={step}
+          onSelect={(key) => {
+            // Back to any earlier step; forward only with "Next".
+            if (STEPS.indexOf(key as Step) < index) setStep(key as Step);
+          }}
+          nodes={STEPS.map((entry, position) => ({
+            key: entry,
+            label: t(`lp.newRun.step.${entry}` as StringKey),
+            sub: t('lp.newRun.stepN', { n: position + 1 }),
+            state: position < index ? 'done' : position === index ? 'current' : 'later',
+            icon: STEP_ICON[entry],
+          }))}
+        />
+      </div>
 
       {error ? <ErrorNote error={error} /> : null}
 
@@ -296,9 +326,6 @@ export function NewRun() {
             <Field label={t('lp.field.runTitle')} hint={t('lp.field.runTitleHint')}>
               <input className="lps-input" value={title} onChange={(event) => setTitle(event.target.value)} maxLength={160} />
             </Field>
-            <Field label={t('lp.field.manager')} required>
-              <PersonSelect className="lps-input" value={managerUserId} onChange={setManager} people={people} placeholder={t('lp.people.choose')} />
-            </Field>
             <Field label={t('lp.field.startDate')}>
               <input type="date" className="lps-input" value={startDate} onChange={(event) => setStartDate(event.target.value)} />
             </Field>
@@ -332,29 +359,65 @@ export function NewRun() {
       )}
 
       {step === 'team' && (
-        <Panel title={t('lp.newRun.step.team')} action={<span className="text-[12px] lps-muted">{t('lp.newRun.teamHint')}</span>}>
-          {!preview ? (
-            <Busy />
-          ) : (
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              {roles.map((role) => (
-                <Field key={role} label={t(`lp.role.${role}` as StringKey)}>
-                  <PersonSelect
-                    className="lps-input"
-                    value={team[role] ?? null}
-                    onChange={(value) => setTeam((current) => ({ ...current, [role]: value }))}
-                    people={people}
-                    placeholder={t('lp.people.later')}
-                  />
-                </Field>
-              ))}
+        <div className="space-y-4">
+          <section className="lps-panel p-4 sm:p-5">
+            <h3 className="flex items-center gap-2.5 text-[16px] font-bold">
+              <IconChip icon={Crown} tone="violet" size={15} />
+              {t('lp.newRun.pm')}
+              <span className="text-[13px] font-normal text-[color:var(--lps-danger)]" aria-hidden="true">*</span>
+            </h3>
+            <p className="mt-1 text-[13px] lps-muted">{t('lp.newRun.pmHint')}</p>
+            <div className="mt-3 max-w-md">
+              <PersonSelect className="lps-input" value={managerUserId} onChange={setManager} people={people} placeholder={t('lp.people.choose')} />
             </div>
+          </section>
+
+          <section className="lps-panel p-4 sm:p-5">
+            <h3 className="flex items-center gap-2.5 text-[16px] font-bold">
+              <IconChip icon={Users} tone="blue" size={15} />
+              {t('lp.newRun.keyRoles')}
+            </h3>
+            <p className="mt-1 text-[13px] lps-muted">{t('lp.newRun.keyRolesHint')}</p>
+            {!preview ? (
+              <div className="mt-3">
+                <Busy />
+              </div>
+            ) : (
+              <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
+                {keyRoles.map((role) => (
+                  <Field key={role} label={t(`lp.role.${role}` as StringKey)} hint={t(`lp.roleHint.${role}` as StringKey)}>
+                    <PersonSelect
+                      className="lps-input"
+                      value={team[role] ?? null}
+                      onChange={(value) => setTeam((current) => ({ ...current, [role]: value }))}
+                      people={people}
+                      placeholder={t('lp.people.later')}
+                    />
+                  </Field>
+                ))}
+              </div>
+            )}
+          </section>
+
+          {preview && otherRoles.length > 0 && (
+            <Disclosure title={t('lp.newRun.otherRoles')} count={extraChosen || undefined}>
+              <p className="mb-3 text-[13px] lps-muted">{t('lp.newRun.otherRolesHint')}</p>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+                {otherRoles.map((role) => (
+                  <Field key={role} label={t(`lp.role.${role}` as StringKey)}>
+                    <PersonSelect
+                      className="lps-input"
+                      value={team[role] ?? null}
+                      onChange={(value) => setTeam((current) => ({ ...current, [role]: value }))}
+                      people={people}
+                      placeholder={t('lp.people.later')}
+                    />
+                  </Field>
+                ))}
+              </div>
+            </Disclosure>
           )}
-          <p className="mt-3 flex items-center gap-2 text-[12.5px] lps-muted">
-            <Users size={14} aria-hidden="true" />
-            {t('lp.newRun.managerNote')}
-          </p>
-        </Panel>
+        </div>
       )}
 
       {step === 'review' && preview && (
@@ -401,7 +464,7 @@ export function NewRun() {
               })}
             </ol>
           </Panel>
-          {uncovered.length > 0 && <p className="lps-callout">{t('lp.newRun.uncovered', { roles: uncovered.map((role) => t(`lp.role.${role}` as StringKey)).join('، ') })}</p>}
+          <p className="lps-callout-info">{t('lp.newRun.unassignedGoToPm', { name: people.find((person) => person.id === managerUserId)?.name ?? t('lp.newRun.pm') })}</p>
           <p className="lps-callout-info">{t('lp.newRun.noLessonsYet')}</p>
         </div>
       )}

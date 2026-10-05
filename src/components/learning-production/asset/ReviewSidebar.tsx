@@ -15,44 +15,46 @@ import { formatTimecode } from '@shared/learningProduction/review';
 import type { ActivityEntry, People, ReviewComment } from '../../../lib/learningProduction/types';
 import { Avatar, useToast } from '../../ui';
 import { ActivityFeed, Chip, ConfirmDialog, SkeletonRows } from '../kit';
+import { Disclosure, IconChip } from '../studio';
 import { useAsset } from './AssetContext';
 import { CommentComposer } from './CommentComposer';
 import { DiffView } from './DiffView';
 
-type Tab = 'comments' | 'versions' | 'activity';
-
+/**
+ * One column, no tabs: the open notes first (the ones that matter while
+ * reviewing), then the versions and the history folded underneath.
+ */
 export function ReviewSidebar({ onCollapse }: { onCollapse: () => void }) {
   const { t } = useI18n();
   const { detail } = useAsset();
-  const [tab, setTab] = useState<Tab>('comments');
 
   return (
     // The module now scrolls inside its own pane (Layout.tsx), not the
     // document under the fixed topbar, so this sticks relative to that
     // pane's scrollport (padded `py-5`) rather than the viewport itself.
-    <aside className="flex min-h-[420px] flex-col rounded-2xl border border-surface-line bg-white lg:sticky lg:top-3 lg:max-h-[calc(100dvh-var(--topbar-h)-56px)]">
-      <div className="flex items-center gap-1 border-b border-surface-line px-2 pt-2">
-        {(['comments', 'versions', 'activity'] as Tab[]).map((key) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => setTab(key)}
-            aria-pressed={tab === key}
-            className={cx('-mb-px flex items-center gap-1.5 border-b-2 px-3 py-2 text-[13px] font-semibold', tab === key ? 'border-brand-500 text-brand-600' : 'border-transparent text-ink-muted hover:text-ink')}
-          >
-            {t(`lp.sidebar.${key}` as never)}
-            {key === 'comments' && detail.openComments > 0 && <span className="rounded-full bg-status-warnBg px-1.5 text-[11px] text-accent-700">{detail.openComments}</span>}
-            {key === 'versions' && detail.versions.length > 0 && <span className="text-[11px] text-ink-faint">{detail.versions.length}</span>}
-          </button>
-        ))}
+    <aside className="lps-side flex min-h-[420px] flex-col lg:sticky lg:top-3 lg:max-h-[calc(100dvh-var(--topbar-h)-56px)]">
+      <div className="lps-side-head lps-tint-violet !py-2.5">
+        <IconChip icon={MessageSquare} tone="violet" size={15} />
+        <h2 className="text-[15px] font-bold">{t('lp.sidebar.comments')}</h2>
+        {detail.openComments > 0 && <span className="rounded-full bg-status-warnBg px-1.5 text-[11px] font-semibold text-accent-700">{detail.openComments}</span>}
         <button type="button" className="btn-quiet ms-auto !min-h-8 rounded-lg px-1.5" onClick={onCollapse} aria-label={t('lp.sidebar.collapse')}>
           <PanelRightClose size={16} className="rtl:rotate-180" />
         </button>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {tab === 'comments' && <CommentsPanel />}
-        {tab === 'versions' && <VersionsPanel />}
-        {tab === 'activity' && <ActivityPanel />}
+        <CommentsPanel />
+        <div className="space-y-2 border-t border-surface-line p-3">
+          <Disclosure title={t('lp.sidebar.versions')} count={detail.versions.length}>
+            <div className="-mx-4 sm:-mx-5">
+              <VersionsPanel />
+            </div>
+          </Disclosure>
+          <Disclosure title={t('lp.sidebar.activity')}>
+            <div className="-mx-4 sm:-mx-5">
+              <ActivityPanel />
+            </div>
+          </Disclosure>
+        </div>
       </div>
     </aside>
   );
@@ -81,29 +83,23 @@ function sortKey(comment: ReviewComment) {
 function CommentsPanel() {
   const { t } = useI18n();
   const { detail, comments, addComment } = useAsset();
-  const [filter, setFilter] = useState<'OPEN' | 'RESOLVED' | 'ALL'>('OPEN');
+  const [showResolved, setShowResolved] = useState(false);
   const positional = ['PPT', 'VOICE_OVER', 'VIDEO'].includes(detail.asset.assetType);
 
   const list = useMemo(() => {
     const all = comments?.comments ?? [];
-    const filtered = filter === 'ALL' ? all : all.filter((comment) => comment.status === filter);
+    const filtered = showResolved ? all : all.filter((comment) => comment.status === 'OPEN');
     return positional ? [...filtered].sort((a, b) => sortKey(a) - sortKey(b) || a.createdAt.localeCompare(b.createdAt)) : filtered;
-  }, [comments, filter, positional]);
+  }, [comments, showResolved, positional]);
+  const resolved = (comments?.comments ?? []).filter((comment) => comment.status === 'RESOLVED').length;
 
   if (!comments) return <div className="p-3"><SkeletonRows rows={3} height="h-16" /></div>;
 
   return (
     <div className="flex flex-col">
-      <div className="flex gap-1 px-3 pt-3">
-        {(['OPEN', 'RESOLVED', 'ALL'] as const).map((key) => (
-          <button key={key} type="button" aria-pressed={filter === key} onClick={() => setFilter(key)} className={cx('rounded-lg px-2.5 py-1 text-[12px] font-semibold', filter === key ? 'bg-navy text-white' : 'text-ink-muted hover:bg-surface-sunken')}>
-            {t(`lp.comment.filter.${key}` as never)}
-          </button>
-        ))}
-      </div>
       {list.length === 0 ? (
         <p className="px-4 py-8 text-center text-[13px] text-ink-faint">
-          {filter === 'OPEN' ? t('lp.comment.noneOpen') : t('lp.comment.none')}
+          {showResolved ? t('lp.comment.none') : t('lp.comment.noneOpen')}
         </p>
       ) : (
         <ul className="space-y-2 p-3">
@@ -111,6 +107,11 @@ function CommentsPanel() {
             <CommentThread key={comment.id} comment={comment} people={comments.people} />
           ))}
         </ul>
+      )}
+      {resolved > 0 && (
+        <button type="button" className="mx-3 mb-2 self-start text-[12.5px] font-semibold text-brand-600 hover:underline" onClick={() => setShowResolved((value) => !value)}>
+          {showResolved ? t('lp.comment.hideResolved') : t('lp.comment.showResolved', { n: resolved })}
+        </button>
       )}
       {comments.canComment && (
         <div className="border-t border-surface-line p-3">
@@ -161,7 +162,7 @@ function CommentThread({ comment, people }: { comment: ReviewComment; people: Pe
         {typeof comment.anchor?.quote === 'string' && (
           <blockquote className="mt-2 border-s-2 border-surface-line ps-2 text-[12px] italic text-ink-muted line-clamp-3">{comment.anchor.quote as string}</blockquote>
         )}
-        <p className="mt-1.5 whitespace-pre-line text-[13px] leading-relaxed text-ink">{comment.body}</p>
+        <p dir="auto" className="mt-1.5 whitespace-pre-line text-start text-[13px] leading-relaxed text-ink">{comment.body}</p>
         {comment.suggestionText !== null && comment.commentType === 'SUGGESTION' && (
           <p className="mt-1.5 rounded-lg bg-status-okBg px-2 py-1.5 text-[12.5px] text-green-800">
             → {comment.suggestionText || t('lp.comment.suggestDelete')}
@@ -176,7 +177,7 @@ function CommentThread({ comment, people }: { comment: ReviewComment; people: Pe
               <p className="text-[12px] font-semibold text-ink">
                 {people[reply.userId]?.name ?? t('common.removedUser')} <span className="font-normal text-ink-faint">· {timeAgo(reply.createdAt, t)}</span>
               </p>
-              <p className="whitespace-pre-line text-[13px] text-ink">{reply.body}</p>
+              <p dir="auto" className="whitespace-pre-line text-start text-[13px] text-ink">{reply.body}</p>
             </li>
           ))}
         </ul>

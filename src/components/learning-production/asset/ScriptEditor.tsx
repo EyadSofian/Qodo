@@ -8,7 +8,7 @@ import { useMemo, useState } from 'react';
 import { ArrowDown, ArrowUp, ChevronDown, MessageSquare, Plus, Trash2 } from 'lucide-react';
 import { useI18n } from '../../../lib/i18n';
 import { cx } from '../../../lib/utils';
-import { countWords, formatTimecode, normalizeContent, scriptBlockSeconds, scriptTotals } from '@shared/learningProduction/review';
+import { formatTimecode, normalizeContent, scriptBlockSeconds, scriptTotals } from '@shared/learningProduction/review';
 import type { ScriptBlock, ScriptContent } from '../../../lib/learningProduction/types';
 import { ConfirmDialog, EmptyPanel, SkeletonRows } from '../kit';
 import { useAsset } from './AssetContext';
@@ -172,18 +172,20 @@ function BlockCard({
   const { t } = useI18n();
   const { comments, addComment } = useAsset();
   const hasNotes = Boolean(block.pronunciation || block.pauses || block.emphasis || block.notes || block.manualDurationSeconds);
-  const [notesOpen, setNotesOpen] = useState(hasNotes);
+  // Delivery notes are for the voice artist; folded by default so the narration reads first.
+  const [notesOpen, setNotesOpen] = useState(false);
   const [commenting, setCommenting] = useState(false);
   const seconds = scriptBlockSeconds(block, wpm);
   const blockComments = (comments?.comments ?? []).filter((comment) => comment.status === 'OPEN' && comment.anchor?.blockId === block.id).length;
   const field = (name: keyof ScriptBlock) => ({ blockId: block.id, field: name as string });
 
   return (
-    <section className="rounded-2xl border border-surface-line bg-white" style={{ contentVisibility: 'auto', containIntrinsicSize: '320px' }}>
+    <section className="group rounded-2xl border border-surface-line bg-white" style={{ contentVisibility: 'auto', containIntrinsicSize: '320px' }}>
       <header className="flex flex-wrap items-center gap-2 border-b border-surface-line px-4 py-2">
         <span className="rounded-md bg-brand-50 px-2 py-0.5 text-[12px] font-bold text-brand-700">{t(unit as never, { n: number })}</span>
         <input
-          className="min-w-0 flex-1 bg-transparent text-[14px] font-semibold text-ink outline-none placeholder:text-ink-faint read-only:cursor-default"
+          dir="auto"
+          className="min-w-0 flex-1 bg-transparent text-start text-[14px] font-semibold text-ink outline-none placeholder:text-ink-faint read-only:cursor-default"
           value={block.title}
           readOnly={!editable}
           onChange={(event) => onChange({ title: event.target.value })}
@@ -191,7 +193,7 @@ function BlockCard({
           aria-label={t('lp.script.title')}
         />
         <span className="ltr text-[12px] text-ink-faint" title={t('lp.script.durationHint', { wpm })}>
-          ≈ {formatTimecode(seconds)} · {countWords(block.narration)}w
+          ≈ {formatTimecode(seconds)}
         </span>
         {comments?.canComment && (
           <button type="button" className="btn-quiet !min-h-7 rounded-lg px-1.5 text-[12px]" onClick={() => setCommenting((value) => !value)} aria-label={t('lp.script.commentBlock')}>
@@ -200,7 +202,8 @@ function BlockCard({
           </button>
         )}
         {editable && (
-          <span className="flex items-center">
+          // Reorder, insert and delete show on hover or focus, so a block reads as text, not a toolbar.
+          <span className="flex items-center transition-opacity [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:focus-within:opacity-100 [@media(hover:hover)]:group-hover:opacity-100">
             <button type="button" className="btn-quiet !min-h-7 rounded-lg px-1" onClick={() => onMove(-1)} disabled={isFirst} aria-label={t('lp.lessons.moveUp')}>
               <ArrowUp size={13} />
             </button>

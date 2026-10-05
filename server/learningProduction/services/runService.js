@@ -9,7 +9,7 @@
  * lessons are added when the curriculum stage gets there.
  */
 
-import { COURSE_ROLES, PRIORITIES } from '../../../shared/learningProduction/constants.js';
+import { ASSET_TYPES, COURSE_ROLES, PRIORITIES } from '../../../shared/learningProduction/constants.js';
 import { LP_PERMISSIONS as P } from '../../../shared/learningProduction/permissions.js';
 import {
   OPEN_RUN_STATUSES,
@@ -223,6 +223,50 @@ async function readTeam(actor, value) {
   return team;
 }
 
+/** Who makes, and who reviews, each lesson file — by the role they hold on the team. */
+const LESSON_MAKER = { OUTLINE: 'OUTLINE_WRITER', PPT: 'PPT_DESIGNER', SCRIPT: 'SCRIPT_WRITER', VOICE_OVER: 'VOICE_OVER_ARTIST', VIDEO: 'VIDEO_EDITOR' };
+const LESSON_REVIEWERS = {
+  OUTLINE: ['SUBJECT_MATTER_EXPERT'],
+  PPT: ['QUALITY_REVIEWER'],
+  SCRIPT: ['SUBJECT_MATTER_EXPERT'],
+  VOICE_OVER: ['AUDIO_REVIEWER', 'QUALITY_REVIEWER'],
+  VIDEO: ['QUALITY_REVIEWER'],
+};
+
+/**
+ * The course's default maker and reviewer for each lesson file, filled from
+ * the team chosen for a run: when exactly one person holds the maker role
+ * they make that file in every lesson added from now on, and likewise the
+ * reviewer. A default already set on the course is never overwritten, and a
+ * person is never made the reviewer of their own file.
+ */
+export function defaultsFromTeam(current, members) {
+  const holders = (role) => [...members].filter(([, roles]) => roles.has(role)).map(([userId]) => userId);
+  const only = (role) => {
+    const found = holders(role);
+    return found.length === 1 ? found[0] : null;
+  };
+  const next = {};
+  let changed = false;
+  for (const type of ASSET_TYPES) {
+    const existing = current?.[type] ?? {};
+    const assigneeUserId = existing.assigneeUserId ?? only(LESSON_MAKER[type]);
+    let reviewerUserId = existing.reviewerUserId ?? null;
+    if (!reviewerUserId) {
+      for (const role of LESSON_REVIEWERS[type]) {
+        const candidate = only(role);
+        if (candidate && candidate !== assigneeUserId) {
+          reviewerUserId = candidate;
+          break;
+        }
+      }
+    }
+    next[type] = { assigneeUserId: assigneeUserId ?? null, reviewerUserId };
+    if (next[type].assigneeUserId !== (existing.assigneeUserId ?? null) || next[type].reviewerUserId !== (existing.reviewerUserId ?? null)) changed = true;
+  }
+  return changed ? next : null;
+}
+
 async function addCourseMembers(tx, { organizationId, courseId, addedBy, team }) {
   for (const [userId, roles] of team) {
     await tx.query(
@@ -334,6 +378,11 @@ export async function createRun(actor, input) {
     }
     if (expert?.userId) members.set(expert.userId, new Set([...(members.get(expert.userId) ?? []), 'SUBJECT_MATTER_EXPERT']));
     await addCourseMembers(tx, { organizationId: actor.organizationId, courseId, addedBy: actor.userId, team: members });
+    const courseRow = await tx.row(`SELECT production_defaults_json FROM ${S}.learning_courses WHERE id = $1`, [courseId]);
+    const defaults = defaultsFromTeam(courseRow?.production_defaults_json ?? {}, members);
+    if (defaults) {
+      await tx.query(`UPDATE ${S}.learning_courses SET production_defaults_json = $2 WHERE id = $1`, [courseId, JSON.stringify(defaults)]);
+    }
 
     // One run in flight per course.
     const open = await tx.row(

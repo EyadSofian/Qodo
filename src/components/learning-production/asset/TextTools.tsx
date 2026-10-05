@@ -222,6 +222,7 @@ export function ReviewableText({
       </div>
       <textarea
         ref={area}
+        dir="auto"
         className={cx('field resize-none leading-relaxed', size === 'lg' ? 'text-[15px]' : 'text-[14px]', readOnly && '!border-transparent !bg-transparent !px-0 !shadow-none focus:!ring-0')}
         value={value}
         readOnly={readOnly}
@@ -270,7 +271,7 @@ export function ReviewableText({
                 <MessageSquarePlus size={12} className="mt-0.5 shrink-0 text-accent-700" />
                 <span className="min-w-0 flex-1">
                   {typeof comment.anchor?.quote === 'string' && <span className="me-1 italic text-ink-muted">“{String(comment.anchor.quote).slice(0, 60)}”</span>}
-                  <span className="text-ink">{comment.body}</span>
+                  <span dir="auto" className="text-ink">{comment.body}</span>
                 </span>
               </button>
             </li>

@@ -28,6 +28,7 @@ import { forbidden } from './errors.js';
 import { knownPhoto, odooEmployeeByKey, odooEmployeeIndex, odooWorkLocation } from './odooPeople.js';
 import { odooTimeOff, timeOffFreshness } from './odooTimeOff.js';
 import { odooResolver, timeOffView } from './odooHR.js';
+import { inTeam, teamReach } from './teamReach.js';
 import { photoUrlFor } from './recruitment/team.js';
 import { odooPublishedJobsForHome } from './recruitment/odooJobs.js';
 import { performanceOverview } from './performance.js';
@@ -56,6 +57,8 @@ export async function hrAccess(user) {
   const own = [...state.profiles.values()].find((profile) => profile.linkedUserId === user.id) ?? null;
   return {
     ...r,
+    // People for their own Odoo team only; `people` (everyone) makes it moot.
+    team: !r.people && can(user, PERMISSIONS.HR_PEOPLE_TEAM),
     employeeCode: own?.employeeCode ?? null,
     personnelManage: can(user, PERMISSIONS.HR_PERSONNEL_MANAGE),
     requests: can(user, PERMISSIONS.HR_RECRUITMENT_REQUEST) || can(user, PERMISSIONS.HR_RECRUITMENT_REVIEW),
@@ -67,8 +70,13 @@ export async function hrAccess(user) {
 /**
  * Employees for the People directory. The HR file is the record; Odoo adds the
  * live job, department, manager, work location, photo and today's leave. Active
- * Odoo employees the HR file does not have yet are listed too (for HR viewers
- * only), marked `source: 'odoo'`, so nobody working here is missing from People.
+ * Odoo employees the HR file does not have yet are listed too, marked
+ * `source: 'odoo'`, so nobody working here is missing from People.
+ *
+ * `hr.view` reads everyone. `hr.people.team` reads the caller and everyone below
+ * them in Odoo's manager tree — their full records, pay included, which is what
+ * the owner asked a manager to see of their own people. Anyone else reads only
+ * themselves.
  */
 export async function peopleDirectory(user) {
   const r = rights(user);
@@ -85,7 +93,9 @@ export async function peopleDirectory(user) {
   for (const leave of timeOff?.leaves ?? []) {
     if (leave.state === 'validate' && leave.from <= today && leave.to >= today) leaveToday.set(leave.odooEmployeeId, { type: leave.type.name, away: leave.type.away, until: leave.to });
   }
-  const visible = r.people ? profiles : profiles.filter((profile) => profile.linkedUserId === user.id);
+  const team = r.people ? null : teamReach(user, profiles, resolver, index);
+  const inTeamCode = (code) => Boolean(team?.codes.has(code));
+  const visible = r.people ? profiles : profiles.filter((profile) => profile.linkedUserId === user.id || inTeamCode(profile.employeeCode));
   // A seat stores the Qodo account sitting in it, so it reaches an employee only
   // through that employee's linked account.
   const seats = await find('officeSeats', (seat) => organizationOf(seat) === organizationId && seat.userId);
@@ -96,7 +106,7 @@ export async function peopleDirectory(user) {
       const odoo = resolver.odooFor(profile.employeeCode);
       const seat = profile.linkedUserId ? seats.find((row) => row.userId === profile.linkedUserId) : null;
       return {
-        ...employeeSummary(profile, r.payroll),
+        ...employeeSummary(profile, r.payroll || inTeamCode(profile.employeeCode)),
         directManager: profile.directManager,
         photoUrl: odoo && knownPhoto(odoo.id) !== false ? photoUrlFor(profile.employeeCode) : null,
         location: odooWorkLocation(odoo) || (seat ? offices.get(seat.officeId)?.zone ?? '' : ''),
@@ -106,8 +116,8 @@ export async function peopleDirectory(user) {
         onLeave: odoo ? leaveToday.get(odoo.id) ?? null : null,
       };
     });
-  if (r.people) {
-    for (const row of resolver.odooOnly) {
+  if (r.people || team) {
+    for (const row of resolver.odooOnly.filter((item) => r.people || team.odooIds.has(item.id))) {
       const odoo = resolver.publicFor(row);
       const code = resolver.codeFor(row.id);
       employees.push({
@@ -139,12 +149,20 @@ export async function peopleDirectory(user) {
     }
   }
   employees.sort((left, right) => (left.status === 'active' ? 0 : 1) - (right.status === 'active' ? 0 : 1) || (left.nameArabic || left.nameEnglish).localeCompare(right.nameArabic || right.nameEnglish, 'ar'));
-  const insured = profiles.filter((profile) => profile.insurance?.insuranceNumber);
+  const counted = r.people ? profiles : team ? visible : null;
+  const reachable = (odooId) => r.people || Boolean(team?.odooIds.has(odooId));
   return {
     employees,
-    analytics: r.people ? workforceAnalytics(profiles, insured) : null,
-    selfOnly: !r.people,
-    odoo: { connected: Boolean(index), odooOnly: r.people ? resolver.odooOnly.length : null, onLeaveToday: r.people ? [...leaveToday.values()].filter((entry) => !entry.away).length : null },
+    analytics: counted ? workforceAnalytics(counted, counted.filter((profile) => profile.insurance?.insuranceNumber)) : null,
+    scope: r.people ? 'all' : team ? 'team' : 'self',
+    selfOnly: !r.people && !team,
+    odoo: {
+      connected: Boolean(index),
+      odooOnly: counted ? resolver.odooOnly.filter((row) => reachable(row.id)).length : null,
+      onLeaveToday: counted ? [...leaveToday].filter(([odooId, entry]) => reachable(odooId) && !entry.away).length : null,
+      // A team scope that found no Odoo employee for this account — the page says so.
+      teamUnlinked: team ? team.rootId === null : false,
+    },
   };
 }
 
@@ -159,10 +177,11 @@ export async function employeeOdoo(user, code) {
   const profiles = [...state.profiles.values()];
   const profile = state.profiles.get(String(code)) ?? null;
   const self = Boolean(profile && profile.linkedUserId === user.id);
-  if (!r.people && !r.personnel && !self) throw forbidden(PERMISSIONS.HR_VIEW);
+  const resolver = index ? odooResolver(profiles, index) : null;
+  const team = !r.people && index ? Boolean(teamReach(user, profiles, resolver, index)?.codes.has(String(code))) : false;
+  if (!r.people && !r.personnel && !self && !team) throw forbidden(PERMISSIONS.HR_VIEW);
   if (!index) return { connected: false };
-  const resolver = odooResolver(profiles, index);
-  const row = profile ? resolver.odooFor(profile.employeeCode) : (r.people ? odooEmployeeByKey(code, index) : null);
+  const row = profile ? resolver.odooFor(profile.employeeCode) : (r.people || team ? odooEmployeeByKey(code, index) : null);
   if (!row) return { connected: true, employee: null };
   const reports = index.rows
     .filter((item) => item.active && Array.isArray(item.parent_id) && item.parent_id[0] === row.id)
@@ -179,10 +198,11 @@ export async function employeeOdoo(user, code) {
 
 /**
  * A profile for someone Odoo has and the HR file does not, so People can open
- * them. HR viewers only; every HR-file field is simply empty.
+ * them. HR viewers, and a manager for their own team; every HR-file field is
+ * simply empty.
  */
 export async function odooOnlyProfile(user, code) {
-  if (!can(user, PERMISSIONS.HR_VIEW)) throw forbidden(PERMISSIONS.HR_VIEW);
+  if (!can(user, PERMISSIONS.HR_VIEW) && !(await inTeam(user, code))) throw forbidden(PERMISSIONS.HR_VIEW);
   const index = await odooEmployeeIndex({ timeoutMs: 6000 });
   const row = odooEmployeeByKey(code, index);
   if (!row) return null;

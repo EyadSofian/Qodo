@@ -5,9 +5,9 @@
  * visible thing on it, and red is kept for work that is actually late.
  */
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, Ban, CalendarClock, MessageSquare } from 'lucide-react';
+import { AlarmClock, AlertTriangle, Ban, CalendarClock, CheckCircle2, Circle, CircleDot, Clock3, Hourglass, MessageSquare, Minus, RotateCcw, Search, type LucideIcon } from 'lucide-react';
 import { useI18n, type StringKey } from '../../lib/i18n';
 import { cx, timeAgo } from '../../lib/utils';
 import { Avatar, Modal, Spinner } from '../ui';
@@ -16,7 +16,6 @@ import {
   DUE_TONE,
   PRIORITY_TONE,
   STAGE_COLOR,
-  STAGE_HEX,
   STAGE_ICON,
   STAGE_TAG,
   STATUS_META,
@@ -336,6 +335,7 @@ export function ConfirmDialog({
 }
 
 let peopleCache: Promise<Person[]> | null = null;
+let peopleFailed = false;
 
 /** Everyone who can be put on the work, loaded once per session. */
 export function usePeople(enabled = true) {
@@ -343,11 +343,16 @@ export function usePeople(enabled = true) {
   useEffect(() => {
     if (!enabled) return;
     if (!peopleCache) {
+      peopleFailed = false;
       peopleCache = lp
         .people()
         .then((response) => response.people)
-        .catch(() => {
+        .catch((error) => {
+          // Said out loud in the picker, not swallowed: an empty list with no
+          // reason is how "I can't find anyone" happens.
+          console.error('[learning-production] people did not load —', error);
           peopleCache = null;
+          peopleFailed = true;
           return [];
         });
     }
@@ -360,6 +365,20 @@ export function usePeople(enabled = true) {
   return people;
 }
 
+const normalize = (value: string | null | undefined) =>
+  String(value ?? '')
+    .toLowerCase()
+    .replace(/[أإآ]/g, 'ا')
+    .replace(/ى/g, 'ي')
+    .replace(/ة/g, 'ه')
+    .trim();
+
+/**
+ * Pick a person by typing part of their name, title or department. A plain
+ * <select> of a whole organization is a list nobody can find anyone in; this
+ * opens with a search box, keeps the likeliest people (the course team) on
+ * top, and says why when there is nobody to show.
+ */
 export function PersonSelect({
   value,
   onChange,
@@ -382,34 +401,137 @@ export function PersonSelect({
   className?: string;
 }) {
   const { t } = useI18n();
-  const { first, rest } = useMemo(() => {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [cursor, setCursor] = useState(0);
+  const wrapper = useRef<HTMLDivElement>(null);
+  const listId = useId();
+
+  const selected = people.find((person) => person.id === value) ?? null;
+  const options = useMemo(() => {
     const wanted = new Set(preferred);
-    const list = people.filter((person) => person.id !== exclude);
-    return { first: list.filter((person) => wanted.has(person.id)), rest: list.filter((person) => !wanted.has(person.id)) };
-  }, [people, preferred, exclude]);
-  const known = people.some((person) => person.id === value);
+    const needle = normalize(query);
+    const list = people.filter(
+      (person) =>
+        person.id !== exclude &&
+        (!needle || [person.name, person.title, person.department].some((field) => normalize(field).includes(needle)))
+    );
+    return [...list.filter((person) => wanted.has(person.id)), ...list.filter((person) => !wanted.has(person.id))];
+  }, [people, preferred, exclude, query]);
+  const teamCount = useMemo(() => options.filter((person) => preferred.includes(person.id)).length, [options, preferred]);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: MouseEvent) => {
+      if (!wrapper.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [open]);
+
+  const choose = (next: string | null) => {
+    onChange(next);
+    setOpen(false);
+    setQuery('');
+  };
+
+  const onKey = (event: React.KeyboardEvent) => {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setCursor((current) => Math.min(options.length - 1, current + 1));
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setCursor((current) => Math.max(0, current - 1));
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      if (options[cursor]) choose(options[cursor].id);
+    } else if (event.key === 'Escape') {
+      event.stopPropagation();
+      setOpen(false);
+    }
+  };
 
   return (
-    <select id={id} className={className} value={value ?? ''} disabled={disabled} onChange={(event) => onChange(event.target.value || null)}>
-      <option value="">{placeholder ?? t('lp.unassigned')}</option>
-      {value && !known && <option value={value}>{t('lp.currentPerson')}</option>}
-      {first.length > 0 && (
-        <optgroup label={t('lp.team')}>
-          {first.map((person) => (
-            <option key={person.id} value={person.id}>
-              {person.name}
-            </option>
-          ))}
-        </optgroup>
+    <div ref={wrapper} className="relative">
+      <button
+        id={id}
+        type="button"
+        disabled={disabled}
+        className={cx(className, 'flex items-center gap-2 text-start')}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => {
+          setOpen((current) => !current);
+          setCursor(0);
+        }}
+      >
+        {selected ? (
+          <>
+            <Avatar name={selected.name} color={selected.avatarColor} size={20} />
+            <span className="min-w-0 flex-1 truncate">{selected.name}</span>
+          </>
+        ) : value ? (
+          <span className="min-w-0 flex-1 truncate">{t('lp.currentPerson')}</span>
+        ) : (
+          <span className="min-w-0 flex-1 truncate text-ink-faint">{placeholder ?? t('lp.unassigned')}</span>
+        )}
+        <Search size={14} className="shrink-0 text-ink-faint" aria-hidden="true" />
+      </button>
+      {open && (
+        // preventDefault: the picker often sits inside a <label>, which would
+        // otherwise re-click the trigger (and close the list) on any click here.
+        <div
+          className="absolute inset-x-0 top-full z-40 mt-1 min-w-[240px] overflow-hidden rounded-xl border border-surface-line bg-white shadow-panel"
+          onKeyDown={onKey}
+          onClick={(event) => event.preventDefault()}
+        >
+          <div className="border-b border-surface-line p-2">
+            <input
+              autoFocus
+              className="field !min-h-9 !py-1.5"
+              value={query}
+              placeholder={t('lp.people.search')}
+              aria-label={t('lp.people.search')}
+              aria-controls={listId}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setCursor(0);
+              }}
+            />
+          </div>
+          <ul id={listId} role="listbox" className="max-h-64 overflow-y-auto py-1">
+            <li>
+              <button type="button" className="flex w-full items-center gap-2 px-3 py-2 text-start text-[13px] text-ink-muted hover:bg-surface-sunken" onClick={() => choose(null)}>
+                {placeholder ?? t('lp.unassigned')}
+              </button>
+            </li>
+            {options.map((person, index) => (
+              <li key={person.id} role="option" aria-selected={person.id === value}>
+                {index === 0 && teamCount > 0 && <p className="px-3 pb-1 pt-2 text-[11px] font-semibold text-ink-faint">{t('lp.team')}</p>}
+                {index === teamCount && teamCount > 0 && <p className="border-t border-surface-line px-3 pb-1 pt-2 text-[11px] font-semibold text-ink-faint">{t('lp.people.everyone')}</p>}
+                <button
+                  type="button"
+                  className={cx('flex w-full items-center gap-2.5 px-3 py-2 text-start text-[13px] hover:bg-surface-sunken', index === cursor && 'bg-surface-sunken', person.id === value && 'font-semibold')}
+                  onMouseEnter={() => setCursor(index)}
+                  onClick={() => choose(person.id)}
+                >
+                  <Avatar name={person.name} color={person.avatarColor} size={24} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-ink">{person.name}</span>
+                    {(person.title || person.department) && <span className="block truncate text-[11.5px] text-ink-faint">{[person.title, person.department].filter(Boolean).join(' · ')}</span>}
+                  </span>
+                </button>
+              </li>
+            ))}
+            {options.length === 0 && (
+              <li className="px-3 py-3 text-[12.5px] text-ink-faint">
+                {people.length === 0 ? (peopleFailed ? t('lp.people.loadFailed') : t('lp.people.none')) : t('lp.people.noMatch')}
+              </li>
+            )}
+          </ul>
+        </div>
       )}
-      <optgroup label={t('lp.everyone')}>
-        {rest.map((person) => (
-          <option key={person.id} value={person.id}>
-            {person.name}
-          </option>
-        ))}
-      </optgroup>
-    </select>
+    </div>
   );
 }
 
@@ -574,58 +696,100 @@ export function AttentionNote({ title, body, to, icon }: { title: ReactNode; bod
   );
 }
 
-const TONE_TEXT: Record<Tone, string> = {
-  neutral: 'text-ink-faint',
-  info: 'text-brand-600',
-  review: 'text-indigo-700',
-  warn: 'text-accent-700',
-  ok: 'text-status-ok',
-  bad: 'text-status-bad',
-};
-
 /**
- * One stage of one lesson, at content-row size: the stage on its coloured
- * edge, its state underneath. Five of these across a row is the whole point of
- * the content tab — a reader scans a column, not a row, to find where a course
- * is stuck.
+ * One lesson asset as a cell: its state in words, with a small icon, and who
+ * holds it. Waiting cells say what they wait for ("Waits for the outline"),
+ * so a lesson where nothing has started reads as a queue, not as a wall of
+ * errors. Colour carries state only — never which stage it is.
  */
-export function StageCell({ type, asset, courseId, lessonId }: { type: AssetType; asset?: AssetSummary; courseId: string; lessonId: string }) {
+export function StageCell({
+  type,
+  asset,
+  courseId,
+  lessonId,
+  people,
+  showLabel = true,
+}: {
+  type: AssetType;
+  asset?: AssetSummary;
+  courseId: string;
+  lessonId: string;
+  people?: People;
+  showLabel?: boolean;
+}) {
   const { t } = useI18n();
-  const overdue = asset?.dueState === 'OVERDUE';
-  const tone: Tone = !asset ? 'neutral' : asset.blocked ? 'neutral' : overdue ? 'bad' : STATUS_META[asset.status].tone;
-  const state = !asset
-    ? '—'
-    : asset.applicable === false
-      ? t('lp.asset.notApplicableShort')
-      : asset.blocked
-        ? t('lp.blocked')
-        : overdue
-          ? t('lp.due.OVERDUE')
-          : t(statusKey(asset.status));
+  const view = stageCellView(asset, t);
+  const Icon = view.icon;
+  const holder = asset?.assigneeUserId && people ? people[asset.assigneeUserId] : null;
   const body = (
     <>
-      <b className="block text-[11px] font-bold text-ink">{t(stageKey(type))}</b>
-      <span className={cx('block truncate text-[10.5px] font-semibold', TONE_TEXT[tone])}>{state}</span>
+      {showLabel && <b className="block truncate text-[11px] font-semibold text-ink-muted">{t(stageKey(type))}</b>}
+      <span className={cx('flex min-w-0 items-center gap-1.5 text-[12px] font-semibold', view.text)}>
+        <Icon size={13} className="shrink-0" aria-hidden="true" />
+        <span className="min-w-0 flex-1 truncate">{view.label}</span>
+        {holder && (
+          <span
+            className="grid h-[18px] w-[18px] shrink-0 place-items-center rounded-full text-[9px] font-bold text-white"
+            style={{ background: holder.avatarColor ?? '#94A3B8' }}
+            title={holder.name}
+            aria-hidden="true"
+          >
+            {holder.name.trim().slice(0, 1)}
+          </span>
+        )}
+      </span>
     </>
   );
-  const className = 'block min-w-0 rounded-lg border-s-[3px] bg-surface-bg px-2 py-1.5 text-start';
+  const className = cx('block min-w-0 rounded-lg border px-2 py-1.5 text-start', view.box);
+  const title = `${t(stageKey(type))}: ${view.label}${holder ? ` — ${holder.name}` : ''}`;
   if (!asset) {
     return (
-      <span className={className} style={{ borderInlineStartColor: STAGE_HEX[type] }}>
+      <span className={className} title={title}>
         {body}
       </span>
     );
   }
   return (
-    <Link
-      to={assetRoute(courseId, lessonId, type)}
-      className={cx(className, 'transition-colors hover:bg-surface-sunken')}
-      style={{ borderInlineStartColor: STAGE_HEX[type] }}
-      title={`${t(stageKey(type))}: ${state}`}
-    >
+    <Link to={assetRoute(courseId, lessonId, type)} className={cx(className, 'transition-colors hover:border-slate-300 hover:bg-white')} title={title} aria-label={title}>
       {body}
     </Link>
   );
+}
+
+type CellView = { label: string; icon: LucideIcon; text: string; box: string };
+
+/** What a lesson asset cell says and how it looks, in one place for every screen. */
+export function stageCellView(asset: AssetSummary | undefined, t: (key: StringKey, vars?: Record<string, string | number>) => string): CellView {
+  const quiet = 'border-surface-line bg-white/70';
+  if (!asset) return { label: '—', icon: Minus, text: 'text-ink-faint', box: 'border-dashed border-surface-line bg-transparent' };
+  if (asset.applicable === false) return { label: t('lp.asset.notApplicableShort'), icon: Minus, text: 'text-ink-faint', box: 'border-dashed border-surface-line bg-transparent' };
+  if (asset.blocked) {
+    const waiting = asset.waitingFor.map((entry) => t(stageKey(entry))).join(t('lp.listSeparator'));
+    return {
+      label: waiting ? t('lp.waitsOn', { stages: waiting }) : t('lp.blocked'),
+      icon: Clock3,
+      text: 'text-ink-faint',
+      box: 'border-dashed border-surface-line bg-transparent',
+    };
+  }
+  if (asset.dueState === 'OVERDUE' && !['APPROVED', 'LOCKED'].includes(asset.status)) {
+    return { label: t('lp.due.OVERDUE'), icon: AlarmClock, text: 'text-rose-600', box: 'border-rose-200 bg-rose-50/70' };
+  }
+  switch (asset.status) {
+    case 'APPROVED':
+    case 'LOCKED':
+      return { label: t(statusKey(asset.status)), icon: CheckCircle2, text: 'text-emerald-700', box: 'border-emerald-200 bg-emerald-50/70' };
+    case 'SUBMITTED':
+    case 'UNDER_REVIEW':
+    case 'RESUBMITTED':
+      return { label: t('lp.cell.inReview'), icon: Hourglass, text: 'text-indigo-700', box: 'border-indigo-200 bg-indigo-50/70' };
+    case 'CHANGES_REQUESTED':
+      return { label: t(statusKey(asset.status)), icon: RotateCcw, text: 'text-amber-700', box: 'border-amber-200 bg-amber-50/70' };
+    case 'IN_PROGRESS':
+      return { label: t(statusKey(asset.status)), icon: CircleDot, text: 'text-sky-700', box: quiet };
+    default:
+      return { label: asset.assigneeUserId ? t('lp.cell.ready') : t('lp.cell.unassigned'), icon: Circle, text: 'text-ink-muted', box: quiet };
+  }
 }
 
 /* ── history ─────────────────────────────────────────────────────── */
@@ -661,13 +825,13 @@ export function ActivityFeed({ entries, people, showWhere = true, empty }: { ent
           entry.course && entry.lesson && entry.asset
             ? assetRoute(entry.course.id, entry.lesson.id, entry.asset.assetType)
             : base && entry.task
-              ? `${base}/plan?task=${entry.task.id}`
+              ? `${base}?task=${entry.task.id}`
               : base && entry.issue
-                ? `${base}/qa?issue=${entry.issue.id}`
+                ? `${base}?panel=qa&issue=${entry.issue.id}`
                 : base && entry.release
-                  ? `${base}/qa?release=${entry.release.id}`
+                  ? `${base}?panel=qa&release=${entry.release.id}`
                   : base && entry.stage
-                    ? `${base}/plan?stage=${entry.stage.key}`
+                    ? `${base}?stage=${entry.stage.key}`
                     : entry.course && entry.lesson
                       ? `${base}/lessons/${entry.lesson.id}`
                       : base;

@@ -1,159 +1,124 @@
 /**
- * E-Learning Production — the course catalogue.
+ * E-Learning Production — the courses.
  *
- * A course is the long-lived identity; this list shows each one with the run
- * currently in flight (or its latest), where that run is, and how much of its
- * lesson content is approved. Search, a status filter and a sort — nothing
- * more is needed to find a course.
+ * A card per course: its name, where its production is now, how much of its
+ * lesson content is approved, when it is due and whether it is on time. A
+ * search box and one filter are all it takes to find a course.
  */
 
-import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { Library, Plus, Search } from 'lucide-react';
+import { useState, type CSSProperties } from 'react';
+import { Link } from 'react-router-dom';
+import { BookOpenCheck, Clock3, Library, RotateCcw, Search, Sparkles } from 'lucide-react';
 import { useI18n, type StringKey } from '../../lib/i18n';
 import { paths } from '../../lib/learningProduction/api';
 import { useDebounced, useLpQuery, useSessionState } from '../../lib/learningProduction/hooks';
 import type { CourseWithStats, People } from '../../lib/learningProduction/types';
-import {
-  Choice,
-  EmptyNote,
-  ErrorNote,
-  LoadingRows,
-  Meter,
-  PageHero,
-  Panel,
-  PersonLine,
-  RunStatusPill,
-  ScenarioBadge,
-  useDay,
-  usePick,
-} from '../../components/learning-production/studio';
+import { Dot, EmptyNote, ErrorNote, Hero, LoadingRows, Meter, useDay, usePick, type DotTone } from '../../components/learning-production/studio';
+import { SCENARIO_THEME, gradient } from '../../lib/learningProduction/theme';
 
 type View = 'active' | 'hold' | 'archived';
 
+const HEALTH_DOT: Record<string, DotTone> = { ON_TRACK: 'ok', COMPLETED: 'ok', AT_RISK: 'attention', DELAYED: 'danger' };
+const SCENARIO_ICON = { AI_NEW: Sparkles, EXPERT_NEW: BookOpenCheck, REVAMP: RotateCcw, LEGACY: Clock3 } as const;
+
 export function Courses() {
   const { t } = useI18n();
-  const pick = usePick();
-  const day = useDay();
-  const navigate = useNavigate();
   const [view, setView] = useSessionState<View>('lpstudio:courses.view', 'active');
-  const [sort, setSort] = useSessionState('lpstudio:courses.sort', 'recent');
   const [search, setSearch] = useState('');
   const q = useDebounced(search.trim(), 250);
   const { data, error, loading, reload } = useLpQuery<{ courses: CourseWithStats[]; people: People; canCreate: boolean }>(
-    paths.courses({ q, sort, status: view === 'hold' ? 'ON_HOLD' : view === 'active' ? 'ACTIVE' : undefined, archived: view === 'archived' })
+    paths.courses({ q, sort: 'target', status: view === 'hold' ? 'ON_HOLD' : view === 'active' ? 'ACTIVE' : undefined, archived: view === 'archived' })
   );
   const courses = data?.courses ?? [];
 
   return (
-    <div className="lps-stagger space-y-4">
-      <PageHero
-        icon={Library}
-        title={t('lp.courses.title')}
-        lede={t('lp.courses.lede')}
-        actions={
-          data?.canCreate ? (
-            <Link to="/learning-production/runs/new" className="lps-btn-primary">
-              <Plus size={15} aria-hidden="true" />
-              {t('lp.run.new')}
-            </Link>
-          ) : undefined
-        }
-      />
+    <div className="lps-stagger space-y-5">
+      <Hero title={t('lp.courses.title')} subtitle={data ? t('lp.courses.count', { n: courses.length }) : '\u00a0'}>
+        <label className="relative min-w-0 flex-1 sm:max-w-sm">
+          <span className="sr-only">{t('common.search')}</span>
+          <Search size={15} aria-hidden="true" className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 lps-faint" />
+          <input className="lps-input ps-9" value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t('lp.courses.search')} />
+        </label>
+        <select className="lps-input !w-auto" value={view} onChange={(event) => setView(event.target.value as View)} aria-label={t('lp.courses.show')}>
+          <option value="active">{t('lp.courses.active')}</option>
+          <option value="hold">{t('lp.courses.onHold')}</option>
+          <option value="archived">{t('lp.courses.archived')}</option>
+        </select>
+      </Hero>
 
-      <Panel
-        bodyClassName="p-0"
-        title={
-          <Choice<View>
-            label={t('lp.courses.title')}
-            value={view}
-            onChange={setView}
-            options={[
-              { value: 'active', label: t('lp.courses.active') },
-              { value: 'hold', label: t('lp.courses.onHold') },
-              { value: 'archived', label: t('lp.courses.archived') },
-            ]}
-          />
-        }
-        action={
-          <div className="flex w-full flex-wrap gap-2 sm:w-auto">
-            <label className="relative min-w-0 flex-1 sm:w-60 sm:flex-none">
-              <span className="sr-only">{t('common.search')}</span>
-              <Search size={14} aria-hidden="true" className="pointer-events-none absolute start-2.5 top-1/2 -translate-y-1/2 lps-faint" />
-              <input className="lps-input !py-1.5 ps-8" value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t('lp.courses.search')} />
-            </label>
-            <select className="lps-input !w-auto !py-1.5" value={sort} onChange={(event) => setSort(event.target.value)} aria-label={t('lp.courses.sort')}>
-              {['recent', 'name', 'target', 'progress'].map((value) => (
-                <option key={value} value={value}>
-                  {t(`lp.courses.sort.${value}` as StringKey)}
-                </option>
-              ))}
-            </select>
-          </div>
-        }
-      >
-        {error ? (
-          <div className="p-4">
-            <ErrorNote error={error} onRetry={reload} />
-          </div>
-        ) : loading && !data ? (
+      {error ? (
+        <ErrorNote error={error} onRetry={reload} />
+      ) : loading && !data ? (
+        <div className="lps-panel">
           <LoadingRows />
-        ) : courses.length === 0 ? (
+        </div>
+      ) : courses.length === 0 ? (
+        <div className="lps-panel">
           <EmptyNote icon={Library} title={q ? t('lp.courses.noMatch') : t('lp.courses.empty')} body={q ? undefined : t('lp.courses.emptyBody')} />
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="lps-table min-w-[880px]">
-              <thead>
-                <tr>
-                  <th className="sticky start-0 z-[2]">{t('lp.col.course')}</th>
-                  <th>{t('lp.col.run')}</th>
-                  <th>{t('lp.col.stage')}</th>
-                  <th className="text-center">{t('lp.col.lessons')}</th>
-                  <th className="w-[150px]">{t('lp.col.content')}</th>
-                  <th>{t('lp.col.target')}</th>
-                  <th>{t('lp.col.manager')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {courses.map((course) => (
-                  <tr key={course.id} className="lps-row-link" onClick={() => navigate(`/learning-production/courses/${course.id}`)}>
-                    <td className="sticky start-0 z-[1] bg-white">
-                      <Link to={`/learning-production/courses/${course.id}`} className="block max-w-[280px] hover:underline" onClick={(event) => event.stopPropagation()}>
-                        <span className="lps-bidi block truncate font-semibold">{course.name}</span>
-                        {course.code && <span className="text-[11.5px] lps-faint">{course.code}</span>}
-                      </Link>
-                    </td>
-                    <td>
-                      {course.run ? (
-                        <span className="flex flex-wrap items-center gap-1.5">
-                          <ScenarioBadge scenario={course.run.scenario} short />
-                          <RunStatusPill status={course.run.status} />
-                        </span>
-                      ) : (
-                        <span className="text-[12.5px] lps-faint">{t('lp.courses.noRun')}</span>
-                      )}
-                    </td>
-                    <td className="max-w-[220px] truncate text-[12.5px]">
-                      {course.run?.currentStage ? pick(course.run.currentStage.label) : course.run?.scenario === 'LEGACY' ? <span className="lps-muted">{t('lp.run.legacyNoStages')}</span> : '—'}
-                    </td>
-                    <td className="text-center">{course.stats.lessons}</td>
-                    <td>
-                      <div className="flex items-center gap-2">
-                        <Meter value={course.progress} tone="ok" label={t('lp.col.content')} />
-                        <span className="w-9 shrink-0 text-end text-[12px] font-semibold">{course.stats.totalAssets ? `${course.progress}%` : '—'}</span>
-                      </div>
-                    </td>
-                    <td className="whitespace-nowrap text-[12.5px]">{day(course.targetDate)}</td>
-                    <td>
-                      <PersonLine userId={course.managerUserId} people={data?.people ?? {}} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Panel>
+        </div>
+      ) : (
+        <ul className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {courses.map((course) => (
+            <CourseCard key={course.id} course={course} />
+          ))}
+        </ul>
+      )}
     </div>
+  );
+}
+
+function CourseCard({ course }: { course: CourseWithStats }) {
+  const { t } = useI18n();
+  const pick = usePick();
+  const day = useDay();
+  const run = course.run;
+  const legacy = run?.scenario === 'LEGACY';
+  const where = run?.status === 'ON_HOLD'
+    ? t('lp.runStatus.ON_HOLD')
+    : run?.status === 'RELEASED'
+      ? t('lp.runStatus.RELEASED')
+      : run?.currentStage
+        ? pick(run.currentStage.label)
+        : legacy
+          ? t('lp.courses.legacyWhere')
+          : run
+            ? t(`lp.runStatus.${run.status}` as StringKey)
+            : t('lp.courses.noRun');
+  const hasContent = course.stats.totalAssets > 0;
+
+  const theme = SCENARIO_THEME[run?.scenario ?? 'LEGACY'];
+  const Icon = SCENARIO_ICON[run?.scenario ?? 'LEGACY'];
+
+  return (
+    <li>
+      <Link to={`/learning-production/courses/${course.id}`} className="lps-card" style={{ '--card-glow': `rgb(${theme.a1} / 0.55)` } as CSSProperties}>
+        <span className="lps-card-strip" style={{ background: gradient(theme, 90) }} aria-hidden="true" />
+        <span className="flex min-w-0 items-start gap-3">
+          <span className="lps-card-icon" style={{ background: gradient(theme) }} aria-hidden="true">
+            <Icon size={18} />
+          </span>
+          <span className="min-w-0">
+            <span className="lps-bidi block truncate text-[15.5px] font-bold">{course.name}</span>
+            <span className="mt-0.5 block truncate text-[12.5px] lps-faint">
+              {[course.code, run ? t(`lp.scenarioShort.${run.scenario}` as StringKey) : null].filter(Boolean).join(' · ')}
+            </span>
+          </span>
+        </span>
+        <span className="text-[13.5px]">
+          <span className="lps-muted">{t('lp.courses.now')} </span>
+          <span className="font-semibold">{where}</span>
+        </span>
+        <span className="mt-auto space-y-2.5">
+          <span className="flex items-center gap-2">
+            <Meter value={course.progress} tone="ok" label={t('lp.col.content')} />
+            <span className="w-10 shrink-0 text-end text-[13px] font-bold">{hasContent ? `${course.progress}%` : '—'}</span>
+          </span>
+          <span className="flex flex-wrap items-center justify-between gap-2 text-[12.5px]">
+            <span className="lps-muted">{course.targetDate ? t('lp.courses.due', { day: day(course.targetDate) }) : t('lp.courses.lessons', { n: course.stats.lessons })}</span>
+            {run?.status === 'ACTIVE' && !legacy && <Dot tone={HEALTH_DOT[course.health] ?? 'idle'}>{t(`lp.health.${course.health}` as StringKey)}</Dot>}
+          </span>
+        </span>
+      </Link>
+    </li>
   );
 }

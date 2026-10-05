@@ -6,7 +6,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Download, ExternalLink, FileUp, MessageSquarePlus, Minus, Monitor, Plus } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, ExternalLink, FileUp, MessageSquarePlus, Minus, Monitor, PenLine, Plus } from 'lucide-react';
 import { useI18n } from '../../../lib/i18n';
 import { cx } from '../../../lib/utils';
 import { paths, uploads } from '../../../lib/learningProduction/api';
@@ -137,6 +137,8 @@ function PdfSlides({ url, versionId, fileVersionId, focusNonce, focusComment }: 
   const [color, setColor] = useState(COLORS[0]);
   const [showResolved, setShowResolved] = useState(false);
   const [slideComment, setSlideComment] = useState(false);
+  // The drawing tools stay out of sight until the reviewer asks for them.
+  const [drawing, setDrawing] = useState(false);
   const draft = useDrafts(1);
   const canvas = useRef<HTMLCanvasElement>(null);
   const frame = useRef<HTMLDivElement>(null);
@@ -289,6 +291,21 @@ function PdfSlides({ url, versionId, fileVersionId, focusNonce, focusComment }: 
             <input type="checkbox" className="h-3.5 w-3.5 accent-brand-500" checked={showResolved} onChange={(event) => setShowResolved(event.target.checked)} />
             {t('lp.ppt.showResolved')}
           </label>
+          {canDraw && (
+            <button
+              type="button"
+              className={cx('btn-ghost btn-sm', drawing && '!border-brand-300 !bg-brand-50 !text-brand-700')}
+              aria-pressed={drawing}
+              onClick={() => {
+                setDrawing((value) => !value);
+                setTool(drawing ? 'POINTER' : 'PIN');
+                draft.clear();
+              }}
+            >
+              <PenLine size={14} />
+              {t('lp.ppt.markSlide')}
+            </button>
+          )}
           {comments?.canComment && (
             <button type="button" className="btn-ghost btn-sm" onClick={() => setSlideComment((value) => !value)}>
               <MessageSquarePlus size={14} />
@@ -300,7 +317,7 @@ function PdfSlides({ url, versionId, fileVersionId, focusNonce, focusComment }: 
           </a>
         </div>
         {/* Drawing tools get their own row, so navigation and actions stay on one line above the slide. */}
-        {canDraw && (
+        {canDraw && drawing && (
           <div className="-mx-3 w-[calc(100%+1.5rem)] border-t border-surface-line px-3 pt-2">
             <DrawingToolbar
               tool={tool}
@@ -357,7 +374,7 @@ function PdfSlides({ url, versionId, fileVersionId, focusNonce, focusComment }: 
           <DrawingSurface
             placed={placed}
             drafts={pending ? [pending] : []}
-            tool={canDraw && !pending ? tool : 'POINTER'}
+            tool={canDraw && drawing && !pending ? tool : 'POINTER'}
             color={color}
             onDraw={(shape) => {
               draft.clear();

@@ -14,9 +14,12 @@ import { createPortal } from 'react-dom';
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import {
   AlertTriangle,
-  Ban,
   BookOpenCheck,
+  Check,
   CheckCircle2,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Circle,
   CircleDashed,
   CircleDot,
@@ -37,8 +40,8 @@ import {
 } from 'lucide-react';
 import { useI18n, type StringKey } from '../../lib/i18n';
 import { cx } from '../../lib/utils';
-import { lpErrorKey } from '../../lib/learningProduction/format';
-import type { DueState, People } from '../../lib/learningProduction/types';
+import { fileTone, lpErrorKey } from '../../lib/learningProduction/format';
+import type { AssetSummary, AssetType, DueState, People } from '../../lib/learningProduction/types';
 import type { Blocker, Origin, Pair, Scenario, Source } from '../../lib/learningProduction/runTypes';
 import { Avatar } from '../ui';
 
@@ -80,15 +83,16 @@ export function Pill({ tone = 'neutral', icon: Icon, children, title, className 
   return (
     <span className={cx('lps-pill', `lps-pill-${tone}`, className)} title={title}>
       {Icon && <Icon size={12} aria-hidden="true" className="shrink-0" />}
-      {/* No ellipsis: Chromium adds one to shaped Arabic at sub-pixel widths
-          even when the word fits. The pill clips instead, and only if it must. */}
-      <span className="min-w-0 overflow-hidden">{children}</span>
+      {/* Neither an ellipsis nor a clip: Chromium measures shaped Arabic a
+          fraction short, so either one eats the last letter of a word that
+          fits. Pill labels are short; they take the width they need. */}
+      <span>{children}</span>
     </span>
   );
 }
 
 const TASK_TONE: Record<string, { tone: PillTone; icon: LucideIcon }> = {
-  BLOCKED: { tone: 'outline', icon: Ban },
+  BLOCKED: { tone: 'outline', icon: Clock3 },
   READY: { tone: 'neutral', icon: Circle },
   NOT_STARTED: { tone: 'neutral', icon: Circle },
   IN_PROGRESS: { tone: 'accent', icon: CircleDot },
@@ -245,9 +249,9 @@ export function OriginBadge({ origin, source, compact = false }: { origin: Origi
 /* ------------------------------------------------------------------ */
 
 const METER_FILL = {
-  accent: 'linear-gradient(90deg, rgb(var(--lp-a1, 79 70 229)), rgb(var(--lp-a2, 147 51 234)))',
-  ok: 'linear-gradient(90deg, #34d399, #059669)',
-  attention: 'linear-gradient(90deg, #fbbf24, #f97316)',
+  accent: 'var(--lps-grad)',
+  ok: 'linear-gradient(90deg, #6ee7b7, #10b981 45%, #059669)',
+  attention: 'linear-gradient(90deg, #fcd34d, #f59e0b)',
 } as const;
 
 export function Meter({ value, label, tone = 'accent' }: { value: number; label?: string; tone?: 'accent' | 'ok' | 'attention' }) {
@@ -260,13 +264,16 @@ export function Meter({ value, label, tone = 'accent' }: { value: number; label?
 }
 
 /** One compact figure: the number, what it counts, and optionally where it opens. */
+/** [chip background, chip icon, number] — colour only where it means something. */
 const FIGURE_TONE = {
-  neutral: ['linear-gradient(135deg, rgb(var(--lp-a1, 79 70 229)), rgb(var(--lp-a2, 147 51 234)))', 'rgb(var(--lp-a1, 79 70 229) / 0.9)', 'var(--lps-ink)'],
-  accent: ['linear-gradient(135deg, #6366f1, #8b5cf6)', 'rgb(99 102 241 / 0.9)', '#4338ca'],
-  ok: ['linear-gradient(135deg, #10b981, #059669)', 'rgb(16 185 129 / 0.9)', '#047857'],
-  attention: ['linear-gradient(135deg, #f59e0b, #f97316)', 'rgb(249 115 22 / 0.9)', '#b45309'],
-  danger: ['linear-gradient(135deg, #fb7185, #e11d48)', 'rgb(225 29 72 / 0.9)', '#e11d48'],
-  sky: ['linear-gradient(135deg, #38bdf8, #2563eb)', 'rgb(37 99 235 / 0.9)', '#1d4ed8'],
+  neutral: ['#eef1f6', '#475569', 'var(--lps-ink)'],
+  accent: ['#eef2ff', '#4f46e5', 'var(--lps-ink)'],
+  indigo: ['#eef2ff', '#4f46e5', 'var(--lps-ink)'],
+  violet: ['#f3e8ff', '#7c3aed', 'var(--lps-ink)'],
+  sky: ['#e0f2fe', '#0284c7', 'var(--lps-ink)'],
+  ok: ['#e7f8ef', '#059669', '#047857'],
+  attention: ['#fff4e0', '#d97706', '#b45309'],
+  danger: ['#ffe8ee', '#e11d48', '#e11d48'],
 } as const;
 
 export type FigureTone = keyof typeof FIGURE_TONE;
@@ -309,8 +316,8 @@ export function Figure({
   to?: string;
   icon?: LucideIcon;
 }) {
-  const [fill, shadow, ink] = FIGURE_TONE[tone];
-  const style = { '--lps-tone': fill, '--lps-tone-shadow': shadow } as CSSProperties;
+  const [soft, iconInk, ink] = FIGURE_TONE[tone];
+  const style = { '--lps-tone-soft': soft, '--lps-tone-ink': iconInk } as CSSProperties;
   const body = (
     <span className="flex items-start justify-between gap-3">
       <span className="min-w-0">
@@ -339,9 +346,9 @@ export function Figure({
 }
 
 /**
- * The band at the top of a page: the area's gradient, an icon, the title and
+ * The band at the top of a page: an icon in the area's colour, the title and
  * a line of what the page answers, with the page's main actions and, below,
- * optional figures on glass.
+ * optional figures.
  */
 export function PageHero({
   icon: Icon,
@@ -364,22 +371,17 @@ export function PageHero({
 }) {
   return (
     <header className="lps-hero" style={style}>
-      <div className="lps-hero-art" aria-hidden="true">
-        <span className="lps-orb -top-16 end-[8%] h-48 w-48" style={{ background: 'radial-gradient(circle, rgb(255 255 255 / 0.35), transparent 70%)' }} />
-        <span className="lps-orb -bottom-24 end-[34%] h-56 w-56" style={{ animationDelay: '-3s', background: 'radial-gradient(circle, rgb(255 255 255 / 0.22), transparent 70%)' }} />
-        <span className="lps-orb top-6 start-[46%] h-16 w-16" style={{ animationDelay: '-6s', background: 'radial-gradient(circle, rgb(255 255 255 / 0.3), transparent 70%)' }} />
-      </div>
       <div className="relative flex flex-wrap items-start justify-between gap-4">
         <div className="flex min-w-0 items-start gap-3.5">
           {Icon && (
             <span className="lps-hero-icon">
-              <Icon size={22} aria-hidden="true" />
+              <Icon size={20} aria-hidden="true" />
             </span>
           )}
           <div className="min-w-0">
-            {eyebrow && <div className="mb-1 text-[12.5px] font-semibold text-white/80">{eyebrow}</div>}
+            {eyebrow && <div className="mb-1 text-[12.5px] font-semibold lps-muted">{eyebrow}</div>}
             <h1 className={cx('lps-title', titleClassName)}>{title}</h1>
-            {lede && <div className="mt-1.5 max-w-3xl text-[13.5px] text-white/85">{lede}</div>}
+            {lede && <div className="mt-1 max-w-3xl text-[13.5px] lps-muted">{lede}</div>}
           </div>
         </div>
         {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
@@ -442,7 +444,7 @@ export function BlockerList({ blockers, people, courseId, dense = false }: { blo
         return (
           <li key={`${blocker.type}:${blocker.key}`}>
             {blocker.type === 'TASK' && blocker.id ? (
-              <Link to={`/learning-production/courses/${courseId}/plan?task=${blocker.id}`} className="flex gap-1.5 hover:underline">
+              <Link to={`/learning-production/courses/${courseId}?task=${blocker.id}`} className="flex gap-1.5 hover:underline">
                 {body}
               </Link>
             ) : (
@@ -557,7 +559,7 @@ export function Choice<T extends string>({ value, options, onChange, label }: { 
   const group = useId();
   return (
     <LayoutGroup id={group}>
-      <div role="tablist" aria-label={label} className="lps-tabs">
+      <div role="tablist" aria-label={label} className="lps-segmented no-scrollbar">
         {options.map((option) => (
           <button
             key={option.value}
@@ -591,7 +593,7 @@ const drawerStack: symbol[] = [];
  * Escape and the scrim close it; focus moves in, stays in, and goes back to
  * whatever opened it.
  */
-export function Drawer({ open, onClose, title, subtitle, children, footer, labelledBy }: { open: boolean; onClose: () => void; title: ReactNode; subtitle?: ReactNode; children: ReactNode; footer?: ReactNode; labelledBy?: string }) {
+export function Drawer({ open, onClose, title, subtitle, children, footer, labelledBy, wide = false }: { open: boolean; onClose: () => void; title: ReactNode; subtitle?: ReactNode; children: ReactNode; footer?: ReactNode; labelledBy?: string; wide?: boolean }) {
   const { t, dir } = useI18n();
   const panel = useRef<HTMLDivElement>(null);
   const fallbackId = useId();
@@ -641,7 +643,7 @@ export function Drawer({ open, onClose, title, subtitle, children, footer, label
   return createPortal(
     <div className="lps" dir={dir}>
       <div className="lps-scrim" onClick={onClose} aria-hidden="true" />
-      <div ref={panel} role="dialog" aria-modal="true" aria-labelledby={headingId} tabIndex={-1} className="lps-drawer focus:outline-none">
+      <div ref={panel} role="dialog" aria-modal="true" aria-labelledby={headingId} tabIndex={-1} className={cx('lps-drawer focus:outline-none', wide && 'lps-drawer-wide')}>
         <header className="flex items-start justify-between gap-3 border-b px-4 py-3 sm:px-5" style={{ borderColor: 'var(--lps-line)' }}>
           <div className="min-w-0">
             <h2 id={headingId} className="lps-h2 text-[16px]">
@@ -732,5 +734,378 @@ export function ReasonPrompt({
       <textarea id={id} className="lps-input min-h-[110px]" value={reason} onChange={(event) => setReason(event.target.value)} maxLength={1000} />
       <p className="mt-1 text-[12px] lps-faint">{t('lp.reason.kept')}</p>
     </Drawer>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Menu, dot, disclosure                                                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A button that opens a short list of actions. Closes on a pick, on Escape
+ * and on a click anywhere else.
+ */
+export function Menu({ label, icon: Icon, children, buttonClassName = 'lps-btn', showLabel = false, align = 'end' }: { label: string; icon: LucideIcon; children: (close: () => void) => ReactNode; buttonClassName?: string; showLabel?: boolean; align?: 'start' | 'end' }) {
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (event: MouseEvent) => {
+      if (root.current && !root.current.contains(event.target as Node)) setOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+  return (
+    <div ref={root} className="relative">
+      <button type="button" className={buttonClassName} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((value) => !value)} title={label}>
+        <Icon size={16} aria-hidden="true" />
+        {showLabel ? <span>{label}</span> : <span className="sr-only">{label}</span>}
+      </button>
+      {open && (
+        <div role="menu" className={cx('lps-menu absolute z-40 mt-1.5 w-64 py-1.5', align === 'end' ? 'end-0' : 'start-0')}>
+          {children(() => setOpen(false))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function MenuItem({ icon: Icon, label, hint, onClick, to, danger, disabled }: { icon: LucideIcon; label: string; hint?: string; onClick?: () => void; to?: string; danger?: boolean; disabled?: boolean }) {
+  const body = (
+    <>
+      <Icon size={16} aria-hidden="true" className="mt-0.5 shrink-0" />
+      <span className="min-w-0">
+        <span className="block">{label}</span>
+        {hint && <span className="block text-[12px] lps-faint">{hint}</span>}
+      </span>
+    </>
+  );
+  const className = cx('lps-menu-item', danger && 'lps-menu-item-danger');
+  if (to) {
+    return (
+      <Link role="menuitem" to={to} className={className} onClick={onClick}>
+        {body}
+      </Link>
+    );
+  }
+  return (
+    <button type="button" role="menuitem" className={className} onClick={onClick} disabled={disabled}>
+      {body}
+    </button>
+  );
+}
+
+export type DotTone = 'ok' | 'progress' | 'review' | 'attention' | 'danger' | 'idle';
+
+/** A coloured dot and a word — the one way a state is shown on the simple screens. */
+// Written out whole so Tailwind keeps them: it drops classes it cannot find in the source.
+const DOT_CLASS: Record<DotTone, string> = {
+  ok: 'lps-dot-ok',
+  progress: 'lps-dot-progress',
+  review: 'lps-dot-review',
+  attention: 'lps-dot-attention',
+  danger: 'lps-dot-danger',
+  idle: 'lps-dot-idle',
+};
+
+export function Dot({ tone, children, className }: { tone: DotTone; children: ReactNode; className?: string }) {
+  return (
+    <span className={cx('lps-dot', DOT_CLASS[tone], className)}>
+      <span aria-hidden="true" />
+      {children}
+    </span>
+  );
+}
+
+const TONE_OF_STATUS: Record<string, DotTone> = {
+  APPROVED: 'ok',
+  DONE: 'ok',
+  LOCKED: 'ok',
+  VERIFIED: 'ok',
+  PUBLISHED: 'ok',
+  IN_PROGRESS: 'progress',
+  SUBMITTED: 'review',
+  UNDER_REVIEW: 'review',
+  RESUBMITTED: 'review',
+  FIXED: 'review',
+  SIGNED_OFF: 'review',
+  CANDIDATE: 'review',
+  CHANGES_REQUESTED: 'attention',
+  OPEN: 'attention',
+};
+
+/** The dot colour for any task, asset, issue or release state. */
+export const toneOfStatus = (status: string): DotTone => TONE_OF_STATUS[status] ?? 'idle';
+
+/**
+ * A heading that folds away what most people do not need to see every day.
+ * What is inside is only built once it is opened.
+ */
+export function Disclosure({ title, count, children, defaultOpen = false, className }: { title: ReactNode; count?: number; children: ReactNode; defaultOpen?: boolean; className?: string }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <details className={cx('lps-disclosure', className)} open={open} onToggle={(event) => setOpen((event.currentTarget as HTMLDetailsElement).open)}>
+      <summary>
+        <ChevronDown size={16} aria-hidden="true" className="lps-disclosure-chevron" />
+        <span className="font-semibold">{title}</span>
+        {count !== undefined && <span className="lps-count">{count}</span>}
+      </summary>
+      {open && <div className="lps-disclosure-body">{children}</div>}
+    </details>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Hero band and coloured titles                                        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The top of a page: a band in the area's colours (or the page's own, via
+ * `style`) with the title, one line under it, the page's actions, and room
+ * for a row of chips.
+ */
+export function Hero({ back, title, subtitle, actions, children, style }: { back?: ReactNode; title: ReactNode; subtitle?: ReactNode; actions?: ReactNode; children?: ReactNode; style?: CSSProperties }) {
+  return (
+    <header className="lps-hero-band" style={style}>
+      {/* The decoration is clipped on its own layer, so a menu opened from the band can spill out of it. */}
+      <span className="lps-hero-deco" aria-hidden="true">
+        <span className="lps-hero-grid" />
+        <span className="lps-hero-orb lps-hero-orb-1" />
+        <span className="lps-hero-orb lps-hero-orb-2" />
+      </span>
+      {back}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="lps-hero-title lps-bidi">{title}</h1>
+          {subtitle && <div className="lps-hero-sub">{subtitle}</div>}
+        </div>
+        {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+      </div>
+      {children && <div className="mt-5 flex flex-wrap gap-2">{children}</div>}
+    </header>
+  );
+}
+
+export type IconTone = 'violet' | 'orange' | 'blue' | 'green' | 'rose' | 'slate';
+
+const ICON_TONE: Record<IconTone, string> = {
+  violet: 'lps-icon-violet',
+  orange: 'lps-icon-orange',
+  blue: 'lps-icon-blue',
+  green: 'lps-icon-green',
+  rose: 'lps-icon-rose',
+  slate: 'lps-icon-slate',
+};
+
+/** A small gradient square with an icon — the colour of a section. */
+export function IconChip({ icon: Icon, tone, size = 16 }: { icon: LucideIcon; tone: IconTone; size?: number }) {
+  return (
+    <span className={cx('lps-icon-chip', ICON_TONE[tone])} aria-hidden="true">
+      <Icon size={size} />
+    </span>
+  );
+}
+
+export type EdgeTone = 'review' | 'attention' | 'danger' | 'progress' | 'ok' | 'idle';
+
+export const EDGE_CLASS: Record<EdgeTone, string> = {
+  review: 'lps-edge-review',
+  attention: 'lps-edge-attention',
+  danger: 'lps-edge-danger',
+  progress: 'lps-edge-progress',
+  ok: 'lps-edge-ok',
+  idle: 'lps-edge-idle',
+};
+
+/* ------------------------------------------------------------------ */
+/* Ring, file marks, module colours                                     */
+/* ------------------------------------------------------------------ */
+
+/** A progress ring with the percentage in the middle. */
+export function Ring({ value, size = 88, tone = 'ok', label }: { value: number; size?: number; tone?: 'ok' | 'accent'; label: string }) {
+  const id = useId();
+  const clamped = Math.max(0, Math.min(100, Math.round(value)));
+  const stroke = 9;
+  const radius = (size - stroke) / 2;
+  const length = 2 * Math.PI * radius;
+  const [shown, setShown] = useState(0);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setShown(clamped));
+    return () => cancelAnimationFrame(frame);
+  }, [clamped]);
+  const gradientId = `ring${id.replace(/[^a-zA-Z0-9]/g, '')}${tone}`;
+  return (
+    <span className="relative inline-grid shrink-0 place-items-center" style={{ width: size, height: size }} role="img" aria-label={`${label}: ${clamped}%`}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90" aria-hidden="true">
+        <defs>
+          <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="1">
+            {tone === 'ok' ? (
+              <>
+                <stop offset="0%" stopColor="#6ee7b7" />
+                <stop offset="100%" stopColor="#059669" />
+              </>
+            ) : (
+              <>
+                <stop offset="0%" stopColor="rgb(var(--lp-a1, 79 70 229))" />
+                <stop offset="100%" stopColor="rgb(var(--lp-a2, 147 51 234))" />
+              </>
+            )}
+          </linearGradient>
+        </defs>
+        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" strokeWidth={stroke} className="lps-ring-track" />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          strokeWidth={stroke}
+          strokeLinecap="round"
+          stroke={`url(#${gradientId})`}
+          strokeDasharray={length}
+          strokeDashoffset={length * (1 - shown / 100)}
+          className="lps-ring-value"
+        />
+      </svg>
+      <span className="font-display absolute text-[18px] font-bold" aria-hidden="true">
+        {clamped}%
+      </span>
+    </span>
+  );
+}
+
+// Written out whole so Tailwind keeps them.
+const MODULE_CLASS = ['lps-mod-0', 'lps-mod-1', 'lps-mod-2', 'lps-mod-3', 'lps-mod-4', 'lps-mod-5'];
+
+/** Each module gets one of six colours, in order, so neighbours never match. */
+export const moduleClass = (index: number) => MODULE_CLASS[index % MODULE_CLASS.length];
+
+/** A lesson's files as five small marks in production order, coloured by state. */
+export function FilePips({ types, assets }: { types: readonly AssetType[]; assets: Partial<Record<AssetType, AssetSummary>> }) {
+  const { t } = useI18n();
+  return (
+    <span className="lps-pips">
+      {types.map((type) => {
+        const asset = assets[type];
+        return <span key={type} data-tone={fileTone(asset)} title={`${t(`lp.stage.${type}` as StringKey)} — ${asset ? t(`lp.status.${asset.status}` as StringKey) : '—'}`} />;
+      })}
+    </span>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Journey map                                                          */
+/* ------------------------------------------------------------------ */
+
+export type JourneyState = 'done' | 'current' | 'review' | 'attention' | 'next' | 'later' | 'skipped';
+
+export interface JourneyNode {
+  key: string;
+  label: string;
+  sub?: string;
+  state: JourneyState;
+  icon: LucideIcon;
+  /** A link instead of a button — the lesson's files are places with their own URL. */
+  to?: string;
+}
+
+/**
+ * A journey as a road of stations: done ones green, the current one in the
+ * area's colour with a "now" flag, the rest waiting. Each station opens its
+ * detail; on a narrow screen the road scrolls and keeps the chosen one in view.
+ */
+export function JourneyMap({ nodes, selected, onSelect, label, nowLabel }: { nodes: JourneyNode[]; selected: string | null; onSelect?: (key: string) => void; label: string; nowLabel: string }) {
+  const { t, dir } = useI18n();
+  const road = useRef<HTMLOListElement>(null);
+  const box = useRef<HTMLDivElement>(null);
+  // Which ends of the road have stations out of sight, so the arrows show only when needed.
+  const [hidden, setHidden] = useState({ start: false, end: false });
+  const measure = useCallback(() => {
+    const el = box.current;
+    if (!el) return;
+    const max = el.scrollWidth - el.clientWidth;
+    const travelled = Math.abs(el.scrollLeft);
+    setHidden({ start: max > 2 && travelled > 2, end: max > 2 && travelled < max - 2 });
+  }, []);
+  useEffect(() => {
+    const active = road.current?.querySelector<HTMLElement>('[data-selected="true"]');
+    const el = box.current;
+    if (active && el && el.scrollWidth > el.clientWidth) {
+      // Bring the chosen station to the middle; measured on screen, so it holds in either direction.
+      const a = active.getBoundingClientRect();
+      const b = el.getBoundingClientRect();
+      el.scrollBy({ left: a.left + a.width / 2 - (b.left + b.width / 2) });
+    }
+    measure();
+  }, [selected, measure, dir]);
+  useEffect(() => {
+    window.addEventListener('resize', measure);
+    return () => {
+      window.removeEventListener('resize', measure);
+    };
+  }, [measure]);
+  // Scroll toward the reading end (+1) or back toward the start (-1).
+  const nudge = (towardEnd: number) => {
+    const el = box.current;
+    if (!el) return;
+    const step = Math.max(220, el.clientWidth * 0.6) * towardEnd * (dir === 'rtl' ? -1 : 1);
+    el.scrollBy({ left: step, behavior: 'smooth' });
+  };
+  const Back = dir === 'rtl' ? ChevronRight : ChevronLeft;
+  const Forward = dir === 'rtl' ? ChevronLeft : ChevronRight;
+  return (
+    <div className="relative">
+      {hidden.start && (
+        <button type="button" className="lps-journey-arrow lps-journey-arrow-start" onClick={() => nudge(-1)} aria-label={t('lp.journey.earlier')}>
+          <Back size={18} aria-hidden="true" />
+        </button>
+      )}
+      {hidden.end && (
+        <button type="button" className="lps-journey-arrow lps-journey-arrow-end" onClick={() => nudge(1)} aria-label={t('lp.journey.later')}>
+          <Forward size={18} aria-hidden="true" />
+        </button>
+      )}
+    <div ref={box} className={cx('lps-journey no-scrollbar', hidden.start && 'lps-journey-fade-start', hidden.end && 'lps-journey-fade-end')} role="group" aria-label={label} onScroll={measure}>
+      <ol ref={road} className="lps-journey-road">
+        {nodes.map((node, index) => {
+          const Icon = node.state === 'done' ? Check : node.state === 'skipped' ? SkipForward : node.icon;
+          const isSelected = node.key === selected;
+          const inner = (
+            <>
+              {node.state === 'current' && <span className="lps-jn-flag">{nowLabel}</span>}
+              <span className="lps-jn-dot" aria-hidden="true">
+                <Icon size={node.state === 'done' ? 18 : 17} strokeWidth={node.state === 'done' ? 3 : 2} />
+              </span>
+              <span className="lps-jn-num" aria-hidden="true">
+                {index + 1}
+              </span>
+              <span className="lps-jn-label">{node.label}</span>
+              {node.sub && <span className="lps-jn-sub">{node.sub}</span>}
+            </>
+          );
+          return (
+            <li key={node.key} className="lps-jn" data-state={node.state} data-selected={isSelected ? 'true' : undefined}>
+              {node.to ? (
+                <Link to={node.to} className="lps-jn-hit" aria-current={isSelected ? 'step' : undefined}>
+                  {inner}
+                </Link>
+              ) : (
+                <button type="button" className="lps-jn-hit" aria-pressed={isSelected} onClick={() => onSelect?.(node.key)}>
+                  {inner}
+                </button>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+    </div>
   );
 }

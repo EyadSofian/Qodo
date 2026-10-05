@@ -1,43 +1,43 @@
 /**
- * One course and its production run.
+ * One course and its production run — on one page, without tabs.
  *
- * Loads the course, its runs and the run being viewed once, and gives the
- * tabs a stable frame: Overview · Plan & stages · Curriculum & lessons ·
- * Production · QA & release · Team · Files & activity. The header answers the
- * first questions — which way this run is going, where it is, how healthy it
- * is, and when it is due — and holds the run's own controls.
+ * The header says what the course is, when it is due and whether it is on
+ * time. Below it, the two things people come for: where production is and
+ * what that stage needs now, and the lessons with where each one stands.
+ * Beside them, short cards for progress, quality and release, and the team.
  *
- * A course with several runs (a revamp after a first release) shows the run
- * in flight by default; `?run=` pins another, so a link to an old run keeps
- * working.
+ * Everything else — editing the lesson structure, assigning in bulk, issues
+ * and releases, the team, files and history — opens over the page in a
+ * drawer, named in the URL (`?panel=`) so it has a link, as does a task
+ * (`?task=`). Links written for the old tabs are redirected here (App.tsx).
+ *
+ * A course with several runs shows the run in flight; `?run=` pins another.
  */
 
-import { useState } from 'react';
-import { Link, Outlet, useNavigate, useOutletContext, useParams, useSearchParams } from 'react-router-dom';
-import { CheckCircle2, ChevronDown, MoreHorizontal, Pause, Play, Plus, Settings2, XCircle } from 'lucide-react';
+import { createContext, useContext, useState, type CSSProperties, type ReactNode } from 'react';
+import { Link, useNavigate, useOutlet, useParams, useSearchParams } from 'react-router-dom';
+import { ArrowLeft, ArrowRight, CheckCircle2, FolderOpen, MoreHorizontal, Pause, Play, Plus, Settings2, ShieldCheck, TrendingUp, Users, XCircle } from 'lucide-react';
 import { useI18n, type StringKey } from '../../lib/i18n';
 import { paths } from '../../lib/learningProduction/api';
 import { runPaths, runsApi } from '../../lib/learningProduction/runApi';
 import { invalidate, useLpQuery } from '../../lib/learningProduction/hooks';
+import { lpErrorKey, type CoursePanel } from '../../lib/learningProduction/format';
 import type { CourseDetail } from '../../lib/learningProduction/types';
 import type { RunView, RunsResponse } from '../../lib/learningProduction/runTypes';
-import { useToast } from '../../components/ui';
-import {
-  Busy,
-  ErrorNote,
-  HealthPill,
-  LoadingRows,
-  PersonLine,
-  ReasonPrompt,
-  RouteTabs,
-  RunStatusPill,
-  ScenarioBadge,
-  useDay,
-  usePick,
-} from '../../components/learning-production/studio';
-import { lpErrorKey } from '../../lib/learningProduction/format';
-import { SCENARIO_THEME, gradient } from '../../lib/learningProduction/theme';
+import { Avatar, useToast } from '../../components/ui';
+import { Dot, Drawer, ErrorNote, Hero, IconChip, LoadingRows, Menu, MenuItem, ReasonPrompt, Ring, useDay, type DotTone, type IconTone } from '../../components/learning-production/studio';
+import { cx } from '../../lib/utils';
+import { SCENARIO_THEME } from '../../lib/learningProduction/theme';
 import { useLpTheme } from './Layout';
+import { RunStages } from './course/RunStages';
+import { LessonList } from './course/LessonList';
+import { LegacyCard } from './course/LegacyCard';
+import { TaskDrawer } from './course/TaskDrawer';
+import { CourseLessons } from './course/CourseLessons';
+import { CourseProduction } from './course/CourseProduction';
+import { QaRelease } from './course/QaRelease';
+import { TeamTab } from './course/TeamTab';
+import { FilesActivity } from './course/FilesActivity';
 
 export interface CourseOutlet {
   detail: CourseDetail;
@@ -48,23 +48,30 @@ export interface CourseOutlet {
   reloadRun: () => Promise<void>;
 }
 
+const CourseContext = createContext<CourseOutlet | null>(null);
+
+/** The course being viewed, for anything on the course page or in its drawers. */
 export function useCourse() {
-  return useOutletContext<CourseOutlet>();
+  const value = useContext(CourseContext);
+  if (!value) throw new Error('useCourse outside a course page');
+  return value;
 }
+
+const HEALTH_DOT: Record<string, DotTone> = { ON_TRACK: 'ok', COMPLETED: 'ok', AT_RISK: 'attention', DELAYED: 'danger' };
+const PANELS: CoursePanel[] = ['lessons', 'matrix', 'qa', 'team', 'files'];
 
 export function CourseWorkspace() {
   const { courseId = '' } = useParams();
-  const { t } = useI18n();
-  const pick = usePick();
+  const { t, dir } = useI18n();
   const day = useDay();
   const toast = useToast();
   const navigate = useNavigate();
+  const outlet = useOutlet();
   const [params, setParams] = useSearchParams();
   const { data: detail, error, loading, reload } = useLpQuery<CourseDetail>(paths.course(courseId));
   const { data: runs, reload: reloadRuns } = useLpQuery<RunsResponse>(runPaths.courseRuns(courseId));
   const runId = params.get('run') ?? runs?.currentRunId ?? null;
   const { data: run, error: runError, reload: reloadRunView } = useLpQuery<RunView>(runId ? runPaths.run(runId) : null);
-  const [menu, setMenu] = useState(false);
   const [prompt, setPrompt] = useState<'cancel' | null>(null);
   const [busy, setBusy] = useState(false);
   // Before any early return: a hook must run on every render.
@@ -73,9 +80,11 @@ export function CourseWorkspace() {
 
   if (loading && !detail) {
     return (
-      <div className="space-y-3">
-        <div className="skeleton h-20 w-full" />
-        <LoadingRows rows={5} />
+      <div className="space-y-4">
+        <div className="skeleton h-16 w-2/3" />
+        <div className="lps-panel">
+          <LoadingRows rows={5} />
+        </div>
       </div>
     );
   }
@@ -86,12 +95,32 @@ export function CourseWorkspace() {
   const legacy = run?.run.scenario === 'LEGACY';
   const canManage = Boolean(run?.capabilities.manageRuns);
   const openStatus = run && (run.run.status === 'ACTIVE' || run.run.status === 'ON_HOLD');
-  const current = run?.stages.find((stage) => stage.key === run.currentStage) ?? null;
+  const canStartAnother = (runs?.runs.length === 0 || (run && !openStatus) || legacy) && runs?.capabilities.manageRuns !== false;
   const created = params.get('created') === '1';
+  const panelParam = params.get('panel') as CoursePanel | null;
+  const panel = panelParam && PANELS.includes(panelParam) ? panelParam : null;
+  const taskId = params.get('task');
+  const Back = dir === 'rtl' ? ArrowRight : ArrowLeft;
 
   const reloadRun = async () => {
     await Promise.all([reloadRunView(), reloadRuns(), reload()]);
   };
+
+  const setParam = (key: string, value: string | null, extra: string[] = []) => {
+    const next = new URLSearchParams(params);
+    if (value) next.set(key, value);
+    else next.delete(key);
+    for (const name of extra) next.delete(name);
+    setParams(next);
+  };
+  const openPanel = (name: CoursePanel, add = false) => {
+    const next = new URLSearchParams(params);
+    next.set('panel', name);
+    if (add) next.set('add', '1');
+    setParams(next);
+  };
+  // Closing a panel also drops the parameters that only mean something inside it.
+  const closePanel = () => setParam('panel', null, ['add', 'issue', 'release', 'quick']);
 
   async function setStatus(status: 'ACTIVE' | 'ON_HOLD' | 'CANCELLED', reason?: string) {
     if (!run) return;
@@ -101,7 +130,6 @@ export function CourseWorkspace() {
       invalidate();
       toast.push(t(`lp.run.statusChanged.${status}` as StringKey));
       setPrompt(null);
-      setMenu(false);
     } catch (failure) {
       toast.push(t(lpErrorKey(failure)), 'bad');
     } finally {
@@ -109,119 +137,79 @@ export function CourseWorkspace() {
     }
   }
 
-  const q = runId && params.get('run') ? `?run=${runId}` : '';
-  const tabs = [
-    { to: `.${q}`, end: true, label: t('lp.tab.overview') },
-    { to: `plan${q}`, label: t('lp.tab.plan'), count: run?.pendingApprovals.length || undefined, attention: Boolean(run?.overdueTasks.length) },
-    { to: `curriculum${q}`, label: t('lp.tab.curriculum') },
-    { to: `production${q}`, label: t('lp.tab.production') },
-    { to: `qa${q}`, label: t('lp.tab.qa'), count: run?.facts.blockingIssues || undefined, attention: Boolean(run?.facts.blockingIssues) },
-    { to: `team${q}`, label: t('lp.tab.team') },
-    { to: `files${q}`, label: t('lp.tab.files') },
-  ];
+  const value = { detail, reload, runs, run: run ?? null, runId, reloadRun } satisfies CourseOutlet;
+  const facts = [
+    run ? t(`lp.scenarioShort.${run.run.scenario}` as StringKey) : null,
+    runs && runs.runs.length > 1 && run ? t('lp.run.number', { n: run.run.runNumber }) : null,
+    run?.run.targetDate ? t('lp.courses.due', { day: day(run.run.targetDate, { year: true }) }) : null,
+  ].filter(Boolean);
 
   return (
-    <div className="lps-stagger space-y-4">
-      <header className="space-y-3">
-        <div className="lps-hero" style={scenarioTheme ? { background: gradient(scenarioTheme) } : undefined}>
-        <div className="lps-hero-art" aria-hidden="true">
-          <span className="lps-orb -top-20 end-[6%] h-56 w-56" style={{ background: 'radial-gradient(circle, rgb(255 255 255 / 0.32), transparent 70%)' }} />
-          <span className="lps-orb -bottom-28 end-[38%] h-64 w-64" style={{ animationDelay: '-4s', background: 'radial-gradient(circle, rgb(255 255 255 / 0.18), transparent 70%)' }} />
-        </div>
-        <nav aria-label={t('lp.breadcrumb')} className="relative mb-2 text-[12.5px] text-white/80">
-          <Link to="/learning-production/courses" className="hover:underline">
-            {t('lp.nav.courses')}
-          </Link>
-          <span aria-hidden="true"> / </span>
-          <span className="lps-bidi">{course.name}</span>
-        </nav>
-
-        <div className="relative flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h1 className="lps-title lps-bidi">{course.name}</h1>
-            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[12.5px]">
-              {run ? (
-                <>
-                  <ScenarioBadge scenario={run.run.scenario} />
-                  <span className="lps-muted">{t('lp.run.number', { n: run.run.runNumber })}</span>
-                  <RunStatusPill status={run.run.status} />
-                  {!legacy && current && (
-                    <span>
-                      <span className="lps-muted">{t('lp.run.nowAt')} </span>
-                      <strong>{pick(current.label)}</strong>
-                    </span>
+    <CourseContext.Provider value={value}>
+      <div className="lps-stagger space-y-5">
+        <Hero
+          style={scenarioTheme ? ({ '--lp-a1': scenarioTheme.a1, '--lp-a2': scenarioTheme.a2 } as CSSProperties) : undefined}
+          back={
+            <Link to="/learning-production/courses" className="lps-hero-back">
+              <Back size={15} aria-hidden="true" />
+              {t('lp.nav.courses')}
+            </Link>
+          }
+          title={course.name}
+          actions={
+            <div className="flex flex-wrap items-center gap-2">
+              {canStartAnother && (
+                <Link to={`/learning-production/runs/new?course=${course.id}${run?.run.status === 'RELEASED' || legacy ? '&scenario=REVAMP' : ''}`} className="lps-btn">
+                  <Plus size={15} aria-hidden="true" />
+                  {t('lp.run.startAnother')}
+                </Link>
+              )}
+              {(canManage || detail.capabilities.edit || (runs && runs.runs.length > 1)) && (
+                <Menu label={t('lp.run.menu')} icon={MoreHorizontal}>
+                  {(close) => (
+                    <>
+                      {canManage && run?.run.status === 'ACTIVE' && <MenuItem icon={Pause} label={t('lp.run.hold')} disabled={busy} onClick={() => { close(); void setStatus('ON_HOLD'); }} />}
+                      {canManage && run?.run.status === 'ON_HOLD' && <MenuItem icon={Play} label={t('lp.run.resume')} disabled={busy} onClick={() => { close(); void setStatus('ACTIVE'); }} />}
+                      {canManage && openStatus && !legacy && <MenuItem icon={XCircle} label={t('lp.run.cancel')} danger onClick={() => { close(); setPrompt('cancel'); }} />}
+                      {detail.capabilities.edit && <MenuItem icon={Settings2} label={t('lp.course.settings')} onClick={() => { close(); navigate(`/learning-production/courses/${course.id}/settings`); }} />}
+                      {runs && runs.runs.length > 1 && (
+                        <div className="border-t px-3.5 pb-1.5 pt-2.5" style={{ borderColor: 'var(--lps-line)' }}>
+                          <label className="lps-label" htmlFor="lp-run-pick">{t('lp.run.viewing')}</label>
+                          <select
+                            id="lp-run-pick"
+                            className="lps-input !py-1.5"
+                            value={runId ?? ''}
+                            onChange={(event) => {
+                              close();
+                              const next = new URLSearchParams(params);
+                              if (event.target.value === runs.currentRunId) next.delete('run');
+                              else next.set('run', event.target.value);
+                              setParams(next);
+                            }}
+                          >
+                            {runs.runs.map((entry) => (
+                              <option key={entry.id} value={entry.id}>
+                                {t('lp.run.number', { n: entry.runNumber })} · {t(`lp.scenarioShort.${entry.scenario}` as StringKey)} · {t(`lp.runStatus.${entry.status}` as StringKey)}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                    </>
                   )}
-                  {!legacy && run.run.status === 'ACTIVE' && <HealthPill health={run.health.health} />}
-                  <span className="lps-muted">
-                    {t('lp.field.targetDate')}: <strong className="text-white">{day(run.run.targetDate, { year: true })}</strong>
-                  </span>
-                  <PersonLine userId={run.run.managerUserId} people={run.people} />
-                </>
-              ) : runs && runs.runs.length === 0 ? (
-                <span className="lps-muted">{t('lp.run.none')}</span>
-              ) : (
-                <Busy />
+                </Menu>
               )}
             </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            {runs && runs.runs.length > 1 && (
-              <label className="flex items-center gap-1.5 text-[12.5px]">
-                <span className="lps-muted">{t('lp.run.viewing')}</span>
-                <select
-                  className="lps-input !w-auto !py-1.5"
-                  value={runId ?? ''}
-                  onChange={(event) => {
-                    const next = new URLSearchParams(params);
-                    if (event.target.value === runs.currentRunId) next.delete('run');
-                    else next.set('run', event.target.value);
-                    setParams(next);
-                  }}
-                >
-                  {runs.runs.map((entry) => (
-                    <option key={entry.id} value={entry.id}>
-                      {t('lp.run.number', { n: entry.runNumber })} · {t(`lp.scenarioShort.${entry.scenario}` as StringKey)} · {t(`lp.runStatus.${entry.status}` as StringKey)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-            {(runs?.runs.length === 0 || (run && !openStatus) || legacy) && runs?.capabilities.manageRuns !== false && (
-              <Link to={`/learning-production/runs/new?course=${course.id}${run?.run.status === 'RELEASED' || legacy ? '&scenario=REVAMP' : ''}`} className="lps-btn">
-                <Plus size={15} aria-hidden="true" />
-                {t('lp.run.startAnother')}
-              </Link>
-            )}
-            {(canManage || detail.capabilities.edit) && (
-              <div className="relative">
-                <button type="button" className="lps-btn" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu((value) => !value)}>
-                  <MoreHorizontal size={16} aria-hidden="true" />
-                  <span className="sr-only">{t('lp.run.menu')}</span>
-                  <ChevronDown size={14} aria-hidden="true" />
-                </button>
-                {menu && (
-                  <div role="menu" className="lps-panel absolute end-0 z-30 mt-1 w-60 overflow-hidden py-1 shadow-panel" onKeyDown={(event) => event.key === 'Escape' && setMenu(false)}>
-                    {canManage && run?.run.status === 'ACTIVE' && (
-                      <MenuItem icon={Pause} label={t('lp.run.hold')} onClick={() => setStatus('ON_HOLD')} disabled={busy} />
-                    )}
-                    {canManage && run?.run.status === 'ON_HOLD' && (
-                      <MenuItem icon={Play} label={t('lp.run.resume')} onClick={() => setStatus('ACTIVE')} disabled={busy} />
-                    )}
-                    {canManage && openStatus && !legacy && (
-                      <MenuItem icon={XCircle} label={t('lp.run.cancel')} danger onClick={() => setPrompt('cancel')} disabled={busy} />
-                    )}
-                    {detail.capabilities.edit && (
-                      <MenuItem icon={Settings2} label={t('lp.course.settings')} onClick={() => navigate(`/learning-production/courses/${course.id}/settings`)} />
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-
-        </div>
+          }
+        >
+          {facts.map((fact) => (
+            <span key={fact} className="lps-hero-chip">
+              {fact}
+            </span>
+          ))}
+          {run && run.run.status !== 'ACTIVE' && <Dot tone={run.run.status === 'RELEASED' ? 'ok' : 'idle'} className="!py-2 !pe-3.5 !ps-3 text-[13px]">{t(`lp.runStatus.${run.run.status}` as StringKey)}</Dot>}
+          {run && !legacy && run.run.status === 'ACTIVE' && <Dot tone={HEALTH_DOT[run.health.health] ?? 'idle'} className="!py-2 !pe-3.5 !ps-3 text-[13px]">{t(`lp.health.${run.health.health}` as StringKey)}</Dot>}
+        </Hero>
 
         {created && (
           <div className="lps-callout-info flex flex-wrap items-center justify-between gap-2" role="status">
@@ -229,15 +217,7 @@ export function CourseWorkspace() {
               <CheckCircle2 size={15} aria-hidden="true" />
               {t('lp.run.createdNotice')}
             </span>
-            <button
-              type="button"
-              className="lps-btn-quiet !min-h-7"
-              onClick={() => {
-                const next = new URLSearchParams(params);
-                next.delete('created');
-                setParams(next, { replace: true });
-              }}
-            >
+            <button type="button" className="lps-btn-quiet !min-h-7" onClick={() => setParam('created', null)}>
               {t('common.close')}
             </button>
           </div>
@@ -245,12 +225,47 @@ export function CourseWorkspace() {
         {runError && !run ? <ErrorNote error={runError} onRetry={reloadRunView} /> : null}
         {run && run.run.status === 'ON_HOLD' && <p className="lps-callout">{t('lp.run.onHoldNotice')}</p>}
 
-        <div className="lps-tabs-sheet">
-          <RouteTabs items={tabs} label={t('lp.course.tabs')} />
-        </div>
-      </header>
+        {outlet ? (
+          outlet
+        ) : (
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
+            <div className="min-w-0 space-y-5">
+              {run ? legacy ? <LegacyCard view={run} /> : <RunStages view={run} /> : runs && runs.runs.length === 0 ? <p className="lps-panel px-5 py-6 text-[14px] lps-muted">{t('lp.run.none')}</p> : null}
+              <LessonList courseId={course.id} capabilities={detail.capabilities} onOpen={openPanel} />
+            </div>
+            <aside className="min-w-0 space-y-4">
+              {run && <ProgressCard view={run} />}
+              {run && <QualityCard view={run} onOpen={() => openPanel('qa')} />}
+              <TeamCard detail={detail} onOpen={() => openPanel('team')} />
+              <button type="button" className="lps-side lps-lift flex w-full items-center gap-3 px-4 py-3.5 text-start lps-tint-orange" onClick={() => openPanel('files')}>
+                <IconChip icon={FolderOpen} tone="orange" size={15} />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[15px] font-bold">{t('lp.tab.files')}</span>
+                  <span className="block text-[12.5px] opacity-80">{t('lp.course.filesHint')}</span>
+                </span>
+                {dir === 'rtl' ? <ArrowLeft size={17} aria-hidden="true" /> : <ArrowRight size={17} aria-hidden="true" />}
+              </button>
+            </aside>
+          </div>
+        )}
+      </div>
 
-      <Outlet context={{ detail, reload, runs, run: run ?? null, runId, reloadRun } satisfies CourseOutlet} />
+      <Drawer open={panel === 'lessons'} onClose={closePanel} title={t('lp.course.editLessons')} wide>
+        {panel === 'lessons' && <CourseLessons />}
+      </Drawer>
+      <Drawer open={panel === 'matrix'} onClose={closePanel} title={t('lp.course.assignAll')} wide>
+        {panel === 'matrix' && <CourseProduction />}
+      </Drawer>
+      <Drawer open={panel === 'qa'} onClose={closePanel} title={t('lp.tab.qa')} wide>
+        {panel === 'qa' && (run ? <QaRelease /> : <LoadingRows />)}
+      </Drawer>
+      <Drawer open={panel === 'team'} onClose={closePanel} title={t('lp.tab.team')} wide>
+        {panel === 'team' && (run ? <TeamTab /> : <LoadingRows />)}
+      </Drawer>
+      <Drawer open={panel === 'files'} onClose={closePanel} title={t('lp.tab.files')} wide>
+        {panel === 'files' && <FilesActivity />}
+      </Drawer>
+      {taskId && <TaskDrawer taskId={taskId} onClose={() => setParam('task', null)} />}
 
       <ReasonPrompt
         open={prompt === 'cancel'}
@@ -263,22 +278,132 @@ export function CourseWorkspace() {
         onCancel={() => setPrompt(null)}
         onConfirm={(reason) => setStatus('CANCELLED', reason)}
       />
-    </div>
+    </CourseContext.Provider>
   );
 }
 
-function MenuItem({ icon: Icon, label, onClick, danger, disabled }: { icon: typeof Pause; label: string; onClick: () => void; danger?: boolean; disabled?: boolean }) {
+/* ------------------------------------------------------------------ */
+/* Side cards                                                           */
+/* ------------------------------------------------------------------ */
+
+// Written out whole so Tailwind keeps them.
+const TINT: Record<IconTone, string> = {
+  green: 'lps-tint-green',
+  violet: 'lps-tint-violet',
+  rose: 'lps-tint-rose',
+  blue: 'lps-tint-blue',
+  orange: 'lps-tint-orange',
+  slate: 'lps-tint-blue',
+};
+
+/** A side card: a tinted band with its title, then a white body. */
+function SideCard({ title, icon, tone, children, action }: { title: string; icon: typeof Users; tone: IconTone; children: ReactNode; action?: ReactNode }) {
   return (
-    <button
-      type="button"
-      role="menuitem"
-      disabled={disabled}
-      onClick={onClick}
-      className="flex w-full items-center gap-2 px-3 py-2 text-start text-[13px] hover:bg-[color:var(--lps-sunken)] disabled:opacity-50"
-      style={{ color: danger ? 'var(--lps-danger)' : undefined }}
+    <section className="lps-side">
+      <h2 className={cx('lps-side-head', TINT[tone])}>
+        <IconChip icon={icon} tone={tone} size={15} />
+        {title}
+      </h2>
+      <div className="lps-side-body">
+        {children}
+        {action && <div className="mt-4">{action}</div>}
+      </div>
+    </section>
+  );
+}
+
+function ProgressCard({ view }: { view: RunView }) {
+  const { t } = useI18n();
+  const { content, workflow } = view.progress;
+  const legacy = view.run.scenario === 'LEGACY';
+  return (
+    <SideCard title={t('lp.overview.progress')} icon={TrendingUp} tone="green">
+      <div className={cx('grid gap-3 text-center', legacy ? 'grid-cols-1' : 'grid-cols-2')}>
+        <div className="flex flex-col items-center gap-2">
+          <Ring value={content.percent} label={t('lp.course.contentApproved')} />
+          <span className="text-[13.5px] font-semibold">{t('lp.course.contentApproved')}</span>
+          <span className="text-[12.5px] lps-muted">{content.total ? t('lp.course.ofFiles', { done: content.done, total: content.total }) : t('lp.progress.contentNone')}</span>
+        </div>
+        {!legacy && (
+          <div className="flex flex-col items-center gap-2">
+            <Ring value={workflow.percent} tone="accent" label={t('lp.course.tasksProgress')} />
+            <span className="text-[13.5px] font-semibold">{t('lp.course.tasksProgress')}</span>
+            <span className="text-[12.5px] lps-muted">{t('lp.course.tasksDone', { done: workflow.done, total: workflow.total })}</span>
+          </div>
+        )}
+      </div>
+    </SideCard>
+  );
+}
+
+function QualityCard({ view, onOpen }: { view: RunView; onOpen: () => void }) {
+  const { t } = useI18n();
+  const blocking = view.facts.blockingIssues;
+  const published = view.progress.published;
+  const checks = view.progress.readiness.checks;
+  const left = checks.filter((check) => !check.ok).length;
+  return (
+    <SideCard
+      title={t('lp.tab.qa')}
+      icon={ShieldCheck}
+      tone={blocking ? 'rose' : 'violet'}
+      action={
+        <button type="button" className="lps-btn w-full" onClick={onOpen}>
+          <ShieldCheck size={15} aria-hidden="true" />
+          {t('lp.course.openQa')}
+        </button>
+      }
     >
-      <Icon size={15} aria-hidden="true" />
-      {label}
-    </button>
+      <ul className="space-y-2 text-[13px]">
+        <li>
+          <Dot tone={blocking ? 'danger' : 'ok'}>{blocking ? t('lp.course.blockingIssues', { n: blocking }) : t('lp.course.noBlockingIssues')}</Dot>
+        </li>
+        <li>
+          <Dot tone={published ? 'ok' : 'idle'}>{published ? t('lp.course.publishedAs', { label: published.versionLabel }) : t('lp.course.notPublished')}</Dot>
+        </li>
+        {view.progress.readiness.assessed && checks.length > 0 && (
+          <li>
+            <Dot tone={left ? 'idle' : 'ok'}>{left ? t('lp.course.readinessLeft', { n: left }) : t('lp.course.readyToRelease')}</Dot>
+          </li>
+        )}
+      </ul>
+    </SideCard>
+  );
+}
+
+function TeamCard({ detail, onOpen }: { detail: CourseDetail; onOpen: () => void }) {
+  const { t } = useI18n();
+  const members = detail.team;
+  const shown = members.slice(0, 7);
+  return (
+    <SideCard
+      title={t('lp.tab.team')}
+      icon={Users}
+      tone="blue"
+      action={
+        <button type="button" className="lps-btn w-full" onClick={onOpen}>
+          <Users size={15} aria-hidden="true" />
+          {t('lp.course.openTeam')}
+        </button>
+      }
+    >
+      {members.length === 0 ? (
+        <p className="text-[13px] lps-muted">{t('lp.course.noTeam')}</p>
+      ) : (
+        <div className="flex items-center gap-3">
+          <div className="flex -space-x-2 rtl:space-x-reverse">
+            {shown.map((member) => {
+              const person = detail.people[member.userId];
+              return (
+                <span key={member.userId} className="rounded-full ring-2 ring-white" title={person?.name}>
+                  <Avatar name={person?.name ?? '?'} color={person?.avatarColor ?? '#94A3B8'} size={30} />
+                </span>
+              );
+            })}
+          </div>
+          <span className="text-[13px] lps-muted">{t('lp.course.members', { n: members.length })}</span>
+        </div>
+      )}
+    </SideCard>
   );
 }
