@@ -197,3 +197,63 @@ test('published Odoo jobs put their owners on the desk and count per employee co
   const excluded = deriveRecruitmentTeam({ profiles, requests: [], odooJobOwners: ['420', '389'], team: { include: [], exclude: ['389'] } });
   assert.deepEqual(excluded.map((member) => member.employeeCode), ['420'], 'Settings can still take someone off the desk');
 });
+
+test('Odoo is the only source: one request per published job, everything else archived', async () => {
+  const { planOdooSync, odooRequestId, ARCHIVE_NOT_FROM_ODOO, ARCHIVE_UNPUBLISHED } = await import('./hr/recruitment/odooSync.js');
+  const org = 'org-1';
+  const job = (id, name, recruiter, toRecruit = 1) => ({ id, name, department: 'Training', recruiter, toRecruit, applications: 0, newApplications: 0, hired: 0 });
+  const yasmin = { id: 11, name: 'Yasmin' };
+  const ghost = { id: 99, name: 'Left the company' };
+  const snapshot = {
+    connected: true,
+    jobs: [job(1, 'CFM Instructor', yasmin, 2), job(2, 'Video Editor', ghost), job(3, 'IT Manager', null), job(4, 'Accountant', yasmin)],
+    team: [{ id: 11, name: 'Yasmin', employeeCode: '420' }, { id: 99, name: 'Left the company', employeeCode: '522' }],
+  };
+  const profiles = new Map([['420', { employeeCode: '420', status: 'active' }], ['522', { employeeCode: '522', status: 'inactive' }]]);
+  const request = (id, source, status, extra = {}) => ({ id, source, status, title: id, recruiterCode: null, revision: 1, ...extra });
+  const requests = [
+    request('leg-1', 'legacy_workbook', 'hiring', { recruiterCode: '420', priority: 'critical' }),
+    request('leg-2', 'legacy_workbook', 'completed'),
+    request('leg-linked', 'legacy_workbook', 'hiring'),
+    request('qodo-draft', 'qodo', 'draft'),
+    request('qodo-approved', 'qodo', 'hiring', { title: 'Accountant (old title)', headcount: 1, recruiterCode: '420' }),
+    request(odooRequestId(org, 7), 'odoo', 'hiring', { title: 'Unpublished since' }),
+    request(odooRequestId(org, 8), 'odoo', 'completed', { title: 'Filled and closed' }),
+    request(odooRequestId(org, 3), 'odoo', 'hiring', { title: 'IT Manager', department: 'Training', departmentId: 'training', headcount: 1, unresolvedAssignees: [], archivedAt: '2026-10-01T00:00:00Z', archiveReason: ARCHIVE_UNPUBLISHED }),
+  ];
+  const links = new Map([['leg-linked', { odooJobId: 1 }], ['qodo-approved', { odooJobId: 4 }]]);
+  const plan = planOdooSync({ organizationId: org, snapshot, requests, links, profiles, today: '2026-10-05', stamp: '2026-10-05T10:00:00.000Z' });
+
+  assert.equal(plan.skipped, null);
+  assert.deepEqual(plan.create.map((item) => item.document.reference), ['ODOO-1', 'ODOO-2'], 'a workbook row linked to the job is not that job\'s request');
+  const cfm = plan.create[0].document;
+  assert.deepEqual([cfm.source, cfm.status, cfm.title, cfm.headcount, cfm.recruiterCode, cfm.priority, cfm.sla], ['odoo', 'hiring', 'CFM Instructor', 2, '420', null, null], 'Odoo gives the job, seats and owner; priority and clock are Qodo\'s');
+  assert.equal(cfm.odoo.firstSeen, '2026-10-05');
+  const video = plan.create[1].document;
+  assert.deepEqual([video.recruiterCode, video.unresolvedAssignees], [null, ['Left the company']], 'an owner who left owns nothing here, and is named');
+
+  assert.deepEqual(plan.restore.map((item) => item.id), [odooRequestId(org, 3)], 'a job published again gets its own request back');
+  assert.deepEqual(plan.update.map((item) => [item.id, Object.keys(item.patch).sort()]), [['qodo-approved', ['department', 'departmentId', 'title', 'unresolvedAssignees']]], 'an approved Qodo request confirmed against the job is adopted and follows Odoo');
+
+  const archived = Object.fromEntries(plan.archive.map((item) => [item.id, item.reason]));
+  assert.deepEqual(archived, {
+    'leg-1': ARCHIVE_NOT_FROM_ODOO,
+    'leg-2': ARCHIVE_NOT_FROM_ODOO,
+    'leg-linked': ARCHIVE_NOT_FROM_ODOO,
+    'qodo-draft': ARCHIVE_NOT_FROM_ODOO,
+    [odooRequestId(org, 7)]: ARCHIVE_UNPUBLISHED,
+  }, 'a job closed under Odoo stays as history; everything else leaves the desk');
+
+  // A second run over the result changes nothing.
+  const after = [
+    ...requests.filter((item) => !archived[item.id]).map((item) => (item.id === odooRequestId(org, 3) ? { ...item, archivedAt: null, archiveReason: null } : item.id === 'qodo-approved' ? { ...item, ...plan.update[0].patch } : item)),
+    ...plan.create.map((item) => item.document),
+  ];
+  const again = planOdooSync({ organizationId: org, snapshot, requests: after, links, profiles, today: '2026-10-06' });
+  assert.deepEqual([again.create.length, again.restore.length, again.update.length, again.archive.length], [0, 0, 0, 0]);
+
+  // An outage or an empty answer never archives the desk.
+  assert.equal(planOdooSync({ organizationId: org, snapshot: null, requests, links, profiles, today: '2026-10-05' }).skipped, 'odoo_unavailable');
+  const empty = planOdooSync({ organizationId: org, snapshot: { connected: true, jobs: [], team: [] }, requests, links, profiles, today: '2026-10-05' });
+  assert.deepEqual([empty.skipped, empty.archive.length], ['no_published_jobs', 0]);
+});

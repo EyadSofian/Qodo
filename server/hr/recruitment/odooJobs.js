@@ -104,6 +104,15 @@ export async function publishedJobsSnapshot({ timeoutMs = 2500 } = {}) {
   }
 }
 
+/**
+ * Whether Odoo's published board is the only source of recruitment jobs (the
+ * owner's decision for production). A deployment with no Odoo keeps the
+ * request workflow, and `HR_RECRUITMENT_SOURCE=manual` turns it back on.
+ */
+export function recruitmentSourceIsOdoo() {
+  return odooConfigured() && process.env.HR_RECRUITMENT_SOURCE !== 'manual';
+}
+
 const NO_JOBS = { jobs: 0, toRecruit: 0, newApplications: 0, applications: 0 };
 
 export function odooJobTotals(jobs) {

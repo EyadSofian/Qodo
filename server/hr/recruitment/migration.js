@@ -26,6 +26,7 @@ import { isIsoDate, localDay, priorityForHiringPeriod, slaBand, workingDaysBetwe
 import { recruitmentPolicy } from '../../../shared/recruitment/settings.js';
 import { appendActivity, odooLinksFor, requestsFor, setOdooLink, stableId } from './data.js';
 import { hrSettingsFor } from '../settings.js';
+import { recruitmentSourceIsOdoo } from './odooJobs.js';
 
 export const MIGRATION_VERSION = 1;
 
@@ -215,6 +216,8 @@ async function datasetsFor(organizationId) {
 
 /** Import every workbook row not yet in Qodo. Returns what it did. */
 export async function migrateLegacyRecruitment(organizationId, { today = localDay() } = {}) {
+  // Jobs come only from Odoo now; a workbook upload is kept as a file and creates nothing.
+  if (recruitmentSourceIsOdoo()) return { total: 0, created: 0, existing: 0, disabled: 'recruitment_source_is_odoo' };
   const { recruitment, employees, oldLinks, oldLinksBy } = await datasetsFor(organizationId);
   const rows = recruitment?.payload?.requests ?? [];
   if (!rows.length) return { total: 0, created: 0, existing: 0 };

@@ -17,6 +17,7 @@ import { hrDatasetOverview, hrImportHistory, organizationState, reconciliation, 
 import { odooConfigured } from '../odoo.js';
 import { appendActivity, requestsFor, saveRequest } from './recruitment/data.js';
 import { deriveRecruitmentTeam, photoUrlFor } from './recruitment/team.js';
+import { odooJobsByEmployee, publishedJobsSnapshot, recruitmentSourceIsOdoo } from './recruitment/odooJobs.js';
 import { knownPhoto, odooEmployeeIndex, odooOnlyCode } from './odooPeople.js';
 import { odooResolver } from './odooHR.js';
 import { activeRewardRules, rewardRuleVersions } from './recruitment/rewards.js';
@@ -46,7 +47,7 @@ export async function settingsView(user) {
   ]);
   // The roster as the rules derive it *before* Settings' own exclusions, so an
   // excluded person is still listed (and can be brought back).
-  const derived = deriveRecruitmentTeam({ profiles: state.profiles, requests, team: { include: settings.recruitment.team.include, exclude: [] }, odooIndex: index });
+  const derived = deriveRecruitmentTeam({ profiles: state.profiles, requests, team: { include: settings.recruitment.team.include, exclude: [] }, odooIndex: index, odooJobOwners: [...odooJobsByEmployee(await publishedJobsSnapshot()).keys()] });
   const excluded = new Set(settings.recruitment.team.exclude.map(String));
   const hrEmployees = [...state.profiles.values()]
     .filter((profile) => profile.status === 'active' && profile.sources.master && /human\s*resources|recruit|talent|^hr$/i.test(String(profile.department ?? '').trim()))
@@ -100,7 +101,9 @@ export async function reconciliationView(user) {
   const positions = new Map(state.positions.map((position) => [position.id, position]));
   return {
     ...recruitment,
-    canApplyWorkbook: can(user, PERMISSIONS.HR_SETTINGS_MANAGE),
+    canApplyWorkbook: can(user, PERMISSIONS.HR_SETTINGS_MANAGE) && !recruitmentSourceIsOdoo(),
+    // 'odoo': the workbook no longer feeds recruitment, so its differences are not a to-do list.
+    jobSource: recruitmentSourceIsOdoo() ? 'odoo' : 'manual',
     people: {
       unlinkedAccounts: gaps.unlinkedAccounts.map(person),
       activeWithoutPayroll: payroll ? gaps.activeWithoutPayroll.map(person) : null,
@@ -129,6 +132,7 @@ export async function reconciliationView(user) {
  */
 export async function applyRecruitmentWorkbookSnapshot(user, expected = {}) {
   if (!can(user, PERMISSIONS.HR_SETTINGS_MANAGE)) throw forbidden(PERMISSIONS.HR_SETTINGS_MANAGE);
+  if (recruitmentSourceIsOdoo()) throw new HRError('recruitment_source_is_odoo', 409);
   if (Number(expected.expectedRows) !== 67 || Number(expected.expectedOutside) !== 58) {
     throw new HRError('recruitment_workbook_snapshot_mismatch', 409);
   }

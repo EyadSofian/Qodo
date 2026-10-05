@@ -71,6 +71,9 @@ export function RecruiterDrawer({ card, onClose }: { card: RecruiterCardData | n
   const live = row ?? card;
   const jobs = row?.jobs ?? [];
   const odooJobs = row?.odooJobs ?? [];
+  // When Odoo is the source, a job and its Odoo posting are one thing: one list.
+  const fromOdoo = data?.context.jobSource === 'odoo';
+  const postingOf = new Map(odooJobs.filter((job) => job.request).map((job) => [job.request!.id, job]));
   const name = live ? (lang === 'en' ? live.member.nameEnglish : live.member.nameArabic) || shortName(live.member.shortName, lang) : '';
   const done = () => {
     setEdit(null);
@@ -112,6 +115,7 @@ export function RecruiterDrawer({ card, onClose }: { card: RecruiterCardData | n
                 <ul className="space-y-2">
                   {[...jobs].sort((left, right) => Number(right.slaSnapshot.state === 'overdue') - Number(left.slaSnapshot.state === 'overdue')).map((job) => {
                     const overdue = job.slaSnapshot.state === 'overdue';
+                    const posting = postingOf.get(job.id) ?? null;
                     const actions = [
                       job.abilities.changePriority && { kind: 'priority' as const, icon: Flag, label: t('الأولوية', 'Priority') },
                       job.abilities.extend && { kind: 'extend' as const, icon: CalendarPlus, label: t('مد المهلة', 'Extend') },
@@ -126,7 +130,15 @@ export function RecruiterDrawer({ card, onClose }: { card: RecruiterCardData | n
                           </Link>
                           <div className="flex shrink-0 gap-1.5"><PriorityBadge priority={job.priority} />{job.status !== 'hiring' && <StatusBadge status={job.status} />}</div>
                         </div>
-                        <div className="mt-2.5"><SlaMeter sla={job.slaSnapshot} /></div>
+                        <div className="mt-2.5"><SlaMeter sla={job.slaSnapshot} source={job.source} /></div>
+                        {posting && (
+                          <p className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl bg-violet-50 px-2.5 py-1.5 text-[11.5px] font-semibold text-violet-800">
+                            <Globe2 size={12} aria-hidden="true" />
+                            {t(`${num(posting.toRecruit, lang)} مقعد · ${num(posting.applications, lang)} متقدم`, `${num(posting.toRecruit, lang)} seats · ${num(posting.applications, lang)} applications`)}
+                            {posting.newApplications > 0 && <span className="rounded-full bg-violet-600 px-1.5 py-px text-[10.5px] font-bold text-white">{t(`${num(posting.newApplications, lang)} جديد`, `${num(posting.newApplications, lang)} new`)}</span>}
+                            <a href={posting.odooUrl} target="_blank" rel="noreferrer" className="ms-auto inline-flex items-center gap-1 hover:underline">{t('فتح في Odoo', 'Open in Odoo')}<ExternalLink size={11} aria-hidden="true" /></a>
+                          </p>
+                        )}
                         <div className="mt-2.5 flex flex-wrap items-center gap-1.5 border-t border-[#EEF2F7] pt-2.5">
                           {actions.map((action) => (
                             <button key={action.kind} type="button" onClick={() => setEdit({ kind: action.kind, job })} className="inline-flex min-h-8 items-center gap-1 rounded-xl border border-[#E6ECF3] bg-white px-2.5 text-[12px] font-semibold text-navy hover:border-[rgb(var(--hr-a1)/0.5)] hover:text-[rgb(var(--hr-a1))]">
@@ -146,7 +158,7 @@ export function RecruiterDrawer({ card, onClose }: { card: RecruiterCardData | n
               )}
             </section>
 
-            {live.odoo && (
+            {live.odoo && !fromOdoo && (
               <section>
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <h3 className="flex items-center gap-1.5 text-[13px] font-bold text-navy"><Globe2 size={14} className="text-violet-600" aria-hidden="true" />{t('منشور في Odoo', 'Published in Odoo')}{odooJobs.length ? <span className="font-semibold text-ink-faint">{num(odooJobs.length, lang)}</span> : null}</h3>

@@ -200,7 +200,7 @@ export interface SalaryRange {
 export interface JobRequest {
   id: string;
   reference: string;
-  source: 'qodo' | 'legacy_workbook';
+  source: 'qodo' | 'legacy_workbook' | 'odoo';
   archivedAt?: string | null;
   archiveReason?: string | null;
   status: RequestStatus;
@@ -290,6 +290,8 @@ export interface RecruitmentContext {
   perms: Record<string, boolean>;
   employeeCode: string | null;
   team: TeamMember[];
+  /** 'odoo': jobs come only from Odoo's published board; nobody creates one in Qodo. */
+  jobSource?: 'odoo' | 'manual';
 }
 
 export interface Alert {
@@ -1050,6 +1052,7 @@ export interface ReconciliationPerson {
 
 export interface ReconciliationView {
   canApplyWorkbook: boolean;
+  jobSource?: 'odoo' | 'manual';
   workbook: { fileName: string; importedAt: string; period: string | null; rows: number } | null;
   imported: number;
   activeRequests: number;

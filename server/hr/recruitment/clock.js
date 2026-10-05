@@ -19,6 +19,7 @@ import { alertsForContext } from './desk.js';
 import { runAutomaticKpiChecks } from './kpi.js';
 import { syncRewardBatches } from './rewards.js';
 import { migrateLegacyRecruitment } from './migration.js';
+import { syncOdooJobs, syncOdooJobsEverywhere } from './odooSync.js';
 
 const REPEAT_CRITICAL_WORKING_DAYS = 2;
 
@@ -116,6 +117,8 @@ export async function runRecruitmentClock(organizationId, { withKpiChecks = true
   if (running) return null;
   running = true;
   try {
+    // The desk follows Odoo's published board first, so alerts and rewards read today's jobs.
+    await syncOdooJobs(organizationId).catch((error) => console.warn('[hr] Odoo job sync skipped:', error?.message ?? error));
     const created = await syncRewardBatches(organizationId);
     const ctx = await recruitmentContext(systemActor(organizationId));
     const batches = await find('recruitmentRewardBatches', (batch) => batch.organizationId === organizationId);
@@ -134,7 +137,7 @@ export async function runRecruitmentClock(organizationId, { withKpiChecks = true
   }
 }
 
-/** Boot: bring the legacy workbook in (idempotent) for every organization. */
+/** Boot: bring the legacy workbook in (idempotent; nothing when Odoo is the source), then line the desk up with Odoo. */
 export async function bootRecruitment() {
   const organizations = await find('organizations');
   for (const organization of organizations) {
@@ -145,4 +148,7 @@ export async function bootRecruitment() {
       console.error('[hr] recruitment migration failed', error);
     }
   }
+  // Not awaited: a slow Odoo must not hold the server's start. It never throws,
+  // and the scheduler's first tick runs the same sync again.
+  void syncOdooJobsEverywhere();
 }

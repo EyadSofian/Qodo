@@ -36,6 +36,7 @@ import { appendActivity, appendApproval, requestById, requestsFor, rowsFor, save
 import { employeeName, recruitmentContext, userNames, usersWith } from './context.js';
 import { knownPhoto, odooEmployeeFor } from '../odooPeople.js';
 import { photoUrlFor } from './team.js';
+import { recruitmentSourceIsOdoo } from './odooJobs.js';
 
 const DEPARTMENT_IDS = new Set(DEPARTMENTS.map((department) => department.id));
 const CURRENCIES = ['EGP', 'SAR', 'USD'];
@@ -81,12 +82,14 @@ export function abilitiesFor(ctx, request) {
   const open = OPEN_STATUSES.includes(status);
   const runs = perms.assign || perms.approve;
   const recruiter = Boolean(ctx.employeeCode && request.recruiterCode === ctx.employeeCode);
+  // Odoo decides who owns a job it publishes; Qodo would only be overwritten.
+  const fromOdoo = request.source === 'odoo';
   return {
     edit: status === 'draft' ? requester || perms.assign : open && runs,
     submit: status === 'draft' && (requester || perms.assign),
     review: status === 'pending_review' && canReview(ctx, request),
     approve: status === 'pending_approval' && perms.approve,
-    assign: open && perms.assign,
+    assign: open && perms.assign && !fromOdoo,
     changePriority: open && (runs || (status === 'draft' && requester)),
     extend: ['hiring', 'on_hold'].includes(status) && perms.extend,
     correctSchedule: request.source === 'legacy_workbook' && status === 'hiring' && Boolean(request.sla?.startDate) && (perms.assign || perms.extend || recruiter),
@@ -94,7 +97,7 @@ export function abilitiesFor(ctx, request) {
     resume: status === 'on_hold' && runs,
     cancel: open && (runs || (requester && ['draft', 'pending_review'].includes(status))),
     recordAccepted: status === 'hiring' && (perms.assign || recruiter),
-    linkOdoo: open && perms.assign,
+    linkOdoo: open && perms.assign && !fromOdoo,
     overrideCapacity: perms.override,
     kpiReview: perms.kpiReview,
   };
@@ -317,6 +320,8 @@ export function publicContext(ctx) {
     perms: ctx.perms,
     employeeCode: ctx.employeeCode,
     team: ctx.team,
+    // 'odoo': jobs come only from Odoo's published board; nobody types one in.
+    jobSource: recruitmentSourceIsOdoo() ? 'odoo' : 'manual',
   };
 }
 
@@ -380,6 +385,8 @@ export async function restoreRequest(user, id) {
   const request = await requestById(ctx.organizationId, id, { includeArchived: true });
   if (!request) throw notFound('recruitment_request_not_found');
   if (!request.archivedAt) throw new HRError('recruitment_request_not_archived', 409);
+  // The next sync would archive it again; a job comes back by publishing it in Odoo.
+  if (recruitmentSourceIsOdoo()) throw new HRError('recruitment_source_is_odoo', 409);
   await saveRequest(request.id, {
     archivedAt: null,
     archivedBy: null,
@@ -433,6 +440,7 @@ function requireTeamMember(ctx, recruiterCode) {
 export async function createRequest(user, input = {}) {
   const ctx = await recruitmentContext(user);
   if (!ctx.perms.request && !ctx.perms.assign) throw forbidden(PERMISSIONS.HR_RECRUITMENT_REQUEST);
+  if (recruitmentSourceIsOdoo()) throw new HRError('recruitment_source_is_odoo', 409);
   const fields = settleTarget(cleanRequestInput(input, ctx), ctx);
   if (!fields.title) throw new HRError('recruitment_title_required');
 
@@ -717,13 +725,32 @@ export async function changePriority(user, id, { priority, targetWorkingDays, re
   if (problem) throw new HRError(problem, 400, { band: slaBand(priority, ctx.policy.bands) });
   if (priority === request.priority && target === request.targetWorkingDays) throw new HRError('recruitment_priority_unchanged', 409);
   const live = ['hiring', 'on_hold'].includes(request.status);
-  if (live && text(reason, 500).length < 5) throw new HRError('recruitment_reason_required');
+  // A job from Odoo arrives with no priority; giving it its first one is not a change to explain.
+  const first = request.source === 'odoo' && !request.priority && !request.sla?.startDate;
+  if (live && !first && text(reason, 500).length < 5) throw new HRError('recruitment_reason_required');
 
   const enforcement = enforceCapacity(ctx, { recruiterCode: request.recruiterCode, priority, requestId: request.id, override, overrideReason });
   const patch = { priority, prioritySource: 'manual', targetWorkingDays: target, revision: (request.revision ?? 1) + 1 };
   if (live && request.sla?.startDate) {
     const sla = { ...request.sla, targetWorkingDays: target };
     sla.currentDueDate = currentDueDate(sla, ctx.policy.calendar);
+    patch.sla = sla;
+  } else if (live && first) {
+    // The clock is dated from the day the job reached the desk, not from today:
+    // setting the priority late does not buy the job extra days.
+    const sla = {
+      startDate: request.odoo?.firstSeen ?? ctx.today,
+      targetWorkingDays: target,
+      targetSource: 'odoo_first_priority',
+      extendedWorkingDays: 0,
+      pausedWorkingDays: 0,
+      pausedSince: request.status === 'on_hold' && ctx.policy.holdPausesClock ? ctx.today : null,
+      completedAt: null,
+      actualWorkingDays: null,
+      slaMet: null,
+    };
+    sla.originalDueDate = addWorkingDays(sla.startDate, target, ctx.policy.calendar);
+    sla.currentDueDate = sla.originalDueDate;
     patch.sla = sla;
   }
   await saveRequest(request.id, patch);

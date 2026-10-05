@@ -214,6 +214,32 @@ Qodo's own picture, and neither replaces the other:
 The Overview, Active Hiring and Team Capacity pages are Qodo's desk and must
 not be replaced by the Odoo list — it has its own tab.
 
+### Odoo is the only source of jobs (owner's decision, 2026-10-05)
+
+The recruitment workbook is over. `recruitment/odooSync.js` keeps exactly one
+request per published Egypt - Engoaad job (`source: 'odoo'`, reference
+`ODOO-<job id>`, status `hiring`), owned by the job's Odoo owner when that
+person is an active HR-file employee. Everything else is archived, never
+deleted: workbook rows and requests typed into Qodo (`not_from_odoo`), and
+Odoo jobs no longer published (`odoo_unpublished`, restored with clock and
+history if the job is published again). A job closed in Qodo under this
+regime stays as history. An approved Qodo request HR had confirmed against a
+published job is adopted as that job's request; a workbook row never is.
+
+* Odoo decides the job, its title, department, seats and owner; reassigning
+  and linking are therefore off for these requests. Qodo owns priority,
+  deadline, hold, extension, hires recorded, KPI and rewards.
+* A job arrives with no priority and no clock. Setting its first priority
+  needs no reason and dates the clock from `odoo.firstSeen`, the day the job
+  reached the desk.
+* The sync runs at boot (not awaited), on every recruitment clock tick (10
+  min) and on "Refresh from Odoo". It never acts on a failed or empty read.
+* While it is on (`recruitmentSourceIsOdoo()`: Odoo configured and
+  `HR_RECRUITMENT_SOURCE` not `manual`), creating a request, restoring from
+  the archive, importing the workbook into requests and applying a workbook
+  snapshot all answer `409 recruitment_source_is_odoo`, and the UI hides
+  them. A deployment without Odoo keeps the request → review → approval flow.
+
 ## 8. Capacity
 
 Per recruiter, counting `hiring` + `on_hold` jobs (configurable): Critical ≤ 2,

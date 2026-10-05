@@ -284,6 +284,12 @@ export function ReconciliationSection() {
         )}
       </SettingsCard>
 
+      {data.jobSource === 'odoo' ? (
+        <SettingsCard title={t('مصدر وظائف التوظيف: Odoo فقط', 'Recruitment jobs source: Odoo only')} hint={t('مكتب التوظيف يحمل الوظائف المنشورة في Odoo لشركة Egypt - Engoaad فقط. ملف التوظيف لم يعد يضيف أو يغيّر أي وظيفة.', 'The recruitment desk carries only the jobs Odoo publishes for Egypt - Engoaad. The recruitment workbook no longer adds or changes any job.')}>
+          <p className="text-[12.5px] leading-6 text-[#5A6C82]">{t('كل ما ليس منشوراً في Odoo الآن محفوظ في الأرشيف للرجوع إليه. الوظيفة تظهر عند نشرها في Odoo وتُؤرشف عند إلغاء نشرها.', 'Everything Odoo does not publish now is kept in the archive for reference. A job appears when it is published in Odoo and is archived when it is unpublished.')}</p>
+          <Link to="/hr/recruitment/requests?scope=archived" className="mt-3 inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-brand-700 hover:underline">{t('فتح الأرشيف', 'Open the archive')}</Link>
+        </SettingsCard>
+      ) : (
       <SettingsCard title={t('ملف التوظيف القديم مقابل Qodo', 'Recruitment workbook vs Qodo')} hint={data.workbook ? t(`${data.workbook.fileName} · ${num(data.workbook.rows, 'ar')} صف · ${dateTime(data.workbook.importedAt, 'ar')}`, `${data.workbook.fileName} · ${num(data.workbook.rows, 'en')} rows · ${dateTime(data.workbook.importedAt, 'en')}`) : t('لا يوجد ملف توظيف مرفوع.', 'No recruitment workbook uploaded.')}
         action={data.canApplyWorkbook ? <button type="button" className="btn-primary btn-sm" onClick={applySnapshot} disabled={!canApplySnapshot || applying}>{applying ? <Spinner size={14} /> : <RefreshCw size={14} />}{t('تطبيق تحديثات الشيت', 'Apply workbook updates')}</button> : undefined}>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -316,6 +322,7 @@ export function ReconciliationSection() {
         )}
         {data.orphans.length > 0 && <p className="mt-4 text-[12px] text-[#5A6C82]">{t(`${data.orphans.length} طلب خارج الملف سيُنقل إلى الأرشيف ويمكن استرجاعه.`, `${data.orphans.length} requests outside the workbook will move to the archive and can be restored.`)}</p>}
       </SettingsCard>
+      )}
     </div>
   );
 }

@@ -9,7 +9,7 @@
  */
 
 import { motion } from 'framer-motion';
-import { ChevronLeft, ChevronRight, CircleCheck, Gift, Globe2, Hourglass, TimerOff, TriangleAlert } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CircleCheck, Flag, Gift, Globe2, Hourglass, TimerOff, TriangleAlert } from 'lucide-react';
 import { cx } from '../../../../lib/utils';
 import { num, shortName, useHRText } from '../../format';
 import { PRIORITY_LABEL } from '../../labels';
@@ -33,6 +33,7 @@ export function RecruiterCard({ card, active = false, onOpen }: { card: Recruite
     card.overdue > 0 && { key: 'overdue', tone: 'critical' as const, icon: TimerOff, label: t(`${num(card.overdue, lang)} متأخرة`, `${num(card.overdue, lang)} overdue`) },
     over && { key: 'over', tone: 'critical' as const, icon: TriangleAlert, label: t('فوق الحد', 'Over limit') },
     full && { key: 'full', tone: 'warning' as const, icon: TriangleAlert, label: t('السعة ممتلئة', 'At limit') },
+    workload.unclassified > 0 && { key: 'unclassified', tone: 'warning' as const, icon: Flag, label: t(`${num(workload.unclassified, lang)} بدون أولوية`, `${num(workload.unclassified, lang)} with no priority`) },
     card.pipeline > 0 && { key: 'pipeline', tone: 'info' as const, icon: Hourglass, label: t(`${num(card.pipeline, lang)} قيد الاعتماد`, `${num(card.pipeline, lang)} pending approval`) },
   ].filter(Boolean) as Array<{ key: string; tone: 'critical' | 'warning' | 'info'; icon: typeof TimerOff; label: string }>;
 

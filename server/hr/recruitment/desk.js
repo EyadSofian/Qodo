@@ -20,6 +20,7 @@ import { employeeName, hasRecruitmentAccess, recruitmentContext } from './contex
 import { canSee, publicContext, publicRequest } from './requests.js';
 import { activeRewardRules, qualityFlags } from './rewards.js';
 import { odooJobTotals, odooJobsByEmployee, publishedJobs, publishedJobsSnapshot } from './odooJobs.js';
+import { syncOdooJobs } from './odooSync.js';
 
 /** The desk is for people who run or oversee recruitment, and for a recruiter's own card. */
 function deskScope(ctx) {
@@ -204,9 +205,14 @@ export async function capacityBoard(user) {
  * instead of serving the last copy.
  */
 export async function odooPublishedJobs(user, { refresh = false } = {}) {
-  const ctx = await recruitmentContext(user);
+  let ctx = await recruitmentContext(user);
   if (!hasRecruitmentAccess(ctx)) throw forbidden(PERMISSIONS.HR_RECRUITMENT_VIEW);
   const data = await publishedJobs({ refresh });
+  if (refresh) {
+    // "Refresh from Odoo" brings the desk in line now instead of at the next tick.
+    const synced = await syncOdooJobs(ctx.organizationId, { snapshot: data });
+    if (synced && !synced.skipped) ctx = await recruitmentContext(user);
+  }
   return {
     ...data,
     jobs: deskJobs(ctx, data, data.jobs),

@@ -94,7 +94,7 @@ export function ActiveHiring() {
     },
     { key: 'headcount', header: t('المطلوب', 'Headcount'), align: 'center', sort: (row) => row.headcount, cell: (row) => <span className="tabular-nums">{num(row.headcount, lang)}</span>, hideOnCard: true },
     { key: 'hired', header: t('مقبول', 'Hired'), align: 'center', sort: (row) => row.accepted, cell: (row) => <span className="font-semibold tabular-nums">{num(row.accepted, lang)}</span> },
-    { key: 'sla', header: 'SLA', sort: (row) => urgency(row) * 1000 + (row.slaSnapshot.remainingWorkingDays ?? 0), cell: (row) => <SlaMeter sla={row.slaSnapshot} compact /> },
+    { key: 'sla', header: 'SLA', sort: (row) => urgency(row) * 1000 + (row.slaSnapshot.remainingWorkingDays ?? 0), cell: (row) => <SlaMeter sla={row.slaSnapshot} source={row.source} compact /> },
     { key: 'stage', header: t('المرحلة الحالية', 'Current stage'), cell: (row) => <span className="text-[12px] text-[#3F5068]">{row.status === 'on_hold' ? pick(SLA_LABEL.paused) : odoo[row.id]?.furthestStage ? stageName(odoo[row.id]!.furthestStage!, lang) : row.odooLink ? '…' : '—'}</span>, hideOnCard: true },
     { key: 'odoo', header: t('مرشحو Odoo', 'Odoo candidates'), align: 'center', sort: (row) => odoo[row.id]?.total ?? -1, cell: (row) => <span className="tabular-nums">{odoo[row.id] ? num(odoo[row.id]!.total, lang) : row.odooLink ? '…' : '—'}</span>, hideOnCard: true },
     { key: 'due', header: t('الاستحقاق', 'Due'), sort: (row) => row.slaSnapshot.dueDate ?? '', cell: (row) => <span className="whitespace-nowrap text-[12px]">{date(row.slaSnapshot.dueDate, lang)}</span> },
@@ -169,7 +169,7 @@ export function ActiveHiring() {
                 <div className="min-w-0"><p className="hr-bidi truncate text-[14px] font-bold text-navy">{row.title}</p><p className="truncate text-[11.5px] text-ink-faint">{row.reference} · {row.department || '—'}</p></div>
                 <PriorityBadge priority={row.priority} />
               </div>
-              <div className="mt-3"><SlaMeter sla={row.slaSnapshot} /></div>
+              <div className="mt-3"><SlaMeter sla={row.slaSnapshot} source={row.source} /></div>
               <div className="mt-3 flex items-center justify-between gap-2 border-t border-[#EEF2F7] pt-3 text-[12px]">
                 {row.recruiter ? <span className="flex min-w-0 items-center gap-2"><PersonAvatar name={shortName(row.recruiter.name, lang)} photoUrl={row.recruiter.photoUrl} size={24} /><span className="truncate">{shortName(row.recruiter.name, lang)}</span></span> : <Badge tone={row.priority === 'critical' ? 'critical' : 'neutral'}>{t('غير مُسند', 'Unassigned')}</Badge>}
                 <span className="shrink-0 font-semibold tabular-nums text-navy">{num(row.accepted, lang)} / {num(row.headcount, lang)}</span>

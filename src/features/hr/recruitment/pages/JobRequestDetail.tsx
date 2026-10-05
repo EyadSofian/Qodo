@@ -74,6 +74,10 @@ function activityLabel(type: string, t: (ar: string, en: string) => string) {
     kpi_deduction: ['خصم مؤشر أداء', 'KPI deduction'],
     kpi_deduction_voided: ['أُلغي خصم', 'Deduction voided'],
     imported_from_workbook: ['استُورد من ملف التوظيف', 'Imported from the recruitment workbook'],
+    created_from_odoo: ['وصلت من وظائف Odoo المنشورة', 'Arrived from Odoo\'s published jobs'],
+    odoo_synced: ['تحدّثت من Odoo', 'Updated from Odoo'],
+    archived: ['نُقلت إلى الأرشيف', 'Moved to the archive'],
+    restored: ['رجعت من الأرشيف', 'Restored from the archive'],
   };
   if (map[type]) return t(map[type][0], map[type][1]);
   if (type.startsWith('status.')) {
@@ -193,6 +197,7 @@ export function JobRequestDetail() {
               <span className="font-mono font-semibold text-ink-faint">{request.reference}</span>
               <StatusBadge status={request.status} />
               {request.source === 'legacy_workbook' && <Badge tone="neutral">{t('مستورد من ملف التوظيف', 'Imported from workbook')}</Badge>}
+              {request.source === 'odoo' && <Badge tone="info">{t('من Odoo', 'From Odoo')}</Badge>}
             </div>
             <h1 className="mt-2 text-[24px] font-bold leading-tight tracking-tight text-navy sm:text-[28px]">{request.title || t('طلب بدون عنوان', 'Untitled request')}</h1>
             <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -217,7 +222,7 @@ export function JobRequestDetail() {
                       ? t(`أُغلقت في ${workingDays(sla.actualWorkingDays ?? 0, 'ar')}`, `Closed in ${workingDays(sla.actualWorkingDays ?? 0, 'en')}`)
                       : t(`متبقٍ ${workingDays(sla.remainingWorkingDays ?? 0, 'ar')}`, `${workingDays(sla.remainingWorkingDays ?? 0, 'en')} left`)}
                 </p>
-                <div className="mt-3"><SlaMeter sla={sla} /></div>
+                <div className="mt-3"><SlaMeter sla={sla} source={request.source} /></div>
               </>
             ) : (
               <>

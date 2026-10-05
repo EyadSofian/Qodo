@@ -57,7 +57,8 @@ export function JobRequests() {
 
   if (error && !data) return <ErrorBlock error={error} onRetry={reload} />;
   if (loading && !data) return <PageSkeleton rows={1} />;
-  const canCreate = Boolean(data?.context.perms.request || data?.context.perms.assign);
+  const fromOdoo = data?.context.jobSource === 'odoo';
+  const canCreate = !fromOdoo && Boolean(data?.context.perms.request || data?.context.perms.assign);
   const canManageArchive = Boolean(data?.context.perms.settings);
   const restore = async (id: string) => {
     setRestoring(id);
@@ -93,10 +94,10 @@ export function JobRequests() {
         <span className="flex items-center gap-2"><PersonAvatar name={shortName(row.recruiter.name, lang)} photoUrl={row.recruiter.photoUrl} size={26} /><span className="truncate">{shortName(row.recruiter.name, lang)}</span></span>
       ) : <span className="text-ink-faint">—</span>,
     },
-    { key: 'sla', header: 'SLA', cell: (row) => <SlaMeter sla={row.slaSnapshot} compact /> },
+    { key: 'sla', header: 'SLA', cell: (row) => <SlaMeter sla={row.slaSnapshot} source={row.source} compact /> },
     { key: 'requested', header: t('بواسطة', 'Requested by'), sort: (row) => row.requestedByName, cell: (row) => <span className="text-[12.5px] text-[#5A6C82]">{row.requestedByName || '—'}</span>, hideOnCard: true },
     { key: 'updated', header: t('آخر تحديث', 'Updated'), sort: (row) => row.updatedAt, cell: (row) => <span className="text-[12px] text-ink-faint">{date(row.updatedAt, lang)}</span>, hideOnCard: true },
-    ...(archived && canManageArchive ? [{ key: 'restore', header: t('الإجراء', 'Action'), cell: (row: JobRequest) => <button type="button" className="btn-secondary btn-sm" disabled={Boolean(restoring)} onClick={() => void restore(row.id)}><RotateCcw size={14} />{restoring === row.id ? t('جارٍ الاسترجاع…', 'Restoring…') : t('استرجاع', 'Restore')}</button> }] : []),
+    ...(archived && canManageArchive && !fromOdoo ? [{ key: 'restore', header: t('الإجراء', 'Action'), cell: (row: JobRequest) => <button type="button" className="btn-secondary btn-sm" disabled={Boolean(restoring)} onClick={() => void restore(row.id)}><RotateCcw size={14} />{restoring === row.id ? t('جارٍ الاسترجاع…', 'Restoring…') : t('استرجاع', 'Restore')}</button> }] : []),
   ];
 
   return (
@@ -104,10 +105,10 @@ export function JobRequests() {
       <PageHeader
         eyebrow={t('التوظيف', 'Recruitment')}
         title={archived ? t('أرشيف طلبات الوظائف', 'Archived job requests') : t('طلبات الوظائف', 'Job requests')}
-        description={archived ? t('الطلبات المؤرشفة محفوظة ويمكن إرجاعها إلى قائمة التوظيف.', 'Archived requests are kept here and can be restored to recruitment.') : t('من الطلب إلى مراجعة القسم إلى الاعتماد النهائي — الـSLA لا يبدأ قبل الاعتماد.', 'From request to department review to final approval — the SLA never starts before approval.')}
+        description={archived ? (fromOdoo ? t('كل ما ليس منشوراً في Odoo الآن محفوظ هنا للرجوع إليه. الوظيفة ترجع تلقائياً عند نشرها في Odoo.', 'Everything Odoo does not publish now is kept here for reference. A job returns by itself when it is published in Odoo.') : t('الطلبات المؤرشفة محفوظة ويمكن إرجاعها إلى قائمة التوظيف.', 'Archived requests are kept here and can be restored to recruitment.')) : fromOdoo ? t('وظيفة واحدة لكل وظيفة منشورة في Odoo لشركة Egypt - Engoaad. الأولوية والمهلة تُحدَّدان من صفحة الوظيفة.', 'One job per position Odoo publishes for Egypt - Engoaad. Priority and deadline are set on the job page.') : t('من الطلب إلى مراجعة القسم إلى الاعتماد النهائي — الـSLA لا يبدأ قبل الاعتماد.', 'From request to department review to final approval — the SLA never starts before approval.')}
         actions={archived
           ? <Link to="/hr/recruitment/requests" className="btn-secondary btn-sm">{t('العودة للطلبات', 'Back to requests')}</Link>
-          : <span className="flex flex-wrap items-center gap-2">{canManageArchive && <Link to="/hr/recruitment/requests?scope=archived" className="btn-secondary btn-sm"><Archive size={15} />{t('الأرشيف', 'Archive')}</Link>}{canCreate && <Link to="/hr/recruitment/requests/new" className="btn-primary btn-sm"><Plus size={16} />{t('طلب وظيفة جديد', 'New job request')}</Link>}</span>}
+          : <span className="flex flex-wrap items-center gap-2">{canManageArchive && <Link to="/hr/recruitment/requests?scope=archived" className="btn-ghost btn-sm"><Archive size={15} />{t('الأرشيف', 'Archive')}</Link>}{canCreate && <Link to="/hr/recruitment/requests/new" className="btn-primary btn-sm"><Plus size={16} />{t('طلب وظيفة جديد', 'New job request')}</Link>}</span>}
       />
 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center">

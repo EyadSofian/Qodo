@@ -37,7 +37,7 @@ function JobRow({ job, canAssign, onAssign }: { job: JobRequest; canAssign: bool
         <p className="truncate text-[11.5px] text-ink-faint">{job.reference} · {job.department || '—'}</p>
       </Link>
       <div className="flex gap-1.5"><PriorityBadge priority={job.priority} />{job.status !== 'hiring' && <StatusBadge status={job.status} />}</div>
-      <SlaMeter sla={job.slaSnapshot} />
+      <SlaMeter sla={job.slaSnapshot} source={job.source} />
       {canAssign && job.abilities.assign ? <button type="button" className="btn-ghost btn-sm !min-h-8" onClick={onAssign}><UserPlus size={14} />{t('إعادة إسناد', 'Reassign')}</button> : <span />}
     </li>
   );
@@ -126,7 +126,7 @@ export function RecruitmentCapacity() {
                   {card.jobs.length ? (
                     <ul className="space-y-2">{card.jobs.map((job) => <JobRow key={job.id} job={job} canAssign={canAssign} onAssign={() => setAssigning(job)} />)}</ul>
                   ) : <p className="text-[12.5px] text-ink-faint">{t('لا توجد وظائف مسندة.', 'No jobs assigned.')}</p>}
-                  {card.odooJobs.length > 0 && (
+                  {card.odooJobs.length > 0 && data.context.jobSource !== 'odoo' && (
                     <div className="mt-4">
                       <p className="mb-2 flex items-center gap-1.5 text-[12px] font-bold text-navy"><Globe2 size={13} className="text-violet-600" aria-hidden="true" />{t('منشور في Odoo', 'Published in Odoo')}</p>
                       <ul className="grid grid-cols-1 gap-2 lg:grid-cols-2">{card.odooJobs.map((job) => <OdooJobRow key={job.id} job={job} />)}</ul>
@@ -141,7 +141,7 @@ export function RecruitmentCapacity() {
       </div>
 
       <Card>
-        <SectionTitle title={t('وظائف بلا مسؤول', 'Jobs without a recruiter')} hint={t('الوظائف الحرجة بلا مسؤول تظهر كتنبيه حرج.', 'A Critical job without a recruiter raises a critical alert.')} />
+        <SectionTitle title={t('وظائف بلا مسؤول', 'Jobs without a recruiter')} hint={data.context.jobSource === 'odoo' ? t('وظائف منشورة في Odoo بلا مسؤول، أو مسؤولها ليس موظفاً نشطاً في ملف HR. المسؤول يتغيّر من Odoo.', 'Published in Odoo with no owner, or an owner who is not an active employee in the HR file. The owner is changed in Odoo.') : t('الوظائف الحرجة بلا مسؤول تظهر كتنبيه حرج.', 'A Critical job without a recruiter raises a critical alert.')} />
         {data.unassigned.length ? (
           <ul className="space-y-2">{data.unassigned.map((job) => <JobRow key={job.id} job={job} canAssign={canAssign} onAssign={() => setAssigning(job)} />)}</ul>
         ) : <p className="text-[12.5px] text-emerald-700">{t('كل الوظائف لها مسؤول.', 'Every job has a recruiter.')}</p>}
