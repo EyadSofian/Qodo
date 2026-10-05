@@ -302,6 +302,14 @@ de-duplicated by `(rule, request, applicant)`. Nothing about appearance or a
 protected attribute is automated; the optional presentation rule is manual,
 job-defined and needs written reasoning.
 
+The automatic checks read Odoo for requests approved in Qodo and — the
+owner's decision, 2026-10-05 — for jobs kept from Odoo's board, from the day
+their clock started (`automaticChecksApply`); a kept job with no clock is
+skipped, and workbook rows are never checked. The team was told once, on a
+day the checks had already run, so the rule arrived before the first
+deduction; each day's findings are sent to the recruiter concerned and to the
+desk and KPI reviewers, who can void a wrong one.
+
 ## 10. Rewards
 
 Versioned rules: `jobsPerBatch` (3), grouping (per category by default),
@@ -309,6 +317,12 @@ eligibility toggles (completed, within SLA, no quality deductions), and
 categories matched by classification and location with a min–max amount. A
 job counts once: batches store their exact job ids and a job already in a
 non-cancelled batch is never eligible again.
+
+The table names five kinds of job. Any other kind (no classification, or one
+with no line — a Video Editor, an Instructional Designer) is paid on the
+Agent line, `fallbackCategoryId` (owner, 2026-10-05). A kind the table prices
+only per location — an instructor with no country — is not: it stays without
+a line until the location is set, rather than being quietly underpaid.
 
 ## 11. Permissions
 
