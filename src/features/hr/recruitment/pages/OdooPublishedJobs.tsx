@@ -147,7 +147,7 @@ export function OdooPublishedJobs() {
                           <>
                             <span>{t('تفعيل', 'Active')} {job.activeDate ? date(job.activeDate, lang) : '—'}</span>
                             <span aria-hidden="true">·</span>
-                            <span>{t(`المدة ${num(job.hiringPeriodDays, lang)} يوم`, `${num(job.hiringPeriodDays, lang)}-day period`)}</span>
+                            <span>{t(`المدة ${num(job.hiringPeriodDays, lang)} يوم عمل`, `${num(job.hiringPeriodDays, lang)} working days`)}</span>
                             {job.request?.dueDate && <><span aria-hidden="true">·</span><span>{t('الاستحقاق', 'Due')} {date(job.request.dueDate, lang)}</span></>}
                           </>
                         ) : t('لا توجد مدة توظيف (Hiring Period) على الوظيفة في Odoo — المهلة لم تبدأ.', 'No Hiring Period on the job in Odoo — the deadline has not started.')}

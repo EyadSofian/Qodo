@@ -231,12 +231,14 @@ published job is adopted as that job's request; a workbook row never is.
   Qodo owns hold, extension, hires recorded, KPI and rewards.
 * **The schedule comes from Odoo too.** HR keeps two custom fields on
   `hr.job`: `active_date` and `hiring_period` (15 / 30 / 45 / 60 days). The
-  clock starts on the Active Date; the job is due that many *calendar* days
-  later (the next working day when that lands on a weekend), stored as the
-  equivalent working-day target so the SLA engine is unchanged; the period
-  names the priority (15 Critical, 30 Required, 45 and 60 Planned). The
-  fields are Engosoft's, not stock Odoo, so they are read through
-  `existingFields`.
+  clock starts on the Active Date and the job is due that many *working*
+  days later — the approved classification table counts neither Friday nor
+  Saturday — so the period is the SLA target as it stands and names the
+  priority (15 Critical, 30 Required, 45 and 60 Planned). The fields are
+  Engosoft's, not stock Odoo, so they are read through `existingFields`.
+  (`odoo.scheduleRule` names the reading; jobs dated under the one-deploy
+  calendar-day reading are re-dated once, unless their priority was set by
+  hand.)
 * Last writer wins between the two systems: `request.odoo` remembers the
   Active Date and period Qodo last saw, and the schedule is re-applied only
   when Odoo's own values move. A priority or deadline changed in Qodo

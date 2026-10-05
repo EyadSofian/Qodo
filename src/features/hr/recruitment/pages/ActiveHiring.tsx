@@ -97,7 +97,8 @@ export function ActiveHiring() {
     { key: 'sla', header: 'SLA', sort: (row) => urgency(row) * 1000 + (row.slaSnapshot.remainingWorkingDays ?? 0), cell: (row) => <SlaMeter sla={row.slaSnapshot} source={row.source} compact /> },
     { key: 'stage', header: t('المرحلة الحالية', 'Current stage'), cell: (row) => <span className="text-[12px] text-[#3F5068]">{row.status === 'on_hold' ? pick(SLA_LABEL.paused) : odoo[row.id]?.furthestStage ? stageName(odoo[row.id]!.furthestStage!, lang) : row.odooLink ? '…' : '—'}</span>, hideOnCard: true },
     { key: 'odoo', header: t('مرشحو Odoo', 'Odoo candidates'), align: 'center', sort: (row) => odoo[row.id]?.total ?? -1, cell: (row) => <span className="tabular-nums">{odoo[row.id] ? num(odoo[row.id]!.total, lang) : row.odooLink ? '…' : '—'}</span>, hideOnCard: true },
-    { key: 'due', header: t('الاستحقاق', 'Due'), sort: (row) => row.slaSnapshot.dueDate ?? '', cell: (row) => <span className="whitespace-nowrap text-[12px]">{date(row.slaSnapshot.dueDate, lang)}</span> },
+    // Start and due in one cell: two more columns pushed Status off the table.
+    { key: 'due', header: t('البداية ← الاستحقاق', 'Start → due'), sort: (row) => row.slaSnapshot.dueDate ?? '', cell: (row) => row.slaSnapshot.started ? <span className="block whitespace-nowrap text-[12px] leading-5"><span className="block text-ink-faint">{date(row.slaSnapshot.startDate, lang)}</span><span className="block font-semibold text-navy">{date(row.slaSnapshot.dueDate, lang)}</span></span> : <span className="text-[12px] text-ink-faint">—</span> },
     { key: 'status', header: t('الحالة', 'Status'), sort: (row) => row.status, cell: (row) => <StatusBadge status={row.status} />, hideOnCard: true },
   ];
 

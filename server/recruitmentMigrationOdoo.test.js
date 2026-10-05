@@ -229,7 +229,7 @@ test('Odoo is the only source: one request per published job, everything else ar
   assert.deepEqual(plan.create.map((item) => item.document.reference), ['ODOO-1', 'ODOO-2'], 'a workbook row linked to the job is not that job\'s request');
   const cfm = plan.create[0].document;
   assert.deepEqual([cfm.source, cfm.status, cfm.title, cfm.headcount, cfm.recruiterCode], ['odoo', 'hiring', 'CFM Instructor', 2, '420'], 'Odoo gives the job, seats and owner');
-  assert.deepEqual([cfm.priority, cfm.hiringPeriodDays, cfm.sla.startDate, cfm.sla.currentDueDate, cfm.targetWorkingDays], ['required', 30, '2026-10-01', '2026-11-01', 21], 'the Active Date starts the clock and the Hiring Period, in calendar days, sets the due date and the priority');
+  assert.deepEqual([cfm.priority, cfm.hiringPeriodDays, cfm.sla.startDate, cfm.sla.currentDueDate, cfm.targetWorkingDays], ['required', 30, '2026-10-01', '2026-11-12', 30], 'the Active Date starts the clock; the Hiring Period is working days (no Friday, no Saturday) and names the priority');
   assert.deepEqual(cfm.salaryRange, { min: 1500, max: 2500, currency: null, text: '' });
   assert.equal(cfm.odoo.firstSeen, '2026-10-05');
   const video = plan.create[1].document;
@@ -266,8 +266,14 @@ test('Odoo is the only source: one request per published job, everything else ar
   const follow = planOdooSync({ organizationId: org, snapshot: moved, requests: edited, links, profiles, today: '2026-10-06', calendar }).update;
   assert.deepEqual(follow.map((item) => item.id), [cfmId]);
   const { patch } = follow[0];
-  assert.deepEqual([patch.priority, patch.prioritySource, patch.hiringPeriodDays, patch.sla.startDate, patch.sla.originalDueDate, patch.sla.extendedWorkingDays], ['critical', 'odoo_hiring_period', 15, '2026-10-04', '2026-10-19', 5]);
+  assert.deepEqual([patch.priority, patch.prioritySource, patch.hiringPeriodDays, patch.sla.startDate, patch.sla.originalDueDate, patch.sla.extendedWorkingDays], ['critical', 'odoo_hiring_period', 15, '2026-10-04', '2026-10-25', 5]);
   assert.ok(patch.sla.currentDueDate > patch.sla.originalDueDate, 'the extension still pushes the due date out');
+
+  // A job dated under the earlier calendar-day reading is re-dated once — unless somebody set its priority by hand.
+  const old = (item, extra = {}) => ({ ...item, sla: { ...item.sla, targetWorkingDays: 21, originalDueDate: '2026-11-01', currentDueDate: '2026-11-01' }, targetWorkingDays: 21, odoo: { jobId: 1, firstSeen: '2026-10-05', activeDate: '2026-10-01', hiringPeriod: 30, seniority: null, status: null, publishedDate: null }, ...extra });
+  const redate = (extra) => planOdooSync({ organizationId: org, snapshot, requests: after.map((item) => (item.id === cfmId ? old(item, extra) : item)), links, profiles, today: '2026-10-06', calendar }).update.find((item) => item.id === cfmId).patch;
+  assert.deepEqual([redate({}).sla.currentDueDate, redate({}).targetWorkingDays], ['2026-11-12', 30]);
+  assert.deepEqual(Object.keys(redate({ prioritySource: 'manual' })), ['odoo'], 'a hand-set priority keeps its clock; only the tracker moves');
 
   // An outage or an empty answer never archives the desk.
   assert.equal(planOdooSync({ organizationId: org, snapshot: null, requests, links, profiles, today: '2026-10-05', calendar }).skipped, 'odoo_unavailable');

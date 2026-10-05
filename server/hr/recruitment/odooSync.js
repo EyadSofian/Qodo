@@ -10,11 +10,12 @@
  *
  * Odoo says which jobs exist, what they are called, how many seats, who owns
  * them, and their schedule: HR keeps an Active Date and a Hiring Period (15 /
- * 30 / 45 / 60 days) on each job. The clock starts on the Active Date, the
- * job is due that many calendar days later (the next working day when that
- * lands on a weekend), and the period names the priority — 15 Critical, 30
- * Required, 45 and 60 Planned. Whenever either value changes in Odoo, Qodo
- * follows; a change made in Qodo stands until Odoo's value changes again.
+ * 30 / 45 / 60 days) on each job. The clock starts on the Active Date and the
+ * job is due that many *working* days later — the approved job-classification
+ * table counts neither Friday nor Saturday — and the period names the
+ * priority: 15 Critical, 30 Required, 45 and 60 Planned. Whenever either
+ * value changes in Odoo, Qodo follows; a change made in Qodo stands until
+ * Odoo's value changes again.
  * Extensions and holds are Qodo's and are kept on top of Odoo's dates.
  *
  * Qodo still owns what Odoo has no field for: holds, extensions, hires
@@ -28,7 +29,7 @@
 
 import { create, find, getStore } from '../../store.js';
 import { classificationFromTitle } from '../../../shared/recruitment/classification.js';
-import { addCalendarDays, currentDueDate, localDay, nextWorkingDayOnOrAfter, priorityForHiringPeriod, workingDaysBetween } from '../../../shared/recruitment/sla.js';
+import { addWorkingDays, currentDueDate, localDay, priorityForHiringPeriod } from '../../../shared/recruitment/sla.js';
 import { recruitmentPolicy } from '../../../shared/recruitment/settings.js';
 import { COMMITTED_STATUSES, OPEN_STATUSES } from '../../../shared/recruitment/workflow.js';
 import { organizationState } from '../../hrModule.js';
@@ -66,11 +67,18 @@ function mirrored(job, recruiterCode, request = null) {
   return fields;
 }
 
+/**
+ * How a Hiring Period becomes a due date. It was calendar days for one deploy;
+ * naming the rule lets a job scheduled under the old reading be re-dated once.
+ */
+const SCHEDULE_RULE = 'working_days';
+
 /** What Qodo last saw in Odoo — the values a later change is measured against. */
 function seen(job, previous = {}) {
   return {
     ...previous,
     jobId: job.id,
+    scheduleRule: SCHEDULE_RULE,
     activeDate: job.activeDate ?? null,
     hiringPeriod: job.hiringPeriodDays ?? null,
     seniority: job.seniority ?? null,
@@ -88,8 +96,7 @@ export function scheduleFromOdoo(job, { calendar, fallbackStart, sla = null }) {
   const period = job.hiringPeriodDays;
   if (!period) return null;
   const startDate = job.activeDate ?? fallbackStart;
-  const due = nextWorkingDayOnOrAfter(addCalendarDays(startDate, period), calendar);
-  const target = Math.max(1, workingDaysBetween(startDate, due, calendar) ?? 0);
+  const target = period;
   const next = {
     extendedWorkingDays: 0,
     pausedWorkingDays: 0,
@@ -101,7 +108,7 @@ export function scheduleFromOdoo(job, { calendar, fallbackStart, sla = null }) {
     startDate,
     targetWorkingDays: target,
     targetSource: 'odoo_hiring_period',
-    originalDueDate: due,
+    originalDueDate: addWorkingDays(startDate, target, calendar),
   };
   next.currentDueDate = currentDueDate(next, calendar);
   const priority = priorityForHiringPeriod(period);
@@ -199,7 +206,8 @@ export function planOdooSync({ organizationId, snapshot, requests, links, profil
       patch.odoo = tracked;
       // The schedule follows Odoo when Odoo's own values moved — not on every
       // tick, so a priority or deadline changed in Qodo is not undone.
-      const moved = (request.odoo?.activeDate ?? null) !== tracked.activeDate || (request.odoo?.hiringPeriod ?? null) !== tracked.hiringPeriod;
+      const redated = (request.odoo?.scheduleRule ?? null) !== tracked.scheduleRule && request.prioritySource !== 'manual';
+      const moved = redated || (request.odoo?.activeDate ?? null) !== tracked.activeDate || (request.odoo?.hiringPeriod ?? null) !== tracked.hiringPeriod;
       if (moved && OPEN_STATUSES.includes(request.status)) {
         Object.assign(patch, scheduleFromOdoo(job, { calendar, fallbackStart: tracked.firstSeen ?? today, sla: request.sla }) ?? {});
       }
