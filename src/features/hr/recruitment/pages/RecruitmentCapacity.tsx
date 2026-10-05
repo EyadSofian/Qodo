@@ -11,7 +11,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ChevronDown, Globe2, UserPlus } from 'lucide-react';
 import { cx } from '../../../../lib/utils';
-import { hrApi, invalidateHR, useHRQuery } from '../../api';
+import { RECRUITMENT_REFRESH_MS, hrApi, invalidateHR, useHRQuery } from '../../api';
 import { num, shortName, useHRText } from '../../format';
 import { PRIORITY_LABEL } from '../../labels';
 import type { BoardJob, JobRequest, RecruiterBoardRow, RecruitmentContext } from '../../types';
@@ -49,7 +49,7 @@ export function RecruitmentCapacity() {
   const motionPresets = useMotion();
   const [params] = useSearchParams();
   const focus = params.get('recruiter');
-  const { data, error, loading, reload } = useHRQuery<Board>(hrApi.recruitment.capacity, { refreshMs: 120_000 });
+  const { data, error, loading, reload } = useHRQuery<Board>(hrApi.recruitment.capacity, { refreshMs: RECRUITMENT_REFRESH_MS });
   const [open, setOpen] = useState<Set<string>>(() => new Set(focus ? [focus] : []));
   const [assigning, setAssigning] = useState<JobRequest | null>(null);
 

@@ -11,6 +11,13 @@ import { ApiError, api } from '../../lib/api';
 const cache = new Map<string, unknown>();
 const listeners = new Set<(prefix: string) => void>();
 
+/**
+ * How often an open recruitment screen asks again. The server follows Odoo
+ * every minute; half that here keeps a change made in Odoo under ~90 s from
+ * the moment it is saved to the moment it is on screen. Hidden tabs skip it.
+ */
+export const RECRUITMENT_REFRESH_MS = 30_000;
+
 export function invalidateHR(prefix = '/hr') {
   for (const key of [...cache.keys()]) if (key.startsWith(prefix)) cache.delete(key);
   for (const listener of listeners) listener(prefix);

@@ -13,8 +13,12 @@ import { isIsoDate } from '../../../shared/recruitment/sla.js';
 const COMPANY_ID = 2;
 const COMPANY_NAME = 'Egypt - Engoaad';
 const CACHE_MS = 90_000;
+// Which custom schedule fields this Odoo has changes when somebody installs a
+// module, not between two reads a minute apart: asked once an hour.
+const FIELDS_TTL_MS = 60 * 60 * 1000;
 let cache = null;
 let refreshing = null;
+let scheduleFields = null;
 
 /**
  * The schedule HR keeps on the job in Odoo — Engosoft's own fields, not stock
@@ -36,7 +40,10 @@ export async function publishedJobs({ refresh = false } = {}) {
 
   // Match the shared Odoo kanban: company cids=2, Published and active jobs.
   // The server domain is authoritative; a browser filter cannot widen it.
-  const schedule = await existingFields('hr.job', SCHEDULE_FIELDS);
+  if (!scheduleFields || Date.now() - scheduleFields.at > FIELDS_TTL_MS) {
+    scheduleFields = { at: Date.now(), names: await existingFields('hr.job', SCHEDULE_FIELDS) };
+  }
+  const schedule = scheduleFields.names;
   const rows = await searchRead('hr.job', [
     ['company_id', '=', COMPANY_ID],
     ['is_published', '=', true],
@@ -159,4 +166,4 @@ export function odooJobsByEmployee(snapshot) {
   return byCode;
 }
 
-export const __test = { reset: () => { cache = null; refreshing = null; }, seed: (value) => { cache = { at: Date.now(), value }; } };
+export const __test = { reset: () => { cache = null; refreshing = null; scheduleFields = null; }, seed: (value) => { cache = { at: Date.now(), value }; } };

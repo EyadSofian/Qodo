@@ -12,7 +12,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CalendarPlus, ExternalLink, Flag, Globe2, Pencil, TimerOff, UserPlus } from 'lucide-react';
 import { cx } from '../../../../lib/utils';
-import { hrApi, invalidateHR, useHRQuery } from '../../api';
+import { RECRUITMENT_REFRESH_MS, hrApi, invalidateHR, useHRQuery } from '../../api';
 import { num, shortName, useHRText } from '../../format';
 import { PRIORITY_LABEL } from '../../labels';
 import type { BoardJob, JobRequest, OdooJob, RecruiterBoardRow, RecruiterCardData, RecruitmentContext } from '../../types';
@@ -76,7 +76,7 @@ export function OdooJobRow({ job, onNavigate }: { job: OdooJob; onNavigate?: () 
 
 export function RecruiterDrawer({ card, onClose }: { card: RecruiterCardData | null; onClose: () => void }) {
   const { t, lang, pick } = useHRText();
-  const { data, loading } = useHRQuery<CapacityBoard>(card ? hrApi.recruitment.capacity : null);
+  const { data, loading } = useHRQuery<CapacityBoard>(card ? hrApi.recruitment.capacity : null, { refreshMs: RECRUITMENT_REFRESH_MS });
   const [edit, setEdit] = useState<Edit | null>(null);
   const row = data?.recruiters.find((item) => item.member.employeeCode === card?.member.employeeCode) ?? null;
   // The board row is the fresh copy of the card that was clicked.

@@ -304,26 +304,52 @@ export async function syncOdooJobs(organizationId, { snapshot = null } = {}) {
   }
 }
 
-/** Every organization, for boot and the scheduler. Never throws. */
-export async function syncOdooJobsEverywhere() {
+// Runs every minute: a failure is said when it starts and when it ends, not
+// sixty times an hour.
+let lastProblem = null;
+function report(problem) {
+  if (problem === lastProblem) return;
+  if (problem) console.warn(`[hr] Odoo job sync skipped: ${problem}`);
+  else if (lastProblem) console.log('[hr] Odoo job sync running again');
+  lastProblem = problem;
+}
+
+/**
+ * Every organization, for boot and the scheduler (every minute — the owner
+ * wants a change made in Odoo on the desk as soon as possible). One Odoo read
+ * serves all organizations. Quiet when nothing changed. Never throws.
+ */
+let everywhere = null;
+
+export function syncOdooJobsEverywhere() {
+  // A slow Odoo must not stack a second read behind the first.
+  everywhere ??= syncAll().finally(() => {
+    everywhere = null;
+  });
+  return everywhere;
+}
+
+async function syncAll() {
   if (!recruitmentSourceIsOdoo()) return;
   let snapshot;
   try {
     snapshot = await publishedJobs({ refresh: true });
   } catch (error) {
-    console.warn('[hr] Odoo job sync skipped — Odoo unavailable:', error?.message ?? error);
+    report(`Odoo unavailable (${error?.message ?? error})`);
     return;
   }
+  let problem = null;
   for (const organization of await find('organizations')) {
     try {
       const result = await syncOdooJobs(organization.id, { snapshot });
       if (result && (result.created || result.restored || result.archived || result.updated)) {
         console.log(`[hr] Odoo job sync for ${organization.id}: ${result.created} new, ${result.restored} back, ${result.updated} updated, ${result.archived} archived`);
       } else if (result?.skipped) {
-        console.warn(`[hr] Odoo job sync for ${organization.id} skipped: ${result.skipped}`);
+        problem = result.skipped;
       }
     } catch (error) {
-      console.error('[hr] Odoo job sync failed', error);
+      problem = `failed (${error?.message ?? error})`;
     }
   }
+  report(problem);
 }

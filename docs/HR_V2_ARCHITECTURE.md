@@ -274,9 +274,14 @@ Details that bit once:
 * `request.odoo` and `salaryRange` are compared canonically (sorted keys): a
   jsonb column returns keys in its own order, and a plain `JSON.stringify`
   comparison would rewrite every job on every tick.
-* The sync runs at boot (not awaited), on every recruitment clock tick (10
-  min), on "Refresh from Odoo", and right after a link change or an approval
-  of a linked request. It never acts on a failed or empty read.
+* The sync runs every minute from the scheduler (not awaited, one read at a
+  time, quiet unless something changed; a failure is logged when it starts
+  and when it ends), at boot, on the 10-minute recruitment clock, on "Refresh
+  from Odoo", and right after a link change or an approval of a linked
+  request. Open recruitment screens ask again every 30 s
+  (`RECRUITMENT_REFRESH_MS`), so a change saved in Odoo is on screen within
+  about 90 s. It never acts on a failed or empty read. Truly instant would
+  need Odoo to call Qodo (an automated action with a webhook) — not set up.
 * `recruitmentSourceIsOdoo()` is Odoo configured and `HR_RECRUITMENT_SOURCE`
   not `manual`. While on, the workbook import creates nothing, the workbook
   snapshot cannot be applied, and restoring a workbook row or an unpublished

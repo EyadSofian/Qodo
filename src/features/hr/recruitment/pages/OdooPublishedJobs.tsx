@@ -13,7 +13,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { CalendarClock, ExternalLink, FilePlus2, Globe2, Pencil, RefreshCw, Search, X } from 'lucide-react';
 import { api, errorMessage } from '../../../../lib/api';
 import { cx } from '../../../../lib/utils';
-import { hrApi, useHRQuery } from '../../api';
+import { RECRUITMENT_REFRESH_MS, hrApi, useHRQuery } from '../../api';
 import { date, num, useHRText } from '../../format';
 import type { OdooJob, OdooJobsData } from '../../types';
 import { Card, HeroStat, PageHeader, PersonAvatar, PriorityBadge, StatusBadge } from '../../ui/primitives';
@@ -22,7 +22,7 @@ import { EmptyBlock, ErrorBlock, PageSkeleton } from '../../ui/states';
 export function OdooPublishedJobs() {
   const { t, lang } = useHRText();
   const [params, setParams] = useSearchParams();
-  const { data, error, loading, reload, setData } = useHRQuery<OdooJobsData>(hrApi.recruitment.odooJobs(), { refreshMs: 120_000 });
+  const { data, error, loading, reload, setData } = useHRQuery<OdooJobsData>(hrApi.recruitment.odooJobs(), { refreshMs: RECRUITMENT_REFRESH_MS });
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<unknown>(null);
   const owner = params.get('owner') ?? '';

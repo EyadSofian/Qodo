@@ -11,7 +11,7 @@ import { useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { LayoutGrid, Rows3, Search, X } from 'lucide-react';
 import { cx } from '../../../../lib/utils';
-import { hrApi, useHRQuery } from '../../api';
+import { RECRUITMENT_REFRESH_MS, hrApi, useHRQuery } from '../../api';
 import { date, num, shortName, useHRText } from '../../format';
 import { PRIORITY_LABEL, PRIORITY_ORDER, SLA_LABEL } from '../../labels';
 import type { JobRequest, RecruitmentContext } from '../../types';
@@ -33,7 +33,7 @@ function urgency(request: JobRequest) {
 export function ActiveHiring() {
   const { t, lang, pick } = useHRText();
   const [params, setParams] = useSearchParams();
-  const { data, error, loading, reload } = useHRQuery<{ requests: JobRequest[]; context: RecruitmentContext }>(hrApi.recruitment.requests('hiring,on_hold'), { refreshMs: 120_000 });
+  const { data, error, loading, reload } = useHRQuery<{ requests: JobRequest[]; context: RecruitmentContext }>(hrApi.recruitment.requests('hiring,on_hold'), { refreshMs: RECRUITMENT_REFRESH_MS });
   const pipelines = useHRQuery<{ summaries: Record<string, { total: number; furthestStage: string | null } | null> }>(data ? hrApi.recruitment.pipelines : null);
   const view = params.get('view') === 'cards' ? 'cards' : 'table';
   const filters = {

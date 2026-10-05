@@ -42,6 +42,7 @@ import { remindDueSoon } from "./management.js";
 import { remindUpcomingEvents } from "./calendar.js";
 import { generateHROperations } from "./hrOperations.js";
 import { runRecruitmentClock } from "./hr/recruitment/clock.js";
+import { syncOdooJobsEverywhere } from "./hr/recruitment/odooSync.js";
 import {
   buildInsightsBriefNotifications,
   fetchInsightsBriefData,
@@ -672,6 +673,12 @@ export function startScheduler() {
         const late = await remindOverdue();
         if (late) console.log(`[scheduler] ${late} overdue notice(s) sent`);
       }
+
+      // Recruitment jobs follow Odoo's published board on every tick (once a
+      // minute), so a recruiter or a date changed in Odoo is on the desk within
+      // a minute. Two small reads. Not awaited: a slow Odoo must not hold the
+      // digest or the reminders; a read still running is not started twice.
+      void syncOdooJobsEverywhere();
 
       // Recruitment: reward batches, alert pushes and the daily automatic KPI
       // checks. Every ten minutes is fresh enough for SLA alerts measured in

@@ -12,7 +12,7 @@ import { useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { Armchair, ArrowUpRight, Bell, Briefcase, CalendarRange, CheckCircle2, CircleAlert, ClipboardCheck, Globe2, Hourglass, Inbox, Plus, Siren, Target, TimerOff, UserRoundX } from 'lucide-react';
 import { cx } from '../../../../lib/utils';
-import { hrApi, isForbidden, useHRQuery } from '../../api';
+import { RECRUITMENT_REFRESH_MS, hrApi, isForbidden, useHRQuery } from '../../api';
 import { num, shortName, useHRText } from '../../format';
 import { useHR } from '../../shell/HRContext';
 import type { RecruiterCardData, RecruitmentOverviewData } from '../../types';
@@ -27,7 +27,7 @@ import { SEVERITY_ICON } from '../components/RecruitmentAlert';
 export function RecruitmentOverview() {
   const { t, lang, pick } = useHRText();
   const { access, alertCenter } = useHR();
-  const { data, error, loading, reload } = useHRQuery<RecruitmentOverviewData>(hrApi.recruitment.overview, { refreshMs: 120_000 });
+  const { data, error, loading, reload } = useHRQuery<RecruitmentOverviewData>(hrApi.recruitment.overview, { refreshMs: RECRUITMENT_REFRESH_MS });
   const [openCode, setOpenCode] = useState<string | null>(null);
 
   // A department manager who can only ask for hires lands on their requests.
