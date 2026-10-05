@@ -7,7 +7,7 @@
 
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { AlertTriangle, CalendarClock, CalendarRange, ClipboardList, Cloud, FileClock, Hourglass, Inbox, KeyRound, ListChecks, Plane, Plus, Search, Sun, Thermometer, UserPlus, UsersRound } from 'lucide-react';
+import { AlertTriangle, CalendarClock, CalendarRange, ClipboardList, Cloud, FileClock, Hourglass, Inbox, KeyRound, ListChecks, Plane, Plus, RefreshCw, Search, Sun, Thermometer, UserPlus, UsersRound } from 'lucide-react';
 import { cx } from '../../../lib/utils';
 import { hrApi, useHRQuery } from '../api';
 import { date, normaliseSearch, num, useHRText } from '../format';
@@ -313,7 +313,7 @@ const ODOO_FILTERS: Array<{ id: 'all' | 'pending' | 'validate' | 'refuse'; label
 ];
 
 /** Live time off from Odoo: who is out today, what waits for approval, every request and allocation. */
-function OdooTimeOffPanel({ odoo }: { odoo: TimeOffView }) {
+function OdooTimeOffPanel({ odoo, onRefresh, refreshing }: { odoo: TimeOffView; onRefresh: () => void; refreshing: boolean }) {
   const { t, lang } = useHRText();
   const [filter, setFilter] = useState<(typeof ODOO_FILTERS)[number]['id']>('all');
   const requests = (odoo.requests ?? []).filter((leave) => filter === 'all' || (filter === 'pending' ? ['confirm', 'validate1'].includes(leave.state) : leave.state === filter));
@@ -326,8 +326,25 @@ function OdooTimeOffPanel({ odoo }: { odoo: TimeOffView }) {
         <Metric icon={Hourglass} tone={odoo.pending ? 'warning' : 'neutral'} label={t('بانتظار الموافقة', 'Awaiting approval')} value={num(odoo.pending ?? 0, lang)} onClick={() => setFilter('pending')} />
         <Metric icon={CalendarRange} tone="success" label={t('إجازات الأسبوع القادم', 'Leave in the next week')} value={num(odoo.upcoming?.length ?? 0, lang)} />
       </div>
+      {odoo.dataScope?.coverageConcern && (
+        <div role="status" className="flex gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-[13px] leading-6 text-amber-950">
+          <AlertTriangle size={18} className="mt-1 shrink-0" />
+          <p>{t(
+            `بيانات الإجازات والأرصدة القادمة من Odoo تغطي ${num(odoo.dataScope.employeesWithTimeOffRecords, lang)} من ${num(odoo.dataScope.activeEmployees, lang)} موظفًا نشطًا فقط. هذا قد يعني أن حساب التكامل أو قواعد الوصول في Odoo لا تسمح بقراءة كل السجلات؛ راجع صلاحية قراءة طلبات الإجازة والتخصيصات لكل الموظفين.`,
+            `Odoo returned leave requests or allocations for only ${num(odoo.dataScope.employeesWithTimeOffRecords, lang)} of ${num(odoo.dataScope.activeEmployees, lang)} active employees. The integration account or Odoo record rules may limit access; check read access to all employees' leave requests and allocations.`
+          )}</p>
+        </div>
+      )}
       <Card>
-        <SectionTitle title={t('خارج المكتب اليوم', 'Out of the office today')} hint={t('مباشر من Odoo.', 'Live from Odoo.')} />
+        <SectionTitle
+          title={t('خارج المكتب اليوم', 'Out of the office today')}
+          hint={odoo.freshness?.loadedAt ? t(
+            `من Odoo · آخر قراءة ${new Date(odoo.freshness.loadedAt).toLocaleString('ar-EG', { dateStyle: 'short', timeStyle: 'short' })}${odoo.freshness.stale ? ' · البيانات قديمة' : ''}`,
+            `From Odoo · last read ${new Date(odoo.freshness.loadedAt).toLocaleString('en', { dateStyle: 'short', timeStyle: 'short' })}${odoo.freshness.stale ? ' · stale' : ''}`
+          ) : t('مباشر من Odoo.', 'Live from Odoo.')}
+          action={<button type="button" className="btn-ghost btn-sm" onClick={onRefresh} disabled={refreshing}><RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />{refreshing ? t('جارٍ التحديث…', 'Refreshing…') : t('تحديث من Odoo', 'Refresh from Odoo')}</button>}
+        />
+        {odoo.freshness?.refreshError && <p role="status" className="mb-3 rounded-xl bg-amber-50 px-3 py-2 text-[12px] text-amber-900">{t('تعذر تحديث Odoo؛ المعروض آخر بيانات محفوظة.', 'Odoo refresh failed; showing the last saved data.')}</p>}
         <OutTodayStrip absent={odoo.onLeaveToday ?? []} away={odoo.awayToday ?? []} empty={t('لا توجد إجازات معتمدة لليوم في Odoo.', 'Odoo has no approved leave for today.')} />
       </Card>
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
@@ -366,7 +383,9 @@ export function PersonnelLeave() {
   const [params, setParams] = useSearchParams();
   const negativeOnly = params.get('negative') === '1';
   const [q, setQ] = useState('');
-  const { data, error, loading, reload } = useHRQuery<LeaveData>(hrApi.leave);
+  const [refreshKey, setRefreshKey] = useState('');
+  const leavePath = refreshKey ? `${hrApi.leave}?refreshOdoo=1&refreshKey=${encodeURIComponent(refreshKey)}` : hrApi.leave;
+  const { data, error, loading, reload } = useHRQuery<LeaveData>(leavePath);
   const rows = useMemo(() => {
     const needle = normaliseSearch(q);
     return (data?.balances ?? [])
@@ -398,7 +417,7 @@ export function PersonnelLeave() {
       />
       {error && !data ? <ErrorBlock error={error} onRetry={reload} /> : loading && !data ? <PageSkeleton rows={1} /> : data ? (
         <>
-          {data.odoo?.connected && <OdooTimeOffPanel odoo={data.odoo} />}
+          {data.odoo?.connected && <OdooTimeOffPanel odoo={data.odoo} onRefresh={() => setRefreshKey(String(Date.now()))} refreshing={loading} />}
           {data.analytics && (
             <div className="hr-stagger grid grid-cols-2 gap-3 md:grid-cols-4">
               <Metric icon={UsersRound} label={t('موظفون بأرصدة', 'Employees with balances')} value={num(data.analytics.activeEmployees, lang)} hint={t(`من ${num(data.analytics.employees, lang)} في الملف`, `of ${num(data.analytics.employees, lang)} in the file`)} />

@@ -114,6 +114,7 @@ export const hrApi = {
     restoreRequest: (id: string) => `/hr/recruitment/requests/${encodeURIComponent(id)}/restore`,
     pipeline: (id: string) => `/hr/recruitment/requests/${encodeURIComponent(id)}/odoo`,
     odoo: '/hr/recruitment/odoo',
+    odooJobs: (refresh = false) => `/hr/recruitment/odoo/jobs${refresh ? '?refresh=1' : ''}`,
     pipelines: '/hr/recruitment/odoo/pipelines',
     kpi: (period?: string) => `/hr/recruitment/kpi${query({ period })}`,
     kpiDetail: (code: string, period?: string) => `/hr/recruitment/kpi/${encodeURIComponent(code)}${query({ period })}`,

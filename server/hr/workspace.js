@@ -26,10 +26,10 @@ import {
 } from '../hrModule.js';
 import { forbidden } from './errors.js';
 import { knownPhoto, odooEmployeeByKey, odooEmployeeIndex, odooWorkLocation } from './odooPeople.js';
-import { odooTimeOff } from './odooTimeOff.js';
+import { odooTimeOff, timeOffFreshness } from './odooTimeOff.js';
 import { odooResolver, timeOffView } from './odooHR.js';
 import { photoUrlFor } from './recruitment/team.js';
-import { recruitmentOverview } from './recruitment/desk.js';
+import { odooPublishedJobsForHome } from './recruitment/odooJobs.js';
 import { performanceOverview } from './performance.js';
 import { PAYROLL_TYPES } from './personnel.js';
 
@@ -257,8 +257,8 @@ export async function hrHome(user) {
   const fx = r.payroll ? await usdEgpRate() : null;
   const payroll = r.payroll ? payrollAnalytics(profiles, fx) : null;
   const readsPeople = r.people || r.personnel;
-  const [recruitment, personnelCases, performance, index, timeOff] = await Promise.all([
-    r.recruitment ? recruitmentOverview(user).catch(() => null) : null,
+  const [odooJobs, personnelCases, performance, index, timeOff] = await Promise.all([
+    r.recruitment ? odooPublishedJobsForHome().catch(() => null) : null,
     // Salary increases and insurance operations are payroll data, even as a count.
     r.personnel || r.manage ? find('personnelRequests', (item) => organizationOf(item) === organizationId && (r.payroll || !PAYROLL_TYPES.has(item.type))) : [],
     r.people || r.performance ? performanceOverview(user).catch(() => null) : null,
@@ -266,11 +266,11 @@ export async function hrHome(user) {
     readsPeople ? odooTimeOff({ timeoutMs: 2500 }) : null,
   ]);
   const resolver = index ? odooResolver(profiles, index) : null;
-  const timeOffToday = resolver && timeOff ? timeOffView(timeOff, resolver, { everyone: true }) : null;
+  const timeOffToday = resolver && timeOff ? timeOffView(timeOff, resolver, { everyone: true, freshness: timeOffFreshness(timeOff) }) : null;
   const active = profiles.filter((profile) => profile.status === 'active' && profile.sources.master);
   const leave = leaveAnalytics(state.bySource.leave);
   const gaps = r.manage ? reconciliation(state.profiles, state.positions) : null;
-  const alerts = recruitment?.alerts ?? [];
+  const published = odooJobs?.connected ? odooJobs.jobs : null;
   return {
     selfOnly: false,
     metrics: {
@@ -279,23 +279,19 @@ export async function hrHome(user) {
       female: workforce.gender.female,
       newEmployees: workforce.newHires,
       period: workforce.period,
-      openJobs: recruitment?.summary.activeJobs ?? null,
-      openSeats: recruitment?.summary.openSeats ?? null,
+      openJobs: published?.length ?? null,
+      openSeats: published?.reduce((sum, job) => sum + job.toRecruit, 0) ?? null,
       insuredEmployees: workforce.socialInsured,
       payrollUsd: payroll ? payroll.totalUsd : null,
       payrollRate: payroll ? payroll.rate : null,
     },
-    recruitment: recruitment
+    recruitment: published
       ? {
-          overdue: recruitment.summary.overdue,
-          dueSoon: recruitment.summary.dueSoon,
-          critical: recruitment.summary.critical,
-          pendingApproval: recruitment.summary.pendingApproval,
-          pendingReview: recruitment.summary.pendingReview,
-          slaSuccess: recruitment.summary.slaSuccess,
-          capacityAlerts: alerts.filter((alert) => alert.type.startsWith('capacity_')).length,
-          criticalAlerts: alerts.filter((alert) => alert.severity === 'critical').length,
-          topAlerts: alerts.slice(0, 4),
+          jobs: published.length,
+          toRecruit: published.reduce((sum, job) => sum + job.toRecruit, 0),
+          newApplications: published.reduce((sum, job) => sum + job.newApplications, 0),
+          applications: published.reduce((sum, job) => sum + job.applications, 0),
+          recruiters: [...new Set(published.map((job) => job.recruiter?.name).filter(Boolean))].length,
         }
       : null,
     personnel: {
@@ -312,7 +308,7 @@ export async function hrHome(user) {
       ? { ...performance.attention, quarter: performance.quarter, period: performance.period }
       : null,
     timeOff: timeOffToday
-      ? { connected: true, onLeaveToday: timeOffToday.onLeaveToday.slice(0, 12), awayToday: timeOffToday.awayToday.slice(0, 12), pending: timeOffToday.pending, upcoming: timeOffToday.upcoming.slice(0, 8) }
+      ? { connected: true, onLeaveToday: timeOffToday.onLeaveToday, awayToday: timeOffToday.awayToday, pending: timeOffToday.pending, upcoming: timeOffToday.upcoming.slice(0, 8), dataScope: timeOffToday.dataScope, freshness: timeOffToday.freshness }
       : { connected: false },
     // Faces for the page header: people with a real Odoo photo first.
     faces: resolver

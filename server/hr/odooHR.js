@@ -37,7 +37,8 @@ export function odooResolver(profiles, index) {
       inHrFile: Boolean(profile),
     };
   };
-  return { byCode, odooOnly, codeFor, person, odooFor: (code) => byCode.get(code) ?? null, publicFor: (row) => publicOdooEmployee(row, { codeFor }) };
+  const activeEmployeeCount = (index?.rows ?? []).filter((row) => row.active).length;
+  return { byCode, odooOnly, codeFor, person, activeEmployeeCount, odooFor: (code) => byCode.get(code) ?? null, publicFor: (row) => publicOdooEmployee(row, { codeFor }) };
 }
 
 /** One Odoo leave, as HR shows it. */
@@ -60,11 +61,14 @@ export function leaveView(leave, resolver) {
  * The time-off picture for a reader: everything for HR and Personnel, only
  * their own requests for anyone else (`ownOdooId`).
  */
-export function timeOffView(data, resolver, { everyone, ownOdooId = null, today = localDay() }) {
+export function timeOffView(data, resolver, { everyone, ownOdooId = null, today = localDay(), freshness = null }) {
   if (!data) return { connected: false };
   const visible = (row) => everyone || (ownOdooId !== null && row.odooEmployeeId === ownOdooId);
   const leaves = data.leaves.filter(visible);
   const allocations = data.allocations.filter(visible);
+  const representedEmployeeIds = new Set([...leaves, ...allocations].map((row) => row.odooEmployeeId));
+  const activeEmployeeCount = resolver.activeEmployeeCount ?? 0;
+  const coveredEmployeeCount = representedEmployeeIds.size;
   const away = awayOn({ leaves }, today);
   const inDays = (days) => {
     const date = new Date(`${today}T12:00:00Z`);
@@ -76,6 +80,12 @@ export function timeOffView(data, resolver, { everyone, ownOdooId = null, today 
     connected: true,
     year: data.year,
     today,
+    freshness,
+    dataScope: everyone && activeEmployeeCount > 0 ? {
+      activeEmployees: activeEmployeeCount,
+      employeesWithTimeOffRecords: coveredEmployeeCount,
+      coverageConcern: activeEmployeeCount >= 20 && coveredEmployeeCount / activeEmployeeCount < 0.2,
+    } : undefined,
     types: data.types.filter((type) => type.active),
     requests: leaves.map((leave) => leaveView(leave, resolver)),
     allocations: allocations.map((allocation) => ({ ...allocation, employee: resolver.person(allocation.odooEmployeeId, allocation.employeeName) })),

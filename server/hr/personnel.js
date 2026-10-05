@@ -23,7 +23,7 @@ import { hrSettingsFor } from './settings.js';
 import { stableId } from './recruitment/data.js';
 import { leaveAnalytics, organizationState } from '../hrModule.js';
 import { odooEmployeeIndex } from './odooPeople.js';
-import { odooTimeOff } from './odooTimeOff.js';
+import { odooTimeOff, timeOffFreshness } from './odooTimeOff.js';
 import { odooResolver, timeOffView } from './odooHR.js';
 
 export const PERSONNEL_TYPES = ['onboarding', 'leave', 'clearance', 'salary_increase', 'documents', 'insurance', 'general'];
@@ -102,7 +102,7 @@ export async function personnelCase(user, id) {
  * Leave balances as the leave workbook states them, for the Leave page.
  * Personnel and HR viewers see everyone; anybody else sees only their own row.
  */
-export async function leaveOverview(user) {
+export async function leaveOverview(user, { refreshOdoo = false } = {}) {
   const access = personnelAccess(user);
   const state = await organizationState(organizationOf(user));
   const dataset = state.bySource.leave ?? null;
@@ -112,13 +112,16 @@ export async function leaveOverview(user) {
   const balances = everyone ? all : all.filter((balance) => ownCode && String(balance.employeeCode) === ownCode);
   // Live time off from Odoo beside the workbook: every request for HR and
   // Personnel, only the reader's own for anyone else.
-  const [index, timeOff] = await Promise.all([odooEmployeeIndex({ timeoutMs: 4000 }), odooTimeOff({ timeoutMs: 4000 })]);
+  const [index, timeOff] = await Promise.all([
+    odooEmployeeIndex({ timeoutMs: 4000 }),
+    odooTimeOff({ timeoutMs: refreshOdoo ? 12_000 : 4000, refresh: refreshOdoo }),
+  ]);
   let odoo = { connected: false };
   if (index && timeOff) {
     const resolver = odooResolver([...state.profiles.values()], index);
     const code = everyone ? null : ownCode ?? (await ownEmployeeCode(user));
     const own = code ? resolver.odooFor(code) : null;
-    odoo = timeOffView(timeOff, resolver, { everyone, ownOdooId: own?.id ?? null });
+    odoo = timeOffView(timeOff, resolver, { everyone, ownOdooId: own?.id ?? null, freshness: timeOffFreshness(timeOff) });
   }
   return {
     balances: balances.map(({ records: _records, ...balance }) => balance),

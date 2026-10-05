@@ -75,9 +75,9 @@ async function load() {
 }
 
 /** The cached time-off picture, refreshed in the background. Never throws; `null` when Odoo is off. */
-export async function odooTimeOff({ wait = true, timeoutMs = null } = {}) {
+export async function odooTimeOff({ wait = true, timeoutMs = null, refresh = false } = {}) {
   if (!odooConfigured()) return null;
-  if (cache && Date.now() - cache.at < TTL_MS) return cache;
+  if (!refresh && cache && Date.now() - cache.at < TTL_MS) return cache;
   if (!loading) {
     loading = load()
       .then((value) => {
@@ -86,6 +86,7 @@ export async function odooTimeOff({ wait = true, timeoutMs = null } = {}) {
       })
       .catch((error) => {
         console.warn('[hr] Odoo time off unavailable:', error?.message ?? error);
+        if (cache) cache = { ...cache, refreshError: true };
         return cache;
       })
       .finally(() => {
@@ -106,6 +107,15 @@ export async function odooTimeOff({ wait = true, timeoutMs = null } = {}) {
 }
 
 export const PENDING_STATES = new Set(['confirm', 'validate1']);
+
+export function timeOffFreshness(data) {
+  if (!data) return null;
+  return {
+    loadedAt: new Date(data.at).toISOString(),
+    stale: Date.now() - data.at >= TTL_MS,
+    refreshError: Boolean(data.refreshError),
+  };
+}
 
 /** Approved leave covering `day`, split into absence and away-from-desk. */
 export function awayOn(data, day = localDay()) {

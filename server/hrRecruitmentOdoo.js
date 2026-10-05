@@ -86,14 +86,15 @@ export async function readOdooState(forceRefresh = false) {
 
   const jobs = await searchRead(
     'hr.job',
-    [],
+    [['company_id', '=', 2], ['is_published', '=', true], ['active', '=', true]],
     ['name', 'active', 'expected_employees', 'no_of_recruitment', 'user_id', 'department_id', 'published_date', 'job_open_date'],
-    { limit: 600, order: 'id desc', context: { active_test: false } }
+    { limit: 200, order: 'id desc', context: { allowed_company_ids: [2] } }
   );
 
+  const applicantDomain = [['job_id', 'in', jobs.map((job) => job.id)]];
   const [countsResult, stagesResult] = await Promise.allSettled([
-    readGroup('hr.applicant', [], ['job_id']),
-    readGroup('hr.applicant', [], ['job_id', 'stage_id']),
+    readGroup('hr.applicant', applicantDomain, ['job_id']),
+    readGroup('hr.applicant', applicantDomain, ['job_id', 'stage_id']),
   ]);
   const applicantByJob = new Map();
   if (countsResult.status === 'fulfilled') {

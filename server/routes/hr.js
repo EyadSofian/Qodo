@@ -349,7 +349,7 @@ router.get('/personnel', h((req) => listPersonnel(req.user, { type: req.query.ty
 router.post('/personnel', h(async (req, res) => {
   res.status(201).json(await createPersonnelCase(req.user, req.body ?? {}));
 }));
-router.get('/personnel/leave', h((req) => leaveOverview(req.user)));
+router.get('/personnel/leave', h((req) => leaveOverview(req.user, { refreshOdoo: req.query.refreshOdoo === '1' })));
 router.get('/personnel/:id', h((req) => personnelCase(req.user, req.params.id)));
 router.patch('/personnel/:id', h((req) => updatePersonnelCase(req.user, req.params.id, req.body ?? {})));
 router.post('/personnel/:id/checklist/:itemId', h((req) => tickChecklist(req.user, req.params.id, req.params.itemId, { done: req.body?.done === true })));

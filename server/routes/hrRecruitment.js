@@ -27,6 +27,7 @@ import {
 } from '../hr/recruitment/requests.js';
 import { capacityBoard, recruitmentAlerts, recruitmentOverview, recruitmentSummary, recruitmentTeam } from '../hr/recruitment/desk.js';
 import { pipelineSummaries, recruitmentOdooOverview, requestPipeline } from '../hr/recruitment/odooPipeline.js';
+import { odooPublishedJobs } from '../hr/recruitment/odooJobs.js';
 import { createKpiEvent, kpiDetail, kpiOverview, voidKpiEvent } from '../hr/recruitment/kpi.js';
 import { decideRewardBatch, rewardsOverview } from '../hr/recruitment/rewards.js';
 
@@ -68,6 +69,7 @@ router.get('/requests/:id/odoo', h((req) => requestPipeline(req.user, req.params
 router.put('/requests/:id/odoo-link', h((req) => linkOdooJob(req.user, req.params.id, { jobId: body(req).jobId ?? null })));
 
 router.get('/odoo', h((req) => recruitmentOdooOverview(req.user, { forceRefresh: req.query.refresh === '1' })));
+router.get('/odoo/jobs', h((req) => odooPublishedJobs(req.user, { refresh: req.query.refresh === '1' })));
 router.get('/odoo/pipelines', h((req) => pipelineSummaries(req.user)));
 
 router.get('/kpi', h((req) => kpiOverview(req.user, { period: req.query.period })));

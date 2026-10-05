@@ -659,6 +659,8 @@ export interface TimeOffView {
   connected: boolean;
   year?: number;
   today?: string;
+  freshness?: { loadedAt: string; stale: boolean; refreshError: boolean };
+  dataScope?: { activeEmployees: number; employeesWithTimeOffRecords: number; coverageConcern: boolean };
   types?: Array<OdooLeaveType & { unit: string; requiresAllocation: boolean; active: boolean; unpaid: boolean }>;
   requests?: OdooLeave[];
   allocations?: OdooAllocation[];
@@ -741,15 +743,11 @@ export interface HomeData {
     payrollRate: { sell: number; source: string; asOf: string } | null;
   };
   recruitment?: null | {
-    overdue: number;
-    dueSoon: number;
-    critical: number;
-    pendingApproval: number;
-    pendingReview: number;
-    slaSuccess: { percent: number | null; judged: number; year: string };
-    capacityAlerts: number;
-    criticalAlerts: number;
-    topAlerts: Alert[];
+    jobs: number;
+    toRecruit: number;
+    newApplications: number;
+    applications: number;
+    recruiters: number;
   };
   personnel?: {
     onboardingOpen: number;
@@ -762,7 +760,7 @@ export interface HomeData {
     activeWithoutPayroll: number | null;
   };
   performance?: null | { lowGeneral: number; lowRecruitment: number; reviewsPending: number; quarter: string; period: string };
-  timeOff?: { connected: false } | { connected: true; onLeaveToday: OdooLeave[]; awayToday: OdooLeave[]; pending: number; upcoming: OdooLeave[] };
+  timeOff?: { connected: false } | { connected: true; onLeaveToday: OdooLeave[]; awayToday: OdooLeave[]; pending: number; upcoming: OdooLeave[]; dataScope?: TimeOffView['dataScope']; freshness?: TimeOffView['freshness'] };
   faces?: PersonRef[];
   odooOnly?: number | null;
   workforce?: {
