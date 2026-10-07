@@ -18,6 +18,7 @@ import { fail as failWith, handle } from './hrFail.js';
 import recruitmentRoutes from './hrRecruitment.js';
 import { employeeOdoo, hrAccess, hrHome, odooOnlyProfile, organizationOverview, payrollOverview, peopleDirectory } from '../hr/workspace.js';
 import { performanceOverview, reviewFor, saveReview } from '../hr/performance.js';
+import { performancePlansFor, savePerformancePlan } from '../hr/performancePlans.js';
 import { buildReport, reportsFor } from '../hr/reports.js';
 import { applyRecruitmentWorkbookSnapshot, auditLog, reconciliationView, saveSettings, settingsView } from '../hr/admin.js';
 import { saveRewardRules } from '../hr/recruitment/rewards.js';
@@ -320,6 +321,12 @@ router.get('/payroll', h((req) => payrollOverview(req.user)));
 router.get('/organization', h((req) => organizationOverview(req.user)));
 
 router.get('/performance', h((req) => performanceOverview(req.user, { period: req.query.period, quarter: req.query.quarter })));
+router.get('/performance/plans', h((req) => performancePlansFor(req.user, req.query.period)));
+router.put('/performance/plans/:employeeCode/:period', h(async (req) => {
+  const result = await savePerformancePlan(req.user, req.params.employeeCode, req.params.period, req.body ?? {});
+  await logActivity({ actorId: req.user.id, action: 'hr.performance.plan.save', subject: 'performancePlans', subjectId: result.plan.id, meta: { employeeCode: result.plan.employeeCode, period: result.plan.period, status: result.plan.status, revision: result.plan.revision } });
+  return result;
+}));
 router.get('/performance/reviews/:employeeCode/:quarter', h((req) => reviewFor(req.user, req.params.employeeCode, req.params.quarter)));
 router.put('/performance/reviews/:employeeCode/:quarter', h((req) => saveReview(req.user, req.params.employeeCode, req.params.quarter, req.body ?? {})));
 

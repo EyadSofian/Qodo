@@ -7,7 +7,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Briefcase, Check, ClipboardCheck, Gauge, LayoutDashboard, Lock, Search, TrendingDown } from 'lucide-react';
+import { Briefcase, Check, ClipboardCheck, Gauge, Lock, Search, TrendingDown } from 'lucide-react';
 import { errorMessage } from '../../../lib/api';
 import { cx } from '../../../lib/utils';
 import { useWorkspace } from '../../../lib/workspace';
@@ -19,10 +19,10 @@ import { useHR } from '../shell/HRContext';
 import type { PeopleData, PerformanceData, PerformanceRow, QuarterlyReviewData } from '../types';
 import { DataTable, type Column } from '../ui/DataTable';
 import { Badge, Metric, PageHeader } from '../ui/primitives';
-import { PillTabs } from '../ui/PillTabs';
 import { EmptyBlock, ErrorBlock, PageSkeleton } from '../ui/states';
 import { Stepper } from '../ui/Stepper';
 import type { Tone } from '../ui/tones';
+import { PerformancePlans } from './PerformancePlans';
 
 const LOW = 70;
 
@@ -250,11 +250,11 @@ function Scorecards() {
 export function PerformancePage() {
   const { t, lang } = useHRText();
   const [params, setParams] = useSearchParams();
-  const tab = params.get('tab') === 'scorecards' ? 'scorecards' : params.get('tab') === 'reviews' ? 'reviews' : 'overview';
+  const requestedSection = params.get('tab');
   const period = /^\d{4}-\d{2}$/.test(params.get('period') ?? '') ? params.get('period')! : currentPeriod();
   const quarter = /^\d{4}-Q[1-4]$/.test(params.get('quarter') ?? '') ? params.get('quarter')! : currentQuarter();
   const reviewing = params.get('review');
-  const { data, error, loading, reload } = useHRQuery<PerformanceData>(tab === 'scorecards' ? null : hrApi.performance(period, quarter));
+  const { data, error, loading, reload } = useHRQuery<PerformanceData>(hrApi.performance(period, quarter));
   const set = (key: string, value: string | null, replace = true) => {
     const next = new URLSearchParams(params);
     if (value) next.set(key, value);
@@ -262,28 +262,29 @@ export function PerformancePage() {
     setParams(next, { replace });
   };
 
-  const tabs = [
-    { id: 'overview', label: t('نظرة موحدة', 'Overview'), icon: <LayoutDashboard size={14} aria-hidden="true" /> },
-    { id: 'reviews', label: t('التقييم الربع سنوي', 'Quarterly reviews'), icon: <ClipboardCheck size={14} aria-hidden="true" /> },
-    { id: 'scorecards', label: t('بطاقات KPI', 'KPI scorecards'), icon: <Gauge size={14} aria-hidden="true" /> },
-  ];
+  useEffect(() => {
+    if (requestedSection === 'scorecards' || requestedSection === 'reviews') {
+      const timer = window.setTimeout(() => document.getElementById(`performance-${requestedSection}`)?.scrollIntoView({ block: 'start' }), 250);
+      return () => window.clearTimeout(timer);
+    }
+    return undefined;
+  }, [requestedSection]);
 
   return (
     <div className="space-y-6">
       <PageHeader
         eyebrow={t('الأداء', 'Performance')}
-        title={t('أداء الموظفين', 'Employee performance')}
-        description={t('KPI العام من البطاقات المعتمدة، وKPI التوظيف، وتقييم المهام، والتقييم الربع سنوي — في مكان واحد وبنفس الكود.', 'The general KPI from approved scorecards, the recruitment KPI, task scores and the quarterly review — in one place, joined on the employee code.')}
-        actions={tab === 'overview' ? (
-          <Stepper label={monthLabel(period, lang)} onPrev={() => set('period', shiftPeriod(period, -1))} onNext={() => set('period', shiftPeriod(period, 1))} nextDisabled={period >= currentPeriod()} prevLabel={t('الشهر السابق', 'Previous month')} nextLabel={t('الشهر التالي', 'Next month')} />
-        ) : tab === 'reviews' ? (
-          <Stepper label={quarterLabel(quarter, lang)} onPrev={() => set('quarter', shiftQuarter(quarter, -1))} onNext={() => set('quarter', shiftQuarter(quarter, 1))} nextDisabled={quarter >= currentQuarter()} prevLabel={t('الربع السابق', 'Previous quarter')} nextLabel={t('الربع التالي', 'Next quarter')} />
-        ) : null}
+        title={t('المؤشرات والأداء', 'KPIs & Performance')}
+        description={t('كل مؤشرات الموظفين في صفحة واحدة: إعداد أهداف المدير، متابعة السيلز والمكالمات، بطاقات KPI، والتقييم الربع سنوي.', 'One page for manager goals, sales and calls, KPI scorecards, and quarterly reviews.')}
+        actions={<Stepper label={monthLabel(period, lang)} onPrev={() => set('period', shiftPeriod(period, -1))} onNext={() => set('period', shiftPeriod(period, 1))} nextDisabled={period >= currentPeriod()} prevLabel={t('الشهر السابق', 'Previous month')} nextLabel={t('الشهر التالي', 'Next month')} />}
       />
-      <PillTabs value={tab} onChange={(next) => set('tab', next === 'overview' ? null : next, false)} options={tabs} label={t('أقسام الأداء', 'Performance sections')} layoutId="performance-tab" />
-      {tab === 'scorecards' ? <Scorecards /> : error && !data ? <ErrorBlock error={error} onRetry={reload} /> : loading && !data ? <PageSkeleton rows={1} /> : data ? (
-        tab === 'reviews' ? <Reviews data={data} onReview={(code) => set('review', code, false)} /> : <Overview data={data} onReview={(code) => set('review', code, false)} />
-      ) : null}
+      <nav className="flex flex-wrap gap-2" aria-label={t('أقسام الصفحة', 'Page sections')}>
+        {([['performance-plans', t('نماذج المديرين', 'Manager plans')], ['performance-overview', t('نظرة عامة', 'Overview')], ['performance-scorecards', t('بطاقات KPI', 'KPI scorecards')], ['performance-reviews', t('التقييم الربع سنوي', 'Quarterly reviews')]] as const).map(([id, label]) => <a key={id} href={`#${id}`} className="rounded-full border border-white/70 bg-white/75 px-3.5 py-2 text-xs font-bold text-navy shadow-sm transition hover:bg-white">{label}</a>)}
+      </nav>
+      <PerformancePlans period={period} />
+      <section id="performance-overview" className="scroll-mt-24 space-y-4"><h2 className="hr-title">{t('نظرة الأداء الموحدة', 'Unified performance overview')}</h2>{error && !data ? <ErrorBlock error={error} onRetry={reload} /> : loading && !data ? <PageSkeleton rows={1} /> : data ? <Overview data={data} onReview={(code) => set('review', code, false)} /> : null}</section>
+      <section id="performance-scorecards" className="scroll-mt-24 space-y-4"><h2 className="hr-title">{t('بطاقات KPI المعتمدة', 'Approved KPI scorecards')}</h2><Scorecards /></section>
+      <section id="performance-reviews" className="scroll-mt-24 space-y-4"><div className="flex flex-wrap items-center justify-between gap-3"><h2 className="hr-title">{t('التقييم الربع سنوي', 'Quarterly reviews')}</h2><Stepper label={quarterLabel(quarter, lang)} onPrev={() => set('quarter', shiftQuarter(quarter, -1))} onNext={() => set('quarter', shiftQuarter(quarter, 1))} nextDisabled={quarter >= currentQuarter()} prevLabel={t('الربع السابق', 'Previous quarter')} nextLabel={t('الربع التالي', 'Next quarter')} /></div>{data ? <Reviews data={data} onReview={(code) => set('review', code, false)} /> : null}</section>
       {reviewing && <ReviewDialog code={reviewing} quarter={quarter} onClose={() => set('review', null)} />}
     </div>
   );

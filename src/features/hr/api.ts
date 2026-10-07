@@ -92,6 +92,8 @@ export const hrApi = {
   payroll: '/hr/payroll',
   organization: '/hr/organization',
   performance: (period?: string, quarter?: string) => `/hr/performance${query({ period, quarter })}`,
+  performancePlans: (period: string) => `/hr/performance/plans${query({ period })}`,
+  performancePlan: (code: string, period: string) => `/hr/performance/plans/${encodeURIComponent(code)}/${encodeURIComponent(period)}`,
   review: (code: string, quarter: string) => `/hr/performance/reviews/${encodeURIComponent(code)}/${encodeURIComponent(quarter)}`,
   reports: '/hr/reports',
   report: (id: string, filters: Record<string, string>) => `/hr/reports/${id}${query(filters)}`,

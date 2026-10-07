@@ -66,7 +66,8 @@ export async function performanceOverview(user, { period, quarter } = {}) {
   const teamCodes = new Set(team.map((member) => member.employeeCode));
   const own = [...state.profiles.values()].find((profile) => profile.linkedUserId === user.id) ?? null;
   const everyone = rights.view || rights.review;
-  if (!everyone && !rights.recruitment && !own) throw forbidden(PERMISSIONS.HR_VIEW);
+  // The performance desk is open to every workspace account; without HR rights
+  // or an employee link it simply has no person-level rows yet.
 
   const profiles = [...state.profiles.values()].filter((profile) => profile.status === 'active' && profile.sources.master);
   const visible = everyone

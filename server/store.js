@@ -70,6 +70,8 @@ export const COLLECTIONS = [
   'personnelRequests',
   'personnelForms',
   'performanceReviews',
+  // Manager-authored monthly indicator plans, separate from historical scorecards.
+  'performancePlans',
   // One revisioned policy document per organization: SLA bands, capacity,
   // classifications, KPI rules, checklists. Reward rules are versioned apart.
   'hrSettings',
