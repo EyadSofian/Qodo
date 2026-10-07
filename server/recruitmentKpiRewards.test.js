@@ -131,7 +131,13 @@ test('reward categories are priced by classification and location, location-spec
   assert.equal(rewardCategoryFor({ classification: 'instructor', location: 'EG' }).id, 'instructor_eg');
   assert.equal(rewardCategoryFor({ classification: 'agent', location: 'EG' }).amountMin, 500);
   assert.equal(rewardCategoryFor({ classification: 'team_leader', location: 'KSA' }).amountMax, 650);
-  assert.equal(rewardCategoryFor({ classification: 'senior', location: 'EG' }), null, 'no reward line exists for Senior yet');
+  assert.equal(rewardCategoryFor({ classification: 'senior', location: 'EG' }).id, 'agent', 'a kind the table does not name is paid on the Agent line');
+  assert.equal(rewardCategoryFor({ classification: null, title: 'Video Editor' }).amountMax, 500);
+  assert.equal(rewardCategoryFor({ classification: 'instructor', location: 'Remote' }), null, 'an instructor with no country is not quietly paid as an agent');
+  const { fallbackCategoryId: _dropped, ...beforeFallback } = DEFAULT_REWARD_RULES;
+  assert.equal(rewardCategoryFor({ classification: null }, beforeFallback).id, 'agent', 'a rule set saved before the fallback existed takes the default');
+  assert.equal(rewardCategoryFor({ classification: null }, { ...DEFAULT_REWARD_RULES, fallbackCategoryId: null }), null, 'an explicit null turns it off');
+  assert.equal(validateRewardRules({ ...DEFAULT_REWARD_RULES, fallbackCategoryId: 'nobody' }), 'reward_fallback_category_invalid');
   assert.equal(validateRewardRules(DEFAULT_REWARD_RULES), null);
 });
 
@@ -196,4 +202,12 @@ test('a batch keeps the rule version it was priced under', () => {
   assert.equal(proposal.amountMin, 600);
   assert.equal(validateRewardRules({ ...v2, jobsPerBatch: 0 }), 'reward_jobs_per_batch_invalid');
   assert.equal(validateRewardRules({ ...v2, categories: [{ ...v2.categories[0], amountMin: 900, amountMax: 100 }] }), 'reward_category_amount_invalid');
+});
+
+test('the daily Odoo check reads approved requests and Odoo-kept jobs with a clock, never the workbook', async () => {
+  const { automaticChecksApply } = await import('./hr/recruitment/kpi.js');
+  assert.equal(automaticChecksApply({ source: 'qodo', sla: null }), true);
+  assert.equal(automaticChecksApply({ source: 'odoo', sla: { startDate: '2026-10-01' } }), true);
+  assert.equal(automaticChecksApply({ source: 'odoo', sla: null }), false, 'no clock means no "since": the job\'s whole history would be read');
+  assert.equal(automaticChecksApply({ source: 'legacy_workbook', sla: { startDate: '2026-08-01' } }), false);
 });

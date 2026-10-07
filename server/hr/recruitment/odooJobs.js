@@ -1,23 +1,49 @@
-/** The published Egypt - Engoaad positions shown by Odoo's Recruitment board. */
+/**
+ * The published Egypt - Engoaad positions shown by Odoo's Recruitment board,
+ * and who owns each one (`hr.job.user_id`).
+ *
+ * This file only reads Odoo. The recruitment desk joins these jobs to Qodo's
+ * own picture of a recruiter — limits, SLA, KPI, rewards — in `desk.js`, so a
+ * card shows both and neither replaces the other.
+ */
 
-import { searchRead, odooConfigured } from '../../odoo.js';
-import { forbidden } from '../errors.js';
-import { hasRecruitmentAccess, recruitmentContext } from './context.js';
+import { existingFields, searchRead, odooConfigured } from '../../odoo.js';
+import { isIsoDate } from '../../../shared/recruitment/sla.js';
 
 const COMPANY_ID = 2;
 const COMPANY_NAME = 'Egypt - Engoaad';
 const CACHE_MS = 90_000;
+// Which custom schedule fields this Odoo has changes when somebody installs a
+// module, not between two reads a minute apart: asked once an hour.
+const FIELDS_TTL_MS = 60 * 60 * 1000;
 let cache = null;
+let refreshing = null;
+let scheduleFields = null;
+
+/**
+ * The schedule HR keeps on the job in Odoo — Engosoft's own fields, not stock
+ * Odoo, so they are asked for only where the database has them:
+ *   active_date     the day the clock starts
+ *   hiring_period   15 / 30 / 45 / 60 days to fill it
+ *   seniority, salary_range_from/to, recruitment_status, published_date
+ */
+const SCHEDULE_FIELDS = ['active_date', 'hiring_period', 'seniority', 'salary_range_from', 'salary_range_to', 'recruitment_status', 'published_date'];
 
 const relation = (value) => Array.isArray(value) ? { id: Number(value[0]), name: String(value[1] || '') } : null;
+const isoDate = (value) => (isIsoDate(String(value || '').slice(0, 10)) ? String(value).slice(0, 10) : null);
+const positive = (value) => (Number(value) > 0 ? Number(value) : null);
 const baseUrl = () => String(process.env.ODOO_URL || '').replace(/\/+$/, '');
 
-async function publishedJobs({ refresh = false } = {}) {
+export async function publishedJobs({ refresh = false } = {}) {
   if (!odooConfigured()) return { configured: false, connected: false, jobs: [], fetchedAt: null };
   if (!refresh && cache && Date.now() - cache.at < CACHE_MS) return cache.value;
 
   // Match the shared Odoo kanban: company cids=2, Published and active jobs.
   // The server domain is authoritative; a browser filter cannot widen it.
+  if (!scheduleFields || Date.now() - scheduleFields.at > FIELDS_TTL_MS) {
+    scheduleFields = { at: Date.now(), names: await existingFields('hr.job', SCHEDULE_FIELDS) };
+  }
+  const schedule = scheduleFields.names;
   const rows = await searchRead('hr.job', [
     ['company_id', '=', COMPANY_ID],
     ['is_published', '=', true],
@@ -25,7 +51,7 @@ async function publishedJobs({ refresh = false } = {}) {
   ], [
     'name', 'company_id', 'is_published', 'active', 'user_id', 'department_id',
     'no_of_recruitment', 'application_count', 'new_application_count',
-    'applicant_hired', 'website_url',
+    'applicant_hired', 'website_url', ...schedule,
   ], { limit: 200, order: 'id desc', context: { allowed_company_ids: [COMPANY_ID] } });
 
   const root = baseUrl();
@@ -39,6 +65,13 @@ async function publishedJobs({ refresh = false } = {}) {
     applications: Math.max(0, Number(row.application_count) || 0),
     newApplications: Math.max(0, Number(row.new_application_count) || 0),
     hired: Math.max(0, Number(row.applicant_hired) || 0),
+    activeDate: isoDate(row.active_date),
+    hiringPeriodDays: positive(row.hiring_period),
+    seniority: row.seniority ? String(row.seniority) : null,
+    salaryFrom: positive(row.salary_range_from),
+    salaryTo: positive(row.salary_range_to),
+    recruitmentStatus: row.recruitment_status ? String(row.recruitment_status) : null,
+    publishedDate: isoDate(row.published_date),
     published: true,
     odooUrl: `${root}/web#id=${row.id}&model=hr.job&view_type=form&cids=${COMPANY_ID}`,
     jobUrl: row.website_url && String(row.website_url).startsWith('/') ? `${root}${row.website_url}` : null,
@@ -69,19 +102,68 @@ async function publishedJobs({ refresh = false } = {}) {
   return value;
 }
 
-export async function odooPublishedJobs(user, options = {}) {
-  const ctx = await recruitmentContext(user, { withTeam: false });
-  if (!hasRecruitmentAccess(ctx)) throw forbidden();
-  const data = await publishedJobs(options);
-  return {
-    ...data,
-    team: (data.team ?? []).map((member) => {
-      const profile = member.employeeCode ? ctx.profiles.get(member.employeeCode) : null;
-      return { ...member, nameArabic: profile?.nameArabic || '', title: profile?.title || member.title };
-    }),
-  };
+/**
+ * The last good read for pages that must not wait on Odoo. Only the first call
+ * after a restart waits (at most `timeoutMs`); after that a stale copy is
+ * served at once and refreshed behind it. Never throws; null means Odoo has
+ * not answered yet or is not configured.
+ */
+export async function publishedJobsSnapshot({ timeoutMs = 2500 } = {}) {
+  if (!odooConfigured()) return null;
+  if (cache && Date.now() - cache.at < CACHE_MS) return cache.value;
+  refreshing ??= publishedJobs({ refresh: true })
+    .catch((error) => {
+      console.warn('[hr] Odoo published jobs unavailable:', error?.message ?? error);
+      return cache?.value ?? null;
+    })
+    .finally(() => {
+      refreshing = null;
+    });
+  if (cache) return cache.value;
+  let timer;
+  const timeout = new Promise((resolve) => {
+    timer = setTimeout(() => resolve(null), timeoutMs);
+  });
+  try {
+    return await Promise.race([refreshing, timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
-export async function odooPublishedJobsForHome() {
-  return publishedJobs();
+/**
+ * Whether Odoo's published board is the only source of recruitment jobs (the
+ * owner's decision for production). A deployment with no Odoo keeps the
+ * request workflow, and `HR_RECRUITMENT_SOURCE=manual` turns it back on.
+ */
+export function recruitmentSourceIsOdoo() {
+  return odooConfigured() && process.env.HR_RECRUITMENT_SOURCE !== 'manual';
 }
+
+const NO_JOBS = { jobs: 0, toRecruit: 0, newApplications: 0, applications: 0 };
+
+export function odooJobTotals(jobs) {
+  return jobs.reduce((sum, job) => ({
+    jobs: sum.jobs + 1,
+    toRecruit: sum.toRecruit + job.toRecruit,
+    newApplications: sum.newApplications + job.newApplications,
+    applications: sum.applications + job.applications,
+  }), NO_JOBS);
+}
+
+/**
+ * Published jobs per HR employee code. Odoo names the owner by user; the
+ * employee record behind that user carries the code. Every owner Odoo could
+ * tie to a code gets an entry, even with no job (the team manager).
+ */
+export function odooJobsByEmployee(snapshot) {
+  const byCode = new Map();
+  if (!snapshot?.connected) return byCode;
+  for (const member of snapshot.team ?? []) {
+    if (!member.employeeCode) continue;
+    byCode.set(member.employeeCode, snapshot.jobs.filter((job) => job.recruiter?.id === member.id));
+  }
+  return byCode;
+}
+
+export const __test = { reset: () => { cache = null; refreshing = null; scheduleFields = null; }, seed: (value) => { cache = { at: Date.now(), value }; } };

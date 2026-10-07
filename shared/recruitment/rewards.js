@@ -7,6 +7,10 @@
  * writes version 2 and never rewrites a batch already priced under version 1,
  * because a batch keeps the rule id, version and amounts it was created with.
  *
+ * The table names five kinds of job. Any other — a Video Editor, an
+ * Instructional Designer — is paid on the Agent line: the owner's decision
+ * (2026-10-05), so that a job filled on time is never worth nothing.
+ *
  * A job counts once. A batch stores its exact job ids, and a job already in a
  * batch that was not cancelled is never eligible again — so approving,
  * rejecting or re-running the clock can never pay the same hire twice.
@@ -19,9 +23,13 @@ export const REWARD_BATCH_STATUSES = ['ready', 'approved', 'paid', 'rejected', '
 /** Statuses that consume their jobs. Only a cancelled batch hands them back. */
 export const CONSUMING_BATCH_STATUSES = ['ready', 'approved', 'paid', 'rejected'];
 
+/** The line a job is paid on when the table has none for its kind. */
+export const FALLBACK_REWARD_CATEGORY = 'agent';
+
 export const DEFAULT_REWARD_RULES = {
   version: 1,
   jobsPerBatch: 3,
+  fallbackCategoryId: FALLBACK_REWARD_CATEGORY,
   // `per_category` fills a separate pool per reward category, so a batch is
   // always priced by one line of the table. `mixed` lets any three jobs form a
   // batch priced at the average of their categories.
@@ -60,6 +68,7 @@ export function validateRewardRules(rules) {
     const max = Number(category.amountMax);
     if (!Number.isFinite(min) || !Number.isFinite(max) || min < 0 || max < min) return 'reward_category_amount_invalid';
   }
+  if (rules.fallbackCategoryId !== undefined && rules.fallbackCategoryId !== null && !ids.has(rules.fallbackCategoryId)) return 'reward_fallback_category_invalid';
   return null;
 }
 
@@ -67,12 +76,23 @@ export function validateRewardRules(rules) {
  * The reward category one job falls in. A location-specific line beats a
  * location-free one for the same classification, so "Instructor KSA" is never
  * priced as a generic instructor.
+ *
+ * A job whose kind the table does not name at all — no classification, or one
+ * with no line — is paid on the fallback line (Agent). A kind the table does
+ * name but only per location (an instructor with no country) is *not*: paying
+ * an instructor as an agent would be a quiet underpayment, so it stays without
+ * a line until somebody sets the location. Rule sets saved before the fallback
+ * existed take the default; an explicit `null` turns it off.
  */
 export function rewardCategoryFor(request, rules = DEFAULT_REWARD_RULES) {
-  const classification = request?.classification;
-  if (!classification) return null;
+  const categories = rules?.categories ?? [];
+  const classification = request?.classification ?? null;
+  const candidates = classification ? categories.filter((category) => category.classification === classification) : [];
+  if (!candidates.length) {
+    const fallbackId = rules?.fallbackCategoryId === undefined ? FALLBACK_REWARD_CATEGORY : rules.fallbackCategoryId;
+    return categories.find((category) => category.id === fallbackId) ?? null;
+  }
   const location = request.locationCode ?? locationCode(request.location);
-  const candidates = (rules?.categories ?? []).filter((category) => category.classification === classification);
   return candidates.find((category) => category.location && category.location === location)
     ?? candidates.find((category) => !category.location)
     ?? null;

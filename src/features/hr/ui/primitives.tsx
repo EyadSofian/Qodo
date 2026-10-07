@@ -9,7 +9,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { animate, motion, useReducedMotion } from 'framer-motion';
 import { ChevronRight, type LucideIcon } from 'lucide-react';
 import { cx } from '../../../lib/utils';
-import { initialsOf, num, useHRText, workingDays } from '../format';
+import { date as formatDate, initialsOf, num, useHRText, workingDays } from '../format';
 import { PRIORITY_LABEL, SLA_LABEL, STATUS_LABEL } from '../labels';
 import type { Priority, RequestStatus, SlaSnapshot } from '../types';
 import { AREA_THEME, areaOf, gradient, initialsGradient } from './theme';
@@ -178,10 +178,10 @@ export function StatusBadge({ status }: { status: RequestStatus }) {
 }
 
 /** "Day 11 / 15" and what is left, with a bar that fills as the clock runs. */
-export function SlaMeter({ sla, compact = false }: { sla: SlaSnapshot; compact?: boolean }) {
+export function SlaMeter({ sla, compact = false, source }: { sla: SlaSnapshot; compact?: boolean; source?: string }) {
   const { t, lang, pick } = useHRText();
   const reduce = useReducedMotion();
-  if (!sla?.started) return <span className="text-[12px] text-slate-400">{t('يبدأ بعد الاعتماد', 'Starts at approval')}</span>;
+  if (!sla?.started) return <span className="text-[12px] text-slate-400">{source === 'odoo' ? t('أضف مدة التوظيف في Odoo لتبدأ المهلة', 'Add a Hiring Period in Odoo to start the deadline') : t('يبدأ بعد الاعتماد', 'Starts at approval')}</span>;
   const tone = SLA_TONE[sla.state];
   const target = sla.targetWorkingDays ?? 0;
   const elapsed = sla.elapsedWorkingDays ?? 0;
@@ -206,6 +206,12 @@ export function SlaMeter({ sla, compact = false }: { sla: SlaSnapshot; compact?:
           transition={reduce ? { duration: 0 } : { duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
         />
       </div>
+      {!compact && sla.startDate && sla.dueDate && (
+        <p className="mt-1.5 flex flex-wrap items-center justify-between gap-x-3 text-[11px] text-slate-500">
+          <span>{t('البداية', 'Start')} <b className="font-semibold tabular-nums text-slate-600">{formatDate(sla.startDate, lang)}</b></span>
+          <span>{t('الاستحقاق', 'Due')} <b className="font-semibold tabular-nums text-slate-600">{formatDate(sla.dueDate, lang)}</b></span>
+        </p>
+      )}
     </div>
   );
 }

@@ -187,7 +187,8 @@ export function PriorityDialog({ request, context, onClose, onDone }: { request:
   const [reason, setReason] = useState('');
   const [overrideReason, setOverrideReason] = useState('');
   const { saving, capacity, setCapacity, run } = useSubmit();
-  const live = ['hiring', 'on_hold'].includes(request.status);
+  // A job from Odoo arrives with no priority; its first one needs no reason.
+  const live = ['hiring', 'on_hold'].includes(request.status) && !(request.source === 'odoo' && !request.priority && !request.sla?.startDate);
   useEffect(() => {
     const next = context.policy.bands[priority];
     setTarget((value) => (value >= next.min && value <= next.max ? value : next.default));

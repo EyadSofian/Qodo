@@ -14,7 +14,7 @@ import { Card, HeroStat, Metric, PageHeader, SectionTitle } from '../ui/primitiv
 import { labelColor } from '../ui/theme';
 import { LeaveRow, OutTodayStrip, personName } from '../ui/timeOff';
 import { EmptyBlock, ErrorBlock, PageSkeleton } from '../ui/states';
-import { TONE, type Tone } from '../ui/tones';
+import { SEVERITY_TONE, TONE, type Tone } from '../ui/tones';
 
 /** Old `/hr?tab=…` bookmarks keep working. */
 const LEGACY_TABS: Record<string, string> = {
@@ -52,7 +52,7 @@ function Row({ label, value, to, tone = 'neutral', hint }: { label: string; valu
 }
 
 export function HRHome() {
-  const { t, lang } = useHRText();
+  const { t, lang, pick } = useHRText();
   const [params] = useSearchParams();
   const legacy = params.get('tab');
   const { data, error, loading, reload } = useHRQuery<HomeData>(legacy ? null : hrApi.home, { refreshMs: 180_000 });
@@ -144,15 +144,26 @@ export function HRHome() {
 
       <div className="hr-stagger grid grid-cols-1 gap-5 lg:grid-cols-2">
         <Card>
-          <SectionTitle title={t('التوظيف من Odoo', 'Recruitment from Odoo')} action={r ? <Link to="/hr/recruitment" className="text-[rgb(var(--hr-a1))] hover:underline">{t('فتح الوظائف', 'Open jobs')}</Link> : null} />
+          <SectionTitle title={t('صحة التوظيف', 'Recruitment health')} action={r ? <Link to="/hr/recruitment" className="text-[rgb(var(--hr-a1))] hover:underline">{t('فتح التوظيف', 'Open recruitment')}</Link> : null} />
           {r ? (
-            <ul className="-mx-3">
-              <Row label={t('وظائف منشورة في مصر', 'Published jobs in Egypt')} value={r.jobs} to="/hr/recruitment" tone="info" />
-              <Row label={t('مقاعد مطلوب توظيفها', 'Seats to recruit')} value={r.toRecruit} to="/hr/recruitment" tone="warning" />
-              <Row label={t('طلبات جديدة', 'New applications')} value={r.newApplications} to="/hr/recruitment" tone="info" />
-              <Row label={t('كل المتقدمين', 'All applications')} value={r.applications} to="/hr/recruitment" />
-              <Row label={t('مسؤولو التوظيف', 'Recruiters')} value={r.recruiters} to="/hr/recruitment" />
-            </ul>
+            <>
+              <ul className="-mx-3">
+                <Row label={t('وظائف متأخرة', 'Overdue jobs')} value={r.overdue} to="/hr/recruitment/hiring?sla=overdue" tone="critical" />
+                <Row label={t('قريبة الاستحقاق', 'Due soon')} value={r.dueSoon} to="/hr/recruitment/hiring?sla=due_soon" tone="warning" />
+                <Row label={t('وظائف حرجة نشطة', 'Active critical jobs')} value={r.critical} to="/hr/recruitment/hiring?priority=critical" tone="critical" />
+                <Row label={t('تنبيهات سعة', 'Capacity alerts')} value={r.capacityAlerts} to="/hr/recruitment/capacity" tone="warning" />
+                <Row label={t('بانتظار الاعتماد النهائي', 'Awaiting final approval')} value={r.pendingApproval} to="/hr/recruitment/requests?status=pending_approval" tone="info" />
+                <Row label={t('نجاح الـSLA هذا العام', 'SLA success this year')} value={r.slaSuccess.percent === null ? '—' : pct(r.slaSuccess.percent, lang)} to="/hr/reports?report=recruitment_sla" hint={t(`${r.slaSuccess.judged} وظيفة محسومة`, `${r.slaSuccess.judged} decided jobs`)} />
+                {r.odoo && <Row label={t('وظائف منشورة في Odoo', 'Jobs published in Odoo')} value={r.odoo.jobs} to="/hr/recruitment/odoo-jobs" tone="info" hint={t(`${num(r.odoo.toRecruit, lang)} مقعد · ${num(r.odoo.newApplications, lang)} طلب جديد`, `${num(r.odoo.toRecruit, lang)} seats · ${num(r.odoo.newApplications, lang)} new applications`)} />}
+              </ul>
+              {r.topAlerts.length > 0 && (
+                <ul className="mt-3 space-y-1.5 border-t border-white/80 pt-3">
+                  {r.topAlerts.map((alert) => (
+                    <li key={alert.id}><Link to={alert.link} className="flex items-start gap-2 text-[12.5px] hover:underline"><span className={cx('mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full', TONE[SEVERITY_TONE[alert.severity]].dot)} aria-hidden="true" /><span className="text-[#3F5068]">{pick(alert.body)}</span></Link></li>
+                  ))}
+                </ul>
+              )}
+            </>
           ) : <EmptyBlock title={t('التوظيف خارج صلاحياتك', 'Recruitment is outside your access')} />}
         </Card>
 

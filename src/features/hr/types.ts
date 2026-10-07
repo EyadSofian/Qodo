@@ -47,7 +47,7 @@ export interface TeamMember {
   linkedUserId: string | null;
   odooEmployeeId: number | null;
   photoUrl: string | null;
-  reasons: Array<'title' | 'odoo' | 'assignments' | 'manual'>;
+  reasons: Array<'title' | 'odoo' | 'assignments' | 'odoo_jobs' | 'manual'>;
   excluded?: boolean;
 }
 
@@ -78,7 +78,65 @@ export interface RecruiterCardData {
   slaSuccess: { percent: number | null; judged: number };
   kpi: { percent: number | null; complete: boolean; period: string };
   reward: { done: number; of: number; category: RewardCategory | null; ready: number };
+  /** What Odoo publishes under their name today; null while Odoo is unreachable. */
+  odoo: OdooJobTotals | null;
 }
+
+export interface OdooJobTotals {
+  jobs: number;
+  toRecruit: number;
+  newApplications: number;
+  applications: number;
+}
+
+/** A job published in Odoo, with the Qodo request confirmed against it. */
+export interface OdooJob {
+  id: number;
+  name: string;
+  company: string;
+  department: string;
+  recruiter: { id: number; name: string } | null;
+  toRecruit: number;
+  applications: number;
+  newApplications: number;
+  hired: number;
+  /** HR's schedule on the job in Odoo: the day the clock starts and the days to fill it. */
+  activeDate: string | null;
+  hiringPeriodDays: number | null;
+  seniority: string | null;
+  recruitmentStatus: string | null;
+  publishedDate: string | null;
+  published: boolean;
+  odooUrl: string;
+  jobUrl: string | null;
+  /** The owner's HR code when they are on Qodo's recruitment desk, else null. */
+  ownerCode: string | null;
+  /** `approved`: reviewed and approved in Qodo, not one kept for a job published without a request. */
+  request: { id: string; reference: string; status: RequestStatus; priority: Priority | null; dueDate: string | null; approved: boolean } | null;
+}
+
+export interface OdooRecruiter {
+  id: number;
+  name: string;
+  fullName: string;
+  nameArabic: string;
+  title: string;
+  employeeCode: string | null;
+  photoUrl: string | null;
+}
+
+export interface OdooJobsData {
+  configured: boolean;
+  connected: boolean;
+  company: string;
+  fetchedAt: string | null;
+  jobs: OdooJob[];
+  team: OdooRecruiter[];
+}
+
+/** One recruiter on the capacity board: the card, their Qodo jobs, their Odoo jobs. */
+export type BoardJob = JobRequest & { posting?: OdooJob | null };
+export type RecruiterBoardRow = RecruiterCardData & { jobs: BoardJob[]; odooJobs: OdooJob[] };
 
 export interface SlaSnapshot {
   started: boolean;
@@ -150,7 +208,7 @@ export interface SalaryRange {
 export interface JobRequest {
   id: string;
   reference: string;
-  source: 'qodo' | 'legacy_workbook';
+  source: 'qodo' | 'legacy_workbook' | 'odoo';
   archivedAt?: string | null;
   archiveReason?: string | null;
   status: RequestStatus;
@@ -240,6 +298,8 @@ export interface RecruitmentContext {
   perms: Record<string, boolean>;
   employeeCode: string | null;
   team: TeamMember[];
+  /** 'odoo': the desk follows Odoo's published board; the workbook is off. Requests are still made and approved in Qodo. */
+  jobSource?: 'odoo' | 'manual';
 }
 
 export interface Alert {
@@ -274,6 +334,8 @@ export interface RecruitmentSummary {
 export interface RecruitmentOverviewData {
   scope: 'all' | 'self' | null;
   team: RecruiterCardData[];
+  /** Odoo's published board in figures; null outside the whole-desk view or while Odoo is away. */
+  odoo: (OdooJobTotals & { unowned: number; fetchedAt: string | null }) | null;
   summary: RecruitmentSummary;
   alerts: Alert[];
   context: RecruitmentContext;
@@ -747,11 +809,16 @@ export interface HomeData {
     payrollRate: { sell: number; source: string; asOf: string } | null;
   };
   recruitment?: null | {
-    jobs: number;
-    toRecruit: number;
-    newApplications: number;
-    applications: number;
-    recruiters: number;
+    overdue: number;
+    dueSoon: number;
+    critical: number;
+    pendingApproval: number;
+    pendingReview: number;
+    slaSuccess: { percent: number | null; judged: number; year: string };
+    capacityAlerts: number;
+    criticalAlerts: number;
+    topAlerts: Alert[];
+    odoo: OdooJobTotals | null;
   };
   personnel?: {
     onboardingOpen: number;
@@ -993,6 +1060,7 @@ export interface ReconciliationPerson {
 
 export interface ReconciliationView {
   canApplyWorkbook: boolean;
+  jobSource?: 'odoo' | 'manual';
   workbook: { fileName: string; importedAt: string; period: string | null; rows: number } | null;
   imported: number;
   activeRequests: number;

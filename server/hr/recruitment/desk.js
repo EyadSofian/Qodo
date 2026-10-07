@@ -19,6 +19,8 @@ import { forbidden } from '../errors.js';
 import { employeeName, hasRecruitmentAccess, recruitmentContext } from './context.js';
 import { canSee, publicContext, publicRequest } from './requests.js';
 import { activeRewardRules, qualityFlags } from './rewards.js';
+import { odooJobTotals, odooJobsByEmployee, publishedJobs, publishedJobsSnapshot } from './odooJobs.js';
+import { syncOdooJobs } from './odooSync.js';
 
 /** The desk is for people who run or oversee recruitment, and for a recruiter's own card. */
 function deskScope(ctx) {
@@ -40,16 +42,47 @@ export async function deskData(user) {
   const ctx = await recruitmentContext(user);
   if (!hasRecruitmentAccess(ctx)) throw forbidden(PERMISSIONS.HR_RECRUITMENT_VIEW);
   const scope = deskScope(ctx);
-  const [events, batches, rules, flags] = await Promise.all([
+  const [events, batches, rules, flags, odoo] = await Promise.all([
     find('recruitmentKpiEvents', (event) => organizationOf(event) === ctx.organizationId),
     find('recruitmentRewardBatches', (batch) => organizationOf(batch) === ctx.organizationId),
     activeRewardRules(ctx.organizationId),
     qualityFlags(ctx.organizationId),
+    publishedJobsSnapshot(),
   ]);
-  return { ctx, scope, events, batches, rules, flags };
+  return { ctx, scope, events, batches, rules, flags, odoo };
 }
 
-function teamCards({ ctx, scope, events, batches, rules, flags }) {
+const approvedInQodo = (request) => request.source === 'qodo' && ['hiring', 'on_hold', 'completed'].includes(request.status);
+
+/**
+ * An Odoo job as the desk shows it: Odoo's own counts, plus the Qodo request
+ * confirmed against it — the thing that carries its deadline and can be edited.
+ */
+function deskJobs(ctx, snapshot, jobs) {
+  // Odoo names an owner by user; only one who is on Qodo's desk counts as owning it here.
+  const codeByOdooUser = new Map((snapshot?.team ?? []).filter((member) => member.employeeCode && ctx.teamCodes.has(member.employeeCode)).map((member) => [member.id, member.employeeCode]));
+  const requestByJob = new Map();
+  for (const [requestId, link] of ctx.links) {
+    const request = ctx.requests.find((item) => item.id === requestId);
+    if (!request || !canSee(ctx, request)) continue;
+    // An approved request speaks for the job ahead of the one the sync keeps.
+    const jobId = Number(link.odooJobId);
+    if (!requestByJob.has(jobId) || approvedInQodo(request)) requestByJob.set(jobId, request);
+  }
+  return jobs.map((job) => {
+    const request = requestByJob.get(job.id) ?? null;
+    return {
+      ...job,
+      ownerCode: (job.recruiter && codeByOdooUser.get(job.recruiter.id)) || null,
+      // `approved`: the request went through review and final approval in Qodo,
+      // as opposed to one the sync keeps for a job published without a request.
+      request: request ? { id: request.id, reference: request.reference, status: request.status, priority: request.priority ?? null, dueDate: request.sla?.currentDueDate ?? null, approved: approvedInQodo(request) } : null,
+    };
+  });
+}
+
+function teamCards({ ctx, scope, events, batches, rules, flags, odoo }) {
+  const odooJobs = odooJobsByEmployee(odoo);
   const period = ctx.today.slice(0, 7);
   const year = ctx.today.slice(0, 4);
   const loads = loadByRecruiter(ctx.requests, { countOnHold: ctx.policy.capacity.countOnHold !== false });
@@ -75,6 +108,8 @@ function teamCards({ ctx, scope, events, batches, rules, flags }) {
       slaSuccess: { percent: percent(judgedThisYear.filter((request) => request.sla.slaMet).length, judgedThisYear.length), judged: judgedThisYear.length },
       kpi: { percent: kpi.percent, complete: kpi.complete, period },
       reward: { done: reward.best.done, of: reward.best.of, category: reward.best.category, ready: batches.filter((batch) => batch.employeeCode === code && batch.status === 'ready').length },
+      // What Odoo publishes under their name today; null while Odoo is unreachable.
+      odoo: odoo?.connected ? odooJobTotals(odooJobs.get(code) ?? []) : null,
     };
   });
 }
@@ -110,6 +145,12 @@ export function alertsForContext(ctx, { batches = [], scope = 'all' } = {}) {
   return deriveRecruitmentAlerts({ requests, names, policy: ctx.policy, linkedRequestIds: new Set(ctx.links.keys()), readyBatches, today: ctx.today });
 }
 
+/** Odoo's published board in four figures, for whoever sees the whole desk. */
+function odooFigures({ ctx, scope, odoo }) {
+  if (scope !== 'all' || !odoo?.connected) return null;
+  return { ...odooJobTotals(odoo.jobs), unowned: deskJobs(ctx, odoo, odoo.jobs).filter((job) => !job.ownerCode).length, fetchedAt: odoo.fetchedAt };
+}
+
 /** The Overview page in one round trip: team first, then figures, then alerts. */
 export async function recruitmentOverview(user) {
   const data = await deskData(user);
@@ -118,6 +159,7 @@ export async function recruitmentOverview(user) {
   return {
     scope,
     team: scope ? teamCards(data) : [],
+    odoo: odooFigures(data),
     summary: summaryFigures(ctx, scope === 'all' ? visible : visible.filter((request) => request.recruiterCode === ctx.employeeCode)),
     alerts: alertsForContext(ctx, { batches: data.batches, scope: scope ?? 'self' }),
     context: publicContext(ctx),
@@ -148,16 +190,47 @@ export async function capacityBoard(user) {
   if (!data.scope) throw forbidden(PERMISSIONS.HR_RECRUITMENT_VIEW);
   const { ctx } = data;
   const cards = teamCards(data);
+  const odooJobs = odooJobsByEmployee(data.odoo);
+  // Each job with its Odoo posting, whoever owns the posting in Odoo: an
+  // approved request keeps the recruiter Qodo assigned.
+  const postings = new Map(deskJobs(ctx, data.odoo, data.odoo?.connected ? data.odoo.jobs : []).map((job) => [job.id, job]));
+  const withPosting = (request) => ({ ...publicRequest(ctx, request), posting: postings.get(Number(ctx.links.get(request.id)?.odooJobId)) ?? null });
   return {
+    odooConnected: Boolean(data.odoo?.connected),
     recruiters: cards.map((card) => ({
       ...card,
+      odooJobs: deskJobs(ctx, data.odoo, odooJobs.get(card.member.employeeCode) ?? []),
       jobs: ctx.requests
         .filter((request) => request.recruiterCode === card.member.employeeCode && (COMMITTED_STATUSES.includes(request.status) || PENDING_STATUSES.includes(request.status)))
-        .map((request) => publicRequest(ctx, request)),
+        .map(withPosting),
     })),
     unassigned: ctx.requests
       .filter((request) => !request.recruiterCode && ['pending_review', 'pending_approval', 'hiring', 'on_hold'].includes(request.status) && canSee(ctx, request))
-      .map((request) => publicRequest(ctx, request)),
+      .map(withPosting),
     context: publicContext(ctx),
+  };
+}
+
+/**
+ * Every job published in Odoo for Egypt, with its owner and the Qodo request
+ * confirmed against it. `refresh` re-reads Odoo now and reports a failure
+ * instead of serving the last copy.
+ */
+export async function odooPublishedJobs(user, { refresh = false } = {}) {
+  let ctx = await recruitmentContext(user);
+  if (!hasRecruitmentAccess(ctx)) throw forbidden(PERMISSIONS.HR_RECRUITMENT_VIEW);
+  const data = await publishedJobs({ refresh });
+  if (refresh) {
+    // "Refresh from Odoo" brings the desk in line now instead of at the next tick.
+    const synced = await syncOdooJobs(ctx.organizationId, { snapshot: data });
+    if (synced && !synced.skipped) ctx = await recruitmentContext(user);
+  }
+  return {
+    ...data,
+    jobs: deskJobs(ctx, data, data.jobs),
+    team: (data.team ?? []).map((member) => {
+      const profile = member.employeeCode ? ctx.profiles.get(member.employeeCode) : null;
+      return { ...member, nameArabic: profile?.nameArabic || '', title: profile?.title || member.title };
+    }),
   };
 }

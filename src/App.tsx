@@ -91,6 +91,7 @@ const JobRequests = hrPage(() => import('./features/hr/recruitment/pages/JobRequ
 const NewJobRequest = hrPage(() => import('./features/hr/recruitment/pages/NewJobRequest'), 'NewJobRequest');
 const JobRequestDetail = hrPage(() => import('./features/hr/recruitment/pages/JobRequestDetail'), 'JobRequestDetail');
 const ActiveHiring = hrPage(() => import('./features/hr/recruitment/pages/ActiveHiring'), 'ActiveHiring');
+const OdooPublishedJobs = hrPage(() => import('./features/hr/recruitment/pages/OdooPublishedJobs'), 'OdooPublishedJobs');
 const RecruitmentCapacity = hrPage(() => import('./features/hr/recruitment/pages/RecruitmentCapacity'), 'RecruitmentCapacity');
 const RecruitmentKPI = hrPage(() => import('./features/hr/recruitment/pages/RecruitmentKPI'), 'RecruitmentKPI');
 const RecruitmentRewards = hrPage(() => import('./features/hr/recruitment/pages/RecruitmentRewards'), 'RecruitmentRewards');
@@ -301,6 +302,7 @@ function Gate() {
             <Route path="requests/:id" element={<Suspended><JobRequestDetail /></Suspended>} />
             <Route path="hiring" element={<Suspended><ActiveHiring /></Suspended>} />
             <Route path="capacity" element={<Suspended><RecruitmentCapacity /></Suspended>} />
+            <Route path="odoo-jobs" element={<Suspended><OdooPublishedJobs /></Suspended>} />
             <Route path="kpi" element={<Suspended><RecruitmentKPI /></Suspended>} />
             <Route path="rewards" element={<Suspended><RecruitmentRewards /></Suspended>} />
           </Route>

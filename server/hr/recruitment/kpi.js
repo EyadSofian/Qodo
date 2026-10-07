@@ -167,6 +167,17 @@ export async function voidKpiEvent(user, id, { reason } = {}) {
 /* ── Automatic checks ────────────────────────────────────────────── */
 
 /**
+ * Whose candidates the daily check reads in Odoo. Workbook rows never: their
+ * history was not kept in Odoo. A request approved in Qodo always. A job kept
+ * from Odoo's board too (the owner's decision, 2026-10-05), from the day its
+ * clock started — one with no clock has no "since", and would drag in every
+ * applicant the job ever had.
+ */
+export function automaticChecksApply(request) {
+  return request?.source === 'qodo' || (request?.source === 'odoo' && Boolean(request.sla?.startDate));
+}
+
+/**
  * The checks the database can answer, raised by the clock once per finding.
  * The deterministic id is the finding's own identity — rule, job, applicant —
  * so running this every day (or twice after a restart) never deducts twice.
@@ -218,7 +229,7 @@ export async function runAutomaticKpiChecks(organizationId, { ctx, withOdoo = tr
   }
 
   if (withOdoo) {
-    const candidates = context.requests.filter((request) => ['hiring', 'completed'].includes(request.status) && request.source === 'qodo' && context.links.get(request.id));
+    const candidates = context.requests.filter((request) => ['hiring', 'completed'].includes(request.status) && automaticChecksApply(request) && context.links.get(request.id));
     for (const request of candidates) {
       const link = context.links.get(request.id);
       let applicants;
