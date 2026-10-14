@@ -245,6 +245,13 @@ export interface JobRequest {
   interviewManager: { name: string; userId: string | null };
   requestedBy: string | null;
   requestedByName: string;
+  requestDate?: string | null;
+  requirementsSubmittedDate?: string | null;
+  confirmedDate?: string | null;
+  openDate?: string | null;
+  closedDate?: string | null;
+  hiringDurationWorkingDays?: number | null;
+  positionBonusRule?: { id: string; version: number; title: string; targetWorkingDays: number; bonusAmount: number; currency: string } | null;
   notes: string;
   legacyValidation: string;
   sla: StoredSla | null;
@@ -404,6 +411,7 @@ export interface RequestDetailData {
   extensions: ExtensionRow[];
   activity: ActivityRow[];
   performance: null | {
+    positionBonus?: { outcome: string; amount: number | null; currency: string | null; hiringDurationWorkingDays: number | null; rule: JobRequest['positionBonusRule'] };
     kpiEvents: KpiEvent[];
     reward: {
       eligible: boolean;

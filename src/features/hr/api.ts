@@ -128,6 +128,7 @@ export const hrApi = {
     kpi: (period?: string) => `/hr/recruitment/kpi${query({ period })}`,
     kpiDetail: (code: string, period?: string) => `/hr/recruitment/kpi/${encodeURIComponent(code)}${query({ period })}`,
     rewards: '/hr/recruitment/rewards',
+    positionBonuses: '/hr/recruitment/position-bonuses',
   },
 };
 

@@ -94,12 +94,12 @@ export function SlaSection({ view }: { view: SettingsView }) {
           ))}
         </div>
         <label className="mt-4 block">
-          <span className="label">{t('من يُبلَّغ بطلبات الاعتماد النهائي', 'Who is told a request awaits final approval')}</span>
+          <span className="label">{t('مسؤول الاعتماد النهائي (وتصل إليه التنبيهات)', 'Final approver (receives approval alerts)')}</span>
           <select className="field md:w-96" disabled={disabled} value={draft.approvals.finalApproverUserId ?? ''} onChange={(event) => setDraft((current) => ({ ...current, approvals: { finalApproverUserId: event.target.value || null } }))}>
             <option value="">{t('كل من لديه صلاحية الاعتماد', 'Everyone who can approve')}</option>
             {view.approvers.map((approver) => <option key={approver.id} value={approver.id}>{approver.name}</option>)}
           </select>
-          <span className="mt-1 block text-[11.5px] text-ink-faint">{t('يحدد من يصله التنبيه فقط — الاعتماد نفسه متاح لكل من يملك الصلاحية.', 'This only chooses who is notified — anyone with the permission can still approve.')}</span>
+          <span className="mt-1 block text-[11.5px] text-ink-faint">{t('عند اختيار شخص، لا يستطيع اعتماد الطلب إلا هذا الشخص إذا كانت لديه صلاحية الاعتماد. تركه فارغاً يتيح الاعتماد لكل من يملك الصلاحية.', 'When selected, only this person can approve if they have the approval permission. Leave empty to allow all approvers.')}</span>
         </label>
       </SettingsCard>
       <SaveBar dirty={dirty} saving={saving} problem={problem} onReset={reset} onSave={() => void save({ recruitment: draft as Partial<Recruitment> })} />

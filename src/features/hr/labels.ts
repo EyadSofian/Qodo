@@ -99,6 +99,7 @@ export const FUNNEL_LABEL: Record<string, Localised> = {
 };
 
 export const REWARD_REASON_LABEL: Record<string, Localised> = {
+  position_bonus_rule: { ar: 'تُحسب بمكافأة الـPosition بدل دفعة الثلاث وظائف', en: 'Priced by the position bonus instead of a three-job batch' },
   already_batched: { ar: 'ضمن دفعة سابقة', en: 'Already in a batch' },
   not_completed: { ar: 'غير مكتملة بتاريخ معروف', en: 'Not completed with a known date' },
   sla_not_met: { ar: 'اكتملت بعد الـSLA', en: 'Completed after its SLA' },

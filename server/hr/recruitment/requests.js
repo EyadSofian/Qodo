@@ -38,6 +38,7 @@ import { knownPhoto, odooEmployeeFor } from '../odooPeople.js';
 import { photoUrlFor } from './team.js';
 import { recruitmentSourceIsOdoo } from './odooJobs.js';
 import { syncOdooJobs } from './odooSync.js';
+import { positionBonusFor, positionBonusRuleFor } from './positionBonus.js';
 
 const DEPARTMENT_IDS = new Set(DEPARTMENTS.map((department) => department.id));
 const CURRENCIES = ['EGP', 'SAR', 'USD'];
@@ -90,7 +91,7 @@ export function abilitiesFor(ctx, request) {
     edit: status === 'draft' ? requester || perms.assign : open && runs,
     submit: status === 'draft' && (requester || perms.assign),
     review: status === 'pending_review' && canReview(ctx, request),
-    approve: status === 'pending_approval' && perms.approve,
+    approve: status === 'pending_approval' && perms.approve && (!ctx.confirmerUserId || ctx.confirmerUserId === user.id),
     assign: open && perms.assign && !fromOdoo,
     changePriority: open && (runs || (status === 'draft' && requester)),
     extend: ['hiring', 'on_hold'].includes(status) && perms.extend,
@@ -132,6 +133,12 @@ export function publicRequest(ctx, request) {
   const link = ctx.links.get(request.id) ?? null;
   return {
     ...request,
+    requestDate: request.requestDate ?? (String(request.createdAt ?? '').slice(0, 10) || null),
+    requirementsSubmittedDate: request.requirementsSubmittedDate ?? (request.requirementsSubmittedAt ? String(request.requirementsSubmittedAt).slice(0, 10) : null),
+    confirmedDate: request.confirmedDate ?? (request.approvedAt ? String(request.approvedAt).slice(0, 10) : null),
+    openDate: request.openDate ?? request.sla?.startDate ?? null,
+    closedDate: request.closedDate ?? request.sla?.completedAt ?? null,
+    hiringDurationWorkingDays: request.sla?.actualWorkingDays ?? null,
     slaSnapshot: sla,
     recruiter: recruiterSummary(ctx, request.recruiterCode),
     supportRecruiters: (request.supportRecruiterCodes ?? []).map((code) => recruiterSummary(ctx, code)),
@@ -272,7 +279,7 @@ async function reviewersFor(ctx, request) {
 }
 
 async function approversFor(ctx) {
-  const chosen = ctx.settings.recruitment?.approvals?.finalApproverUserId;
+  const chosen = ctx.confirmerUserId;
   const approvers = await usersWith(ctx.organizationId, PERMISSIONS.HR_RECRUITMENT_APPROVE);
   if (chosen && approvers.some((user) => user.id === chosen)) return [chosen];
   return approvers.map((user) => user.id);
@@ -357,6 +364,7 @@ export async function requestDetail(user, id) {
     const batch = batches.find((item) => CONSUMING_BATCH_STATUSES.includes(item.status)) ?? null;
     const eligibility = jobEligibility(request, { rules, qualityFlags: flags, batchedJobIds: new Set(batch ? [request.id] : []) });
     performance = {
+      positionBonus: positionBonusFor(request, request.positionBonusRule ?? null, ctx.policy.calendar),
       kpiEvents: events
         .map((event) => ({ ...event, rule: ruleBook.get(event.rule) ?? { id: event.rule, ar: event.rule, en: event.rule }, reviewerName: event.reviewerId ? people.get(event.reviewerId) ?? '' : '' }))
         .sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt))),
@@ -494,6 +502,11 @@ export async function createRequest(user, input = {}) {
     interviewManager: { name: '', userId: null },
     requestedBy: user.id,
     requestedByName: user.name,
+    requestDate: ctx.today,
+    requirementsSubmittedDate: null,
+    confirmedDate: null,
+    openDate: null,
+    closedDate: null,
     notes: '',
     legacyValidation: '',
     sla: null,
@@ -506,6 +519,15 @@ export async function createRequest(user, input = {}) {
     await recordAssignment(ctx, request, { recruiterCode, previousRecruiterCode: null, reason: input.assignReason, enforcement });
   }
   if (input.submit) return transition(user, id, 'submit', { comment: input.comment });
+  if (input.quick === true) {
+    const link = `/hr/recruitment/requests/${encodeURIComponent(id)}/requirements`;
+    await notifyEach([user.id], null, {
+      type: 'recruitment.requirements_link',
+      title: { ar: 'استكمل متطلبات الوظيفة', en: 'Complete vacancy requirements' },
+      body: `${request.reference} · ${request.title}`,
+      link,
+    }).catch((error) => console.warn('[hr] requirements link notification failed:', error?.message ?? error));
+  }
   return requestDetail(user, id);
 }
 
@@ -579,6 +601,8 @@ export async function transition(user, id, action, { comment = '', override = fa
   if (action === 'submit') {
     const missing = missingForSubmit(request);
     if (missing.length) throw new HRError('recruitment_request_incomplete', 400, { missing });
+    patch.requirementsSubmittedAt = stamp;
+    patch.requirementsSubmittedDate = ctx.today;
     approvalRows.push({ stage: 'request', action, decision: 'submitted', fromStatus: request.status, toStatus: step.to, comment: note });
     // A request written by somebody who reviews that department has had its
     // department review: the review is recorded as theirs, said out loud.
@@ -587,17 +611,22 @@ export async function transition(user, id, action, { comment = '', override = fa
       approvalRows.push({ stage: 'department_review', action: 'review_approve', decision: 'approved', fromStatus: 'pending_review', toStatus: 'pending_approval', comment: note || 'Submitted by the department reviewer', selfReviewed: true });
     }
   } else if (action === 'approve') {
-    const problem = validateTarget(request.priority, request.targetWorkingDays, ctx.policy.bands);
+    const bonusRule = await positionBonusRuleFor(ctx.organizationId, request.title);
+    const bonusTarget = bonusRule?.targetWorkingDays ?? null;
+    const targetWorkingDays = bonusTarget ?? request.targetWorkingDays;
+    const bonusPriority = bonusTarget ? priorityForHiringPeriod(bonusTarget) : null;
+    const priority = bonusPriority ?? request.priority;
+    const problem = bonusRule ? null : validateTarget(priority, targetWorkingDays, ctx.policy.bands);
     if (problem) throw new HRError(problem, 400, { band: slaBand(request.priority, ctx.policy.bands) });
-    const enforcement = enforceCapacity(ctx, { recruiterCode: request.recruiterCode, priority: request.priority, requestId: request.id, override, overrideReason });
+    const enforcement = enforceCapacity(ctx, { recruiterCode: request.recruiterCode, priority, requestId: request.id, override, overrideReason });
     if (enforcement.overridden) {
       await recordAssignment(ctx, request, { recruiterCode: request.recruiterCode, previousRecruiterCode: request.recruiterCode, reason: 'Capacity re-checked at final approval', enforcement: { ...enforcement, overrideReason } });
     }
     // The clock starts here and nowhere else.
     const sla = {
       startDate: ctx.today,
-      targetWorkingDays: request.targetWorkingDays,
-      targetSource: 'approved',
+      targetWorkingDays,
+      targetSource: bonusRule ? 'position_bonus_rule' : 'approved',
       extendedWorkingDays: 0,
       pausedWorkingDays: 0,
       pausedSince: null,
@@ -608,8 +637,14 @@ export async function transition(user, id, action, { comment = '', override = fa
     sla.originalDueDate = addWorkingDays(sla.startDate, sla.targetWorkingDays, ctx.policy.calendar);
     sla.currentDueDate = sla.originalDueDate;
     patch.sla = sla;
+    patch.targetWorkingDays = targetWorkingDays;
+    patch.priority = priority;
+    patch.prioritySource = bonusRule && bonusPriority ? 'position_bonus_rule' : request.prioritySource;
+    patch.positionBonusRule = bonusRule ? { id: bonusRule.id, version: bonusRule.version, title: bonusRule.title, targetWorkingDays: bonusRule.targetWorkingDays, bonusAmount: bonusRule.bonusAmount, currency: bonusRule.currency } : null;
     patch.approvedAt = stamp;
     patch.approvedBy = user.id;
+    patch.confirmedDate = ctx.today;
+    patch.openDate = ctx.today;
     approvalRows.push({ stage: step.stage, action, decision: step.decision, fromStatus: request.status, toStatus: step.to, comment: note });
   } else if (action === 'hold') {
     if (ctx.policy.holdPausesClock && request.sla?.startDate) {
@@ -907,6 +942,11 @@ export async function recordAccepted(user, id, { accepted, note = '', completedA
     patch.status = 'completed';
     patch.statusChangedAt = now();
     patch.sla = request.sla?.startDate ? { ...request.sla, ...completionFields(request.sla, closedOn, ctx.policy.calendar) } : request.sla;
+    patch.closedDate = closedOn;
+    if (request.source === 'qodo' && !request.positionBonusRule) {
+      const rule = await positionBonusRuleFor(ctx.organizationId, request.title);
+      if (rule) patch.positionBonusRule = { id: rule.id, version: rule.version, title: rule.title, targetWorkingDays: rule.targetWorkingDays, bonusAmount: rule.bonusAmount, currency: rule.currency };
+    }
   }
   await saveRequest(request.id, patch);
   await appendActivity({ organizationId: ctx.organizationId, requestId: request.id, type: 'accepted_recorded', actorId: user.id, meta: { from: request.accepted ?? 0, to: count, note: text(note, 500) || null } });

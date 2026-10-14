@@ -35,6 +35,7 @@ export async function recruitmentContext(user, { withTeam = true } = {}) {
     profiles: state.profiles,
     requests,
     links,
+    confirmerUserId: settings.recruitment?.approvals?.finalApproverUserId ?? null,
     team,
     teamCodes: new Set(team.map((member) => member.employeeCode)),
     // Whatever the team lookup already warmed; never waits on Odoo.

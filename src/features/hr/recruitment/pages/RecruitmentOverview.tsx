@@ -89,6 +89,7 @@ export function RecruitmentOverview() {
                 {t('طلب وظيفة جديد', 'New job request')}
               </Link>
             )}
+            <Link to="/hr/performance" className="btn-ghost btn-sm">{t('المؤشرات والأداء', 'KPIs & performance')}</Link>
           </>
         }
       />

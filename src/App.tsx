@@ -299,6 +299,7 @@ function Gate() {
             <Route index element={<Suspended><RecruitmentOverview /></Suspended>} />
             <Route path="requests" element={<Suspended><JobRequests /></Suspended>} />
             <Route path="requests/new" element={<Suspended><NewJobRequest /></Suspended>} />
+            <Route path="requests/:id/requirements" element={<Suspended><NewJobRequest /></Suspended>} />
             <Route path="requests/:id" element={<Suspended><JobRequestDetail /></Suspended>} />
             <Route path="hiring" element={<Suspended><ActiveHiring /></Suspended>} />
             <Route path="capacity" element={<Suspended><RecruitmentCapacity /></Suspended>} />

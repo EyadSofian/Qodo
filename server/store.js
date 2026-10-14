@@ -62,6 +62,9 @@ export const COLLECTIONS = [
   'recruitmentExtensions',
   'recruitmentKpiEvents',
   'recruitmentRewardRules',
+  // One versioned bonus rule per exact job title. A confirmed vacancy keeps a
+  // snapshot, so later edits never change an already promised amount.
+  'recruitmentPositionBonusRules',
   'recruitmentRewardBatches',
   'recruitmentActivity',
   'recruitmentOdooLinks',

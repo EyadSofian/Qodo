@@ -20,6 +20,7 @@ import type { RewardBatch, RewardsData } from '../../types';
 import { useMotion } from '../../ui/motion';
 import { Badge, Card, PageHeader, PersonAvatar, ProgressDots, SectionTitle } from '../../ui/primitives';
 import { EmptyBlock, ErrorBlock, PageSkeleton } from '../../ui/states';
+import { PositionBonuses } from '../components/PositionBonuses';
 
 const BATCH_TONE = { ready: 'info', approved: 'success', paid: 'success', rejected: 'critical', cancelled: 'neutral' } as const;
 const BATCH_LABEL = {
@@ -99,9 +100,10 @@ export function RecruitmentRewards() {
       <PageHeader
         eyebrow={t('التوظيف', 'Recruitment')}
         title={t('المكافآت', 'Rewards')}
-        description={t(`كل ${rules.jobsPerBatch} وظائف مؤهلة تكوّن دفعة مكافأة. الوظيفة تُحسب مرة واحدة فقط.`, `Every ${rules.jobsPerBatch} qualifying jobs form one reward batch. A job counts once.`)}
+        description={t(`قواعد الـBonus حسب الوظيفة بالأعلى. الوظائف التي لا تشملها تُقيّم ضمن نظام الدفعات القديم: كل ${rules.jobsPerBatch} وظائف مؤهلة تكوّن دفعة.`, `Position bonuses are above. Jobs without a position rule use the existing batch scheme: every ${rules.jobsPerBatch} eligible jobs form a batch.`)}
         actions={data.canEditRules ? <Link to="/hr/settings?section=rewards" className="btn-ghost btn-sm"><Settings2 size={15} />{t('قواعد المكافآت', 'Reward rules')}</Link> : undefined}
       />
+      <PositionBonuses />
 
       <Card>
         <SectionTitle title={t(`القاعدة الحالية — الإصدار ${rules.version}`, `Current rules — version ${rules.version}`)} hint={t('شروط الأهلية: مكتملة، داخل الـSLA، بلا خصم جودة، وليست ضمن دفعة أخرى.', 'Eligibility: completed, within SLA, no quality deduction, not already in a batch.')} />

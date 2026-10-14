@@ -4,14 +4,14 @@
  */
 
 import { useMemo, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Archive, Plus, RotateCcw, Search } from 'lucide-react';
 import { errorMessage } from '../../../../lib/api';
-import { useToast } from '../../../../components/ui';
+import { Modal, Spinner, useToast } from '../../../../components/ui';
 import { hrApi, hrMutate, useHRQuery } from '../../api';
 import { date, num, shortName, useHRText } from '../../format';
 import { STATUS_LABEL } from '../../labels';
-import type { JobRequest, RecruitmentContext, RequestStatus } from '../../types';
+import type { JobRequest, RecruitmentContext, RequestDetailData, RequestStatus } from '../../types';
 import { DataTable, type Column } from '../../ui/DataTable';
 import { PageHeader, PersonAvatar, PriorityBadge, SlaMeter, StatusBadge } from '../../ui/primitives';
 import { PillTabs } from '../../ui/PillTabs';
@@ -29,6 +29,7 @@ const TABS: Array<{ id: string; statuses: RequestStatus[] | null; label: { ar: s
 
 export function JobRequests() {
   const { t, lang, pick } = useHRText();
+  const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const tab = TABS.find((item) => item.id === params.get('status')) ?? TABS[0];
   const archived = params.get('scope') === 'archived';
@@ -36,6 +37,9 @@ export function JobRequests() {
   const query = params.get('q') ?? '';
   const { data, error, loading, reload } = useHRQuery<{ requests: JobRequest[]; context: RecruitmentContext }>(hrApi.recruitment.requests(undefined, archived ? 'archived' : mine ? 'mine' : undefined));
   const [restoring, setRestoring] = useState<string | null>(null);
+  const [quickOpen, setQuickOpen] = useState(false);
+  const [quickTitle, setQuickTitle] = useState('');
+  const [quickSaving, setQuickSaving] = useState(false);
   const { push } = useToast();
 
   const set = (key: string, value: string | null) => {
@@ -71,6 +75,16 @@ export function JobRequests() {
     } finally {
       setRestoring(null);
     }
+  };
+  const createQuick = async () => {
+    if (!quickTitle.trim()) return;
+    setQuickSaving(true);
+    try {
+      const result = await hrMutate<RequestDetailData>('post', hrApi.recruitment.requests(), { title: quickTitle.trim(), quick: true });
+      setQuickOpen(false);
+      navigate(`/hr/recruitment/requests/${encodeURIComponent(result.request.id)}/requirements`);
+    } catch (failure) { push(errorMessage(failure, lang), 'bad'); }
+    finally { setQuickSaving(false); }
   };
 
   const columns: Array<Column<JobRequest>> = [
@@ -108,8 +122,9 @@ export function JobRequests() {
         description={archived ? (fromOdoo ? t('كل ما ليس منشوراً في Odoo الآن محفوظ هنا للرجوع إليه. الوظيفة ترجع تلقائياً عند نشرها في Odoo.', 'Everything Odoo does not publish now is kept here for reference. A job returns by itself when it is published in Odoo.') : t('الطلبات المؤرشفة محفوظة ويمكن إرجاعها إلى قائمة التوظيف.', 'Archived requests are kept here and can be restored to recruitment.')) : t('من الطلب إلى مراجعة القسم إلى الاعتماد النهائي — الـSLA لا يبدأ قبل الاعتماد.', 'From request to department review to final approval — the SLA never starts before approval.')}
         actions={archived
           ? <Link to="/hr/recruitment/requests" className="btn-secondary btn-sm">{t('العودة للطلبات', 'Back to requests')}</Link>
-          : <span className="flex flex-wrap items-center gap-2">{canManageArchive && <Link to="/hr/recruitment/requests?scope=archived" className="btn-ghost btn-sm"><Archive size={15} />{t('الأرشيف', 'Archive')}</Link>}{canCreate && <Link to="/hr/recruitment/requests/new" className="btn-primary btn-sm"><Plus size={16} />{t('طلب وظيفة جديد', 'New job request')}</Link>}</span>}
+          : <span className="flex flex-wrap items-center gap-2">{canManageArchive && <Link to="/hr/recruitment/requests?scope=archived" className="btn-ghost btn-sm"><Archive size={15} />{t('الأرشيف', 'Archive')}</Link>}{canCreate && <button type="button" className="btn-primary btn-sm" onClick={() => setQuickOpen(true)}><Plus size={16} />{t('طلب وظيفة جديد', 'New job request')}</button>}</span>}
       />
+      {quickOpen && <Modal open onClose={() => setQuickOpen(false)} title={t('طلب وظيفة أولي', 'Initial vacancy request')} footer={<><button type="button" className="btn-ghost" onClick={() => setQuickOpen(false)}>{t('إلغاء', 'Cancel')}</button><button type="button" className="btn-primary" disabled={quickSaving || !quickTitle.trim()} onClick={() => void createQuick()}>{quickSaving ? <Spinner size={16} /> : null}{t('إنشاء ورابط المتطلبات', 'Create requirements link')}</button></>}><div className="space-y-3"><p className="text-sm leading-6 text-slate-600">{t('اكتب المسمى فقط. هننشئ الطلب كمسودة ونفتح لك رابط استكمال المتطلبات؛ عداد التوظيف لن يبدأ الآن.', 'Enter the job title. We will create a draft and open its requirements link; the hiring clock will not start yet.')}</p><label className="block"><span className="label">{t('المسمى الوظيفي', 'Job title')}</span><input className="field mt-1" value={quickTitle} maxLength={140} onChange={(event) => setQuickTitle(event.target.value)} autoFocus /></label></div></Modal>}
 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
         {!archived && <PillTabs

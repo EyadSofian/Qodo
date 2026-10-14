@@ -29,6 +29,7 @@ import { capacityBoard, odooPublishedJobs, recruitmentAlerts, recruitmentOvervie
 import { pipelineSummaries, recruitmentOdooOverview, requestPipeline } from '../hr/recruitment/odooPipeline.js';
 import { createKpiEvent, kpiDetail, kpiOverview, voidKpiEvent } from '../hr/recruitment/kpi.js';
 import { decideRewardBatch, rewardsOverview } from '../hr/recruitment/rewards.js';
+import { positionBonusOverview, savePositionBonusConfirmer, savePositionBonusRule } from '../hr/recruitment/positionBonus.js';
 
 const router = Router();
 const h = (fn) => handle(fn, 'hr.recruitment');
@@ -80,6 +81,12 @@ router.post('/kpi/events', h(async (req, res) => {
 router.post('/kpi/events/:id/void', h((req) => voidKpiEvent(req.user, req.params.id, body(req))));
 
 router.get('/rewards', h((req) => rewardsOverview(req.user)));
+router.get('/position-bonuses', h((req) => positionBonusOverview(req.user)));
+router.post('/position-bonuses/rules', h(async (req, res) => {
+  const result = await savePositionBonusRule(req.user, body(req));
+  res.status(201).json(result);
+}));
+router.put('/position-bonuses/confirmer', h((req) => savePositionBonusConfirmer(req.user, body(req))));
 router.post('/rewards/batches/:id/decision', h((req) => decideRewardBatch(req.user, req.params.id, body(req))));
 
 // The short form the API contract names: PUT /api/hr/recruitment/:id/odoo-link.

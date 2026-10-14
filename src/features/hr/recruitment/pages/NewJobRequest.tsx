@@ -6,8 +6,8 @@
  * begins at final approval, and the review step says so.
  */
 
-import { useMemo, useState, type ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowLeft, ArrowRight, Check, Save, Send, ShieldAlert } from 'lucide-react';
 import { DEPARTMENTS } from '@shared/departments';
@@ -97,9 +97,12 @@ function RecruiterChoice({ code, name, title, photoUrl, priority, selected, onSe
 export function NewJobRequest() {
   const { t, lang, pick, dir } = useHRText();
   const navigate = useNavigate();
+  const { id: editId } = useParams();
   const { push } = useToast();
   const motionPresets = useMotion();
-  const { data, error, loading, reload } = useHRQuery<{ requests: JobRequest[]; context: RecruitmentContext }>(hrApi.recruitment.requests());
+  const { data, error, loading, reload } = useHRQuery<{ requests: JobRequest[]; context: RecruitmentContext }>(editId ? null : hrApi.recruitment.requests());
+  const { data: editData, error: editError, loading: editLoading, reload: reloadEdit } = useHRQuery<RequestDetailData>(editId ? hrApi.recruitment.request(editId) : null);
+  const [hydratedId, setHydratedId] = useState<string | null>(null);
   const [step, setStep] = useState(0);
   const [direction, setDirection] = useState<1 | -1>(1);
   const [saving, setSaving] = useState(false);
@@ -132,7 +135,26 @@ export function NewJobRequest() {
   });
   const set = <K extends keyof Form>(key: K, value: Form[K]) => setForm((current) => ({ ...current, [key]: value }));
 
-  const context = data?.context;
+  useEffect(() => {
+    const request = editData?.request;
+    if (!request || !editId || hydratedId === editId) return;
+    setForm({
+      title: request.title, department: request.department, departmentId: request.departmentId,
+      location: request.location || 'EG', locationCode: request.locationCode,
+      headcount: request.headcount, classification: request.classification || '', reason: request.reason || 'new',
+      reasonNote: request.reasonNote || '', responsibilities: request.responsibilities || '', tasks: request.tasks || '',
+      successIndicators: request.successIndicators || '', requirements: request.requirements || '',
+      requirementChecks: request.requirementChecks || { demo: false, technicalTest: false, offer: false },
+      presentationRequirement: request.presentationRequirement || '',
+      salaryMin: request.salaryRange?.min === null ? '' : String(request.salaryRange?.min ?? ''),
+      salaryMax: request.salaryRange?.max === null ? '' : String(request.salaryRange?.max ?? ''),
+      currency: request.salaryRange?.currency || 'EGP', priority: request.priority,
+      targetWorkingDays: request.targetWorkingDays, recruiterCode: request.recruiterCode || '',
+      interviewManager: request.interviewManager?.name || '',
+    });
+    setHydratedId(editId);
+  }, [editData, editId, hydratedId]);
+  const context = editData?.context || data?.context;
   const band = form.priority && context ? context.policy.bands[form.priority] : null;
   const canAssign = Boolean(context?.perms.assign);
 
@@ -152,8 +174,11 @@ export function NewJobRequest() {
     return list;
   }, [form, band]);
 
-  if (error && !data) return <ErrorBlock error={error} onRetry={reload} />;
-  if (loading && !data) return <PageSkeleton rows={1} />;
+  if (!editId && error && !data) return <ErrorBlock error={error} onRetry={reload} />;
+  if (editError && !editData) return <ErrorBlock error={editError} onRetry={reloadEdit} />;
+  if (!editId && loading && !data) return <PageSkeleton rows={1} />;
+  if (editId && (editLoading || !editData || hydratedId !== editId)) return <PageSkeleton rows={1} />;
+  if (editId && editData && (!editData.request.abilities.edit || editData.request.status !== 'draft')) return <ErrorBlock error={new Error(t('هذا الطلب لم يعد مسودة قابلة للتعديل.', 'This request is no longer an editable draft.'))} />;
   if (!context) return null;
 
   const steps = [t('الوظيفة', 'Position'), t('الاحتياج', 'Business need'), t('خطة التوظيف', 'Hiring plan'), t('المراجعة', 'Review')];
@@ -193,7 +218,13 @@ export function NewJobRequest() {
   const save = async (submit: boolean, override = false) => {
     setSaving(true);
     try {
-      const result = await hrMutate<RequestDetailData>('post', '/hr/recruitment/requests', payload(submit, override));
+      let result: RequestDetailData;
+      if (editId && editData) {
+        result = await hrMutate<RequestDetailData>('patch', hrApi.recruitment.request(editId), { ...payload(false, override), revision: editData.request.revision });
+        if (submit) result = await hrMutate<RequestDetailData>('post', `${hrApi.recruitment.request(editId)}/submit`, {});
+      } else {
+        result = await hrMutate<RequestDetailData>('post', '/hr/recruitment/requests', payload(submit, override));
+      }
       push(submit ? t('أُرسل الطلب للمراجعة.', 'Request submitted for review.') : t('حُفظت المسودة.', 'Draft saved.'));
       navigate(`/hr/recruitment/requests/${encodeURIComponent(result.request.id)}`, { replace: true });
     } catch (failure) {
@@ -216,7 +247,7 @@ export function NewJobRequest() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
-      <PageHeader eyebrow={t('التوظيف', 'Recruitment')} title={t('طلب وظيفة جديد', 'New job request')} description={t('يُراجَع الطلب من مدير القسم ثم يُعتمد نهائياً، وعندها فقط يبدأ الـSLA.', 'The request is reviewed by the department manager, then approved — only then does the SLA start.')} />
+      <PageHeader eyebrow={t('التوظيف', 'Recruitment')} title={editId ? t('استكمال متطلبات الوظيفة', 'Complete vacancy requirements') : t('طلب وظيفة جديد', 'New job request')} description={t('يُراجَع الطلب من مدير القسم ثم يُعتمد نهائياً، وعندها فقط يبدأ الـSLA.', 'The request is reviewed by the department manager, then approved — only then does the SLA start.')} />
 
       <ol className="grid grid-cols-4 gap-2" aria-label={t('خطوات الطلب', 'Request steps')}>
         {steps.map((label, index) => (

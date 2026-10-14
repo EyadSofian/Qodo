@@ -236,6 +236,7 @@ export function JobRequestDetail() {
 
         {actions.length > 0 && (
           <div className="mt-5 flex flex-wrap gap-2 border-t border-[#EEF2F7] pt-4">
+            {request.status === 'draft' && abilities.edit && <Link to={`/hr/recruitment/requests/${encodeURIComponent(request.id)}/requirements`} className="btn-primary btn-sm">{t('استكمال المتطلبات', 'Complete requirements')}</Link>}
             {actions.map((action) => {
               const Icon = action.icon;
               return (
@@ -283,7 +284,12 @@ export function JobRequestDetail() {
               <KeyValue label={t('نطاق الراتب', 'Salary range')} value={request.salaryRange.min !== null || request.salaryRange.max !== null ? `${money(request.salaryRange.min, lang, request.salaryRange.currency ?? 'EGP')} – ${money(request.salaryRange.max, lang, request.salaryRange.currency ?? 'EGP')}` : request.salaryRange.text || '—'} />
               <KeyValue label={t('مدير المقابلات', 'Interview manager')} value={request.interviewManager.name} />
               <KeyValue label={t('صاحب الطلب', 'Requested by')} value={request.requestedByName || (request.source === 'legacy_workbook' ? t('غير مسجل في الملف', 'Not recorded in the workbook') : '—')} />
-              <KeyValue label={t('تاريخ الطلب', 'Requested on')} value={request.source === 'legacy_workbook' ? '—' : date(request.createdAt, lang)} />
+              <KeyValue label={t('تاريخ الطلب', 'Requested on')} value={request.source === 'legacy_workbook' ? '—' : date(request.requestDate || request.createdAt, lang)} />
+              <KeyValue label={t('إرسال المتطلبات', 'Requirements submitted')} value={date(request.requirementsSubmittedDate, lang)} />
+              <KeyValue label={t('اعتماد طه / الاعتماد النهائي', 'Final confirmation')} value={date(request.confirmedDate, lang)} />
+              <KeyValue label={t('بداية التوظيف', 'Hiring opened')} value={date(request.openDate, lang)} />
+              <KeyValue label={t('إغلاق الوظيفة', 'Vacancy closed')} value={date(request.closedDate, lang)} />
+              <KeyValue label={t('مدة التعيين', 'Hiring duration')} value={request.hiringDurationWorkingDays === null || request.hiringDurationWorkingDays === undefined ? '—' : workingDays(request.hiringDurationWorkingDays, lang)} />
               {request.legacyValidation && <KeyValue label={t('اعتماد مسجل في الملف القديم', 'Validation in the legacy workbook')} value={request.legacyValidation} />}
             </dl>
             {request.notes && <p className="mt-4 rounded-xl bg-[#F6F8FB] px-3.5 py-2.5 text-[12.5px] leading-6 text-[#3F5068]">{request.notes}</p>}
@@ -405,6 +411,7 @@ export function JobRequestDetail() {
                 )}
               </Section>
               <Section id="reward" title={t('أهلية المكافأة', 'Reward eligibility')}>
+                {data.performance.positionBonus && <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 text-[12.5px] leading-6 text-navy"><p className="font-bold">{t('Bonus حسب المسمى الوظيفي', 'Position-based bonus')}</p><p>{data.performance.positionBonus.rule ? `${data.performance.positionBonus.rule.title} · ${workingDays(data.performance.positionBonus.rule.targetWorkingDays, lang)} · ${money(data.performance.positionBonus.rule.bonusAmount, lang, data.performance.positionBonus.rule.currency)}` : t('لا توجد قاعدة محفوظة لهذه الوظيفة.', 'No stored rule for this vacancy.')}</p><p>{data.performance.positionBonus.outcome === 'earned' ? t('الاستحقاق كامل داخل المدة.', 'Full bonus earned within the target.') : data.performance.positionBonus.outcome === 'late_pending_policy' ? t('الوظيفة اتأخرت؛ المبلغ معلّق حتى اعتماد سياسة التأخير مع طه.', 'The vacancy closed late; the amount awaits Taha’s late-hiring policy.') : t('يُحسم عند إغلاق الوظيفة بعد الاعتماد.', 'Calculated on closure after confirmation.')}</p></div>}
                 {data.performance.reward.batch ? (
                   <div className="space-y-2">
                     <Badge tone={data.performance.reward.batch.status === 'rejected' ? 'critical' : 'success'}>{t('ضمن دفعة مكافأة', 'In a reward batch')} · {data.performance.reward.batch.status}</Badge>
@@ -417,7 +424,7 @@ export function JobRequestDetail() {
                     {data.performance.reward.reasons.map((reason) => <li key={reason} className="flex items-center gap-2"><span className="h-1.5 w-1.5 rounded-full bg-slate-300" aria-hidden="true" />{pick(REWARD_REASON_LABEL[reason] ?? { ar: reason, en: reason })}</li>)}
                   </ul>
                 )}
-                {data.performance.reward.category && <p className="mt-2 text-[11.5px] text-ink-faint">{t('بند المكافأة:', 'Reward line:')} {pick(data.performance.reward.category)} · v{data.performance.reward.rulesVersion}</p>}
+                {data.performance.reward.category && !request.positionBonusRule && <p className="mt-2 text-[11.5px] text-ink-faint">{t('بند المكافأة:', 'Reward line:')} {pick(data.performance.reward.category)} · v{data.performance.reward.rulesVersion}</p>}
                 <div className="mt-2"><Link to={`/hr/recruitment/rewards${request.recruiterCode ? `?recruiter=${encodeURIComponent(request.recruiterCode)}` : ''}`} className="text-[12px] font-semibold text-brand-600 hover:underline">{t('فتح المكافآت', 'Open rewards')}</Link></div>
               </Section>
             </>

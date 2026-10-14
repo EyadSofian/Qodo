@@ -104,6 +104,9 @@ export function rewardCategoryFor(request, rules = DEFAULT_REWARD_RULES) {
  */
 export function jobEligibility(request, { rules = DEFAULT_REWARD_RULES, qualityFlags = new Set(), batchedJobIds = new Set() } = {}) {
   const reasons = [];
+  // Position-based bonuses are priced per vacancy; never also pay the older
+  // three-job category batch for the same approved request.
+  if (request.positionBonusRule) reasons.push('position_bonus_rule');
   const eligibility = rules?.eligibility ?? {};
   if (batchedJobIds.has(request.id)) reasons.push('already_batched');
   if (eligibility.requireCompleted !== false && (request.status !== 'completed' || !request.sla?.completedAt)) reasons.push('not_completed');
