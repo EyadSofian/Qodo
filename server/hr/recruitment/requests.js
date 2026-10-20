@@ -39,6 +39,7 @@ import { photoUrlFor } from './team.js';
 import { recruitmentSourceIsOdoo } from './odooJobs.js';
 import { syncOdooJobs } from './odooSync.js';
 import { positionBonusFor, positionBonusRuleFor } from './positionBonus.js';
+import { ARCHIVE_UNPUBLISHED } from './odooSync.js';
 
 const DEPARTMENT_IDS = new Set(DEPARTMENTS.map((department) => department.id));
 const CURRENCIES = ['EGP', 'SAR', 'USD'];
@@ -46,6 +47,8 @@ const REASONS = ['new', 'replacement', 'expansion', 'other'];
 const LIMITS = {
   title: 140,
   department: 80,
+  requestOrigin: 180,
+  requestPurpose: 1000,
   location: 60,
   reasonNote: 500,
   responsibilities: 4000,
@@ -92,7 +95,7 @@ export function abilitiesFor(ctx, request) {
     submit: status === 'draft' && (requester || perms.assign),
     review: status === 'pending_review' && canReview(ctx, request),
     approve: status === 'pending_approval' && perms.approve && (!ctx.confirmerUserId || ctx.confirmerUserId === user.id),
-    assign: open && perms.assign && !fromOdoo,
+    assign: open && perms.assign && !fromOdoo && (request.approvalFlow !== 'admin_then_salah' || (['hiring', 'on_hold'].includes(status) && (!request.assignmentManagerUserId || request.assignmentManagerUserId === user.id))),
     changePriority: open && (runs || (status === 'draft' && requester)),
     extend: ['hiring', 'on_hold'].includes(status) && perms.extend,
     correctSchedule: request.source === 'legacy_workbook' && status === 'hiring' && Boolean(request.sla?.startDate) && (perms.assign || perms.extend || recruiter),
@@ -131,20 +134,22 @@ function recruiterSummary(ctx, code) {
 export function publicRequest(ctx, request) {
   const sla = slaSnapshot(request.sla, { today: ctx.today, calendar: ctx.policy.calendar, dueSoonWorkingDays: ctx.policy.dueSoonWorkingDays });
   const link = ctx.links.get(request.id) ?? null;
+  const closedInOdoo = request.source === 'odoo' && request.archiveReason === ARCHIVE_UNPUBLISHED && Boolean(request.archivedAt);
   return {
     ...request,
+    status: closedInOdoo ? 'closed' : request.status,
     requestDate: request.requestDate ?? (String(request.createdAt ?? '').slice(0, 10) || null),
     requirementsSubmittedDate: request.requirementsSubmittedDate ?? (request.requirementsSubmittedAt ? String(request.requirementsSubmittedAt).slice(0, 10) : null),
     confirmedDate: request.confirmedDate ?? (request.approvedAt ? String(request.approvedAt).slice(0, 10) : null),
     openDate: request.openDate ?? request.sla?.startDate ?? null,
-    closedDate: request.closedDate ?? request.sla?.completedAt ?? null,
+    closedDate: request.closedDate ?? (closedInOdoo ? String(request.archivedAt).slice(0, 10) : null) ?? request.sla?.completedAt ?? null,
     hiringDurationWorkingDays: request.sla?.actualWorkingDays ?? null,
-    slaSnapshot: sla,
+    slaSnapshot: closedInOdoo || request.status === 'closed' ? { ...sla, state: 'closed' } : sla,
     recruiter: recruiterSummary(ctx, request.recruiterCode),
     supportRecruiters: (request.supportRecruiterCodes ?? []).map((code) => recruiterSummary(ctx, code)),
     openSeats: Math.max(0, (Number(request.headcount) || 0) - (Number(request.accepted) || 0)),
     odooLink: link ? { jobId: link.odooJobId, name: link.odooJobName, matchType: link.matchType, linkedAt: link.linkedAt } : null,
-    abilities: abilitiesFor(ctx, request),
+    abilities: request.archivedAt ? Object.fromEntries(Object.keys(abilitiesFor(ctx, request)).map((key) => [key, false])) : abilitiesFor(ctx, request),
   };
 }
 
@@ -173,7 +178,7 @@ function cleanSalary(input) {
 export function cleanRequestInput(input, ctx) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new HRError('recruitment_input_invalid');
   const out = {};
-  for (const key of ['title', 'department', 'location', 'reasonNote', 'responsibilities', 'tasks', 'successIndicators', 'requirements', 'presentationRequirement', 'notes']) {
+  for (const key of ['title', 'department', 'requestOrigin', 'requestPurpose', 'location', 'reasonNote', 'responsibilities', 'tasks', 'successIndicators', 'requirements', 'presentationRequirement', 'notes']) {
     if (input[key] !== undefined) out[key] = text(input[key], LIMITS[key]);
   }
   if (input.departmentId !== undefined) {
@@ -237,6 +242,8 @@ function settleTarget(fields, ctx) {
 /** What a request still needs before it can be submitted. */
 export function missingForSubmit(request) {
   const missing = [];
+  if (request.approvalFlow === 'admin_then_salah' && !request.requestOrigin) missing.push('requestOrigin');
+  if (request.approvalFlow === 'admin_then_salah' && !request.requestPurpose) missing.push('requestPurpose');
   if (!request.title) missing.push('title');
   if (!request.department) missing.push('department');
   if (!request.location) missing.push('location');
@@ -304,9 +311,10 @@ async function tell(ctx, userIds, request, { type, title, body }) {
 export async function listRequests(user, filters = {}) {
   const ctx = await recruitmentContext(user);
   const archivedScope = filters.scope === 'archived';
+  const closedScope = filters.scope === 'closed';
   if (archivedScope && !ctx.perms.settings) throw forbidden(PERMISSIONS.HR_SETTINGS_MANAGE);
-  let rows = archivedScope
-    ? (await requestsFor(ctx.organizationId, { includeArchived: true })).filter((request) => Boolean(request.archivedAt))
+  let rows = archivedScope || closedScope
+    ? (await requestsFor(ctx.organizationId, { includeArchived: true })).filter((request) => archivedScope ? Boolean(request.archivedAt) : canSee(ctx, request) && ((['completed', 'closed'].includes(request.status) && !request.archivedAt) || (request.source === 'odoo' && request.archiveReason === ARCHIVE_UNPUBLISHED && request.archivedAt)))
     : ctx.requests.filter((request) => canSee(ctx, request));
   if (filters.scope === 'mine') rows = rows.filter((request) => request.requestedBy === user.id);
   if (filters.status) {
@@ -456,15 +464,7 @@ export async function createRequest(user, input = {}) {
   if (!fields.title) throw new HRError('recruitment_title_required');
 
   const id = `rrq-${newId()}`;
-  let recruiterCode = null;
-  let enforcement = null;
-  if (input.recruiterCode) {
-    if (!ctx.perms.assign) throw forbidden(PERMISSIONS.HR_RECRUITMENT_ASSIGN);
-    recruiterCode = String(input.recruiterCode);
-    requireTeamMember(ctx, recruiterCode);
-    enforcement = enforceCapacity(ctx, { recruiterCode, priority: fields.priority, requestId: id, override: input.override, overrideReason: input.overrideReason });
-    enforcement.overrideReason = input.overrideReason;
-  }
+  if (input.recruiterCode) throw new HRError('recruitment_assignment_after_approval', 409);
 
   const stamp = now();
   const request = await create('recruitmentRequests', {
@@ -472,10 +472,13 @@ export async function createRequest(user, input = {}) {
     organizationId: ctx.organizationId,
     reference: await nextReference(ctx),
     source: 'qodo',
+    approvalFlow: 'admin_then_salah',
     status: 'draft',
     statusChangedAt: stamp,
     title: '',
     department: '',
+    requestOrigin: '',
+    requestPurpose: '',
     departmentId: DEPARTMENT_IDS.has(user.department) ? user.department : 'general',
     location: '',
     locationCode: null,
@@ -495,10 +498,10 @@ export async function createRequest(user, input = {}) {
     presentationRequirement: '',
     salaryRange: { min: null, max: null, currency: null, text: '' },
     targetWorkingDays: null,
-    recruiterCode,
+    recruiterCode: null,
     supportRecruiterCodes: [],
     unresolvedAssignees: [],
-    assignedAt: recruiterCode ? stamp : null,
+    assignedAt: null,
     interviewManager: { name: '', userId: null },
     requestedBy: user.id,
     requestedByName: user.name,
@@ -514,10 +517,6 @@ export async function createRequest(user, input = {}) {
     ...fields,
   });
   await appendActivity({ organizationId: ctx.organizationId, requestId: id, type: 'created', actorId: user.id, meta: { reference: request.reference } });
-  if (recruiterCode) {
-    ctx.requests.push(request);
-    await recordAssignment(ctx, request, { recruiterCode, previousRecruiterCode: null, reason: input.assignReason, enforcement });
-  }
   if (input.submit) return transition(user, id, 'submit', { comment: input.comment });
   if (input.quick === true) {
     const link = `/hr/recruitment/requests/${encodeURIComponent(id)}/requirements`;
@@ -603,10 +602,11 @@ export async function transition(user, id, action, { comment = '', override = fa
     if (missing.length) throw new HRError('recruitment_request_incomplete', 400, { missing });
     patch.requirementsSubmittedAt = stamp;
     patch.requirementsSubmittedDate = ctx.today;
-    approvalRows.push({ stage: 'request', action, decision: 'submitted', fromStatus: request.status, toStatus: step.to, comment: note });
+    if (request.approvalFlow === 'admin_then_salah') patch.status = 'pending_approval';
+    approvalRows.push({ stage: 'request', action, decision: 'submitted', fromStatus: request.status, toStatus: patch.status, comment: note });
     // A request written by somebody who reviews that department has had its
     // department review: the review is recorded as theirs, said out loud.
-    if (canReview(ctx, request) && ctx.perms.review && request.departmentId === user.department) {
+    if (request.approvalFlow !== 'admin_then_salah' && canReview(ctx, request) && ctx.perms.review && request.departmentId === user.department) {
       patch.status = 'pending_approval';
       approvalRows.push({ stage: 'department_review', action: 'review_approve', decision: 'approved', fromStatus: 'pending_review', toStatus: 'pending_approval', comment: note || 'Submitted by the department reviewer', selfReviewed: true });
     }
@@ -645,6 +645,7 @@ export async function transition(user, id, action, { comment = '', override = fa
     patch.approvedBy = user.id;
     patch.confirmedDate = ctx.today;
     patch.openDate = ctx.today;
+    if (request.approvalFlow === 'admin_then_salah') patch.assignmentManagerUserId = ctx.assignmentManagerUserId;
     approvalRows.push({ stage: step.stage, action, decision: step.decision, fromStatus: request.status, toStatus: step.to, comment: note });
   } else if (action === 'hold') {
     if (ctx.policy.holdPausesClock && request.sla?.startDate) {
@@ -683,7 +684,8 @@ export async function transition(user, id, action, { comment = '', override = fa
   } else if (patch.status === 'hiring' && action === 'approve') {
     // Approved and already confirmed against a published job: it speaks for that job from now.
     if (ctx.links.get(request.id)) void syncOdooJobs(ctx.organizationId).catch(() => null);
-    await tell(ctx, [request.requestedBy, ...recruiterUserIds(ctx, request), ...(await hrDeskFor(ctx))].filter(Boolean), request, { type: 'recruitment.approved', title: { ar: 'تم اعتماد الوظيفة وبدأ التعيين', en: 'Job approved — hiring has started' }, body: title });
+    const assignmentRecipients = request.approvalFlow === 'admin_then_salah' && ctx.assignmentManagerUserId ? [ctx.assignmentManagerUserId] : await hrDeskFor(ctx);
+    await tell(ctx, [request.requestedBy, ...recruiterUserIds(ctx, request), ...assignmentRecipients].filter(Boolean), request, { type: 'recruitment.approved', title: { ar: 'تم اعتماد الوظيفة · بانتظار توزيعها على فريق التوظيف', en: 'Job approved · awaiting recruiter assignment' }, body: title });
   } else if (['draft', 'rejected'].includes(patch.status)) {
     await tell(ctx, [request.requestedBy].filter(Boolean), request, {
       type: patch.status === 'draft' ? 'recruitment.returned' : 'recruitment.rejected',

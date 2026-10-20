@@ -73,7 +73,7 @@ export function RecruitmentOverview() {
         eyebrow={t('التوظيف', 'Recruitment')}
         title={t('مكتب التوظيف', 'Recruitment desk')}
         description={fromOdoo
-          ? t('الطلب يمر بمدير القسم ثم الاعتماد النهائي، ومن يوم الاعتماد يبدأ العمل واحتساب الوقت. الوظيفة المنشورة في Odoo بلا طلب معتمد تظهر بمسؤولها ومواعيدها من Odoo.', 'A request goes to the department manager, then final approval — work and the clock start that day. A job published in Odoo with no approved request shows with Odoo\'s owner and dates.')
+          ? t('الطلب الجديد يذهب للأدمن للاعتماد، ثم يوزّعه صلاح على الفريق. يبدأ عداد التوظيف يوم الاعتماد. الوظائف المنشورة بلا طلب معتمد تظهر بمسؤولها ومواعيدها من Odoo.', 'New requests go to admin for approval, then Salah assigns them to the team. The hiring clock starts on approval. Published jobs without an approved request show their owner and dates from Odoo.')
           : t('الفريق وحمله وتقدمه أولاً، ثم الأرقام — وكل رقم يفتح الوظائف التي خلفه.', 'The team, their load and their progress first — then the figures, each one opening the jobs behind it.')}
         actions={
           <>
@@ -181,7 +181,7 @@ export function RecruitmentOverview() {
               { label: t('بانتظار مراجعة القسم', 'Awaiting department review'), value: s.pendingReview, to: '/hr/recruitment/requests?status=pending_review' },
               { label: t('بانتظار الاعتماد النهائي', 'Awaiting final approval'), value: s.pendingApproval, to: '/hr/recruitment/requests?status=pending_approval' },
               { label: t('معلّقة', 'On hold'), value: s.onHold, to: '/hr/recruitment/hiring?status=on_hold' },
-              { label: t('أُغلقت هذا الشهر', 'Closed this month'), value: s.completedThisMonth, to: '/hr/recruitment/requests?status=completed' },
+              { label: t('أُغلقت هذا الشهر', 'Closed this month'), value: s.completedThisMonth, to: '/hr/recruitment/requests?scope=closed' },
             ].map((row) => (
               <li key={row.label}>
                 <Link to={row.to} className="flex items-center justify-between gap-3 rounded-xl border border-[#EEF2F7] px-3.5 py-2.5 hover:border-brand-200 hover:bg-[#F7FAFD]">

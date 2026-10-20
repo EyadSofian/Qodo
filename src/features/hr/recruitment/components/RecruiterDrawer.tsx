@@ -13,7 +13,7 @@ import { Link } from 'react-router-dom';
 import { CalendarPlus, ExternalLink, Flag, Globe2, Pencil, TimerOff, UserPlus } from 'lucide-react';
 import { cx } from '../../../../lib/utils';
 import { RECRUITMENT_REFRESH_MS, hrApi, invalidateHR, useHRQuery } from '../../api';
-import { num, shortName, useHRText } from '../../format';
+import { date, num, shortName, useHRText } from '../../format';
 import { PRIORITY_LABEL } from '../../labels';
 import type { BoardJob, JobRequest, OdooJob, RecruiterBoardRow, RecruiterCardData, RecruitmentContext } from '../../types';
 import { Drawer } from '../../ui/Drawer';
@@ -82,6 +82,7 @@ export function RecruiterDrawer({ card, onClose }: { card: RecruiterCardData | n
   // The board row is the fresh copy of the card that was clicked.
   const live = row ?? card;
   const jobs = row?.jobs ?? [];
+  const closedJobs = row?.closedJobs ?? [];
   const odooJobs = row?.odooJobs ?? [];
   // When the desk follows Odoo, a job and its Odoo posting are one thing: one list.
   const fromOdoo = data?.context.jobSource === 'odoo';
@@ -167,6 +168,11 @@ export function RecruiterDrawer({ card, onClose }: { card: RecruiterCardData | n
                   })}
                 </ul>
               )}
+            </section>
+
+            <section>
+              <div className="mb-2 flex items-center justify-between gap-2"><h3 className="text-[13px] font-bold text-navy">{t('أُغلقت', 'Closed')} <span className="font-semibold text-ink-faint">{num(closedJobs.length, lang)}</span></h3><LinkArrow to="/hr/recruitment/requests?scope=closed">{t('سجل الإغلاق', 'Closure history')}</LinkArrow></div>
+              {closedJobs.length ? <ul className="space-y-2">{closedJobs.slice(0, 8).map((job) => <li key={job.id} className="rounded-2xl border border-[#E6ECF3] px-3 py-2.5"><div className="flex items-center justify-between gap-2"><span className="min-w-0 truncate text-[12.5px] font-bold text-navy">{job.title}</span><Badge tone={job.hired ? 'success' : 'neutral'}>{job.hired ? t('تعيين مكتمل', 'Hire completed') : t('خرجت من النشر', 'Unpublished')}</Badge></div><p className="mt-1 text-[11.5px] text-[#5A6C82]">{job.reference} · {date(job.closedDate, lang)}</p></li>)}</ul> : <p className="rounded-2xl bg-[#F6F8FB] px-3.5 py-3 text-[12px] text-[#5A6C82]">{t('لا توجد وظائف مغلقة لهذا المسؤول.', 'No closed jobs for this recruiter.')}</p>}
             </section>
 
             {live.odoo && !fromOdoo && (

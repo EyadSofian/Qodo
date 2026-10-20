@@ -21,6 +21,8 @@ import { canSee, publicContext, publicRequest } from './requests.js';
 import { activeRewardRules, qualityFlags } from './rewards.js';
 import { odooJobTotals, odooJobsByEmployee, publishedJobs, publishedJobsSnapshot } from './odooJobs.js';
 import { syncOdooJobs } from './odooSync.js';
+import { requestsFor } from './data.js';
+import { ARCHIVE_UNPUBLISHED } from './odooSync.js';
 
 /** The desk is for people who run or oversee recruitment, and for a recruiter's own card. */
 function deskScope(ctx) {
@@ -42,14 +44,16 @@ export async function deskData(user) {
   const ctx = await recruitmentContext(user);
   if (!hasRecruitmentAccess(ctx)) throw forbidden(PERMISSIONS.HR_RECRUITMENT_VIEW);
   const scope = deskScope(ctx);
-  const [events, batches, rules, flags, odoo] = await Promise.all([
+  const [events, batches, rules, flags, odoo, allRequests] = await Promise.all([
     find('recruitmentKpiEvents', (event) => organizationOf(event) === ctx.organizationId),
     find('recruitmentRewardBatches', (batch) => organizationOf(batch) === ctx.organizationId),
     activeRewardRules(ctx.organizationId),
     qualityFlags(ctx.organizationId),
     publishedJobsSnapshot(),
+    requestsFor(ctx.organizationId, { includeArchived: true }),
   ]);
-  return { ctx, scope, events, batches, rules, flags, odoo };
+  const closedOdoo = allRequests.filter((request) => request.source === 'odoo' && request.archiveReason === ARCHIVE_UNPUBLISHED && request.archivedAt);
+  return { ctx, scope, events, batches, rules, flags, odoo, closedOdoo };
 }
 
 const approvedInQodo = (request) => request.source === 'qodo' && ['hiring', 'on_hold', 'completed'].includes(request.status);
@@ -81,7 +85,7 @@ function deskJobs(ctx, snapshot, jobs) {
   });
 }
 
-function teamCards({ ctx, scope, events, batches, rules, flags, odoo }) {
+function teamCards({ ctx, scope, events, batches, rules, flags, odoo, closedOdoo }) {
   const odooJobs = odooJobsByEmployee(odoo);
   const period = ctx.today.slice(0, 7);
   const year = ctx.today.slice(0, 4);
@@ -93,6 +97,7 @@ function teamCards({ ctx, scope, events, batches, rules, flags, odoo }) {
     const load = loads.get(code) ?? { critical: 0, required: 0, planned: 0, unclassified: 0, total: 0 };
     const completed = owned.filter((request) => request.status === 'completed' && request.sla?.completedAt);
     const completedThisMonth = completed.filter((request) => request.sla.completedAt.slice(0, 7) === period);
+    const unpublishedThisMonth = [...closedOdoo, ...owned.filter((request) => request.status === 'closed' && request.closureReason === 'odoo_unpublished')].filter((request) => request.recruiterCode === code && (request.closedDate || request.archivedAt?.slice(0, 10))?.slice(0, 7) === period);
     const judgedThisYear = completed.filter((request) => request.sla.completedAt.slice(0, 4) === year && request.sla.slaMet !== null);
     const kpi = recruiterKpi({ employeeCode: code, period, requests: ctx.requests, events, settings: ctx.settings, today: ctx.today, calendar: ctx.policy.calendar });
     const reward = rewardProgress({ employeeCode: code, requests: ctx.requests, batches, qualityFlags: flags, rules });
@@ -104,7 +109,8 @@ function teamCards({ ctx, scope, events, batches, rules, flags, odoo }) {
       level: capacityLevel(load, ctx.policy.capacity),
       pipeline: owned.filter((request) => PENDING_STATUSES.includes(request.status)).length,
       overdue,
-      completedThisMonth: completedThisMonth.length,
+      completedThisMonth: completedThisMonth.length + unpublishedThisMonth.length,
+      odooClosedThisMonth: unpublishedThisMonth.length,
       slaSuccess: { percent: percent(judgedThisYear.filter((request) => request.sla.slaMet).length, judgedThisYear.length), judged: judgedThisYear.length },
       kpi: { percent: kpi.percent, complete: kpi.complete, period },
       reward: { done: reward.best.done, of: reward.best.of, category: reward.best.category, ready: batches.filter((batch) => batch.employeeCode === code && batch.status === 'ready').length },
@@ -114,7 +120,7 @@ function teamCards({ ctx, scope, events, batches, rules, flags, odoo }) {
   });
 }
 
-function summaryFigures(ctx, requests) {
+function summaryFigures(ctx, requests, closedOdoo = []) {
   const live = requests.filter((request) => request.status === 'hiring');
   const committed = requests.filter((request) => COMMITTED_STATUSES.includes(request.status));
   const snapshots = live.map((request) => snapshotOf(ctx, request));
@@ -132,7 +138,7 @@ function summaryFigures(ctx, requests) {
     openSeats: committed.reduce((sum, request) => sum + Math.max(0, (Number(request.headcount) || 0) - (Number(request.accepted) || 0)), 0),
     pendingReview: requests.filter((request) => request.status === 'pending_review').length,
     pendingApproval: requests.filter((request) => request.status === 'pending_approval').length,
-    completedThisMonth: requests.filter((request) => request.status === 'completed' && request.sla?.completedAt?.slice(0, 7) === ctx.today.slice(0, 7)).length,
+    completedThisMonth: requests.filter((request) => request.status === 'completed' && request.sla?.completedAt?.slice(0, 7) === ctx.today.slice(0, 7)).length + [...closedOdoo, ...requests.filter((request) => request.status === 'closed' && request.closureReason === 'odoo_unpublished')].filter((request) => (request.closedDate || request.archivedAt?.slice(0, 10))?.slice(0, 7) === ctx.today.slice(0, 7)).length,
     slaSuccess: { percent: percent(judged.filter((request) => request.sla.slaMet).length, judged.length), judged: judged.length, year },
   };
 }
@@ -160,7 +166,7 @@ export async function recruitmentOverview(user) {
     scope,
     team: scope ? teamCards(data) : [],
     odoo: odooFigures(data),
-    summary: summaryFigures(ctx, scope === 'all' ? visible : visible.filter((request) => request.recruiterCode === ctx.employeeCode)),
+    summary: summaryFigures(ctx, scope === 'all' ? visible : visible.filter((request) => request.recruiterCode === ctx.employeeCode), scope === 'all' ? data.closedOdoo : data.closedOdoo.filter((request) => request.recruiterCode === ctx.employeeCode)),
     alerts: alertsForContext(ctx, { batches: data.batches, scope: scope ?? 'self' }),
     context: publicContext(ctx),
   };
@@ -176,7 +182,7 @@ export async function recruitmentSummary(user) {
   const data = await deskData(user);
   if (!data.scope) throw forbidden(PERMISSIONS.HR_RECRUITMENT_VIEW);
   const visible = data.ctx.requests.filter((request) => canSee(data.ctx, request));
-  return { summary: summaryFigures(data.ctx, visible), today: data.ctx.today };
+  return { summary: summaryFigures(data.ctx, visible, data.scope === 'all' ? data.closedOdoo : data.closedOdoo.filter((request) => request.recruiterCode === data.ctx.employeeCode)), today: data.ctx.today };
 }
 
 export async function recruitmentAlerts(user) {
@@ -203,6 +209,9 @@ export async function capacityBoard(user) {
       jobs: ctx.requests
         .filter((request) => request.recruiterCode === card.member.employeeCode && (COMMITTED_STATUSES.includes(request.status) || PENDING_STATUSES.includes(request.status)))
         .map(withPosting),
+      closedJobs: [...ctx.requests.filter((request) => request.recruiterCode === card.member.employeeCode && ['completed', 'closed'].includes(request.status)), ...data.closedOdoo.filter((request) => request.recruiterCode === card.member.employeeCode)]
+        .map((request) => ({ id: request.id, reference: request.reference, title: request.title, closedDate: request.closedDate || request.sla?.completedAt || request.archivedAt?.slice(0, 10) || null, hired: request.status === 'completed' }))
+        .sort((left, right) => String(right.closedDate).localeCompare(String(left.closedDate))),
     })),
     unassigned: ctx.requests
       .filter((request) => !request.recruiterCode && ['pending_review', 'pending_approval', 'hiring', 'on_hold'].includes(request.status) && canSee(ctx, request))

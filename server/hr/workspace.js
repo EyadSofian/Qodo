@@ -61,7 +61,7 @@ export async function hrAccess(user) {
     team: !r.people && can(user, PERMISSIONS.HR_PEOPLE_TEAM),
     employeeCode: own?.employeeCode ?? null,
     personnelManage: can(user, PERMISSIONS.HR_PERSONNEL_MANAGE),
-    requests: can(user, PERMISSIONS.HR_RECRUITMENT_REQUEST) || can(user, PERMISSIONS.HR_RECRUITMENT_REVIEW),
+    requests: true,
     kpiReview: can(user, PERMISSIONS.HR_RECRUITMENT_KPI_REVIEW),
     rewards: can(user, PERMISSIONS.HR_RECRUITMENT_REWARDS_MANAGE),
   };

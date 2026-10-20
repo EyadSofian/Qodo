@@ -70,9 +70,9 @@ export const DEFAULT_HR_SETTINGS = {
     team: { include: [], exclude: [] },
     waits: { reviewWorkingDays: 2, approvalWorkingDays: 2, odooLinkWorkingDays: 2 },
     odoo: { funnel: DEFAULT_FUNNEL },
-    // Who is told a request waits for final approval. Unset means every holder
-    // of `hr.recruitment.approve`; the approval itself is never restricted.
-    approvals: { finalApproverUserId: null },
+    // The final approver starts the clock. New requests then go to the named
+    // HR manager for assignment to a recruiter.
+    approvals: { finalApproverUserId: null, assignmentManagerUserId: null },
   },
   kpi: {
     weights: Object.fromEntries(KPI_CATEGORIES.map((category) => [category.id, category.weight])),
@@ -159,6 +159,8 @@ export function validateHRSettings(settings) {
   }
   const approver = recruitment.approvals?.finalApproverUserId;
   if (approver !== null && approver !== undefined && !/^[\w-]{1,80}$/.test(String(approver))) return fail('hr_settings_invalid', 'recruitment.approvals.finalApproverUserId');
+  const assignmentManager = recruitment.approvals?.assignmentManagerUserId;
+  if (assignmentManager !== null && assignmentManager !== undefined && !/^[\w-]{1,80}$/.test(String(assignmentManager))) return fail('hr_settings_invalid', 'recruitment.approvals.assignmentManagerUserId');
   for (const key of ['reviewWorkingDays', 'approvalWorkingDays', 'odooLinkWorkingDays']) {
     if (!int(recruitment.waits?.[key], 0, 60)) return fail('hr_settings_waits_invalid', `recruitment.waits.${key}`);
   }

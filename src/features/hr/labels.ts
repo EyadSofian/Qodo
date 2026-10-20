@@ -20,6 +20,7 @@ export const STATUS_LABEL: Record<RequestStatus, Localised> = {
   hiring: { ar: 'توظيف نشط', en: 'Active hiring' },
   on_hold: { ar: 'معلّقة', en: 'On hold' },
   completed: { ar: 'مكتملة', en: 'Completed' },
+  closed: { ar: 'أُغلقت في Odoo', en: 'Closed in Odoo' },
   cancelled: { ar: 'ملغاة', en: 'Cancelled' },
   rejected: { ar: 'مرفوضة', en: 'Rejected' },
 };
@@ -33,6 +34,7 @@ export const SLA_LABEL: Record<SlaState, Localised> = {
   met: { ar: 'داخل الـSLA', en: 'Within SLA' },
   missed: { ar: 'بعد الموعد', en: 'Missed SLA' },
   not_started: { ar: 'لم يبدأ', en: 'Not started' },
+  closed: { ar: 'أُغلقت في Odoo', en: 'Closed in Odoo' },
 };
 
 export const SEVERITY_LABEL: Record<Severity, Localised> = {

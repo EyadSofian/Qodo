@@ -14,9 +14,10 @@ export type RequestStatus =
   | 'hiring'
   | 'on_hold'
   | 'completed'
+  | 'closed'
   | 'cancelled'
   | 'rejected';
-export type SlaState = 'on_track' | 'due_soon' | 'due_today' | 'overdue' | 'paused' | 'met' | 'missed' | 'not_started';
+export type SlaState = 'on_track' | 'due_soon' | 'due_today' | 'overdue' | 'paused' | 'met' | 'missed' | 'not_started' | 'closed';
 export type Severity = 'critical' | 'warning' | 'info' | 'success';
 
 export interface HRAccess {
@@ -75,6 +76,7 @@ export interface RecruiterCardData {
   pipeline: number;
   overdue: number;
   completedThisMonth: number;
+  odooClosedThisMonth?: number;
   slaSuccess: { percent: number | null; judged: number };
   kpi: { percent: number | null; complete: boolean; period: string };
   reward: { done: number; of: number; category: RewardCategory | null; ready: number };
@@ -136,7 +138,7 @@ export interface OdooJobsData {
 
 /** One recruiter on the capacity board: the card, their Qodo jobs, their Odoo jobs. */
 export type BoardJob = JobRequest & { posting?: OdooJob | null };
-export type RecruiterBoardRow = RecruiterCardData & { jobs: BoardJob[]; odooJobs: OdooJob[] };
+export type RecruiterBoardRow = RecruiterCardData & { jobs: BoardJob[]; odooJobs: OdooJob[]; closedJobs: Array<{ id: string; reference: string; title: string; closedDate: string | null; hired: boolean }> };
 
 export interface SlaSnapshot {
   started: boolean;
@@ -245,6 +247,11 @@ export interface JobRequest {
   interviewManager: { name: string; userId: string | null };
   requestedBy: string | null;
   requestedByName: string;
+  requestOrigin?: string;
+  requestPurpose?: string;
+  approvalFlow?: 'admin_then_salah';
+  assignmentManagerUserId?: string | null;
+  closureReason?: string | null;
   requestDate?: string | null;
   requirementsSubmittedDate?: string | null;
   confirmedDate?: string | null;
@@ -1015,7 +1022,7 @@ export interface HRSettings {
     team: { include: string[]; exclude: string[] };
     waits: { reviewWorkingDays: number; approvalWorkingDays: number; odooLinkWorkingDays: number };
     odoo: { funnel: Record<string, string[]> };
-    approvals: { finalApproverUserId: string | null };
+    approvals: { finalApproverUserId: string | null; assignmentManagerUserId: string | null };
   };
   kpi: {
     weights: Record<string, number>;
@@ -1051,6 +1058,7 @@ export interface SettingsView {
   odoo: { configured: boolean; indexLoaded: boolean; employees: number };
   permissions: { keys: string[]; holders: Array<{ id: string; name: string; role: string; department: string; keys: string[] }> };
   approvers: Array<{ id: string; name: string }>;
+  assigners: Array<{ id: string; name: string }>;
   imports: null | {
     datasets: DatasetMeta[];
     history: Array<{ id: string; source: string; fileName?: string; createdAt: string; origin?: string; summary?: Record<string, number> | null; status?: string }>;

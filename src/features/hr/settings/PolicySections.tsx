@@ -18,7 +18,7 @@ type Recruitment = HRSettings['recruitment'];
 export function SlaSection({ view }: { view: SettingsView }) {
   const { t, pick, lang } = useHRText();
   const source = view.settings.recruitment;
-  const slice = { calendar: source.calendar, sla: source.sla, waits: source.waits, approvals: source.approvals ?? { finalApproverUserId: null } };
+  const slice = { calendar: source.calendar, sla: source.sla, waits: source.waits, approvals: source.approvals ?? { finalApproverUserId: null, assignmentManagerUserId: null } };
   const { draft, setDraft, dirty, reset } = useDraft(slice, view.revision);
   const { save, saving } = useSettingsSave(view);
   const [holiday, setHoliday] = useState('');
@@ -95,11 +95,19 @@ export function SlaSection({ view }: { view: SettingsView }) {
         </div>
         <label className="mt-4 block">
           <span className="label">{t('مسؤول الاعتماد النهائي (وتصل إليه التنبيهات)', 'Final approver (receives approval alerts)')}</span>
-          <select className="field md:w-96" disabled={disabled} value={draft.approvals.finalApproverUserId ?? ''} onChange={(event) => setDraft((current) => ({ ...current, approvals: { finalApproverUserId: event.target.value || null } }))}>
+          <select className="field md:w-96" disabled={disabled} value={draft.approvals.finalApproverUserId ?? ''} onChange={(event) => setDraft((current) => ({ ...current, approvals: { ...current.approvals, finalApproverUserId: event.target.value || null } }))}>
             <option value="">{t('كل من لديه صلاحية الاعتماد', 'Everyone who can approve')}</option>
             {view.approvers.map((approver) => <option key={approver.id} value={approver.id}>{approver.name}</option>)}
           </select>
           <span className="mt-1 block text-[11.5px] text-ink-faint">{t('عند اختيار شخص، لا يستطيع اعتماد الطلب إلا هذا الشخص إذا كانت لديه صلاحية الاعتماد. تركه فارغاً يتيح الاعتماد لكل من يملك الصلاحية.', 'When selected, only this person can approve if they have the approval permission. Leave empty to allow all approvers.')}</span>
+        </label>
+        <label className="mt-4 block">
+          <span className="label">{t('مسؤول توزيع الطلبات بعد الاعتماد', 'Assignment manager after approval')}</span>
+          <select className="field md:w-96" disabled={disabled} value={draft.approvals.assignmentManagerUserId ?? ''} onChange={(event) => setDraft((current) => ({ ...current, approvals: { ...current.approvals, assignmentManagerUserId: event.target.value || null } }))}>
+            <option value="">{t('كل من لديه صلاحية الإسناد', 'Anyone with assignment permission')}</option>
+            {view.assigners.map((assigner) => <option key={assigner.id} value={assigner.id}>{assigner.name}</option>)}
+          </select>
+          <span className="mt-1 block text-[11.5px] text-ink-faint">{t('الطلبات الجديدة تصل لهذا الشخص بعد موافقة الأدمن، وهو يوزّعها على فريق التوظيف.', 'New requests reach this person after admin approval, and they assign the recruitment team.')}</span>
         </label>
       </SettingsCard>
       <SaveBar dirty={dirty} saving={saving} problem={problem} onReset={reset} onSave={() => void save({ recruitment: draft as Partial<Recruitment> })} />

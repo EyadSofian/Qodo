@@ -54,7 +54,7 @@ export const ARCHIVE_UNPUBLISHED = 'odoo_unpublished';
 /** An Odoo-kept request whose job now has an approved Qodo request. */
 export const ARCHIVE_REPLACED = 'replaced_by_approved_request';
 /** The stages of a Qodo request that speak for a published job. */
-const CLAIMING_STATUSES = ['hiring', 'on_hold', 'completed'];
+const CLAIMING_STATUSES = ['hiring', 'on_hold', 'completed', 'closed'];
 
 export const odooRequestId = (organizationId, jobId) => stableId('rrq-odoo', organizationId, String(jobId));
 
@@ -180,7 +180,7 @@ function newRequest({ organizationId, job, recruiterCode, today, stamp, calendar
  * store. `requests` includes archived ones; `links` is requestId → link row.
  */
 export function planOdooSync({ organizationId, snapshot, requests, links, profiles, today, calendar = {}, stamp = new Date().toISOString() }) {
-  const plan = { skipped: null, create: [], restore: [], update: [], archive: [] };
+  const plan = { skipped: null, create: [], restore: [], update: [], archive: [], close: [], reopen: [] };
   if (!snapshot?.connected) return { ...plan, skipped: 'odoo_unavailable' };
   if (!snapshot.jobs.length) return { ...plan, skipped: 'no_published_jobs' };
 
@@ -201,9 +201,11 @@ export function planOdooSync({ organizationId, snapshot, requests, links, profil
   }
 
   const kept = new Set();
+  const publishedIds = new Set(snapshot.jobs.map((job) => job.id));
   for (const job of snapshot.jobs) {
     const own = byId.get(odooRequestId(organizationId, job.id)) ?? null;
     if (claimed.has(job.id)) {
+      if (claimed.get(job.id).status === 'closed') plan.reopen.push({ id: claimed.get(job.id).id, job });
       // Qodo's request stands as approved; the one kept for the job steps aside.
       if (own && !own.archivedAt && own.status !== 'completed') plan.archive.push({ id: own.id, reason: ARCHIVE_REPLACED });
       if (own) kept.add(own.id);
@@ -239,6 +241,8 @@ export function planOdooSync({ organizationId, snapshot, requests, links, profil
   for (const request of requests) {
     if (kept.has(request.id)) continue;
     if (request.source === 'qodo') {
+      const linkedId = Number(links.get(request.id)?.odooJobId);
+      if (!request.archivedAt && linkedId && !publishedIds.has(linkedId) && ['hiring', 'on_hold'].includes(request.status)) plan.close.push({ id: request.id, jobId: linkedId });
       // The first Odoo-only deploy archived Qodo's own requests too; they come back.
       if (request.archivedAt && request.archiveReason === ARCHIVE_NOT_FROM_ODOO) plan.restore.push({ id: request.id, job: null });
       continue;
@@ -286,8 +290,16 @@ export async function syncOdooJobs(organizationId, { snapshot = null } = {}) {
       await appendActivity({ organizationId, requestId: document.id, type: 'created_from_odoo', meta: { jobId: job.id, name: job.name, recruiter: job.recruiter?.name ?? null, recruiterCode: document.recruiterCode, activeDate: job.activeDate ?? null, hiringPeriod: job.hiringPeriodDays ?? null } });
     }
     for (const { id, job } of plan.restore) {
-      await store.update('recruitmentRequests', id, { archivedAt: null, archivedBy: null, archiveReason: null, revision: bump(id) });
+      await store.update('recruitmentRequests', id, { archivedAt: null, archivedBy: null, archiveReason: null, ...(job ? { closedDate: null } : {}), revision: bump(id) });
       await appendActivity({ organizationId, requestId: id, type: 'restored', meta: job ? { reason: 'odoo_published_again', jobId: job.id } : { reason: 'qodo_request_kept' } });
+    }
+    for (const { id, jobId } of plan.close) {
+      await store.update('recruitmentRequests', id, { status: 'closed', statusChangedAt: stamp, closedDate: localDay(new Date(), 'Africa/Cairo'), closureReason: ARCHIVE_UNPUBLISHED, revision: bump(id) });
+      await appendActivity({ organizationId, requestId: id, type: 'closed_in_odoo', meta: { jobId } });
+    }
+    for (const { id, job } of plan.reopen) {
+      await store.update('recruitmentRequests', id, { status: 'hiring', statusChangedAt: stamp, closedDate: null, closureReason: null, revision: bump(id) });
+      await appendActivity({ organizationId, requestId: id, type: 'reopened_in_odoo', meta: { jobId: job.id } });
     }
     for (const { id, job, patch, previousRecruiterCode } of plan.update) {
       await store.update('recruitmentRequests', id, { ...patch, revision: bump(id) });
@@ -295,10 +307,10 @@ export async function syncOdooJobs(organizationId, { snapshot = null } = {}) {
       await appendActivity({ organizationId, requestId: id, type: 'odoo_synced', meta: { jobId: job.id, fields: Object.keys(patch), ...('recruiterCode' in patch ? { previousRecruiterCode, recruiterCode: patch.recruiterCode } : {}), ...(patch.sla ? { activeDate: job.activeDate ?? null, hiringPeriod: job.hiringPeriodDays ?? null, dueDate: patch.sla.currentDueDate, priority: patch.priority } : {}) } });
     }
     for (const { id, reason } of plan.archive) {
-      await store.update('recruitmentRequests', id, { archivedAt: stamp, archivedBy: null, archiveReason: reason, revision: bump(id) });
+      await store.update('recruitmentRequests', id, { archivedAt: stamp, archivedBy: null, archiveReason: reason, ...(reason === ARCHIVE_UNPUBLISHED ? { closedDate: localDay(new Date(), 'Africa/Cairo') } : {}), revision: bump(id) });
       await appendActivity({ organizationId, requestId: id, type: 'archived', meta: { reason } });
     }
-    return { skipped: null, created: plan.create.length, restored: plan.restore.length, updated: plan.update.length, archived: plan.archive.length };
+    return { skipped: null, created: plan.create.length, restored: plan.restore.length, updated: plan.update.length, archived: plan.archive.length, closed: plan.close.length, reopened: plan.reopen.length };
   } finally {
     running = false;
   }
@@ -342,8 +354,8 @@ async function syncAll() {
   for (const organization of await find('organizations')) {
     try {
       const result = await syncOdooJobs(organization.id, { snapshot });
-      if (result && (result.created || result.restored || result.archived || result.updated)) {
-        console.log(`[hr] Odoo job sync for ${organization.id}: ${result.created} new, ${result.restored} back, ${result.updated} updated, ${result.archived} archived`);
+      if (result && (result.created || result.restored || result.archived || result.updated || result.closed || result.reopened)) {
+        console.log(`[hr] Odoo job sync for ${organization.id}: ${result.created} new, ${result.restored} back, ${result.updated} updated, ${result.archived} archived, ${result.closed} closed, ${result.reopened} reopened`);
       } else if (result?.skipped) {
         problem = result.skipped;
       }

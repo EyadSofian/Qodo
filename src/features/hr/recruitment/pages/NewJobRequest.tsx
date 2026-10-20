@@ -27,6 +27,8 @@ import { CapacityWarning } from '../components/dialogs';
 interface Form {
   title: string;
   department: string;
+  requestOrigin: string;
+  requestPurpose: string;
   departmentId: string;
   location: string;
   locationCode: 'EG' | 'KSA' | null;
@@ -112,6 +114,8 @@ export function NewJobRequest() {
   const [form, setForm] = useState<Form>({
     title: '',
     department: '',
+    requestOrigin: '',
+    requestPurpose: '',
     departmentId: '',
     location: 'EG',
     locationCode: 'EG',
@@ -139,7 +143,7 @@ export function NewJobRequest() {
     const request = editData?.request;
     if (!request || !editId || hydratedId === editId) return;
     setForm({
-      title: request.title, department: request.department, departmentId: request.departmentId,
+      title: request.title, department: request.department, requestOrigin: request.requestOrigin || '', requestPurpose: request.requestPurpose || '', departmentId: request.departmentId,
       location: request.location || 'EG', locationCode: request.locationCode,
       headcount: request.headcount, classification: request.classification || '', reason: request.reason || 'new',
       reasonNote: request.reasonNote || '', responsibilities: request.responsibilities || '', tasks: request.tasks || '',
@@ -156,16 +160,18 @@ export function NewJobRequest() {
   }, [editData, editId, hydratedId]);
   const context = editData?.context || data?.context;
   const band = form.priority && context ? context.policy.bands[form.priority] : null;
-  const canAssign = Boolean(context?.perms.assign);
+  const canAssign = false;
 
   const problems = useMemo(() => {
     const list: Record<number, string[]> = { 0: [], 1: [], 2: [] };
     if (!form.title.trim()) list[0].push('title');
     if (!form.department.trim()) list[0].push('department');
+    if (!form.requestOrigin.trim()) list[0].push('requestOrigin');
     if (!form.location.trim()) list[0].push('location');
     if (!(form.headcount >= 1)) list[0].push('headcount');
     if (!form.classification) list[0].push('classification');
     if (!form.reason) list[1].push('reason');
+    if (!form.requestPurpose.trim()) list[1].push('requestPurpose');
     if (!form.responsibilities.trim()) list[1].push('responsibilities');
     if (!form.requirements.trim()) list[1].push('requirements');
     if (form.salaryMin && form.salaryMax && Number(form.salaryMax) < Number(form.salaryMin)) list[1].push('salary');
@@ -194,6 +200,8 @@ export function NewJobRequest() {
   const payload = (submit: boolean, override = false) => ({
     title: form.title,
     department: form.department,
+    requestOrigin: form.requestOrigin,
+    requestPurpose: form.requestPurpose,
     ...(form.departmentId ? { departmentId: form.departmentId } : {}),
     location: form.location,
     locationCode: form.locationCode,
@@ -247,7 +255,7 @@ export function NewJobRequest() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
-      <PageHeader eyebrow={t('التوظيف', 'Recruitment')} title={editId ? t('استكمال متطلبات الوظيفة', 'Complete vacancy requirements') : t('طلب وظيفة جديد', 'New job request')} description={t('يُراجَع الطلب من مدير القسم ثم يُعتمد نهائياً، وعندها فقط يبدأ الـSLA.', 'The request is reviewed by the department manager, then approved — only then does the SLA start.')} />
+      <PageHeader eyebrow={t('طلبات التوظيف', 'Recruitment requests')} title={editId ? t('استكمال متطلبات الوظيفة', 'Complete vacancy requirements') : t('طلب وظيفة جديد', 'New job request')} description={t('اكتب مصدر الطلب واحتياج الوظيفة ومتطلباتها. يذهب للأدمن للاعتماد، ثم يوزّعه صلاح على فريق التوظيف.', 'Enter where the request came from, why it is needed, and its requirements. Admin approves it, then Salah assigns the recruitment team.')} />
 
       <ol className="grid grid-cols-4 gap-2" aria-label={t('خطوات الطلب', 'Request steps')}>
         {steps.map((label, index) => (
@@ -270,7 +278,8 @@ export function NewJobRequest() {
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="sm:col-span-2"><Field label={t('المسمى الوظيفي', 'Job title')} required error={err('title', 0)}><input className="field" value={form.title} onChange={(event) => set('title', event.target.value)} placeholder={t('مثال: Senior Mechanical Instructor', 'e.g. Senior Mechanical Instructor')} autoFocus /></Field></div>
                 <Field label={t('القسم / الإدارة', 'Department')} required error={err('department', 0)}><input className="field" value={form.department} onChange={(event) => set('department', event.target.value)} placeholder={t('مثال: إدارة المدربين', 'e.g. Instructor Department')} /></Field>
-                <Field label={t('قسم المراجعة في Qodo', 'Reviewing department in Qodo')} hint={t('مدير هذا القسم هو من يراجع الطلب.', "This department's manager reviews the request.")}>
+                <Field label={t('الطلب جاي من مين / فين', 'Request source')} required error={err('requestOrigin', 0)} hint={t('اكتب اسم المدير أو الإدارة أو العميل الذي طلب التوظيف.', 'Name the manager, department, or client who initiated the request.')}><input className="field" value={form.requestOrigin} maxLength={180} onChange={(event) => set('requestOrigin', event.target.value)} placeholder={t('مثال: مدير المبيعات', 'e.g. Sales manager')} /></Field>
+                <Field label={t('القسم المسجل في Qodo', 'Department in Qodo')} hint={t('لتصنيف الطلب وإظهاره في التقارير.', 'Used to classify the request and show it in reports.')}>
                   <select className="field" value={form.departmentId} onChange={(event) => set('departmentId', event.target.value)}>
                     <option value="">{t('قسمي (افتراضي)', 'My department (default)')}</option>
                     {DEPARTMENTS.map((department) => <option key={department.id} value={department.id}>{lang === 'en' ? department.en : department.ar}</option>)}
@@ -305,6 +314,7 @@ export function NewJobRequest() {
                   </select>
                 </Field>
                 <Field label={t('توضيح السبب', 'Reason note')}><input className="field" value={form.reasonNote} onChange={(event) => set('reasonNote', event.target.value)} /></Field>
+                <div className="sm:col-span-2"><Field label={t('الوظيفة مطلوبة لإيه؟', 'Purpose of the request')} required error={err('requestPurpose', 1)}><textarea className="field min-h-20" value={form.requestPurpose} maxLength={1000} onChange={(event) => set('requestPurpose', event.target.value)} placeholder={t('اشرح الشغل المطلوب والنتيجة المتوقعة من التعيين.', 'Explain the work needed and the expected hiring outcome.')} /></Field></div>
                 <div className="sm:col-span-2"><Field label={t('المسؤوليات', 'Responsibilities')} required error={err('responsibilities', 1)}><textarea className="field min-h-24" value={form.responsibilities} onChange={(event) => set('responsibilities', event.target.value)} /></Field></div>
                 <div className="sm:col-span-2"><Field label={t('المهام', 'Tasks')}><textarea className="field min-h-20" value={form.tasks} onChange={(event) => set('tasks', event.target.value)} /></Field></div>
                 <div className="sm:col-span-2"><Field label={t('مؤشرات النجاح (KPIs)', 'Success indicators (KPIs)')}><textarea className="field min-h-20" value={form.successIndicators} onChange={(event) => set('successIndicators', event.target.value)} /></Field></div>
@@ -372,6 +382,8 @@ export function NewJobRequest() {
                   {[
                     [t('الوظيفة', 'Job'), form.title],
                     [t('القسم', 'Department'), form.department],
+                    [t('مصدر الطلب', 'Request source'), form.requestOrigin],
+                    [t('الغرض من التعيين', 'Hiring purpose'), form.requestPurpose],
                     [t('الموقع', 'Location'), form.locationCode ? pick(LOCATION_LABEL[form.locationCode]) : form.location],
                     [t('العدد', 'Headcount'), num(form.headcount, lang)],
                     [t('التصنيف', 'Classification'), classificationLabel ? pick(classificationLabel) : '—'],
@@ -389,7 +401,7 @@ export function NewJobRequest() {
                   <div className="rounded-xl bg-[#F6F8FB] p-3.5"><p className="text-[11.5px] font-semibold text-[#5A6C82]">{t('المسؤوليات', 'Responsibilities')}</p><p className="mt-1 whitespace-pre-line text-[12.5px] leading-6 text-navy">{form.responsibilities}</p></div>
                   <div className="rounded-xl bg-[#F6F8FB] p-3.5"><p className="text-[11.5px] font-semibold text-[#5A6C82]">{t('المتطلبات', 'Requirements')}</p><p className="mt-1 whitespace-pre-line text-[12.5px] leading-6 text-navy">{form.requirements}</p></div>
                 </div>
-                <p className="rounded-xl border border-brand-200 bg-brand-50/60 px-3.5 py-2.5 text-[12.5px] leading-6 text-brand-800">{t('بعد الإرسال: مراجعة مدير القسم ← الاعتماد النهائي ← بدء التوظيف. الـSLA يبدأ عند الاعتماد النهائي فقط.', 'After you submit: department review → final approval → hiring starts. The SLA begins at final approval only.')}</p>
+                <p className="rounded-xl border border-brand-200 bg-brand-50/60 px-3.5 py-2.5 text-[12.5px] leading-6 text-brand-800">{t('بعد الإرسال: موافقة الأدمن ← يبدأ عداد التوظيف ← صلاح يوزّع الطلب على الموظفين. لا يُسند الطلب قبل الموافقة.', 'After submission: admin approval → hiring clock starts → Salah assigns the request to the team. No assignment happens before approval.')}</p>
               </div>
             )}
           </motion.div>

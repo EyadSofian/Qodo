@@ -22,6 +22,7 @@ export const REQUEST_STATUSES = [
   'hiring',
   'on_hold',
   'completed',
+  'closed',
   'cancelled',
   'rejected',
 ];
@@ -35,7 +36,7 @@ export const COMMITTED_STATUSES = ['hiring', 'on_hold'];
 /** Waiting on a person rather than on the recruiter. */
 export const PENDING_STATUSES = ['pending_review', 'pending_approval'];
 
-export const TERMINAL_STATUSES = ['completed', 'cancelled', 'rejected'];
+export const TERMINAL_STATUSES = ['completed', 'closed', 'cancelled', 'rejected'];
 
 /**
  * `stage` is the timeline step the transition belongs to, so the approval
@@ -103,12 +104,12 @@ export function approvalTimeline(request, approvals = []) {
   };
   const hiringState = ['hiring', 'on_hold'].includes(status)
     ? 'current'
-    : status === 'completed'
+    : ['completed', 'closed'].includes(status)
       ? 'done'
       : 'upcoming';
   return [
     { stage: 'request', state: status === 'draft' ? 'current' : stepState(submitted, false), event: submitted },
-    { stage: 'department_review', state: stepState(review, status === 'pending_review'), event: review },
+    ...(request?.approvalFlow === 'admin_then_salah' ? [] : [{ stage: 'department_review', state: stepState(review, status === 'pending_review'), event: review }]),
     { stage: 'final_approval', state: stepState(approval, status === 'pending_approval'), event: approval },
     { stage: 'hiring', state: hiringState, event: rows.filter((row) => row.stage === 'hiring').at(-1) ?? null },
   ];

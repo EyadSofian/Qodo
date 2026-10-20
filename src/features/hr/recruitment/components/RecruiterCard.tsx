@@ -96,7 +96,7 @@ export function RecruiterCard({ card, active = false, onOpen }: { card: Recruite
 
       <dl className="mt-3.5 grid grid-cols-3 gap-2 border-t border-[#EEF2F7] pt-3.5 text-center">
         <div>
-          <dt className="text-[10.5px] font-semibold leading-4 text-[#5A6C82]">{t('أُغلق هذا الشهر', 'Closed this month')}</dt>
+          <dt className="text-[10.5px] font-semibold leading-4 text-[#5A6C82]" title={t('تعيينات مكتملة + وظائف خرجت من النشر في Odoo', 'Completed hires + jobs unpublished in Odoo')}>{t('أُغلق هذا الشهر', 'Closed this month')}</dt>
           <dd className="mt-1 text-[16px] font-bold text-navy"><AnimatedNumber value={card.completedThisMonth} /></dd>
         </div>
         <div>

@@ -35,6 +35,7 @@ export const SLA_TONE: Record<SlaState, Tone> = {
   met: 'success',
   missed: 'critical',
   not_started: 'neutral',
+  closed: 'neutral',
 };
 
 export const STATUS_TONE: Record<RequestStatus, Tone> = {
@@ -44,6 +45,7 @@ export const STATUS_TONE: Record<RequestStatus, Tone> = {
   hiring: 'info',
   on_hold: 'neutral',
   completed: 'success',
+  closed: 'neutral',
   cancelled: 'neutral',
   rejected: 'critical',
 };

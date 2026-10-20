@@ -72,6 +72,7 @@ export async function settingsView(user) {
         .sort((left, right) => right.keys.length - left.keys.length || left.name.localeCompare(right.name)),
     },
     approvers: users.filter((item) => can(item, PERMISSIONS.HR_RECRUITMENT_APPROVE)).map((item) => ({ id: item.id, name: item.name })),
+    assigners: users.filter((item) => can(item, PERMISSIONS.HR_RECRUITMENT_ASSIGN)).map((item) => ({ id: item.id, name: item.name })),
     // Uploading needs `hr.manage`, so only its holders see the import desk.
     imports: canImport ? { datasets, history, telegram: telegramStatus() } : null,
   };

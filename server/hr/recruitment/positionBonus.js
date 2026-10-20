@@ -69,6 +69,7 @@ export function positionBonusFor(request, rule, calendar) {
     closedDate, hiringDurationWorkingDays: duration, rule: rule || null, amount: null, currency: rule?.currency || null };
   if (!rule) return { ...base, outcome: 'no_rule' };
   if (request.source !== 'qodo' || !startDate) return { ...base, outcome: 'awaiting_confirmation' };
+  if (request.status === 'closed') return { ...base, outcome: 'closed_no_hire' };
   if (!closedDate || request.status !== 'completed') return { ...base, outcome: 'open' };
   if (duration === null || duration < 0) return { ...base, outcome: 'date_review' };
   if (duration > rule.targetWorkingDays) return { ...base, outcome: 'late_pending_policy' };

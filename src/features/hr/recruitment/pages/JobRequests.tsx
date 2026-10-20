@@ -24,7 +24,7 @@ const TABS: Array<{ id: string; statuses: RequestStatus[] | null; label: { ar: s
   { id: 'pending_approval', statuses: ['pending_approval'], label: STATUS_LABEL.pending_approval },
   { id: 'hiring', statuses: ['hiring', 'on_hold'], label: STATUS_LABEL.hiring },
   { id: 'completed', statuses: ['completed'], label: STATUS_LABEL.completed },
-  { id: 'closed', statuses: ['cancelled', 'rejected'], label: { ar: 'مغلقة', en: 'Closed' } },
+  { id: 'closed', statuses: ['closed', 'cancelled', 'rejected'], label: { ar: 'مغلقة', en: 'Closed' } },
 ];
 
 export function JobRequests() {
@@ -33,9 +33,10 @@ export function JobRequests() {
   const [params, setParams] = useSearchParams();
   const tab = TABS.find((item) => item.id === params.get('status')) ?? TABS[0];
   const archived = params.get('scope') === 'archived';
-  const mine = !archived && params.get('scope') === 'mine';
+  const closedInOdoo = params.get('scope') === 'closed';
+  const mine = !archived && !closedInOdoo && params.get('scope') === 'mine';
   const query = params.get('q') ?? '';
-  const { data, error, loading, reload } = useHRQuery<{ requests: JobRequest[]; context: RecruitmentContext }>(hrApi.recruitment.requests(undefined, archived ? 'archived' : mine ? 'mine' : undefined));
+  const { data, error, loading, reload } = useHRQuery<{ requests: JobRequest[]; context: RecruitmentContext }>(hrApi.recruitment.requests(undefined, archived ? 'archived' : closedInOdoo ? 'closed' : mine ? 'mine' : undefined));
   const [restoring, setRestoring] = useState<string | null>(null);
   const [quickOpen, setQuickOpen] = useState(false);
   const [quickTitle, setQuickTitle] = useState('');
@@ -52,10 +53,10 @@ export function JobRequests() {
   const rows = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return (data?.requests ?? [])
-      .filter((request) => archived || !tab.statuses || tab.statuses.includes(request.status))
+      .filter((request) => archived || closedInOdoo || !tab.statuses || tab.statuses.includes(request.status))
       .filter((request) => !needle || `${request.title} ${request.reference} ${request.department} ${request.requestedByName}`.toLowerCase().includes(needle))
       .sort((left, right) => String(right.updatedAt).localeCompare(String(left.updatedAt)));
-  }, [data, tab, query, archived]);
+  }, [data, tab, query, archived, closedInOdoo]);
 
   const counts = useMemo(() => Object.fromEntries(TABS.map((item) => [item.id, (data?.requests ?? []).filter((request) => !item.statuses || item.statuses.includes(request.status)).length])), [data]);
 
@@ -108,7 +109,7 @@ export function JobRequests() {
         <span className="flex items-center gap-2"><PersonAvatar name={shortName(row.recruiter.name, lang)} photoUrl={row.recruiter.photoUrl} size={26} /><span className="truncate">{shortName(row.recruiter.name, lang)}</span></span>
       ) : <span className="text-ink-faint">—</span>,
     },
-    { key: 'sla', header: 'SLA', cell: (row) => <SlaMeter sla={row.slaSnapshot} source={row.source} compact /> },
+    { key: 'sla', header: closedInOdoo ? t('تاريخ الإغلاق', 'Closed on') : 'SLA', cell: (row) => closedInOdoo ? <span className="text-[12px] font-semibold text-navy">{date(row.closedDate, lang)}</span> : <SlaMeter sla={row.slaSnapshot} source={row.source} compact /> },
     { key: 'requested', header: t('بواسطة', 'Requested by'), sort: (row) => row.requestedByName, cell: (row) => <span className="text-[12.5px] text-[#5A6C82]">{row.requestedByName || '—'}</span>, hideOnCard: true },
     { key: 'updated', header: t('آخر تحديث', 'Updated'), sort: (row) => row.updatedAt, cell: (row) => <span className="text-[12px] text-ink-faint">{date(row.updatedAt, lang)}</span>, hideOnCard: true },
     ...(archived && canManageArchive && !fromOdoo ? [{ key: 'restore', header: t('الإجراء', 'Action'), cell: (row: JobRequest) => <button type="button" className="btn-secondary btn-sm" disabled={Boolean(restoring)} onClick={() => void restore(row.id)}><RotateCcw size={14} />{restoring === row.id ? t('جارٍ الاسترجاع…', 'Restoring…') : t('استرجاع', 'Restore')}</button> }] : []),
@@ -118,16 +119,16 @@ export function JobRequests() {
     <div className="space-y-5">
       <PageHeader
         eyebrow={t('التوظيف', 'Recruitment')}
-        title={archived ? t('أرشيف طلبات الوظائف', 'Archived job requests') : t('طلبات الوظائف', 'Job requests')}
-        description={archived ? (fromOdoo ? t('كل ما ليس منشوراً في Odoo الآن محفوظ هنا للرجوع إليه. الوظيفة ترجع تلقائياً عند نشرها في Odoo.', 'Everything Odoo does not publish now is kept here for reference. A job returns by itself when it is published in Odoo.') : t('الطلبات المؤرشفة محفوظة ويمكن إرجاعها إلى قائمة التوظيف.', 'Archived requests are kept here and can be restored to recruitment.')) : t('من الطلب إلى مراجعة القسم إلى الاعتماد النهائي — الـSLA لا يبدأ قبل الاعتماد.', 'From request to department review to final approval — the SLA never starts before approval.')}
-        actions={archived
+        title={archived ? t('أرشيف طلبات التوظيف', 'Archived recruitment requests') : closedInOdoo ? t('الوظائف المغلقة', 'Closed vacancies') : t('طلبات التوظيف', 'Recruitment requests')}
+        description={archived ? (fromOdoo ? t('الطلبات المؤرشفة محفوظة للرجوع إليها.', 'Archived requests remain available for reference.') : t('الطلبات المؤرشفة محفوظة ويمكن إرجاعها إلى قائمة التوظيف.', 'Archived requests are kept here and can be restored to recruitment.')) : closedInOdoo ? t('تشمل التعيينات المكتملة والوظائف التي خرجت من النشر في Odoo. الخروج من النشر إغلاق إداري ولا يمنح Bonus بمفرده.', 'Includes completed hires and jobs no longer published in Odoo. Unpublishing is an administrative closure and does not itself earn a bonus.') : t('قدّم مصدر الطلب واحتياج الوظيفة ومتطلباتها؛ الأدمن يعتمد، ثم صلاح يوزّع على فريق التوظيف.', 'Enter the source, purpose and requirements; admin approves, then Salah assigns the recruitment team.')}
+        actions={archived || closedInOdoo
           ? <Link to="/hr/recruitment/requests" className="btn-secondary btn-sm">{t('العودة للطلبات', 'Back to requests')}</Link>
-          : <span className="flex flex-wrap items-center gap-2">{canManageArchive && <Link to="/hr/recruitment/requests?scope=archived" className="btn-ghost btn-sm"><Archive size={15} />{t('الأرشيف', 'Archive')}</Link>}{canCreate && <button type="button" className="btn-primary btn-sm" onClick={() => setQuickOpen(true)}><Plus size={16} />{t('طلب وظيفة جديد', 'New job request')}</button>}</span>}
+          : <span className="flex flex-wrap items-center gap-2"><Link to="/hr/recruitment/requests?scope=closed" className="btn-ghost btn-sm">{t('سجل الإغلاق', 'Closure history')}</Link>{canManageArchive && <Link to="/hr/recruitment/requests?scope=archived" className="btn-ghost btn-sm"><Archive size={15} />{t('الأرشيف', 'Archive')}</Link>}{canCreate && <button type="button" className="btn-primary btn-sm" onClick={() => setQuickOpen(true)}><Plus size={16} />{t('طلب وظيفة جديد', 'New job request')}</button>}</span>}
       />
       {quickOpen && <Modal open onClose={() => setQuickOpen(false)} title={t('طلب وظيفة أولي', 'Initial vacancy request')} footer={<><button type="button" className="btn-ghost" onClick={() => setQuickOpen(false)}>{t('إلغاء', 'Cancel')}</button><button type="button" className="btn-primary" disabled={quickSaving || !quickTitle.trim()} onClick={() => void createQuick()}>{quickSaving ? <Spinner size={16} /> : null}{t('إنشاء ورابط المتطلبات', 'Create requirements link')}</button></>}><div className="space-y-3"><p className="text-sm leading-6 text-slate-600">{t('اكتب المسمى فقط. هننشئ الطلب كمسودة ونفتح لك رابط استكمال المتطلبات؛ عداد التوظيف لن يبدأ الآن.', 'Enter the job title. We will create a draft and open its requirements link; the hiring clock will not start yet.')}</p><label className="block"><span className="label">{t('المسمى الوظيفي', 'Job title')}</span><input className="field mt-1" value={quickTitle} maxLength={140} onChange={(event) => setQuickTitle(event.target.value)} autoFocus /></label></div></Modal>}
 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-        {!archived && <PillTabs
+        {!archived && !closedInOdoo && <PillTabs
           className="min-w-0"
           value={tab.id}
           onChange={(next) => set('status', next === 'all' ? null : next)}
@@ -135,7 +136,7 @@ export function JobRequests() {
           label={t('حالة الطلب', 'Request status')}
           layoutId="job-request-status"
         />}
-        {!archived && <label className="flex shrink-0 items-center gap-2 whitespace-nowrap text-[12.5px] font-semibold text-[#5A6C82]">
+        {!archived && !closedInOdoo && <label className="flex shrink-0 items-center gap-2 whitespace-nowrap text-[12.5px] font-semibold text-[#5A6C82]">
           <input type="checkbox" className="h-4 w-4 rounded border-slate-300 text-brand-600" checked={mine} onChange={(event) => set('scope', event.target.checked ? 'mine' : null)} />
           {t('طلباتي فقط', 'Only my requests')}
         </label>}
@@ -148,7 +149,7 @@ export function JobRequests() {
       <DataTable
         rows={rows}
         columns={columns}
-        rowHref={(row) => archived ? null : `/hr/recruitment/requests/${encodeURIComponent(row.id)}`}
+        rowHref={(row) => row.archivedAt ? null : `/hr/recruitment/requests/${encodeURIComponent(row.id)}`}
         caption={archived ? t('أرشيف طلبات الوظائف', 'Archived job requests') : t('طلبات الوظائف', 'Job requests')}
         empty={<EmptyBlock title={t('لا توجد طلبات هنا', 'No requests here')} body={canCreate ? t('ابدأ طلباً جديداً من الزر بالأعلى.', 'Start a new request from the button above.') : undefined} />}
       />

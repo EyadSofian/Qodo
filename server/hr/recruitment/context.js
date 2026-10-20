@@ -36,6 +36,7 @@ export async function recruitmentContext(user, { withTeam = true } = {}) {
     requests,
     links,
     confirmerUserId: settings.recruitment?.approvals?.finalApproverUserId ?? null,
+    assignmentManagerUserId: settings.recruitment?.approvals?.assignmentManagerUserId ?? null,
     team,
     teamCodes: new Set(team.map((member) => member.employeeCode)),
     // Whatever the team lookup already warmed; never waits on Odoo.
@@ -44,7 +45,7 @@ export async function recruitmentContext(user, { withTeam = true } = {}) {
     today: localDay(new Date(), 'Africa/Cairo'),
     perms: {
       view: can(user, PERMISSIONS.HR_RECRUITMENT_VIEW),
-      request: can(user, PERMISSIONS.HR_RECRUITMENT_REQUEST),
+      request: true,
       review: can(user, PERMISSIONS.HR_RECRUITMENT_REVIEW),
       approve: can(user, PERMISSIONS.HR_RECRUITMENT_APPROVE),
       assign: can(user, PERMISSIONS.HR_RECRUITMENT_ASSIGN),
