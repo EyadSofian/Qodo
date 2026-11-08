@@ -7,6 +7,7 @@
  */
 
 import { Router } from 'express';
+import offerRoutes from './hrOffers.js';
 import { handle } from './hrFail.js';
 import {
   approve,
@@ -31,6 +32,7 @@ import { createKpiEvent, kpiDetail, kpiOverview, voidKpiEvent } from '../hr/recr
 import { decideRewardBatch, rewardsOverview } from '../hr/recruitment/rewards.js';
 
 const router = Router();
+router.use('/offers', offerRoutes);
 const h = (fn) => handle(fn, 'hr.recruitment');
 const body = (req) => req.body ?? {};
 

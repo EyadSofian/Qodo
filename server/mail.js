@@ -56,6 +56,9 @@ function getTransport() {
     // the other classic way an SMTP setup fails silently.
     secure: port === 465,
     auth: { user, pass },
+    connectionTimeout: 20_000,
+    greetingTimeout: 20_000,
+    socketTimeout: 45_000,
   });
   transportFor = signature;
   return transport;
@@ -69,21 +72,29 @@ function getTransport() {
  * raised. The caller decides whether a failure matters; for a reminder it does
  * not.
  */
-export async function sendMail({ to, subject, text, html }) {
+export async function sendMail({ to, subject, text, html, attachments, messageId }) {
   if (!mailConfigured()) return { sent: false, reason: 'not_configured' };
   if (!to) return { sent: false, reason: 'no_recipient' };
 
   try {
-    await getTransport().sendMail({
+    const result = await getTransport().sendMail({
       from: CONFIG().from,
       to,
       subject,
       text,
       html,
+      attachments,
+      messageId,
     });
-    return { sent: true };
+    if (Array.isArray(result.accepted) && !result.accepted.length) {
+      return { sent: false, reason: 'recipient_rejected', rejected: result.rejected };
+    }
+    return { sent: true, messageId: result.messageId };
   } catch (error) {
     console.warn('[mail] send failed:', error?.message);
+    if (error?.code === 'EENVELOPE' && error.rejected?.length) {
+      return { sent: false, reason: 'recipient_rejected' };
+    }
     return { sent: false, reason: error?.message || 'send_failed' };
   }
 }

@@ -87,6 +87,7 @@ const HRLayout = hrPage(() => import('./features/hr/shell/HRLayout'), 'HRLayout'
 const HRHome = hrPage(() => import('./features/hr/home/HRHome'), 'HRHome');
 const RecruitmentLayout = hrPage(() => import('./features/hr/recruitment/RecruitmentLayout'), 'RecruitmentLayout');
 const RecruitmentOverview = hrPage(() => import('./features/hr/recruitment/pages/RecruitmentOverview'), 'RecruitmentOverview');
+const SendOffer = hrPage(() => import('./features/hr/recruitment/pages/SendOffer'), 'SendOffer');
 const JobRequests = hrPage(() => import('./features/hr/recruitment/pages/JobRequests'), 'JobRequests');
 const NewJobRequest = hrPage(() => import('./features/hr/recruitment/pages/NewJobRequest'), 'NewJobRequest');
 const JobRequestDetail = hrPage(() => import('./features/hr/recruitment/pages/JobRequestDetail'), 'JobRequestDetail');
@@ -297,6 +298,7 @@ function Gate() {
           <Route index element={<Suspended><HRHome /></Suspended>} />
           <Route path="recruitment" element={<Suspended><RecruitmentLayout /></Suspended>}>
             <Route index element={<Suspended><RecruitmentOverview /></Suspended>} />
+            <Route path="offers" element={<Suspended><SendOffer /></Suspended>} />
             <Route path="requests" element={<Suspended><JobRequests /></Suspended>} />
             <Route path="requests/new" element={<Suspended><NewJobRequest /></Suspended>} />
             <Route path="requests/:id" element={<Suspended><JobRequestDetail /></Suspended>} />

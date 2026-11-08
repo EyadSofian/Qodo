@@ -40,6 +40,7 @@ function rights(user) {
     manage: can(user, PERMISSIONS.HR_MANAGE),
     payroll: can(user, PERMISSIONS.HR_PAYROLL),
     recruitment: can(user, PERMISSIONS.HR_RECRUITMENT_VIEW) || can(user, PERMISSIONS.HR_RECRUITMENT_APPROVE) || can(user, PERMISSIONS.HR_RECRUITMENT_ASSIGN),
+    offers: can(user, PERMISSIONS.HR_MANAGE) || can(user, PERMISSIONS.HR_RECRUITMENT_OFFERS),
     personnel: can(user, PERMISSIONS.HR_PERSONNEL_VIEW),
     performance: can(user, PERMISSIONS.HR_PERFORMANCE_REVIEW),
     settings: can(user, PERMISSIONS.HR_SETTINGS_MANAGE),

@@ -108,6 +108,19 @@ export const api = {
  * table so an added endpoint error and its wording land in one diff.
  */
 const ERRORS: Record<string, { ar: string; en: string }> = {
+  offer_catalog_not_configured: { ar: 'لم تُثبّت نماذج عروض العمل في مخزن المؤسسة بعد.', en: 'Offer templates have not been installed in the organization store yet.' },
+  offer_template_not_found: { ar: 'نموذج العرض غير موجود.', en: 'The offer template was not found.' },
+  offer_not_found: { ar: 'العرض غير موجود أو خارج صلاحياتك.', en: 'The offer was not found or is outside your access.' },
+  offer_field_invalid: { ar: 'راجع بيانات النموذج: استخدم تواريخ صحيحة ومبالغ غير سالبة بدون فواصل.', en: 'Check the form: use valid dates and nonnegative amounts without separators.' },
+  offer_email_invalid: { ar: 'اكتب عنوان بريد واحدًا صحيحًا للمرشح.', en: 'Enter one valid candidate email address.' },
+  offer_dates_invalid: { ar: 'تاريخ انتهاء صلاحية العرض يجب ألا يسبق تاريخ العرض.', en: 'The offer validity date cannot precede the offer date.' },
+  offer_email_template_invalid: { ar: 'عنوان أو نص الإيميل غير صالح، أو يحتوي على متغير غير معروف.', en: 'The email subject or body is invalid or uses an unknown variable.' },
+  offer_idempotency_required: { ar: 'أعد فتح نموذج العرض ثم احفظه مرة أخرى.', en: 'Reopen the offer form and save it again.' },
+  offer_idempotency_conflict: { ar: 'تغيّرت بيانات هذه النسخة. أنشئ نسخة جديدة من العرض.', en: 'This version has different data. Create a new offer version.' },
+  offer_attachment_missing: { ar: 'تعذّر التحقق من مرفقات العرض. لم يبدأ الإرسال.', en: 'The offer attachments could not be verified. Sending did not start.' },
+  offer_fields_required: { ar: 'أكمل الحقول المطلوبة قبل إرسال العرض.', en: 'Complete the required fields before sending the offer.' },
+  offer_expired: { ar: 'انتهت صلاحية العرض. أنشئ نسخة جديدة بتاريخ صالح.', en: 'The offer has expired. Create a new version with a valid date.' },
+  offer_mail_not_configured: { ar: 'بريد الشركة غير مُعدّ للإرسال من الخادم.', en: 'Company email is not configured on the server.' },
   hr_file_empty: { ar: 'ملف Excel فارغ.', en: 'The Excel file is empty.' },
   hr_file_too_large: { ar: 'ملف Excel أكبر من الحد المسموح (20MB).', en: 'The Excel file is larger than 20MB.' },
   hr_file_unreadable: { ar: 'تعذّر قراءة ملف Excel. تأكد أنه ملف xlsx سليم.', en: 'The workbook could not be read. Check that it is a valid xlsx file.' },

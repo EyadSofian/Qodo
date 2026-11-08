@@ -28,6 +28,7 @@ export interface HRAccess {
   manage: boolean;
   payroll: boolean;
   recruitment: boolean;
+  offers: boolean;
   personnel: boolean;
   personnelManage: boolean;
   performance: boolean;

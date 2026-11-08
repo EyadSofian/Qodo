@@ -15,6 +15,10 @@ Thumbs.db
 .idea/
 .claude/
 
+# Private HR documents are installed into the organization blob store, never Git.
+server/hr/assets/offers/
+output/hr-document-work/
+
 # Qodo AI — local Python environment, downloaded weights and training outputs.
 ai/qodo-model/.venv/
 ai/qodo-model/artifacts/

@@ -985,6 +985,7 @@ const CORE_STRINGS = {
   'perm.hr.recruitment.review': { ar: 'التوظيف: مراجعة طلبات القسم', en: 'Recruitment: department review of requests' },
   'perm.hr.recruitment.approve': { ar: 'التوظيف: الاعتماد النهائي وبدء التعيين', en: 'Recruitment: final approval and start hiring' },
   'perm.hr.recruitment.assign': { ar: 'التوظيف: إسناد المسؤول وإدارة الوظائف النشطة', en: 'Recruitment: assign recruiters and run active hiring' },
+  'perm.hr.recruitment.offers': { ar: 'التوظيف: إعداد وإرسال عروض العمل', en: 'Recruitment: prepare and send job offers' },
   'perm.hr.recruitment.extend': { ar: 'التوظيف: مد مهلة الـSLA (صلاحية مخصصة)', en: 'Recruitment: extend an SLA deadline (dedicated)' },
   'perm.hr.recruitment.override_capacity': { ar: 'التوظيف: تجاوز حد السعة بسبب مكتوب', en: 'Recruitment: override a capacity limit with a reason' },
   'perm.hr.recruitment.kpi.review': { ar: 'التوظيف: تسجيل خصومات مؤشرات الأداء', en: 'Recruitment: record KPI deductions' },

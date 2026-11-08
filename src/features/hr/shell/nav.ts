@@ -28,7 +28,7 @@ export interface HRNavItem {
  */
 export const HR_NAV: HRNavItem[] = [
   { id: 'home', to: '/hr', end: true, icon: LayoutDashboard, label: { ar: 'الرئيسية', en: 'HR Home' }, visible: () => true },
-  { id: 'recruitment', to: '/hr/recruitment', icon: BriefcaseBusiness, label: { ar: 'التوظيف', en: 'Recruitment' }, visible: (a) => a.recruitment || a.requests || a.kpiReview || a.rewards },
+  { id: 'recruitment', to: '/hr/recruitment', icon: BriefcaseBusiness, label: { ar: 'التوظيف', en: 'Recruitment' }, visible: (a) => a.recruitment || a.requests || a.kpiReview || a.rewards || a.offers },
   { id: 'people', to: '/hr/people', icon: UsersRound, label: { ar: 'الموظفون', en: 'People' }, visible: (a) => a.people || a.team },
   { id: 'personnel', to: '/hr/personnel', icon: ClipboardList, label: { ar: 'شئون العاملين', en: 'Personnel' }, visible: (a) => a.personnel },
   { id: 'payroll', to: '/hr/payroll', icon: WalletCards, label: { ar: 'الرواتب والمزايا', en: 'Payroll & Benefits' }, visible: (a) => a.payroll },
@@ -41,6 +41,7 @@ export const HR_NAV: HRNavItem[] = [
 
 export const RECRUITMENT_NAV: SubNavItem[] = [
   { to: '/hr/recruitment', end: true, label: { ar: 'نظرة عامة', en: 'Overview' }, visible: (a) => a.recruitment || a.kpiReview || a.rewards },
+  { to: '/hr/recruitment/offers', label: { ar: 'إرسال عرض عمل', en: 'Send Offer' }, visible: (a) => a.offers },
   { to: '/hr/recruitment/requests', label: { ar: 'طلبات الوظائف', en: 'Job Requests' }, visible: () => true },
   { to: '/hr/recruitment/hiring', label: { ar: 'التوظيف النشط', en: 'Active Hiring' }, visible: (a) => a.recruitment },
   { to: '/hr/recruitment/capacity', label: { ar: 'سعة الفريق', en: 'Team Capacity' }, visible: (a) => a.recruitment },

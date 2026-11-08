@@ -39,6 +39,7 @@ export const PERMISSIONS = {
   HR_RECRUITMENT_REVIEW: 'hr.recruitment.review',
   HR_RECRUITMENT_APPROVE: 'hr.recruitment.approve',
   HR_RECRUITMENT_ASSIGN: 'hr.recruitment.assign',
+  HR_RECRUITMENT_OFFERS: 'hr.recruitment.offers',
   // Moving a deadline is not an edit. It belongs to the final approver alone,
   // and every use leaves an immutable extension record.
   HR_RECRUITMENT_EXTEND: 'hr.recruitment.extend',
@@ -305,6 +306,7 @@ export const HR_V2_PERMISSIONS = [
   PERMISSIONS.HR_RECRUITMENT_REVIEW,
   PERMISSIONS.HR_RECRUITMENT_APPROVE,
   PERMISSIONS.HR_RECRUITMENT_ASSIGN,
+  PERMISSIONS.HR_RECRUITMENT_OFFERS,
   PERMISSIONS.HR_RECRUITMENT_EXTEND,
   PERMISSIONS.HR_RECRUITMENT_OVERRIDE_CAPACITY,
   PERMISSIONS.HR_RECRUITMENT_KPI_REVIEW,

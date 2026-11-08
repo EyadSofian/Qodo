@@ -65,6 +65,10 @@ export const COLLECTIONS = [
   'recruitmentRewardBatches',
   'recruitmentActivity',
   'recruitmentOdooLinks',
+  'recruitmentOffers',
+  'recruitmentOfferSends',
+  'recruitmentOfferEmailTemplates',
+  'recruitmentOfferCatalogs',
   // Personnel cases (onboarding, leave, clearance, salary increase, documents,
   // insurance) and the one-time secure forms a new hire fills in.
   'personnelRequests',
