@@ -340,3 +340,35 @@ test('the Telegram endpoint rejects unauthorised webhook calls before downloadin
   assert.equal(wrongChat.status, 403);
   assert.equal(wrongChat.data.error, 'hr_telegram_chat_forbidden');
 });
+
+test('performance-only managers can read their scoped KPI and performance but no other HR endpoint or write', async () => {
+  const manager=await createUser({name:'Performance Manager',email:'performance@test.local',password:'Performance123!',role:'manager',department:'general',permissions:[PERMISSIONS.APPS_VIEW,PERMISSIONS.HR_PERFORMANCE_TEAM_VIEW]});
+  const cookie=await login('performance@test.local','Performance123!');
+  const access=await request('/hr/access',{cookie});
+  assert.equal(access.status,200);
+  assert.equal(access.data.access.performanceOnly,true);
+  assert.equal(access.data.access.performance,true);
+  for(const key of ['people','team','manage','payroll','recruitment','personnel','personnelManage','settings','requests','kpiReview','rewards','offers'])assert.equal(access.data.access[key],false,key);
+  assert.deepEqual((await request('/hr/performance',{cookie})).data.rows,[],'no identity never opens everyone');
+  assert.equal((await request('/hr/employees/611/link',{method:'PUT',cookie:adminCookie,body:{userId:manager.id}})).status,200);
+  const performance=await request('/hr/performance',{cookie});
+  assert.equal(performance.status,200);
+  assert.deepEqual(performance.data.rows.map((row)=>row.employeeCode),['611']);
+  assert.equal(performance.data.canReview,false);
+  for(const route of ['/hr/overview','/hr/dashboard','/hr/people','/hr/employees/611','/hr/employees/611/odoo','/hr/people/611/photo','/hr/organization','/hr/payroll','/hr/imports','/hr/settings','/hr/reports','/hr/personnel','/hr/personnel/leave','/hr/recruitment/overview','/hr/recruitment/requests','/hr/recruitment/offers/catalog','/offices','/offices/bootstrap','/hr-operations/plans'])assert.equal((await request(route,{cookie})).status,403,route);
+  const review=await request('/hr/performance/reviews/611/2026-Q4',{cookie});
+  assert.equal(review.status,200);assert.equal(review.data.canEdit,false);
+  assert.equal((await request('/hr/performance/reviews/307/2026-Q4',{cookie})).status,403);
+  assert.equal((await request('/hr/performance/reviews/611/2026-Q4',{cookie,method:'PUT',body:{summary:'No writes'}})).status,403);
+  const ownCard=await request('/kpi/scorecards',{cookie:adminCookie,method:'POST',body:{templateId:'hr_manager',period:'2026-11',subjectType:'employee',subjectId:'611'}});
+  const administrator=(await request('/auth/me',{cookie:adminCookie})).data.user;
+  const peerCard=await request('/kpi/scorecards',{cookie:adminCookie,method:'POST',body:{templateId:'hr_manager',period:'2026-11',subjectType:'user',subjectId:administrator.id}});
+  assert.equal(ownCard.status,201,JSON.stringify(ownCard.data));
+  assert.equal(peerCard.status,201,JSON.stringify(peerCard.data));
+  const kpi=await request('/kpi/overview',{cookie});
+  assert.equal(kpi.status,200);assert.equal(kpi.data.permissions.canManage,false);
+  assert.deepEqual(kpi.data.scorecards.map((card)=>card.id),[ownCard.data.scorecard.id]);
+  assert.equal((await request(`/kpi/scorecards/${ownCard.data.scorecard.id}`,{cookie})).status,200);
+  assert.equal((await request(`/kpi/scorecards/${peerCard.data.scorecard.id}`,{cookie})).status,403);
+  assert.equal((await request('/kpi/scorecards',{cookie,method:'POST',body:{}})).status,403);
+});

@@ -9,7 +9,7 @@
  */
 
 import { find } from '../store.js';
-import { can, PERMISSIONS } from '../../shared/permissions.js';
+import { can, PERMISSIONS, performanceOnly } from '../../shared/permissions.js';
 import { organizationOf } from '../../shared/organization.js';
 import { localDay } from '../../shared/recruitment/sla.js';
 import { usdEgpRate } from '../hrFx.js';
@@ -42,7 +42,8 @@ function rights(user) {
     recruitment: can(user, PERMISSIONS.HR_RECRUITMENT_VIEW) || can(user, PERMISSIONS.HR_RECRUITMENT_APPROVE) || can(user, PERMISSIONS.HR_RECRUITMENT_ASSIGN),
     offers: can(user, PERMISSIONS.HR_MANAGE) || can(user, PERMISSIONS.HR_RECRUITMENT_OFFERS),
     personnel: can(user, PERMISSIONS.HR_PERSONNEL_VIEW),
-    performance: can(user, PERMISSIONS.HR_PERFORMANCE_REVIEW),
+    performance: can(user, PERMISSIONS.HR_PERFORMANCE_REVIEW) || can(user, PERMISSIONS.HR_PERFORMANCE_TEAM_VIEW),
+    performanceOnly: performanceOnly(user),
     settings: can(user, PERMISSIONS.HR_SETTINGS_MANAGE),
   };
 }

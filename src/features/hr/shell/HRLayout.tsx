@@ -5,7 +5,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { useLocation, useOutlet } from 'react-router-dom';
+import { Navigate, useLocation, useOutlet } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useHRText } from '../format';
 import { useMotion } from '../ui/motion';
@@ -14,9 +14,17 @@ import { RecruitmentAlertToasts } from '../recruitment/components/RecruitmentAle
 import { HRHeader } from './HRHeader';
 import { HRMobileNavigation } from './HRMobileNavigation';
 import { HRSidebar } from './HRSidebar';
-import { HRProvider } from './HRContext';
+import { HRProvider, useHR } from './HRContext';
 import { navIndex } from './nav';
 import { AREA_THEME, areaOf } from '../ui/theme';
+
+function AuthorizedOutlet() {
+  const { access, accessError } = useHR();
+  const { pathname } = useLocation();
+  if (!access && !accessError) return null;
+  if (access?.performanceOnly && pathname !== '/hr/performance') return <Navigate to="/hr/performance" replace />;
+  return <AnimatedOutlet keyOf={sectionOf} order={navIndex} />;
+}
 
 /** The top-level area, so moving inside Recruitment is not an HR-level transition. */
 function sectionOf(pathname: string) {
@@ -110,7 +118,7 @@ export function HRLayout() {
           <div className="min-w-0 flex-1">
             <HRHeader />
             <div className="px-4 pb-28 pt-5 sm:px-6 md:pb-12 lg:px-8">
-              <AnimatedOutlet keyOf={sectionOf} order={navIndex} />
+              <AuthorizedOutlet />
             </div>
           </div>
         </div>

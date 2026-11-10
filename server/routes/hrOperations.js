@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { create, findOne, getStore } from '../store.js';
 import { logActivity, requireAuth, requirePermission } from '../auth.js';
-import { PERMISSIONS } from '../../shared/permissions.js';
+import { PERMISSIONS, performanceOnly } from '../../shared/permissions.js';
 import { HR_PERIODIC_TASKS, hrTaskById } from '../../shared/hrPeriodicTasks.js';
 import { hrAutomationSummary, hrScheduleForTemplate } from '../../shared/hrRecurrence.js';
 import { organizationOf } from '../../shared/organization.js';
@@ -17,6 +17,7 @@ const router = Router();
 const MAX_ASSIGNEES = 8;
 
 router.use(requireAuth);
+router.use((req, res, next) => performanceOnly(req.user) ? res.status(403).json({ error: 'forbidden' }) : next());
 
 function requireHRAccess(req, res, next) {
   if (!canUseDepartment(req.user, 'hr')) return res.status(403).json({ error: 'forbidden_team' });

@@ -11,7 +11,7 @@
 import { Router } from 'express';
 import { getStore } from '../store.js';
 import { logActivity, requireAuth, requirePermission } from '../auth.js';
-import { PERMISSIONS, can } from '../../shared/permissions.js';
+import { PERMISSIONS, can, performanceOnly } from '../../shared/permissions.js';
 import { organizationOf } from '../../shared/organization.js';
 import { DEPARTMENTS } from '../../shared/departments.js';
 import {
@@ -41,6 +41,11 @@ import {
 
 const router = Router();
 router.use(requireAuth);
+router.use((req, res, next) => {
+  // The launcher's own-seat card is outside HR; the full seating plan is not.
+  if (performanceOnly(req.user) && req.path !== '/me') return res.status(403).json({ error: 'forbidden' });
+  next();
+});
 
 const manage = requirePermission(PERMISSIONS.OFFICES_MANAGE);
 

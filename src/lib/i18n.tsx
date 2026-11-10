@@ -993,6 +993,7 @@ const CORE_STRINGS = {
   'perm.hr.personnel.view': { ar: 'شئون العاملين: الرؤية', en: 'Personnel: view' },
   'perm.hr.personnel.manage': { ar: 'شئون العاملين: إدارة الطلبات والتهيئة والإخلاء', en: 'Personnel: manage requests, onboarding and clearance' },
   'perm.hr.performance.review': { ar: 'الأداء: إجراء التقييمات الربع سنوية', en: 'Performance: run quarterly reviews' },
+  'perm.hr.performance.team_view': { ar: 'عرض أداء وKPI الفريق فقط، دون باقي HR أو التعديل', en: 'View team performance and KPI only, without other HR areas or editing' },
   'perm.hr.settings.manage': { ar: 'إعدادات HR: القواعد والمهل والمكافآت', en: 'HR settings: rules, SLAs and rewards' },
   'perm.users.view': { ar: 'رؤية المستخدمين', en: 'View users' },
   'perm.users.manage': { ar: 'إضافة المستخدمين وتعديلهم', en: 'Add and edit users' },

@@ -137,6 +137,7 @@ function ReviewDialog({ code, quarter, onClose }: { code: string; quarter: strin
 
 function Overview({ data, onReview }: { data: PerformanceData; onReview: (code: string) => void }) {
   const { t, lang, pick } = useHRText();
+  const { access } = useHR();
   const [params, setParams] = useSearchParams();
   const lowOnly = params.get('filter') === 'low';
   const department = params.get('department') ?? '';
@@ -160,9 +161,9 @@ function Overview({ data, onReview }: { data: PerformanceData; onReview: (code: 
   const average = generals.length ? generals.reduce((sum, value) => sum + value, 0) / generals.length : null;
 
   const columns: Array<Column<PerformanceRow & { id: string }>> = [
-    { key: 'name', header: t('الموظف', 'Employee'), sort: (row) => pick(row.name), cell: (row) => <Link to={`/hr/people/${encodeURIComponent(row.employeeCode)}`} onClick={(event) => event.stopPropagation()} className="min-w-0"><span className="block truncate font-semibold text-navy hover:text-brand-700">{pick(row.name)}</span><span className="block truncate text-[11.5px] text-[#5A6C82]">{[row.title, row.department].filter(Boolean).join(' · ') || `#${row.employeeCode}`}</span></Link> },
+    { key: 'name', header: t('الموظف', 'Employee'), sort: (row) => pick(row.name), cell: (row) => access?.performanceOnly ? <span><span className="block truncate font-semibold text-navy">{pick(row.name)}</span><span className="block truncate text-[11.5px] text-[#5A6C82]">{[row.title, row.department].filter(Boolean).join(' · ')}</span></span> : <Link to={`/hr/people/${encodeURIComponent(row.employeeCode)}`} onClick={(event) => event.stopPropagation()} className="min-w-0"><span className="block truncate font-semibold text-navy hover:text-brand-700">{pick(row.name)}</span><span className="block truncate text-[11.5px] text-[#5A6C82]">{[row.title, row.department].filter(Boolean).join(' · ') || `#${row.employeeCode}`}</span></Link> },
     { key: 'general', header: t('KPI العام', 'General KPI'), sort: (row) => row.general?.percent ?? null, cell: (row) => <Score value={row.general?.percent} hint={row.general ? monthLabel(row.general.period, lang) : undefined} /> },
-    { key: 'recruitment', header: t('KPI التوظيف', 'Recruitment KPI'), sort: (row) => row.recruitment?.percent ?? null, cell: (row) => (row.recruitment ? <Link to={`/hr/recruitment/kpi?recruiter=${encodeURIComponent(row.employeeCode)}&period=${data.period}`} onClick={(event) => event.stopPropagation()} className="hover:underline"><Score value={row.recruitment.percent} /></Link> : <span className="text-ink-faint">—</span>) },
+    { key: 'recruitment', header: t('KPI التوظيف', 'Recruitment KPI'), sort: (row) => row.recruitment?.percent ?? null, cell: (row) => (row.recruitment ? access?.performanceOnly ? <Score value={row.recruitment.percent} /> : <Link to={`/hr/recruitment/kpi?recruiter=${encodeURIComponent(row.employeeCode)}&period=${data.period}`} onClick={(event) => event.stopPropagation()} className="hover:underline"><Score value={row.recruitment.percent} /></Link> : <span className="text-ink-faint">—</span>) },
     { key: 'tasks', header: t('تقييم المهام', 'Task scores'), sort: (row) => row.tasks.average, cell: (row) => <Score value={row.tasks.average} hint={row.tasks.count ? t(`${row.tasks.count} مهمة`, `${row.tasks.count} tasks`) : undefined} /> },
     {
       key: 'review',
@@ -179,7 +180,7 @@ function Overview({ data, onReview }: { data: PerformanceData; onReview: (code: 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Metric icon={Gauge} label={t('متوسط KPI العام', 'Average general KPI')} value={pct(average, lang)} hint={t(`${generals.length} بطاقة`, `${generals.length} scorecards`)} tone={scoreTone(average)} />
         <Metric icon={TrendingDown} label={t(`KPI عام أقل من ${LOW}%`, `General KPI below ${LOW}%`)} value={num(data.attention.lowGeneral, lang)} tone={data.attention.lowGeneral ? 'warning' : 'neutral'} onClick={() => set('filter', lowOnly ? '' : 'low')} hint={lowOnly ? t('معروضة الآن', 'Showing') : undefined} />
-        <Metric icon={Briefcase} label={t(`KPI توظيف أقل من ${LOW}%`, `Recruitment KPI below ${LOW}%`)} value={num(data.attention.lowRecruitment, lang)} tone={data.attention.lowRecruitment ? 'warning' : 'neutral'} to={`/hr/recruitment/kpi?period=${data.period}`} />
+        <Metric icon={Briefcase} label={t(`KPI توظيف أقل من ${LOW}%`, `Recruitment KPI below ${LOW}%`)} value={num(data.attention.lowRecruitment, lang)} tone={data.attention.lowRecruitment ? 'warning' : 'neutral'} to={access?.performanceOnly ? undefined : `/hr/recruitment/kpi?period=${data.period}`} />
         <Metric icon={ClipboardCheck} label={t('تقييمات ربع سنوية لم تُعتمد', 'Quarterly reviews not final')} value={num(data.attention.reviewsPending, lang)} tone={data.attention.reviewsPending ? 'info' : 'neutral'} onClick={() => set('tab', 'reviews')} />
       </div>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -197,7 +198,7 @@ function Overview({ data, onReview }: { data: PerformanceData; onReview: (code: 
         rows={rows}
         columns={columns}
         onRowClick={data.canReview ? (row) => onReview(row.employeeCode) : undefined}
-        rowHref={data.canReview ? undefined : (row) => `/hr/people/${encodeURIComponent(row.employeeCode)}`}
+        rowHref={data.canReview || access?.performanceOnly ? undefined : (row) => `/hr/people/${encodeURIComponent(row.employeeCode)}`}
         initialSort={lowOnly ? { key: 'general', direction: 'asc' } : null}
         caption={t('الأداء', 'Performance')}
         empty={<EmptyBlock title={t('لا يوجد موظفون مطابقون', 'No matching employees')} />}

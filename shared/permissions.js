@@ -49,6 +49,7 @@ export const PERMISSIONS = {
   HR_PERSONNEL_VIEW: 'hr.personnel.view',
   HR_PERSONNEL_MANAGE: 'hr.personnel.manage',
   HR_PERFORMANCE_REVIEW: 'hr.performance.review',
+  HR_PERFORMANCE_TEAM_VIEW: 'hr.performance.team_view',
   HR_SETTINGS_MANAGE: 'hr.settings.manage',
   MANAGEMENT_VIEW: 'management.view',
   MANAGEMENT_MANAGE: 'management.manage',
@@ -314,6 +315,7 @@ export const HR_V2_PERMISSIONS = [
   PERMISSIONS.HR_PERSONNEL_VIEW,
   PERMISSIONS.HR_PERSONNEL_MANAGE,
   PERMISSIONS.HR_PERFORMANCE_REVIEW,
+  PERMISSIONS.HR_PERFORMANCE_TEAM_VIEW,
   PERMISSIONS.HR_SETTINGS_MANAGE,
 ];
 
@@ -349,6 +351,12 @@ function deriveHRAuthority(permissions) {
 export function can(user, permission) {
   if (!isActiveUser(user)) return false;
   return permissionsFor(user).includes(permission);
+}
+
+/** A manager's read-only performance desk, without access to other HR areas. */
+export function performanceOnly(user) {
+  return can(user, PERMISSIONS.HR_PERFORMANCE_TEAM_VIEW)
+    && !can(user, PERMISSIONS.HR_VIEW) && !can(user, PERMISSIONS.HR_MANAGE);
 }
 
 /**

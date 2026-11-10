@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import express, { Router } from 'express';
 import { create } from '../store.js';
 import { logActivity, requireAuth, requirePermission } from '../auth.js';
-import { PERMISSIONS, can } from '../../shared/permissions.js';
+import { PERMISSIONS, can, performanceOnly } from '../../shared/permissions.js';
 import { DEFAULT_ORGANIZATION_ID, organizationOf } from '../../shared/organization.js';
 import {
   hrDashboardFor,
@@ -167,6 +167,13 @@ router.post('/telegram', async (req, res) => {
 });
 
 router.use(requireAuth);
+// Restrict direct URLs as well as navigation; ordinary HR checks remain intact.
+router.use((req, res, next) => {
+  if (!performanceOnly(req.user)) return next();
+  const read = req.method === 'GET' || req.method === 'HEAD';
+  if (read && (req.path === '/access' || req.path === '/performance' || /^\/performance\/reviews\/[^/]+\/[^/]+$/.test(req.path))) return next();
+  return res.status(403).json({ error: 'forbidden', missing: 'hr.performance_only' });
+});
 
 router.get('/dashboard', async (req, res) => {
   try {

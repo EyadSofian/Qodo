@@ -351,6 +351,18 @@ at a time.
 
 ## 12. Personnel
 
+`hr.performance.team_view` provides a read-only desk at `/hr/performance`,
+including KPI scorecards and quarterly review reads for the manager and active
+employees below them in Odoo's manager tree. It grants no profile, payroll,
+recruitment, personnel, settings, or KPI/review editing authority. Accounts with
+this key and no broad `hr.view`/`hr.manage` access are restricted to performance
+through both HR navigation and HTTP routes (including the legacy HR operations
+and seating-plan routes). HR opens directly on Performance for them. The
+launcher's own-seat summary remains available outside HR. Scope is resolved by
+an explicit HR employee link or a unique work email; unavailable Odoo or an
+unresolved identity falls back to self only. Existing HR administrators retain
+their broad access.
+
 A case (`personnelRequests`) is one piece of personnel work about one person:
 onboarding, leave, clearance, salary increase, documents, insurance or a
 general request. Onboarding and clearance copy their checklist from Settings

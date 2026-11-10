@@ -15,6 +15,7 @@ import crypto from 'node:crypto';
 import { create, find, findOne, getStore, now } from './store.js';
 import { can, isActiveUser, PERMISSIONS } from '../shared/permissions.js';
 import { organizationOf } from '../shared/organization.js';
+import { performanceTeamFor, performanceSubjectAllowed } from './hr/performanceAccess.js';
 import {
   KPI_CHECK_STATES,
   KPI_STATUSES,
@@ -186,14 +187,15 @@ function publicScorecard(scorecard, template, { includeEntry = true } = {}) {
 
 export async function kpiOverviewFor(user) {
   const organizationId = organizationOf(user);
-  const canRead = can(user, PERMISSIONS.HR_VIEW);
+  const scope = await performanceTeamFor(user);
+  const canRead = can(user, PERMISSIONS.HR_VIEW) || Boolean(scope);
   const canManage = can(user, PERMISSIONS.HR_MANAGE);
   const [stored, codes] = await Promise.all([
     find('kpiScorecards', (item) => organizationOf(item) === organizationId),
     ownEmployeeCodes(user),
   ]);
 
-  const visible = canRead ? stored : stored.filter((item) => isSubject(item, user, codes));
+  const visible = scope ? stored.filter((item) => performanceSubjectAllowed(scope, item)) : canRead ? stored : stored.filter((item) => isSubject(item, user, codes));
   const scorecards = visible
     .map((item) => {
       const template = kpiTemplateById(item.templateId);
@@ -220,7 +222,8 @@ export async function kpiScorecardFor(user, id) {
     (item) => item.id === String(id) && organizationOf(item) === organizationOf(user)
   );
   if (!scorecard) throw new KPIError('kpi_scorecard_not_found', 404);
-  if (!can(user, PERMISSIONS.HR_VIEW) && !isSubject(scorecard, user, await ownEmployeeCodes(user))) {
+  const scope = await performanceTeamFor(user);
+  if (scope ? !performanceSubjectAllowed(scope, scorecard) : !can(user, PERMISSIONS.HR_VIEW) && !isSubject(scorecard, user, await ownEmployeeCodes(user))) {
     throw new KPIError('forbidden', 403);
   }
   return publicScorecard(scorecard, requireTemplate(scorecard.templateId));

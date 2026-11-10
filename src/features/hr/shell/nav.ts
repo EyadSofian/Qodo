@@ -27,14 +27,14 @@ export interface HRNavItem {
  * these pages re-checks the same permission on the server.
  */
 export const HR_NAV: HRNavItem[] = [
-  { id: 'home', to: '/hr', end: true, icon: LayoutDashboard, label: { ar: 'الرئيسية', en: 'HR Home' }, visible: () => true },
+  { id: 'home', to: '/hr', end: true, icon: LayoutDashboard, label: { ar: 'الرئيسية', en: 'HR Home' }, visible: (a) => !a.performanceOnly },
   { id: 'recruitment', to: '/hr/recruitment', icon: BriefcaseBusiness, label: { ar: 'التوظيف', en: 'Recruitment' }, visible: (a) => a.recruitment || a.requests || a.kpiReview || a.rewards || a.offers },
   { id: 'people', to: '/hr/people', icon: UsersRound, label: { ar: 'الموظفون', en: 'People' }, visible: (a) => a.people || a.team },
   { id: 'personnel', to: '/hr/personnel', icon: ClipboardList, label: { ar: 'شئون العاملين', en: 'Personnel' }, visible: (a) => a.personnel },
   { id: 'payroll', to: '/hr/payroll', icon: WalletCards, label: { ar: 'الرواتب والمزايا', en: 'Payroll & Benefits' }, visible: (a) => a.payroll },
   // Anyone with an HR record may read their own KPI, and anyone may find a colleague's seat.
   { id: 'performance', to: '/hr/performance', icon: Gauge, label: { ar: 'الأداء', en: 'Performance' }, visible: (a) => a.people || a.performance || a.recruitment || Boolean(a.employeeCode) },
-  { id: 'organization', to: '/hr/organization', icon: Network, label: { ar: 'الهيكل التنظيمي', en: 'Organization' }, visible: () => true },
+  { id: 'organization', to: '/hr/organization', icon: Network, label: { ar: 'الهيكل التنظيمي', en: 'Organization' }, visible: (a) => !a.performanceOnly },
   { id: 'reports', to: '/hr/reports', icon: BarChart3, label: { ar: 'التقارير', en: 'Reports' }, visible: (a) => a.people || a.recruitment || a.payroll },
   { id: 'settings', to: '/hr/settings', icon: Settings2, label: { ar: 'إعدادات HR', en: 'HR Settings' }, visible: (a) => a.settings || a.manage },
 ];

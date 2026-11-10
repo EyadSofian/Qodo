@@ -14,7 +14,7 @@
  */
 
 import { find, findOne, getStore, create, now } from '../store.js';
-import { can, PERMISSIONS } from '../../shared/permissions.js';
+import { can, PERMISSIONS, performanceOnly } from '../../shared/permissions.js';
 import { organizationOf } from '../../shared/organization.js';
 import { kpiTemplateById, scoreScorecard } from '../../shared/kpi.js';
 import { recruiterKpi } from '../../shared/recruitment/kpi.js';
@@ -24,6 +24,7 @@ import { hrSettingsFor } from './settings.js';
 import { organizationState } from '../hrModule.js';
 import { requestsFor, stableId } from './recruitment/data.js';
 import { recruitmentTeamFor } from './recruitment/team.js';
+import { performanceTeamFor } from './performanceAccess.js';
 
 const QUARTER = /^\d{4}-Q[1-4]$/;
 
@@ -65,11 +66,12 @@ export async function performanceOverview(user, { period, quarter } = {}) {
   const team = await recruitmentTeamFor({ profiles: state.profiles, requests, settings });
   const teamCodes = new Set(team.map((member) => member.employeeCode));
   const own = [...state.profiles.values()].find((profile) => profile.linkedUserId === user.id) ?? null;
+  const scope = await performanceTeamFor(user, state);
   const everyone = rights.view || rights.review;
-  if (!everyone && !rights.recruitment && !own) throw forbidden(PERMISSIONS.HR_VIEW);
+  if (!scope && !everyone && !rights.recruitment && !own) throw forbidden(PERMISSIONS.HR_VIEW);
 
   const profiles = [...state.profiles.values()].filter((profile) => profile.status === 'active' && profile.sources.master);
-  const visible = everyone
+  const visible = scope ? profiles.filter((profile) => scope.codes.has(profile.employeeCode)) : everyone
     ? profiles
     : profiles.filter((profile) => (rights.recruitment && teamCodes.has(profile.employeeCode)) || profile.employeeCode === own?.employeeCode);
 
@@ -105,7 +107,7 @@ export async function performanceOverview(user, { period, quarter } = {}) {
     quarter: q,
     criteria: settings.performance.quarterlyCriteria,
     rows,
-    canReview: rights.review,
+    canReview: !scope && rights.review,
     attention: {
       lowGeneral: rows.filter((row) => row.general?.percent !== null && row.general?.percent !== undefined && row.general.percent < 70).length,
       lowRecruitment: rows.filter((row) => row.recruitment?.percent !== null && row.recruitment?.percent !== undefined && row.recruitment.percent < 70).length,
@@ -122,21 +124,22 @@ export async function reviewFor(user, employeeCode, quarter) {
   const profile = state.profiles.get(String(employeeCode));
   if (!profile) throw notFound('hr_employee_not_found');
   const self = profile.linkedUserId === user.id;
-  if (!rights.view && !rights.review && !self) throw forbidden(PERMISSIONS.HR_PERFORMANCE_REVIEW);
+  const scope = await performanceTeamFor(user, state);
+  if (scope ? !scope.codes.has(profile.employeeCode) : !rights.view && !rights.review && !self) throw forbidden(PERMISSIONS.HR_PERFORMANCE_REVIEW);
   const id = stableId('prv', organizationId, profile.employeeCode, quarter);
   const review = await findOne('performanceReviews', (row) => row.id === id);
   const { settings } = await hrSettingsFor(organizationId);
   return {
     review: review ?? { id, employeeCode: profile.employeeCode, quarter, criteria: settings.performance.quarterlyCriteria, scores: {}, comments: {}, summary: '', status: 'draft', reviewerId: null },
     exists: Boolean(review),
-    canEdit: rights.review && !self && (!review || review.status !== 'final'),
+    canEdit: !scope && rights.review && !self && (!review || review.status !== 'final'),
     employee: { employeeCode: profile.employeeCode, name: { ar: profile.nameArabic || profile.nameEnglish, en: profile.nameEnglish || profile.nameArabic }, title: profile.title, department: profile.department },
   };
 }
 
 export async function saveReview(user, employeeCode, quarter, input = {}) {
   const rights = access(user);
-  if (!rights.review) throw forbidden(PERMISSIONS.HR_PERFORMANCE_REVIEW);
+  if (performanceOnly(user) || !rights.review) throw forbidden(PERMISSIONS.HR_PERFORMANCE_REVIEW);
   const current = await reviewFor(user, employeeCode, quarter);
   if (!current.canEdit) throw new HRError(current.review.status === 'final' ? 'performance_review_final' : 'performance_self_review_forbidden', current.review.status === 'final' ? 409 : 403);
   // A saved review keeps the criteria it was started with; a new one takes today's.

@@ -32,6 +32,7 @@ export interface HRAccess {
   personnel: boolean;
   personnelManage: boolean;
   performance: boolean;
+  performanceOnly?: boolean;
   settings: boolean;
   requests: boolean;
   kpiReview: boolean;
