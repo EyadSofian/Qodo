@@ -372,3 +372,41 @@ test('performance-only managers can read their scoped KPI and performance but no
   assert.equal((await request(`/kpi/scorecards/${peerCard.data.scorecard.id}`,{cookie})).status,403);
   assert.equal((await request('/kpi/scorecards',{cookie,method:'POST',body:{}})).status,403);
 });
+
+test('email-bound HR invitations preserve least privilege through signup and approval', async () => {
+  const email='new-hr@example.test';
+  const permissions=[PERMISSIONS.APPS_VIEW,PERMISSIONS.HR_VIEW,PERMISSIONS.HR_RECRUITMENT_VIEW,PERMISSIONS.HR_RECRUITMENT_REQUEST,PERMISSIONS.HR_RECRUITMENT_ASSIGN,PERMISSIONS.HR_RECRUITMENT_OFFERS,PERMISSIONS.HR_PERSONNEL_VIEW,PERMISSIONS.HR_PERSONNEL_MANAGE];
+  const invalid=await request('/invites',{cookie:adminCookie,method:'POST',body:{label:'Invalid',email:'not-an-email'}});
+  assert.equal(invalid.status,400);
+  const created=await request('/invites',{cookie:adminCookie,method:'POST',body:{label:'HR onboarding',email,emailDomain:'example.test',departments:['hr'],subteam:'recruitment',jobRole:'recruiter',role:'member',permissions,appIds:['hr'],visibilityScope:'own',maxUses:1,expiresInDays:14}});
+  assert.equal(created.status,201,JSON.stringify(created.data));
+  const token=created.data.invite.token;
+  const publicInvite=await request(`/invites/token/${token}`);
+  assert.equal(publicInvite.status,200);assert.equal(publicInvite.data.invite.email,email);assert.equal(publicInvite.data.invite.requiresApproval,true);
+  assert.equal(publicInvite.data.invite.subteam,'recruitment');
+  assert.equal(publicInvite.data.invite.permissions,undefined);
+  const wrong=await request(`/invites/token/${token}/accept`,{method:'POST',body:{name:'Wrong user',email:'someone-else@example.test',password:'NewHrPass123!',department:'hr'}});
+  assert.equal(wrong.status,400);assert.equal(wrong.data.error,'invite_email_mismatch');
+  const wrongTeam=await request(`/invites/token/${token}/accept`,{method:'POST',body:{name:'New HR',email,password:'NewHrPass123!',department:'hr',subteam:'payroll',jobRole:'payroll_specialist'}});
+  assert.equal(wrongTeam.status,400);assert.equal(wrongTeam.data.error,'invalid_subteam');
+  const accepted=await request(`/invites/token/${token}/accept`,{method:'POST',body:{name:'New HR Specialist',email,password:'NewHrPass123!',department:'hr',permissions:[PERMISSIONS.HR_PAYROLL],appIds:null,role:'admin',status:'active'}});
+  assert.equal(accepted.status,201,JSON.stringify(accepted.data));assert.equal(accepted.data.status,'pending_approval');
+  const users=await request('/users',{cookie:adminCookie});
+  const added=users.data.users.find((u)=>u.email===email);
+  assert.equal(added.status,'pending');assert.equal(added.role,'member');assert.deepEqual(added.appIds,['hr']);assert.deepEqual(added.permissions,permissions);
+  assert.equal((await request(`/invites/token/${token}`)).status,404);
+  assert.equal((await request('/auth/login',{method:'POST',body:{email,password:'NewHrPass123!'}})).status,403);
+  const approval=await request(`/users/${added.id}`,{cookie:adminCookie,method:'PATCH',body:{status:'active'}});
+  assert.equal(approval.status,200,JSON.stringify(approval.data));
+  const cookie=await login(email,'NewHrPass123!');
+  const access=await request('/hr/access',{cookie});
+  assert.equal(access.status,200);assert.equal(access.data.access.people,true);assert.equal(access.data.access.payroll,false);assert.equal(access.data.access.manage,false);
+  assert.equal((await request('/hr/payroll',{cookie})).status,403);
+  for(const route of ['/mail/bootstrap','/calendar/events','/tasks/counts','/projects','/learning-production','/events','/prices','/search?q=test','/assistant','/management','/booking'])assert.equal((await request(route,{cookie})).status,403,route);
+  const apps=await request('/apps',{cookie});assert.equal(apps.status,200);assert.deepEqual(apps.data.apps.map((app)=>app.id),['hr']);
+  // Salary stays hidden on other employees and on the linked HR user's own profile.
+  assert.equal((await request('/hr/employees/611/link',{method:'PUT',cookie:adminCookie,body:{userId:added.id}})).status,200);
+  const profile=await request('/hr/employees/611',{cookie});assert.equal(profile.status,200);assert.equal(profile.data.employee.payroll,null);assert.equal(profile.data.employee.bankAccount,'');
+  assert.equal((await request('/hr/imports/payroll',{method:'POST',cookie,body:{}})).status,403);
+  assert.equal((await request('/hr/employees/611/payroll',{method:'PATCH',cookie,body:{totalSalary:1}})).status,403);
+});

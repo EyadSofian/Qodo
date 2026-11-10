@@ -420,6 +420,12 @@ export function canOpenApp(user, appId) {
   return user.appIds.includes(appId);
 }
 
+/** An explicit single-app HR account has no access to other workspace modules. */
+export function hrWorkspaceOnly(user) {
+  return Boolean(user && user.role !== 'admin' && Array.isArray(user.appIds)
+    && user.appIds.length === 1 && user.appIds[0] === 'hr');
+}
+
 /** Strip everything the browser has no business seeing. */
 export function publicUser(user) {
   if (!user) return null;

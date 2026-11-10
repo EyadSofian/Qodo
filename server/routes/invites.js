@@ -101,6 +101,18 @@ router.post('/', requirePermission(PERMISSIONS.USERS_MANAGE), async (req, res) =
     return res.status(400).json({ error: 'invalid_domain' });
   }
 
+  const email = String(req.body?.email || '').trim().toLowerCase();
+  if (email && (!EMAIL_RE.test(email) || (emailDomain && !email.endsWith(`@${emailDomain}`)))) {
+    return res.status(400).json({ error: 'invalid_email' });
+  }
+  if (email && await findOne('users', (user) => user.email === email)) {
+    return res.status(409).json({ error: 'email_taken' });
+  }
+  const subteam = req.body?.subteam ? String(req.body.subteam) : null;
+  const jobRole = req.body?.jobRole ? String(req.body.jobRole) : null;
+  if (subteam && (departments.length !== 1 || !getSubteam(departments[0], subteam))) return res.status(400).json({ error: 'invalid_subteam' });
+  if (jobRole && (!subteam || !getJobRole(departments[0], subteam, jobRole))) return res.status(400).json({ error: 'invalid_job_role' });
+
   const maxUses = normaliseMaxUses(req.body?.maxUses);
   if (maxUses === null) return res.status(400).json({ error: 'invalid_max_uses' });
 
@@ -118,6 +130,9 @@ router.post('/', requirePermission(PERMISSIONS.USERS_MANAGE), async (req, res) =
     role,
     departments,
     emailDomain: emailDomain || null,
+    email: email || null,
+    subteam,
+    jobRole,
     permissions: normalisePermissions(req.body?.permissions),
     appIds: normaliseAppIds(req.body?.appIds),
     visibilityScope: VISIBILITY_SCOPES.includes(req.body?.visibilityScope)
@@ -223,6 +238,9 @@ router.get('/token/:token', async (req, res) => {
     invite: {
       label: invite.label,
       emailDomain: invite.emailDomain,
+      email: invite.email ?? null,
+      subteam: invite.subteam ?? null,
+      jobRole: invite.jobRole ?? null,
       // Approval is always required — stated here so the form can say so before
       // anyone types a password, not after.
       requiresApproval: true,
@@ -233,11 +251,11 @@ router.get('/token/:token', async (req, res) => {
           en: department.en,
           color: department.color,
           icon: department.icon,
-          subteams: getSubteams(department.id).map((team) => ({
+          subteams: getSubteams(department.id).filter((team) => !invite.subteam || team.id === invite.subteam).map((team) => ({
             id: team.id,
             ar: team.ar,
             en: team.en,
-            roles: team.roles,
+            roles: team.roles.filter((role) => !invite.jobRole || role.id === invite.jobRole),
           })),
         })
       ),
@@ -318,6 +336,10 @@ async function acceptInvite(req, res, identity) {
       if (invite.emailDomain && !email.endsWith(`@${invite.emailDomain}`)) {
         return { status: 400, body: { error: 'email_domain_mismatch', domain: invite.emailDomain } };
       }
+      // Both password and verified-Google acceptance use this exact-email check.
+      if (invite.email && email !== invite.email) {
+        return { status: 400, body: { error: 'invite_email_mismatch' } };
+      }
 
       // The same rule the admin form uses, checked inside the lock so two
       // simultaneous sign-ups cannot both win it.
@@ -335,8 +357,10 @@ async function acceptInvite(req, res, identity) {
         return { status: 400, body: { error: 'invalid_department' } };
       }
 
-      const subteam = req.body?.subteam ? String(req.body.subteam) : null;
-      const jobRole = req.body?.jobRole ? String(req.body.jobRole) : null;
+      const subteam = req.body?.subteam ? String(req.body.subteam) : invite.subteam ?? null;
+      const jobRole = req.body?.jobRole ? String(req.body.jobRole) : invite.jobRole ?? null;
+      if (invite.subteam && subteam !== invite.subteam) return { status: 400, body: { error: 'invalid_subteam' } };
+      if (invite.jobRole && jobRole !== invite.jobRole) return { status: 400, body: { error: 'invalid_job_role' } };
       if (subteam && !getSubteam(department, subteam)) {
         return { status: 400, body: { error: 'invalid_subteam' } };
       }

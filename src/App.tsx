@@ -21,6 +21,7 @@ import { Mail } from './pages/Mail';
 import { Calendar } from './pages/Calendar';
 import { Book } from './pages/Book';
 import { Prices } from './pages/Prices';
+import { hrWorkspaceOnly } from '@shared/permissions';
 
 /**
  * Qodo Projects loads on demand.
@@ -203,6 +204,9 @@ function Gate() {
 
   if (loading) return <Splash />;
   if (!user) return <Login />;
+  if (hrWorkspaceOnly(user) && location.pathname !== '/hr' && !location.pathname.startsWith('/hr/')) {
+    return <Navigate to="/hr" replace />;
+  }
 
   return (
     <Shell>

@@ -108,6 +108,7 @@ export const api = {
  * table so an added endpoint error and its wording land in one diff.
  */
 const ERRORS: Record<string, { ar: string; en: string }> = {
+  invite_email_mismatch: { ar: 'رابط الدعوة مخصص لبريد آخر. استخدم البريد المحدد في الدعوة.', en: 'This invitation is for a different email. Use the address specified in the invitation.' },
   offer_catalog_not_configured: { ar: 'لم تُثبّت نماذج عروض العمل في مخزن المؤسسة بعد.', en: 'Offer templates have not been installed in the organization store yet.' },
   offer_template_not_found: { ar: 'نموذج العرض غير موجود.', en: 'The offer template was not found.' },
   offer_not_found: { ar: 'العرض غير موجود أو خارج صلاحياتك.', en: 'The offer was not found or is outside your access.' },

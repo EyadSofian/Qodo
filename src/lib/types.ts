@@ -79,6 +79,9 @@ export interface Invite {
 
 /** The trimmed view of an invite the public join page is allowed to load. */
 export interface PublicInvite {
+  email?: string | null;
+  subteam?: string | null;
+  jobRole?: string | null;
   label: string;
   emailDomain: string | null;
   requiresApproval: boolean;

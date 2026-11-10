@@ -36,7 +36,7 @@ import {
   sendTestPush,
   type PushState,
 } from '../lib/push';
-import { PERMISSIONS } from '@shared/permissions';
+import { PERMISSIONS, hrWorkspaceOnly } from '@shared/permissions';
 import { Logo, LogoMark } from './Brand';
 import { AppSwitcher } from './AppSwitcher';
 import { NotificationsMenu } from './NotificationsMenu';
@@ -93,6 +93,7 @@ export function Shell({ children }: { children: ReactNode }) {
   const [lpImmersiveChoice, setLpImmersiveChoice] = useState(() => readImmersive(LP_IMMERSIVE_KEY, true));
 
   const { user, signOut, can } = useAuth();
+  const hrOnly = hrWorkspaceOnly(user);
   const { t, lang, setLang } = useI18n();
   const { unread, taskCounts, reloadNotifications, showIncomingNotification } = useWorkspace();
   const { push: toast } = useToast();
@@ -115,6 +116,7 @@ export function Shell({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      if (hrOnly) return;
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault();
         setSearchOpen(true);
@@ -122,7 +124,7 @@ export function Shell({ children }: { children: ReactNode }) {
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, []);
+  }, [hrOnly]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -269,10 +271,10 @@ export function Shell({ children }: { children: ReactNode }) {
                 urgent={taskCounts.overdue > 0}
               />
             )}
-            <DockLink to="/mail" icon={Mail} label={t('mail.title')} accent="#1D6FB8" />
+            {!hrOnly && <DockLink to="/mail" icon={Mail} label={t('mail.title')} accent="#1D6FB8" />}
             {/* No permission gate: everybody has a calendar. What an entry
                 reaches is decided on the entry, not on the person opening it. */}
-            <DockLink to="/calendar" icon={CalendarDays} label={t('calendar.title')} accent="#7C3AED" />
+            {!hrOnly && <DockLink to="/calendar" icon={CalendarDays} label={t('calendar.title')} accent="#7C3AED" />}
             {/* Only the people actually on the management desk ever see this —
                 no role carries the key, it is granted one person at a time. */}
             {can(PERMISSIONS.MANAGEMENT_VIEW) && (
@@ -284,6 +286,7 @@ export function Shell({ children }: { children: ReactNode }) {
 
           {/* Desktop gets a real search field; the phone gets an icon that opens
               the same sheet, because a text input here would crowd the bar. */}
+          {!hrOnly && <>
           <button
             type="button"
             onClick={() => setSearchOpen(true)}
@@ -318,6 +321,7 @@ export function Shell({ children }: { children: ReactNode }) {
             <Sparkles size={16} className="text-sky-300" />
             <span className={cx('hidden', !isFramed && 'sm:inline')}>{t('shell.assistant')}</span>
           </button>
+          </>}
 
           {(isFramed || isLearningProduction) && (
             <button
@@ -493,12 +497,12 @@ export function Shell({ children }: { children: ReactNode }) {
         </button>
       )}
 
-      <SearchPalette open={searchOpen} onClose={() => setSearchOpen(false)} />
+      {!hrOnly && <SearchPalette open={searchOpen} onClose={() => setSearchOpen(false)} />}
       <ChangePasswordModal open={passwordOpen} onClose={() => setPasswordOpen(false)} />
-      <Assistant open={assistantOpen} onClose={() => setAssistantOpen(false)} />
-      <TaskSummaryPopup />
+      {!hrOnly && <Assistant open={assistantOpen} onClose={() => setAssistantOpen(false)} />}
+      {!hrOnly && <TaskSummaryPopup />}
       <IncomingNotificationPopup />
-      <ReworkGuard />
+      {!hrOnly && <ReworkGuard />}
     </div>
     </ShellChromeContext.Provider>
     </ShellSlotContext.Provider>
@@ -580,14 +584,14 @@ export function CountBadge({
 
 /** Phone-only tab bar — a floating dock, so the workspace feels like an app. */
 function BottomNav({ onOpenSwitcher }: { onOpenSwitcher: () => void }) {
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   const { t } = useI18n();
   const { taskCounts } = useWorkspace();
   const taskBadge = taskCounts.mine + taskCounts.awaitingMyReview;
 
   const items = [
     { to: '/', label: t('shell.homeShort'), icon: Home, end: true, badge: 0, urgent: false },
-    { to: '/mail', label: t('mail.title'), icon: Mail, end: false, badge: 0, urgent: false },
+    ...(!hrWorkspaceOnly(user) ? [{ to: '/mail', label: t('mail.title'), icon: Mail, end: false, badge: 0, urgent: false }] : []),
     ...(can(PERMISSIONS.TASKS_VIEW)
       ? [
           {

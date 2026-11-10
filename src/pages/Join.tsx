@@ -12,7 +12,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { AlertCircle, CheckCircle2, Clock, Languages, ShieldCheck } from 'lucide-react';
-import { api, errorMessage } from '../lib/api';
+import { api, ApiError, errorMessage } from '../lib/api';
 import { useI18n } from '../lib/i18n';
 import { Logo } from '../components/Brand';
 import { ModuleIcon } from '../components/ModuleIcon';
@@ -54,6 +54,9 @@ export function Join() {
       .then(({ invite: data }) => {
         if (cancelled) return;
         setInvite(data);
+        if (data.email) setEmail(data.email);
+        if (data.subteam) setSubteam(data.subteam);
+        if (data.jobRole) setJobRole(data.jobRole);
         // A link pinned to a single department shouldn't ask a question with
         // one answer.
         if (data.departments.length === 1) setDepartment(data.departments[0].id);
@@ -127,6 +130,10 @@ export function Join() {
   const selectGoogle = (credential: string) => {
     try {
       const claims = previewGoogleCredential(credential);
+      if (invite?.email && claims.email.toLowerCase() !== invite.email.toLowerCase()) {
+        setError(errorMessage(new ApiError(400, { error: 'invite_email_mismatch' }), lang));
+        return;
+      }
       setGoogleIdentity({ credential, name: claims.name, email: claims.email });
       setName(claims.name);
       setEmail(claims.email);
@@ -276,6 +283,7 @@ export function Join() {
                       type="email"
                       className="field ltr text-start"
                       value={email}
+                      readOnly={Boolean(invite.email)}
                       onChange={(event) => setEmail(event.target.value)}
                       placeholder={invite.emailDomain ? `you@${invite.emailDomain}` : 'you@engosoft.com'}
                       autoComplete="username"

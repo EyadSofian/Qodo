@@ -10,6 +10,7 @@ import {
 } from "react";
 import { api } from "./api";
 import { useAuth } from "./auth";
+import { hrWorkspaceOnly } from '@shared/permissions';
 import type {
   ActorMap,
   DirectoryUser,
@@ -164,8 +165,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const reloadTaskCounts = useCallback(async () => {
+    if (hrWorkspaceOnly(user)) { setTaskCounts(NO_TASKS); return; }
     setTaskCounts(await api.get<TaskCounts>("/tasks/counts"));
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     if (!user) {

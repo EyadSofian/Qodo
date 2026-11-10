@@ -1,5 +1,5 @@
 import { create, find, findOne, getStore, now } from './store.js';
-import { can, PERMISSIONS } from '../shared/permissions.js';
+import { can, PERMISSIONS, hrWorkspaceOnly } from '../shared/permissions.js';
 import { organizationOf } from '../shared/organization.js';
 import { HR_IMPORT_SOURCES, HRWorkbookError, parseHRWorkbook } from './hrWorkbook.js';
 import { usdEgpRate } from './hrFx.js';
@@ -602,11 +602,17 @@ export async function hrEmployeeFor(user, employeeCode, { team = false } = {}) {
   if (!profile) throw new HRWorkbookError('hr_employee_not_found', 404);
   const self = profile.linkedUserId === user.id;
   if (!self && !team && !can(user, PERMISSIONS.HR_VIEW)) throw new HRWorkbookError('forbidden', 403);
-  return stripSensitive(
+  const result = stripSensitive(
     profile,
     self || team || can(user, PERMISSIONS.HR_MANAGE),
-    self || team || can(user, PERMISSIONS.HR_PAYROLL)
+    (!hrWorkspaceOnly(user) && (self || team)) || can(user, PERMISSIONS.HR_PAYROLL)
   );
+  if (hrWorkspaceOnly(user) && !can(user, PERMISSIONS.HR_PAYROLL)) {
+    result.bankName = '';
+    result.bankStatus = '';
+    result.bankAccount = '';
+  }
+  return result;
 }
 
 const officePersonKey = (value) => String(value || '')

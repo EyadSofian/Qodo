@@ -12,6 +12,7 @@ import express from 'express';
 import cookieParser from 'cookie-parser';
 
 import { attachUser } from './auth.js';
+import { hrWorkspaceAccess } from './hrWorkspaceAccess.js';
 import { seed } from './seed.js';
 import { getStore } from './store.js';
 import { initPush } from './push.js';
@@ -71,6 +72,7 @@ app.use((_req, res, next) => {
 });
 
 app.use('/api', attachUser);
+app.use('/api', hrWorkspaceAccess);
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 // Two of these are public by design — the join page has no session yet.
