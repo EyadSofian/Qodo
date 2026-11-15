@@ -12,7 +12,7 @@ import { SignJWT, createRemoteJWKSet, jwtVerify } from 'jose';
 import { findOne, getStore } from './store.js';
 import { can, isActiveUser, publicUser } from '../shared/permissions.js';
 import { organizationOf } from '../shared/organization.js';
-import { getSession, isLive, openSession, pruneSessions, revokeSession, touchSession } from './sessions.js';
+import { adoptLegacySession, getSession, isLive, openSession, pruneSessions, revokeSession, touchSession } from './sessions.js';
 
 const SESSION_COOKIE = 'engosoft_session';
 const SSO_TTL = '5m';
@@ -177,7 +177,12 @@ export async function attachUser(req, res, next) {
     } else {
       // Signed before devices were recorded: record this browser now and keep
       // the original expiry, so nobody is signed out by the upgrade.
-      const session = await openSession(user, req, new Date(payload.exp * 1000).toISOString());
+      const session = await adoptLegacySession(user, req, token, new Date(payload.exp * 1000).toISOString());
+      // Signed out from another device before this browser got its new cookie.
+      if (!isLive(session, user.id)) {
+        res.clearCookie(SESSION_COOKIE, { path: '/' });
+        return next();
+      }
       setSessionCookie(res, await signSession(user, session.id, payload.exp), payload.exp);
       req.sessionId = session.id;
     }

@@ -115,6 +115,13 @@ test('a cookie signed before devices existed keeps working and becomes a device'
     .setIssuedAt()
     .setExpirationTime(exp)
     .sign(new TextEncoder().encode(SESSION_SECRET));
+  // A page load fires requests in parallel; they must share one device row.
+  const burst = await Promise.all([1, 2, 3, 4].map(() => call(`engosoft_session=${legacy}`, '/auth/sessions', { userAgent: WINDOWS })));
+  const rows = (await burst[0].json()).sessions.filter((session) => session.current);
+  assert.equal(rows.length, 1);
+  const burstIds = new Set(burst.map((item) => cookieOf(item)));
+  assert.equal(burstIds.size, 1);
+
   const response = await call(`engosoft_session=${legacy}`, '/auth/me', { userAgent: WINDOWS });
   assert.equal(response.status, 200);
   assert.equal((await response.clone().json()).user?.id, me.user.id);
@@ -129,6 +136,25 @@ test('a cookie signed before devices existed keeps working and becomes a device'
   const others = await (await call(upgraded, '/auth/sessions/revoke-others', { method: 'POST', userAgent: WINDOWS })).json();
   assert.ok(others.revoked >= 1);
   assert.equal((await call(upgraded, '/auth/sessions', { userAgent: WINDOWS })).status, 200);
+});
+
+test('signing out a not-yet-upgraded device ends its old cookie too', async () => {
+  const mac = await login(MAC);
+  const me = await (await call(mac, '/auth/me')).json();
+  const legacy = await new SignJWT({ role: 'admin' })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setSubject(me.user.id)
+    .setIssuer('engosoft-workspace')
+    .setIssuedAt()
+    .setExpirationTime(Math.floor(Date.now() / 1000) + 3600)
+    .sign(new TextEncoder().encode(SESSION_SECRET));
+  const old = `engosoft_session=${legacy}`;
+  assert.equal((await call(old, '/auth/sessions', { userAgent: WINDOWS })).status, 200);
+  const list = await (await call(mac, '/auth/sessions')).json();
+  const win = list.sessions.find((session) => session.os === 'Windows' && !session.current);
+  await call(mac, `/auth/sessions/${win.id}/revoke`, { method: 'POST' });
+  // The browser never stored its upgraded cookie and comes back with the old one.
+  assert.equal((await call(old, '/auth/sessions', { userAgent: WINDOWS })).status, 401);
 });
 
 test('logging out ends that device', async () => {
