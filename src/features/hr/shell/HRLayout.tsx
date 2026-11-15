@@ -22,7 +22,8 @@ function AuthorizedOutlet() {
   const { access, accessError } = useHR();
   const { pathname } = useLocation();
   if (!access && !accessError) return null;
-  if (access?.performanceOnly && pathname !== '/hr/performance') return <Navigate to="/hr/performance" replace />;
+  const requestsArea = Boolean(access?.requests) && /^\/hr\/recruitment(\/requests(\/|$)|$)/.test(pathname);
+  if (access?.performanceOnly && pathname !== '/hr/performance' && !requestsArea) return <Navigate to="/hr/performance" replace />;
   return <AnimatedOutlet keyOf={sectionOf} order={navIndex} />;
 }
 

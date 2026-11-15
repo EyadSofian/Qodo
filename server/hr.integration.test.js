@@ -373,6 +373,27 @@ test('performance-only managers can read their scoped KPI and performance but no
   assert.equal((await request('/kpi/scorecards',{cookie,method:'POST',body:{}})).status,403);
 });
 
+test('a performance-only manager who may request jobs gets the requests area and nothing more', async () => {
+  await createUser({name:'Marketing Manager',email:'mkt-manager@test.local',password:'Marketing123!',role:'manager',department:'marketing',permissions:[PERMISSIONS.APPS_VIEW,PERMISSIONS.HR_PERFORMANCE_TEAM_VIEW,PERMISSIONS.HR_RECRUITMENT_REQUEST,PERMISSIONS.HR_RECRUITMENT_REVIEW]});
+  const cookie=await login('mkt-manager@test.local','Marketing123!');
+  const access=(await request('/hr/access',{cookie})).data.access;
+  assert.equal(access.performanceOnly,true);
+  assert.equal(access.requests,true);
+  const created=await request('/hr/recruitment/requests',{cookie,method:'POST',body:{title:'Senior content creator',department:'Marketing',departmentId:'marketing',location:'Cairo',headcount:1,classification:'instructor',reason:'new',responsibilities:'Own the content calendar.',requirements:'Four years of content work.',priority:'required',targetWorkingDays:30,submit:true}});
+  assert.equal(created.status,201,JSON.stringify(created.data));
+  const id=created.data.request.id;
+  // A manager who reviews their own department skips their own review step.
+  assert.equal(created.data.request.status,'pending_approval');
+  assert.equal(created.data.request.requestedByName,'Marketing Manager');
+  const mine=await request('/hr/recruitment/requests?scope=mine',{cookie});
+  assert.equal(mine.status,200);
+  assert.ok(mine.data.requests.some((row)=>row.id===id));
+  assert.equal((await request(`/hr/recruitment/requests/${id}`,{cookie})).status,200);
+  // Final approval stays with the approver.
+  assert.equal((await request(`/hr/recruitment/requests/${id}/approve`,{cookie,method:'POST',body:{decision:'approve'}})).status,403);
+  for(const route of ['/hr/dashboard','/hr/people','/hr/payroll','/hr/recruitment/overview','/hr/recruitment/capacity','/hr/recruitment/kpi','/hr/recruitment/offers/catalog','/hr/personnel'])assert.equal((await request(route,{cookie})).status,403,route);
+});
+
 test('email-bound HR invitations preserve least privilege through signup and approval', async () => {
   const email='new-hr@example.test';
   const permissions=[PERMISSIONS.APPS_VIEW,PERMISSIONS.HR_VIEW,PERMISSIONS.HR_RECRUITMENT_VIEW,PERMISSIONS.HR_RECRUITMENT_REQUEST,PERMISSIONS.HR_RECRUITMENT_ASSIGN,PERMISSIONS.HR_RECRUITMENT_OFFERS,PERMISSIONS.HR_PERSONNEL_VIEW,PERMISSIONS.HR_PERSONNEL_MANAGE];

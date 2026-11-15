@@ -11,6 +11,10 @@ export function RecruitmentLayout() {
   if (pathname === '/hr/recruitment' && access?.offers && !access.recruitment && !access.kpiReview && !access.rewards) {
     return <Navigate to="/hr/recruitment/offers" replace />;
   }
+  // Someone who only raises or reviews requests has no desk to look at.
+  if (pathname === '/hr/recruitment' && access?.requests && !access.recruitment && !access.kpiReview && !access.rewards && !access.offers) {
+    return <Navigate to="/hr/recruitment/requests" replace />;
+  }
   return <SubNavLayout items={RECRUITMENT_NAV} label={{ ar: 'أقسام التوظيف', en: 'Recruitment sections' }} layoutId="recruitment-tab" />;
 }
 

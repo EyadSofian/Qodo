@@ -172,6 +172,11 @@ router.use((req, res, next) => {
   if (!performanceOnly(req.user)) return next();
   const read = req.method === 'GET' || req.method === 'HEAD';
   if (read && (req.path === '/access' || req.path === '/performance' || /^\/performance\/reviews\/[^/]+\/[^/]+$/.test(req.path))) return next();
+  // A department manager raises and reviews their own department's job
+  // requests (their role's own keys). Every request handler re-checks who may
+  // see and do what, so only the requests area opens, nothing else in HR.
+  if (/^\/recruitment\/requests(\/|$)/.test(req.path)
+    && (can(req.user, PERMISSIONS.HR_RECRUITMENT_REQUEST) || can(req.user, PERMISSIONS.HR_RECRUITMENT_REVIEW))) return next();
   return res.status(403).json({ error: 'forbidden', missing: 'hr.performance_only' });
 });
 
