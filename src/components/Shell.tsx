@@ -10,6 +10,7 @@ import {
   ChevronDown,
   Home,
   KeyRound,
+  MonitorSmartphone,
   Languages,
   LayoutGrid,
   ListChecks,
@@ -42,6 +43,7 @@ import { AppSwitcher } from './AppSwitcher';
 import { NotificationsMenu } from './NotificationsMenu';
 import { SearchPalette } from './SearchPalette';
 import { ChangePasswordModal } from './ChangePasswordModal';
+import { DevicesModal } from './DevicesModal';
 import { Assistant } from './Assistant';
 import { TaskSummaryPopup } from './TaskSummaryPopup';
 import { IncomingNotificationPopup } from './IncomingNotificationPopup';
@@ -86,6 +88,7 @@ export function Shell({ children }: { children: ReactNode }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
+  const [devicesOpen, setDevicesOpen] = useState(false);
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [push, setPush] = useState<PushState>('unsupported');
   const [slot, setSlot] = useState<HTMLElement | null>(null);
@@ -455,6 +458,18 @@ export function Shell({ children }: { children: ReactNode }) {
                     {t('auth.changePassword')}
                   </button>
 
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      setDevicesOpen(true);
+                    }}
+                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-[13px] font-semibold text-ink transition-colors hover:bg-surface-sunken"
+                  >
+                    <MonitorSmartphone size={15} />
+                    {t('devices.menu')}
+                  </button>
+
                   {can(PERMISSIONS.SETTINGS_MANAGE) && (
                     <button
                       type="button"
@@ -499,6 +514,7 @@ export function Shell({ children }: { children: ReactNode }) {
 
       {!hrOnly && <SearchPalette open={searchOpen} onClose={() => setSearchOpen(false)} />}
       <ChangePasswordModal open={passwordOpen} onClose={() => setPasswordOpen(false)} />
+      <DevicesModal open={devicesOpen} onClose={() => setDevicesOpen(false)} />
       {!hrOnly && <Assistant open={assistantOpen} onClose={() => setAssistantOpen(false)} />}
       {!hrOnly && <TaskSummaryPopup />}
       <IncomingNotificationPopup />

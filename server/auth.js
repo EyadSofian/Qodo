@@ -12,9 +12,9 @@ import { SignJWT, createRemoteJWKSet, jwtVerify } from 'jose';
 import { findOne, getStore } from './store.js';
 import { can, isActiveUser, publicUser } from '../shared/permissions.js';
 import { organizationOf } from '../shared/organization.js';
+import { getSession, isLive, openSession, pruneSessions, revokeSession, touchSession } from './sessions.js';
 
 const SESSION_COOKIE = 'engosoft_session';
-const SESSION_TTL = '12h';
 const SSO_TTL = '5m';
 const GOOGLE_ISSUERS = ['https://accounts.google.com', 'accounts.google.com'];
 const GOOGLE_JWKS = createRemoteJWKSet(new URL('https://www.googleapis.com/oauth2/v3/certs'));
@@ -85,26 +85,42 @@ export async function verifyGoogleCredential(credential) {
   };
 }
 
-export async function issueSession(res, user) {
-  const token = await new SignJWT({ role: user.role })
+const SESSION_MS = 12 * 60 * 60 * 1000;
+
+async function signSession(user, sid, expiresAtSeconds) {
+  return new SignJWT({ role: user.role, sid })
     .setProtectedHeader({ alg: 'HS256' })
     .setSubject(user.id)
     .setIssuer('engosoft-workspace')
     .setIssuedAt()
-    .setExpirationTime(SESSION_TTL)
+    .setExpirationTime(expiresAtSeconds)
     .sign(sessionSecret());
+}
 
+function setSessionCookie(res, token, expiresAtSeconds) {
   res.cookie(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',
-    maxAge: 12 * 60 * 60 * 1000,
+    maxAge: Math.max(0, expiresAtSeconds * 1000 - Date.now()),
     path: '/',
   });
+}
+
+/** Signs a new session for this browser and records the device it came from. */
+export async function issueSession(res, user, req) {
+  const expiresAtSeconds = Math.floor((Date.now() + SESSION_MS) / 1000);
+  const session = await openSession(user, req, new Date(expiresAtSeconds * 1000).toISOString());
+  await pruneSessions(user.id).catch(() => {});
+  const token = await signSession(user, session.id, expiresAtSeconds);
+  setSessionCookie(res, token, expiresAtSeconds);
   return token;
 }
 
-export function clearSession(res) {
+/** Ends this browser's session: the cookie and, when it has one, its row. */
+export async function clearSession(res, req) {
+  const sid = req?.sessionId;
+  if (sid) await revokeSession(sid, req.user?.id ?? null).catch(() => {});
   res.clearCookie(SESSION_COOKIE, { path: '/' });
 }
 
@@ -138,8 +154,9 @@ export async function verifySsoToken(token, audience) {
 }
 
 /** Resolves req.user from the cookie. Never rejects — guards do that. */
-export async function attachUser(req, _res, next) {
+export async function attachUser(req, res, next) {
   req.user = null;
+  req.sessionId = null;
   const token = req.cookies?.[SESSION_COOKIE];
   if (!token) return next();
   try {
@@ -147,7 +164,24 @@ export async function attachUser(req, _res, next) {
     const user = await findOne('users', (u) => u.id === payload.sub);
     // Checked every request, not just at login: disabling or un-approving an
     // account has to end the session it already holds.
-    if (isActiveUser(user)) req.user = user;
+    if (!isActiveUser(user)) return next();
+    if (payload.sid) {
+      // Signed out from another device (or never ours): this cookie is over.
+      const session = await getSession(payload.sid);
+      if (!isLive(session, user.id)) {
+        res.clearCookie(SESSION_COOKIE, { path: '/' });
+        return next();
+      }
+      await touchSession(session, req).catch(() => {});
+      req.sessionId = session.id;
+    } else {
+      // Signed before devices were recorded: record this browser now and keep
+      // the original expiry, so nobody is signed out by the upgrade.
+      const session = await openSession(user, req, new Date(payload.exp * 1000).toISOString());
+      setSessionCookie(res, await signSession(user, session.id, payload.exp), payload.exp);
+      req.sessionId = session.id;
+    }
+    req.user = user;
   } catch {
     /* expired or tampered — treated as signed out */
   }

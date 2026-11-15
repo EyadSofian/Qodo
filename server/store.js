@@ -32,6 +32,9 @@ export const COLLECTIONS = [
   'organizations',
   'users',
   'invites',
+  // One row per signed-in browser (server/sessions.js): lets a person see
+  // where their account is open and sign one device out.
+  'sessions',
   'apps',
   'tasks',
   // One row per HR catalogue template and organization. It says whether the

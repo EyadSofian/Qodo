@@ -491,6 +491,7 @@ const ERRORS: Record<string, { ar: string; en: string }> = {
     ar: 'كلمة المرور يجب أن تكون ٨ أحرف على الأقل.',
     en: 'The password must be at least 8 characters.',
   },
+  session_not_found: { ar: 'الجهاز ده خرج بالفعل أو مش موجود.', en: 'That device is already signed out or was not found.' },
   wrong_password: { ar: 'كلمة المرور الحالية غير صحيحة.', en: 'The current password is wrong.' },
   name_required: { ar: 'أدخل الاسم.', en: 'Enter a name.' },
   title_required: { ar: 'أدخل عنوان المهمة.', en: 'Enter a task title.' },

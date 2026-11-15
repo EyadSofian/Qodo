@@ -13,6 +13,7 @@ import {
   verifySsoToken,
 } from '../auth.js';
 import { canOpenApp, isActiveUser, publicUser } from '../../shared/permissions.js';
+import { getSession, liveSessionsOf, publicSession, revokeSession } from '../sessions.js';
 import { visiblePeople } from '../taskAccess.js';
 import { organizationOf } from '../../shared/organization.js';
 
@@ -88,7 +89,7 @@ router.post('/login', async (req, res) => {
   attempts.delete(key);
   const store = await getStore();
   await store.update('users', user.id, { lastLoginAt: new Date().toISOString() });
-  await issueSession(res, user);
+  await issueSession(res, user, req);
   await logActivity({ actorId: user.id, action: 'login', subject: 'session', subjectId: user.id });
 
   const fresh = await findOne('users', (u) => u.id === user.id);
@@ -125,7 +126,7 @@ router.post('/google', async (req, res) => {
     lastLoginAt: new Date().toISOString(),
   });
   const fresh = await findOne('users', (candidate) => candidate.id === user.id);
-  await issueSession(res, fresh);
+  await issueSession(res, fresh, req);
   await logActivity({
     actorId: fresh.id,
     action: 'login.google',
@@ -135,9 +136,49 @@ router.post('/google', async (req, res) => {
   res.json({ user: publicUser(fresh) });
 });
 
-router.post('/logout', (req, res) => {
-  clearSession(res);
+router.post('/logout', async (req, res) => {
+  await clearSession(res, req);
   res.json({ ok: true });
+});
+
+/* ── Devices: where this account is signed in ───────────────────── */
+
+router.get('/sessions', requireAuth, async (req, res) => {
+  const sessions = await liveSessionsOf(req.user.id);
+  res.json({ sessions: sessions.map((session) => publicSession(session, req.sessionId)) });
+});
+
+/** Signs one device out. Only the account's own devices; this one is a logout. */
+router.post('/sessions/:id/revoke', requireAuth, async (req, res) => {
+  const session = await getSession(req.params.id);
+  if (!session || session.userId !== req.user.id) return res.status(404).json({ error: 'session_not_found' });
+  if (session.id === req.sessionId) {
+    await clearSession(res, req);
+    return res.json({ ok: true, signedOut: true });
+  }
+  if (!session.revokedAt) await revokeSession(session.id, req.user.id);
+  await logActivity({
+    actorId: req.user.id,
+    action: 'session.revoke',
+    subject: 'session',
+    subjectId: session.id,
+    meta: { os: session.os, browser: session.browser },
+  });
+  res.json({ ok: true, signedOut: false });
+});
+
+/** Every device but this one. */
+router.post('/sessions/revoke-others', requireAuth, async (req, res) => {
+  const others = (await liveSessionsOf(req.user.id)).filter((session) => session.id !== req.sessionId);
+  for (const session of others) await revokeSession(session.id, req.user.id);
+  await logActivity({
+    actorId: req.user.id,
+    action: 'session.revoke_others',
+    subject: 'session',
+    subjectId: req.user.id,
+    meta: { count: others.length },
+  });
+  res.json({ ok: true, revoked: others.length });
 });
 
 router.get('/me', (req, res) => {
