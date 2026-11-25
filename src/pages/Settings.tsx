@@ -447,7 +447,21 @@ const ACTIVITY_FILTERS = [
   { value: 'mail', label: 'activity.filter.mail' },
   { value: 'user', label: 'activity.filter.users' },
   { value: 'task', label: 'activity.filter.tasks' },
+  { value: 'mcp', label: 'activity.filter.mcp' },
 ] as const;
+
+/** The second line of an MCP entry: what was asked, how it went, from where. */
+function mcpDetail(meta: ActivityEntry['meta']): string | null {
+  if (!meta) return null;
+  const parts: string[] = [];
+  if (typeof meta.args === 'string' && meta.args !== '{}') parts.push(meta.args);
+  if (typeof meta.httpStatus === 'number') parts.push(`HTTP ${meta.httpStatus}`);
+  if (typeof meta.ms === 'number') parts.push(`${(meta.ms / 1000).toFixed(1)}s`);
+  if (typeof meta.bytes === 'number' && meta.bytes > 0) parts.push(`${Math.round(meta.bytes / 1024)} KB`);
+  if (typeof meta.error === 'string' && meta.error) parts.push(meta.error);
+  if (typeof meta.ip === 'string' && meta.ip) parts.push(meta.ip);
+  return parts.length ? parts.join(' · ') : null;
+}
 
 function ActivityLog() {
   const { t } = useI18n();
@@ -556,7 +570,10 @@ function ActivityLog() {
               <Avatar name={actor?.name ?? '?'} color={actor?.avatarColor} size={30} />
               <div className="min-w-0 flex-1">
                 <p className="text-[13px] text-ink">
-                  <span className="font-bold">{actor?.name ?? t('common.removedUser')}</span>{' '}
+                  <span className="font-bold">
+                    {actor?.name ??
+                      t(entry.action === 'mcp.unauthorized' ? 'activity.mcp.unknownCaller' : 'common.removedUser')}
+                  </span>{' '}
                   {verb}
                   {removedForSomeoneElse && (
                     <span className="font-semibold"> {author?.name ?? t('common.removedUser')}</span>
@@ -574,6 +591,11 @@ function ActivityLog() {
                   )}
                   {place && <span className="text-ink-muted"> {place}</span>}
                 </p>
+                {entry.action.startsWith('mcp.') && mcpDetail(entry.meta) && (
+                  <p className="mt-0.5 truncate text-[11.5px] text-ink-faint" dir="ltr" title={mcpDetail(entry.meta) ?? ''}>
+                    {mcpDetail(entry.meta)}
+                  </p>
+                )}
               </div>
               <span className="shrink-0 text-[11.5px] text-ink-faint">{timeAgo(entry.createdAt, t)}</span>
             </li>

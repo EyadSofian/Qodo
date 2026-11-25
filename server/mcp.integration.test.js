@@ -184,3 +184,22 @@ test('forwards upstream tool calls untouched', async () => {
   assert.deepEqual(result.structuredContent.echoed, { name: 'insights_get', arguments: { endpoint: '/api/ads' } });
   assert.equal(upstreamCalls.at(-1).method, 'tools/call');
 });
+
+test('every call lands in the activity log under mcp.*, refused tokens too', async () => {
+  await call('qodo_get', { endpoint: '/api/hr/overview' });
+  await call('qodo_get', { endpoint: '/api/mail/bootstrap' });
+  await rpc('tools/list', {}, 'definitely-wrong');
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  const { json } = await call('qodo_get', { endpoint: '/api/notifications/activity', params: { action: 'mcp' }, path: 'activity', limit: 200 });
+  const entries = json.data;
+  const read = entries.find((entry) => entry.action === 'mcp.read' && entry.meta?.target === '/api/hr/overview');
+  assert.ok(read, 'the HR read is logged');
+  assert.equal(read.meta.tool, 'qodo_get');
+  assert.equal(read.meta.ok, true);
+  assert.equal(read.meta.httpStatus, 200);
+  assert.ok(Number.isInteger(read.meta.ms));
+  assert.ok(entries.some((entry) => entry.action === 'mcp.failed' && entry.meta?.target === '/api/mail/bootstrap'), 'the refused read is logged');
+  assert.ok(entries.some((entry) => entry.action === 'mcp.write' || entry.action === 'mcp.read'));
+  assert.ok(entries.some((entry) => entry.action === 'mcp.unauthorized' && entry.actorId === null), 'the wrong token is logged');
+  assert.ok(entries.some((entry) => entry.meta?.tool === 'insights_get'), 'forwarded calls are logged');
+});

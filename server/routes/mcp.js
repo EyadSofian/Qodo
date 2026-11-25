@@ -23,6 +23,7 @@ import { matchReadable, readableRoutes, EXCLUDED_ROUTES } from '../mcpCatalog.js
 import { sliceJson, SLICE_INPUT_PROPERTIES } from '../mcpJsonSlice.js';
 import { internalHeaders, selfOrigin } from '../internalCaller.js';
 import { gatewayTools } from '../mcpGateway.js';
+import { auditToolCall, auditUnauthorized } from '../mcpAudit.js';
 
 const WRITE_TOOLS = new Set(['create_task']);
 
@@ -168,6 +169,9 @@ export const QODO_MCP = {
     'Write only when the owner asks: create_task, pulse_create_draft and insights_refresh_data are the only actions.',
   tools: LOCAL_TOOLS,
   listTools: async () => [...LOCAL_TOOLS, ...(await gatewayTools(LOCAL_TOOLS.map((tool) => tool.name)))],
+  // Settings → Activity → MCP: every call, and refused tokens (see mcpAudit.js).
+  onToolCall: auditToolCall,
+  onUnauthorized: auditUnauthorized,
 };
 
 /** The workspace account Nod acts as. Re-read each request, so disabling it takes effect at once. */

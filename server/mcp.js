@@ -73,14 +73,25 @@ async function answer(spec, message, ctx) {
       const tool = (await toolsOf(spec, ctx)).find((candidate) => candidate.name === params.name);
       if (!tool) return rpcError(id, -32602, `Unknown tool: ${String(params.name)}`);
       const args = params.arguments && typeof params.arguments === 'object' ? params.arguments : {};
+      const startedAt = Date.now();
+      // Every call is reported once, whatever its outcome; a failing audit hook never fails the call.
+      const report = (outcome) => {
+        if (typeof spec.onToolCall !== 'function') return;
+        Promise.resolve()
+          .then(() => spec.onToolCall({ ctx, tool, args, ms: Date.now() - startedAt, ...outcome }))
+          .catch((error) => console.error('[mcp] audit failed:', error));
+      };
       try {
         const output = await tool.run(args, ctx);
         if (output && typeof output === 'object' && output[RAW_RESULT]) {
-          return { jsonrpc: '2.0', id, result: output[RAW_RESULT] };
+          const raw = output[RAW_RESULT];
+          report({ ok: !raw?.isError, bytes: JSON.stringify(raw ?? null).length, error: raw?.isError ? raw?.content?.[0]?.text : null });
+          return { jsonrpc: '2.0', id, result: raw };
         }
         // Existing assistant tools report failures as { error } instead of throwing.
         const failed = Boolean(output && typeof output === 'object' && !Array.isArray(output) && output.error);
         const text = typeof output === 'string' ? output : JSON.stringify(output, null, 1);
+        report({ ok: !failed, bytes: text.length, error: failed ? String(output.error) : null, output });
         return {
           jsonrpc: '2.0',
           id,
@@ -93,6 +104,7 @@ async function answer(spec, message, ctx) {
       } catch (error) {
         const known = error instanceof McpToolError;
         if (!known) console.error(`[mcp] ${tool.name} failed:`, error);
+        report({ ok: false, bytes: 0, error: known ? error.message : 'The tool failed on the server.' });
         return {
           jsonrpc: '2.0',
           id,
@@ -118,6 +130,9 @@ export function mcpHandler(spec, resolveContext) {
     const token = String(process.env[spec.tokenEnv || 'NOD_MCP_TOKEN'] || '').trim();
     if (!token) return res.status(503).json({ error: 'MCP access is not enabled on this deployment.' });
     if (!bearerMatches(req.headers.authorization, token)) {
+      if (typeof spec.onUnauthorized === 'function') {
+        Promise.resolve().then(() => spec.onUnauthorized(req)).catch(() => {});
+      }
       res.setHeader('WWW-Authenticate', 'Bearer realm="mcp"');
       return res.status(401).json({ error: 'Unauthorized.' });
     }
@@ -128,6 +143,7 @@ export function mcpHandler(spec, resolveContext) {
     }
 
     const ctx = await resolveContext(req);
+    if (ctx && !ctx.error) ctx.request = { ip: req.ip, userAgent: String(req.headers['user-agent'] || '').slice(0, 200) };
     if (ctx?.error) return res.status(ctx.status || 503).json({ error: ctx.error });
 
     const body = req.body;

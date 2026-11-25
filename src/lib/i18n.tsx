@@ -1294,6 +1294,12 @@ const CORE_STRINGS = {
   'activity.filter.mail': { ar: 'Qodo Mail', en: 'Qodo Mail' },
   'activity.filter.users': { ar: 'المستخدمون', en: 'Users' },
   'activity.filter.tasks': { ar: 'المهام', en: 'Tasks' },
+  'activity.filter.mcp': { ar: 'طلبات الـ MCP', en: 'MCP requests' },
+  'activity.mcp.read': { ar: 'قرا عبر الـ MCP', en: 'read over MCP' },
+  'activity.mcp.write': { ar: 'نفّذ أكشن عبر الـ MCP', en: 'ran an action over MCP' },
+  'activity.mcp.failed': { ar: 'طلب عبر الـ MCP وفشل', en: 'made an MCP request that failed' },
+  'activity.mcp.unauthorized': { ar: 'محاولة اتصال بالـ MCP بتوكن غلط', en: 'MCP connection refused: wrong token' },
+  'activity.mcp.unknownCaller': { ar: 'جهة غير معروفة', en: 'Unknown caller' },
   'activity.inChannel': { ar: 'في', en: 'in' },
   'activity.inPrivate': { ar: 'في محادثة خاصة', en: 'in a private conversation' },
 
