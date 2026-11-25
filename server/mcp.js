@@ -1,0 +1,137 @@
+/**
+ * A minimal, stateless MCP server over Streamable HTTP (JSON responses only),
+ * for outside agents such as Nod.
+ *
+ * Why hand-rolled: an MCP client only needs `initialize`, `tools/list` and
+ * `tools/call` here. Every request is answered on its own, with no session and
+ * no SSE stream, so the protocol is a few JSON-RPC methods.
+ *
+ * Auth: every request needs `Authorization: Bearer <NOD_MCP_TOKEN>`. Without
+ * that variable the endpoint is off (503), so deploying changes nothing until
+ * the token is set.
+ */
+import crypto from 'node:crypto';
+
+const SUPPORTED_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
+
+/** Thrown by a tool for a caller mistake; returned to the model as a tool error. */
+export class McpToolError extends Error {}
+
+const digest = (value) => crypto.createHash('sha256').update(value).digest();
+
+export function bearerMatches(header, expected) {
+  const supplied = String(header || '').replace(/^Bearer\s+/i, '').trim();
+  if (!supplied || !expected) return false;
+  return crypto.timingSafeEqual(digest(supplied), digest(expected));
+}
+
+const rpcError = (id, code, message) => ({ jsonrpc: '2.0', id, error: { code, message } });
+
+async function answer(spec, message, ctx) {
+  const id = message.id ?? null;
+  const params = message.params ?? {};
+  switch (message.method) {
+    case 'initialize': {
+      const asked = typeof params.protocolVersion === 'string' ? params.protocolVersion : '';
+      return {
+        jsonrpc: '2.0',
+        id,
+        result: {
+          protocolVersion: SUPPORTED_VERSIONS.includes(asked) ? asked : SUPPORTED_VERSIONS[0],
+          capabilities: { tools: { listChanged: false } },
+          serverInfo: { name: spec.name, version: spec.version },
+          instructions: spec.instructions,
+        },
+      };
+    }
+    case 'ping':
+      return { jsonrpc: '2.0', id, result: {} };
+    case 'tools/list':
+      return {
+        jsonrpc: '2.0',
+        id,
+        result: {
+          tools: spec.tools.map(({ name, title, description, inputSchema, annotations }) => ({
+            name,
+            title,
+            description,
+            inputSchema,
+            annotations,
+          })),
+        },
+      };
+    case 'tools/call': {
+      const tool = spec.tools.find((candidate) => candidate.name === params.name);
+      if (!tool) return rpcError(id, -32602, `Unknown tool: ${String(params.name)}`);
+      const args = params.arguments && typeof params.arguments === 'object' ? params.arguments : {};
+      try {
+        const output = await tool.run(args, ctx);
+        // Existing assistant tools report failures as { error } instead of throwing.
+        const failed = Boolean(output && typeof output === 'object' && !Array.isArray(output) && output.error);
+        const text = typeof output === 'string' ? output : JSON.stringify(output, null, 1);
+        return {
+          jsonrpc: '2.0',
+          id,
+          result: {
+            content: [{ type: 'text', text }],
+            ...(output && typeof output === 'object' && !Array.isArray(output) ? { structuredContent: output } : {}),
+            isError: failed,
+          },
+        };
+      } catch (error) {
+        const known = error instanceof McpToolError;
+        if (!known) console.error(`[mcp] ${tool.name} failed:`, error);
+        return {
+          jsonrpc: '2.0',
+          id,
+          result: {
+            content: [{ type: 'text', text: known ? error.message : 'The tool failed on the server.' }],
+            isError: true,
+          },
+        };
+      }
+    }
+    default:
+      return rpcError(id, -32601, `Method not found: ${String(message.method)}`);
+  }
+}
+
+/**
+ * Express handler. `resolveContext(req)` returns the context tools run with,
+ * or `{ error, status }` to refuse the request.
+ */
+export function mcpHandler(spec, resolveContext) {
+  return async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    const token = String(process.env[spec.tokenEnv || 'NOD_MCP_TOKEN'] || '').trim();
+    if (!token) return res.status(503).json({ error: 'MCP access is not enabled on this deployment.' });
+    if (!bearerMatches(req.headers.authorization, token)) {
+      res.setHeader('WWW-Authenticate', 'Bearer realm="mcp"');
+      return res.status(401).json({ error: 'Unauthorized.' });
+    }
+    // Stateless server: no SSE stream to resume and no session to end.
+    if (req.method !== 'POST') {
+      res.setHeader('Allow', 'POST');
+      return res.status(405).json({ error: 'Method not allowed.' });
+    }
+
+    const ctx = await resolveContext(req);
+    if (ctx?.error) return res.status(ctx.status || 503).json({ error: ctx.error });
+
+    const body = req.body;
+    if (!body || typeof body !== 'object') return res.status(400).json(rpcError(null, -32700, 'Parse error'));
+    const messages = Array.isArray(body) ? body : [body];
+    const replies = [];
+    for (const message of messages) {
+      if (!message || typeof message !== 'object' || message.jsonrpc !== '2.0') {
+        replies.push(rpcError(null, -32600, 'Invalid request'));
+        continue;
+      }
+      // Notifications and client responses carry no id and get no reply.
+      if (message.id === undefined || !message.method) continue;
+      replies.push(await answer(spec, message, ctx));
+    }
+    if (replies.length === 0) return res.status(202).end();
+    return res.json(Array.isArray(body) ? replies : replies[0]);
+  };
+}

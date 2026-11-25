@@ -38,6 +38,7 @@ import kpiRoutes from './routes/kpi.js';
 import notificationRoutes from './routes/notifications.js';
 import searchRoutes from './routes/search.js';
 import assistantRoutes from './routes/assistant.js';
+import mcpRoutes from './routes/mcp.js';
 import managementRoutes from './routes/management.js';
 import pushRoutes from './routes/push.js';
 import eventRoutes from './routes/events.js';
@@ -70,6 +71,10 @@ app.use((_req, res, next) => {
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');
   next();
 });
+
+// Outside agents (Nod) authenticate with a bearer token, not a session cookie,
+// so this is mounted before the cookie and HR-workspace guards.
+app.use('/api/mcp', mcpRoutes);
 
 app.use('/api', attachUser);
 app.use('/api', hrWorkspaceAccess);
