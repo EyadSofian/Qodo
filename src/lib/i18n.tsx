@@ -1198,6 +1198,7 @@ const CORE_STRINGS = {
   'settings.tabApps': { ar: 'التطبيقات', en: 'Apps' },
   'settings.tabActivity': { ar: 'سجل الحركة', en: 'Activity' },
   'settings.tabSystem': { ar: 'النظام', en: 'System' },
+  'settings.tabMcp': { ar: 'مفاتيح الـ MCP', en: 'MCP keys' },
   'settings.noPermission': { ar: 'ليست لديك صلاحية على الإعدادات', en: 'You do not have access to settings' },
   'settings.noPermissionBody': { ar: 'هذه الصفحة لمدير النظام فقط.', en: 'This page is for administrators only.' },
   'settings.appsHint': {
@@ -1299,6 +1300,8 @@ const CORE_STRINGS = {
   'activity.mcp.write': { ar: 'نفّذ أكشن عبر الـ MCP', en: 'ran an action over MCP' },
   'activity.mcp.failed': { ar: 'طلب عبر الـ MCP وفشل', en: 'made an MCP request that failed' },
   'activity.mcp.unauthorized': { ar: 'محاولة اتصال بالـ MCP بتوكن غلط', en: 'MCP connection refused: wrong token' },
+  'activity.mcp.key.create': { ar: 'عمل مفتاح MCP', en: 'created an MCP key' },
+  'activity.mcp.key.revoke': { ar: 'ألغى مفتاح MCP', en: 'revoked an MCP key' },
   'activity.mcp.unknownCaller': { ar: 'جهة غير معروفة', en: 'Unknown caller' },
   'activity.inChannel': { ar: 'في', en: 'in' },
   'activity.inPrivate': { ar: 'في محادثة خاصة', en: 'in a private conversation' },

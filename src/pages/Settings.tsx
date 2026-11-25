@@ -20,6 +20,7 @@ import { ICON_KEYS, ModuleIcon } from '../components/ModuleIcon';
 import { Avatar, EmptyState, Field, Modal, Segmented, Spinner, useToast } from '../components/ui';
 import { cx, timeAgo } from '../lib/utils';
 import type { ActivityEntry, ActorMap, EmbedMode, WorkspaceApp } from '../lib/types';
+import { McpKeys } from './McpKeys';
 
 const TILE_COLORS = [
   '#1D6FB8', '#0B2545', '#F5821F', '#0EA5A5',
@@ -29,7 +30,7 @@ const TILE_COLORS = [
 export function Settings() {
   const { can } = useAuth();
   const { t } = useI18n();
-  const [tab, setTab] = useState<'apps' | 'activity' | 'system'>('apps');
+  const [tab, setTab] = useState<'apps' | 'activity' | 'mcp' | 'system'>('apps');
 
   if (!can(PERMISSIONS.SETTINGS_MANAGE)) {
     return (
@@ -53,12 +54,14 @@ export function Settings() {
         options={[
           { value: 'apps', label: t('settings.tabApps') },
           { value: 'activity', label: t('settings.tabActivity') },
+          { value: 'mcp', label: t('settings.tabMcp') },
           { value: 'system', label: t('settings.tabSystem') },
         ]}
       />
 
       {tab === 'apps' && <AppsSettings />}
       {tab === 'activity' && <ActivityLog />}
+      {tab === 'mcp' && <McpKeys />}
       {tab === 'system' && <SystemInfo />}
     </div>
   );
@@ -460,6 +463,7 @@ function mcpDetail(meta: ActivityEntry['meta']): string | null {
   if (typeof meta.bytes === 'number' && meta.bytes > 0) parts.push(`${Math.round(meta.bytes / 1024)} KB`);
   if (typeof meta.error === 'string' && meta.error) parts.push(meta.error);
   if (typeof meta.ip === 'string' && meta.ip) parts.push(meta.ip);
+  if (typeof meta.keyName === 'string' && meta.keyName) parts.unshift(`key: ${meta.keyName}`);
   return parts.length ? parts.join(' · ') : null;
 }
 

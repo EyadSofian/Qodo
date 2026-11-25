@@ -35,6 +35,8 @@ function startUpstream() {
         const result = message.method === 'tools/list'
           ? { tools: [
             { name: 'insights_get', title: 'Read', description: 'Reads.', inputSchema: { type: 'object', properties: {} } },
+            { name: 'insights_read', description: 'Reads a surface.', inputSchema: { type: 'object', properties: {} } },
+            { name: 'insights_refresh_data', description: 'Refresh.', annotations: { readOnlyHint: false } },
             { name: 'list_team', description: 'Collides with a workspace tool and must be skipped.' },
           ] }
           : { content: [{ type: 'text', text: 'from upstream' }], isError: false, structuredContent: { echoed: message.params } };
@@ -202,4 +204,106 @@ test('every call lands in the activity log under mcp.*, refused tokens too', asy
   assert.ok(entries.some((entry) => entry.action === 'mcp.write' || entry.action === 'mcp.read'));
   assert.ok(entries.some((entry) => entry.action === 'mcp.unauthorized' && entry.actorId === null), 'the wrong token is logged');
   assert.ok(entries.some((entry) => entry.meta?.tool === 'insights_get'), 'forwarded calls are logged');
+});
+
+/* ── Personal keys ──────────────────────────────────────────────────── */
+
+async function adminCookie() {
+  const response = await fetch(`${ORIGIN}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: 'admin@test.local', password: 'AdminPass123!' }),
+  });
+  assert.equal(response.status, 200);
+  return (response.headers.get('set-cookie') || '').split(';')[0];
+}
+
+async function keysApi(cookie, path = '', body) {
+  const response = await fetch(`${ORIGIN}/api/mcp-keys${path}`, {
+    method: body ? 'POST' : 'GET',
+    headers: { 'content-type': 'application/json', cookie },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  return { status: response.status, data: await response.json() };
+}
+
+async function callWith(token, name, args = {}) {
+  const { body, status } = await rpc('tools/call', { name, arguments: args }, token);
+  const text = body?.result?.content?.[0]?.text ?? '';
+  let json = null;
+  try { json = JSON.parse(text); } catch { /* text */ }
+  return { status, result: body?.result, error: body?.error, text, json };
+}
+
+test('the keys API is admin only and never readable through the MCP', async () => {
+  assert.equal((await fetch(`${ORIGIN}/api/mcp-keys`)).status, 401);
+  const { result } = await call('qodo_get', { endpoint: '/api/mcp-keys' });
+  assert.equal(result.isError, true);
+});
+
+test('an HR-only key sees and reads HR, and nothing else', async () => {
+  const cookie = await adminCookie();
+  const created = await keysApi(cookie, '', { name: 'HR reader', scopes: { qodo: ['hr'] } });
+  assert.equal(created.status, 201, JSON.stringify(created.data));
+  const token = created.data.token;
+  assert.match(token, /^qmk_/);
+  assert.equal(JSON.stringify((await keysApi(cookie)).data).includes(token), false, 'the key is never listed again');
+
+  const names = (await rpc('tools/list', {}, token)).body.result.tools.map((tool) => tool.name);
+  assert.ok(names.includes('qodo_get') && names.includes('qodo_list_endpoints'));
+  for (const hidden of ['list_projects', 'create_task', 'decision_brief', 'list_team', 'insights_get']) {
+    assert.ok(!names.includes(hidden), `${hidden} should be hidden`);
+  }
+
+  const listing = await callWith(token, 'qodo_list_endpoints');
+  const all = Object.values(listing.json.modules).flatMap((module) => module.endpoints);
+  assert.ok(all.length > 0 && all.every((path) => path.startsWith('/api/hr')), 'only HR endpoints are listed');
+
+  assert.equal((await callWith(token, 'qodo_get', { endpoint: '/api/hr/overview' })).json.httpStatus, 200);
+  for (const endpoint of ['/api/tasks', '/api/kpi/overview', '/api/users', '/api/search', '/api/hr%2F..%2Ftasks', '/api/hr/../tasks']) {
+    const refused = await callWith(token, 'qodo_get', { endpoint });
+    assert.equal(refused.result?.isError, true, endpoint);
+  }
+  assert.ok((await callWith(token, 'create_task', { title: 'x' })).error, 'a hidden tool cannot be called');
+});
+
+test('an Insights-only key reaches the upstream and nothing in Qodo', async () => {
+  const cookie = await adminCookie();
+  const { data } = await keysApi(cookie, '', { name: 'Insights ads', scopes: { insights: ['marketing'] } });
+  const names = (await rpc('tools/list', {}, data.token)).body.result.tools.map((tool) => tool.name);
+  assert.ok(names.includes('insights_get'));
+  assert.ok(!names.some((name) => name.startsWith('qodo_') || name === 'list_team'));
+  assert.equal((await callWith(data.token, 'insights_get', { endpoint: '/api/ads' })).result.isError, false);
+  assert.equal((await callWith(data.token, 'insights_get', { endpoint: '/api/profitability' })).result.isError, true);
+  assert.equal((await callWith(data.token, 'insights_read', { surface: 'accounting', view: 'profitability' })).result.isError, true);
+  assert.equal((await callWith(data.token, 'insights_read', { surface: 'ads' })).result.isError, false);
+  assert.ok(!names.includes('insights_refresh_data'), 'actions stay hidden without the actions switch');
+  const withActions = await keysApi(cookie, '', { name: 'Insights admin', scopes: { insights: null, actions: true } });
+  const actionNames = (await rpc('tools/list', {}, withActions.data.token)).body.result.tools.map((tool) => tool.name);
+  assert.ok(actionNames.includes('insights_refresh_data'));
+});
+
+test('revoking a key stops it at once and logs who used which key', async () => {
+  const cookie = await adminCookie();
+  const { data } = await keysApi(cookie, '', { name: 'Leaver', scopes: { qodo: null } });
+  assert.equal((await callWith(data.token, 'qodo_get', { endpoint: '/api/hr/overview' })).json.httpStatus, 200);
+  const revoked = await keysApi(cookie, `/${data.key.id}/revoke`, {});
+  assert.equal(revoked.data.key.status, 'revoked');
+  assert.equal((await rpc('tools/list', {}, data.token)).status, 401);
+  // The master key keeps working.
+  assert.equal((await rpc('tools/list')).status, 200);
+
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  const log = await call('qodo_get', { endpoint: '/api/notifications/activity', params: { action: 'mcp' }, path: 'activity', limit: 300 });
+  const entries = log.json.data;
+  assert.ok(entries.some((entry) => entry.meta?.keyName === 'Leaver' && entry.meta?.target === '/api/hr/overview'));
+  assert.ok(entries.some((entry) => entry.action === 'mcp.key.revoke' && entry.meta?.name === 'Leaver'));
+  assert.ok(entries.some((entry) => entry.meta?.keyName === 'HR reader' && entry.meta?.refused === true));
+});
+
+test('an expired or unknown key is refused', async () => {
+  assert.equal((await rpc('tools/list', {}, 'qmk_not-a-real-key')).status, 401);
+  const cookie = await adminCookie();
+  assert.equal((await keysApi(cookie, '', { name: 'bad', scopes: {} })).status, 400, 'a key needs at least one dashboard');
+  assert.equal((await keysApi(cookie, '', { name: 'bad', scopes: { qodo: null }, expiresInDays: 0 })).status, 400);
 });

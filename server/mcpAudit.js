@@ -41,7 +41,7 @@ function statusOf(output) {
   return Number.isInteger(value) ? value : null;
 }
 
-export async function auditToolCall({ ctx, tool, args, ms, ok, bytes, error, output }) {
+export async function auditToolCall({ ctx, tool, args, ms, ok, bytes, error, output, refused }) {
   if (!ctx?.user) return;
   const target = targetOf(args);
   await logActivity({
@@ -61,6 +61,9 @@ export async function auditToolCall({ ctx, tool, args, ms, ok, bytes, error, out
       error: error ? clip(String(error), MAX_ERROR_CHARS) : null,
       ip: ctx.request?.ip ?? null,
       userAgent: ctx.request?.userAgent ?? null,
+      keyId: ctx.key?.id ?? null,
+      keyName: ctx.key?.name ?? null,
+      refused: refused === true,
     },
   });
 }

@@ -35,6 +35,7 @@ const MODULES = [
 /** [pattern, reason]. Checked against the full route pattern, e.g. /api/hr/people/:employeeCode/photo. */
 export const EXCLUDED_ROUTES = [
   [/^\/api\/mcp(\/|$)/, 'The MCP endpoint itself.'],
+  [/^\/api\/mcp-keys(\/|$)/, 'MCP key administration.'],
   [/^\/api\/auth(\/|$)/, 'Sign-in, sessions and the account directory of the signed-in browser.'],
   [/^\/api\/invites(\/|$)/, 'Invitation tokens.'],
   [/^\/api\/push(\/|$)/, 'Browser push keys.'],

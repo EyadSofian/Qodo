@@ -24,6 +24,8 @@ import { sliceJson, SLICE_INPUT_PROPERTIES } from '../mcpJsonSlice.js';
 import { internalHeaders, selfOrigin } from '../internalCaller.js';
 import { gatewayTools } from '../mcpGateway.js';
 import { auditToolCall, auditUnauthorized } from '../mcpAudit.js';
+import { anyKeyConfigured, authenticateKey } from '../mcpKeys.js';
+import { callRefusal, filterListing, toolVisible } from '../mcpScopes.js';
 
 const WRITE_TOOLS = new Set(['create_task']);
 
@@ -78,9 +80,11 @@ const listEndpoints = {
       modules[route.module] ??= { about: route.about, endpoints: [] };
       modules[route.module].endpoints.push(route.path);
     }
+    // A key limited to some sections only sees those sections' endpoints.
+    const visible = filterListing(ctx.key?.scopes ?? {}, 'qodo_list_endpoints', { modules, count: routes.length });
     return {
-      count: routes.length,
-      modules,
+      count: visible.count,
+      modules: visible.modules,
       leftOut: EXCLUDED_ROUTES.map(([pattern, reason]) => ({ pattern: String(pattern), reason })),
       paging:
         'qodo_get returns small answers whole. A large one comes back as an outline; then pass path and page lists with offset/limit until nextOffset is gone.',
@@ -119,6 +123,8 @@ const getEndpoint = {
       throw new McpToolError('"params" must be an object.');
     }
     const url = new URL(match.concrete, selfOrigin());
+    // The URL parser normalises dot segments; what is fetched must be what was checked.
+    if (url.pathname !== match.concrete) throw new McpToolError('That endpoint path is not allowed.');
     for (const [key, value] of Object.entries(raw || {})) {
       if (value !== undefined && value !== null && value !== '') url.searchParams.set(key, String(value));
     }
@@ -168,7 +174,20 @@ export const QODO_MCP = {
     'Report each figure with its period and any caveat the answer carries, in the owner\'s language. ' +
     'Write only when the owner asks: create_task, pulse_create_draft and insights_refresh_data are the only actions.',
   tools: LOCAL_TOOLS,
-  listTools: async () => [...LOCAL_TOOLS, ...(await gatewayTools(LOCAL_TOOLS.map((tool) => tool.name)))],
+  // Each key sees only the tools its scope includes (see mcpScopes.js); the master key sees all.
+  listTools: async (ctx) => {
+    const all = [...LOCAL_TOOLS, ...(await gatewayTools(LOCAL_TOOLS.map((tool) => tool.name)))];
+    const scopes = ctx?.key?.scopes;
+    return scopes ? all.filter((tool) => toolVisible(scopes, tool)) : all;
+  },
+  authorize: (ctx, tool, args) => {
+    const endpoint = typeof args?.endpoint === 'string' ? args.endpoint : '';
+    if (/[%\\]/.test(endpoint)) return 'Encoded or backslashed endpoint paths are not allowed.';
+    return ctx?.key?.scopes ? callRefusal(ctx.key.scopes, tool, args) : null;
+  },
+  // Personal keys from Settings → MCP keys, plus NOD_MCP_TOKEN as the master key.
+  enabled: anyKeyConfigured,
+  authenticate: authenticateKey,
   // Settings → Activity → MCP: every call, and refused tokens (see mcpAudit.js).
   onToolCall: auditToolCall,
   onUnauthorized: auditUnauthorized,

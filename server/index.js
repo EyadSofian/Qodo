@@ -39,6 +39,7 @@ import notificationRoutes from './routes/notifications.js';
 import searchRoutes from './routes/search.js';
 import assistantRoutes from './routes/assistant.js';
 import mcpRoutes from './routes/mcp.js';
+import mcpKeyRoutes from './routes/mcpKeys.js';
 import managementRoutes from './routes/management.js';
 import pushRoutes from './routes/push.js';
 import eventRoutes from './routes/events.js';
@@ -124,6 +125,7 @@ app.use('/api/booking', bookingRoutes);
 app.use('/api/book', publicBookingRoutes);
 // The price a seller may quote, proxied from the Insights Hub — see routes/prices.js.
 app.use('/api/prices', priceRoutes);
+app.use('/api/mcp-keys', mcpKeyRoutes);
 
 app.get('/api/health', async (_req, res) => {
   const store = await getStore();

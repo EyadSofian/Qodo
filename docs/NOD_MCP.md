@@ -14,6 +14,14 @@ Full reads of every module: `qodo_list_endpoints` lists every GET route read fro
 
 Action: `create_task`. In the app the assistant waits for a Confirm click; over MCP, Nod's own approval check takes that place.
 
+## Personal keys (Settings → MCP keys)
+
+Admins create one key per person or agent. Each key names, per dashboard (Qodo, Insights Hub, Mobde3), everything, nothing or a list of sections (HR, KPI, tasks, projects…; ads & campaigns, CRM, sales, P&L; analytics, calendar, content, team), whether actions are allowed, and an optional expiry. Only the SHA-256 hash is stored; the key is shown once. Revoking stops it on the next request.
+
+Enforcement is in Qodo (`server/mcpScopes.js`), before anything is forwarded: tools outside the scope are not listed, listings are filtered, and `*_get` / `insights_read` calls are checked against the sections' paths and surfaces. Anything no section claims is refused when a dashboard is restricted. Every call records the key's name in the activity log (Settings → Activity → MCP requests).
+
+`NOD_MCP_TOKEN` still works as the full-access master key; rotate it in Railway to stop it.
+
 ## One endpoint for every dashboard
 
 `/api/mcp` also lists and forwards the tools of the Insights Hub and Mobde3 (Social Pulse) MCP servers (`server/mcpGateway.js`), so Nod needs one URL and one token. Set on Railway:

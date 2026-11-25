@@ -81,11 +81,29 @@ async function answer(spec, message, ctx) {
           .then(() => spec.onToolCall({ ctx, tool, args, ms: Date.now() - startedAt, ...outcome }))
           .catch((error) => console.error('[mcp] audit failed:', error));
       };
+      const refusal = typeof spec.authorize === 'function' ? spec.authorize(ctx, tool, args) : null;
+      if (refusal) {
+        report({ ok: false, bytes: 0, error: refusal, refused: true });
+        return {
+          jsonrpc: '2.0',
+          id,
+          result: { content: [{ type: 'text', text: refusal }], isError: true },
+        };
+      }
       try {
         const output = await tool.run(args, ctx);
         if (output && typeof output === 'object' && output[RAW_RESULT]) {
           const raw = output[RAW_RESULT];
-          report({ ok: !raw?.isError, bytes: JSON.stringify(raw ?? null).length, error: raw?.isError ? raw?.content?.[0]?.text : null });
+          let parsed = raw?.structuredContent ?? null;
+          if (!parsed) {
+            try { parsed = JSON.parse(raw?.content?.[0]?.text ?? 'null'); } catch { parsed = null; }
+          }
+          report({
+            ok: !raw?.isError,
+            bytes: JSON.stringify(raw ?? null).length,
+            error: raw?.isError ? raw?.content?.[0]?.text : null,
+            output: parsed,
+          });
           return { jsonrpc: '2.0', id, result: raw };
         }
         // Existing assistant tools report failures as { error } instead of throwing.
@@ -127,9 +145,19 @@ async function answer(spec, message, ctx) {
 export function mcpHandler(spec, resolveContext) {
   return async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
-    const token = String(process.env[spec.tokenEnv || 'NOD_MCP_TOKEN'] || '').trim();
-    if (!token) return res.status(503).json({ error: 'MCP access is not enabled on this deployment.' });
-    if (!bearerMatches(req.headers.authorization, token)) {
+    // `spec.authenticate(req)` (personal keys) replaces the single shared token when present.
+    let key = null;
+    if (typeof spec.authenticate === 'function') {
+      if (typeof spec.enabled === 'function' && !(await spec.enabled())) {
+        return res.status(503).json({ error: 'MCP access is not enabled on this deployment.' });
+      }
+      key = await spec.authenticate(req);
+    } else {
+      const token = String(process.env[spec.tokenEnv || 'NOD_MCP_TOKEN'] || '').trim();
+      if (!token) return res.status(503).json({ error: 'MCP access is not enabled on this deployment.' });
+      if (bearerMatches(req.headers.authorization, token)) key = { id: 'master', master: true };
+    }
+    if (!key) {
       if (typeof spec.onUnauthorized === 'function') {
         Promise.resolve().then(() => spec.onUnauthorized(req)).catch(() => {});
       }
@@ -143,7 +171,10 @@ export function mcpHandler(spec, resolveContext) {
     }
 
     const ctx = await resolveContext(req);
-    if (ctx && !ctx.error) ctx.request = { ip: req.ip, userAgent: String(req.headers['user-agent'] || '').slice(0, 200) };
+    if (ctx && !ctx.error) {
+      ctx.request = { ip: req.ip, userAgent: String(req.headers['user-agent'] || '').slice(0, 200) };
+      ctx.key = key;
+    }
     if (ctx?.error) return res.status(ctx.status || 503).json({ error: ctx.error });
 
     const body = req.body;

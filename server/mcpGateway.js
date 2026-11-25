@@ -12,6 +12,21 @@
  * tools; the workspace's own tools keep working.
  */
 import { McpToolError, RAW_RESULT } from './mcp.js';
+import { filterListing } from './mcpScopes.js';
+
+const LISTING_TOOLS = new Set(['insights_list_endpoints', 'insights_list_surfaces', 'pulse_list_endpoints']);
+
+/** Rewrites a forwarded listing so a restricted key only sees what it may read. */
+function scopedListing(result, toolName, scopes) {
+  if (!scopes || !LISTING_TOOLS.has(toolName) || result?.isError) return result;
+  try {
+    const data = filterListing(scopes, toolName, JSON.parse(result.content?.[0]?.text ?? 'null'));
+    return { ...result, content: [{ type: 'text', text: JSON.stringify(data, null, 1) }], structuredContent: data };
+  } catch {
+    // Not JSON: the upstream answered with an error text; pass it on.
+    return result;
+  }
+}
 
 const LIST_TTL_MS = 5 * 60 * 1000;
 const LIST_TIMEOUT_MS = 8_000;
@@ -103,10 +118,10 @@ export async function gatewayTools(localNames) {
         description: `[${upstream.label}] ${tool.description || ''}`.trim(),
         inputSchema: tool.inputSchema || { type: 'object', properties: {} },
         annotations: tool.annotations || {},
-        run: async (args) => {
+        run: async (args, ctx) => {
           try {
             const result = await rpc(upstream, 'tools/call', { name: tool.name, arguments: args }, CALL_TIMEOUT_MS);
-            return { [RAW_RESULT]: result };
+            return { [RAW_RESULT]: scopedListing(result, tool.name, ctx?.key?.scopes) };
           } catch (error) {
             throw new McpToolError(`${upstream.label} could not answer: ${error.message}`);
           }

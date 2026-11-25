@@ -128,6 +128,9 @@ export const COLLECTIONS = [
   // document per organization, revisioned so two editors cannot overwrite
   // each other.
   'eventLayouts',
+  // Personal MCP keys (server/mcpKeys.js): a hash, a scope, an expiry and a
+  // revoke stamp per person or agent. The key itself is never stored.
+  'mcpKeys',
 ];
 
 export const newId = () => crypto.randomUUID();
