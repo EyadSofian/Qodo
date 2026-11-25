@@ -17,6 +17,15 @@ const SUPPORTED_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-0
 /** Thrown by a tool for a caller mistake; returned to the model as a tool error. */
 export class McpToolError extends Error {}
 
+/**
+ * A tool may return `{ [RAW_RESULT]: result }` to hand back an MCP tool result
+ * untouched. The gateway uses it for tools that live on another server.
+ */
+export const RAW_RESULT = Symbol('mcp.rawResult');
+
+/** `spec.listTools(ctx)` lets the tool list depend on the request, e.g. upstream servers. */
+const toolsOf = async (spec, ctx) => (typeof spec.listTools === 'function' ? spec.listTools(ctx) : spec.tools);
+
 const digest = (value) => crypto.createHash('sha256').update(value).digest();
 
 export function bearerMatches(header, expected) {
@@ -51,7 +60,7 @@ async function answer(spec, message, ctx) {
         jsonrpc: '2.0',
         id,
         result: {
-          tools: spec.tools.map(({ name, title, description, inputSchema, annotations }) => ({
+          tools: (await toolsOf(spec, ctx)).map(({ name, title, description, inputSchema, annotations }) => ({
             name,
             title,
             description,
@@ -61,11 +70,14 @@ async function answer(spec, message, ctx) {
         },
       };
     case 'tools/call': {
-      const tool = spec.tools.find((candidate) => candidate.name === params.name);
+      const tool = (await toolsOf(spec, ctx)).find((candidate) => candidate.name === params.name);
       if (!tool) return rpcError(id, -32602, `Unknown tool: ${String(params.name)}`);
       const args = params.arguments && typeof params.arguments === 'object' ? params.arguments : {};
       try {
         const output = await tool.run(args, ctx);
+        if (output && typeof output === 'object' && output[RAW_RESULT]) {
+          return { jsonrpc: '2.0', id, result: output[RAW_RESULT] };
+        }
         // Existing assistant tools report failures as { error } instead of throwing.
         const failed = Boolean(output && typeof output === 'object' && !Array.isArray(output) && output.error);
         const text = typeof output === 'string' ? output : JSON.stringify(output, null, 1);

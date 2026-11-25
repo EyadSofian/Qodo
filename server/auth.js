@@ -13,6 +13,7 @@ import { findOne, getStore } from './store.js';
 import { can, isActiveUser, publicUser } from '../shared/permissions.js';
 import { organizationOf } from '../shared/organization.js';
 import { adoptLegacySession, getSession, isLive, openSession, pruneSessions, revokeSession, touchSession } from './sessions.js';
+import { internalUserId } from './internalCaller.js';
 
 const SESSION_COOKIE = 'engosoft_session';
 const SSO_TTL = '5m';
@@ -157,6 +158,16 @@ export async function verifySsoToken(token, audience) {
 export async function attachUser(req, res, next) {
   req.user = null;
   req.sessionId = null;
+  // This server reading itself for the MCP endpoint (see internalCaller.js).
+  const internalId = internalUserId(req);
+  if (internalId) {
+    const user = await findOne('users', (u) => u.id === internalId).catch(() => null);
+    if (isActiveUser(user)) {
+      req.user = user;
+      req.internalCaller = true;
+    }
+    return next();
+  }
   const token = req.cookies?.[SESSION_COOKIE];
   if (!token) return next();
   try {
