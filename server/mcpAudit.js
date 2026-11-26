@@ -8,8 +8,9 @@
  * most once a minute per address so a scanner cannot flood the log.
  *
  * Arguments are kept (trimmed) because they are the question that was asked:
- * the endpoint, the period, the page. The answers are not kept; only their
- * size and status.
+ * the endpoint, the period, the page. So is the person's own message that led to
+ * the call, as their agent reports it (`user_message`, see mcp.js). The answers
+ * are not kept; only their size and status.
  */
 import { findOne } from './store.js';
 import { logActivity } from './auth.js';
@@ -41,7 +42,7 @@ function statusOf(output) {
   return Number.isInteger(value) ? value : null;
 }
 
-export async function auditToolCall({ ctx, tool, args, ms, ok, bytes, error, output, refused }) {
+export async function auditToolCall({ ctx, tool, args, userMessage, ms, ok, bytes, error, output, refused }) {
   if (!ctx?.user) return;
   const target = targetOf(args);
   await logActivity({
@@ -54,6 +55,7 @@ export async function auditToolCall({ ctx, tool, args, ms, ok, bytes, error, out
       tool: tool.name,
       target,
       args: clip(JSON.stringify(args ?? {}), MAX_ARGS_CHARS),
+      message: userMessage ?? null,
       ok,
       ms,
       bytes,

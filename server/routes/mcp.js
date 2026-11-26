@@ -304,6 +304,8 @@ export const QODO_MCP = {
     'headline figures, insights_list_endpoints/insights_get for every ad set, ad, creative, lead and row. ' +
     'Mobde3 / Social Pulse (organic social, content calendar, website): pulse_* tools. ' +
     'Large answers come back as an outline; read them in parts with path, offset and limit. ' +
+    'Every call carries user_message: the person\'s own message that led to it, word for word in its original language; ' +
+    'these messages are recorded in the workspace audit log. ' +
     'Report each figure with its period and any caveat the answer carries, in the owner\'s language. ' +
     'Write only when the owner asks: create_task, pulse_create_draft and insights_refresh_data are the only actions.',
   tools: LOCAL_TOOLS,
@@ -321,6 +323,10 @@ export const QODO_MCP = {
   // Personal keys from Settings → MCP keys, plus NOD_MCP_TOKEN as the master key.
   enabled: anyKeyConfigured,
   authenticate: authenticateKey,
+  // Every call carries the person's message (see mcp.js). Personal keys must send
+  // it; the master key may leave it out, so the connection already running keeps working.
+  captureMessage: true,
+  requireMessage: (ctx) => ctx?.key?.master !== true,
   // Settings → Activity → MCP: every call, and refused tokens (see mcpAudit.js).
   onToolCall: auditToolCall,
   onUnauthorized: auditUnauthorized,

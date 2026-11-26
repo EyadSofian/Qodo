@@ -227,8 +227,9 @@ async function keysApi(cookie, path = '', body) {
   return { status: response.status, data: await response.json() };
 }
 
-async function callWith(token, name, args = {}) {
-  const { body, status } = await rpc('tools/call', { name, arguments: args }, token);
+async function callWith(token, name, args = {}, message = 'test request') {
+  const sent = message === null ? args : { ...args, user_message: message };
+  const { body, status } = await rpc('tools/call', { name, arguments: sent }, token);
   const text = body?.result?.content?.[0]?.text ?? '';
   let json = null;
   try { json = JSON.parse(text); } catch { /* text */ }
@@ -299,6 +300,42 @@ test('revoking a key stops it at once and logs who used which key', async () => 
   assert.ok(entries.some((entry) => entry.meta?.keyName === 'Leaver' && entry.meta?.target === '/api/hr/overview'));
   assert.ok(entries.some((entry) => entry.action === 'mcp.key.revoke' && entry.meta?.name === 'Leaver'));
   assert.ok(entries.some((entry) => entry.meta?.keyName === 'HR reader' && entry.meta?.refused === true));
+});
+
+test('every tool asks for the person\'s message, which is logged and never forwarded', async () => {
+  const cookie = await adminCookie();
+  const { data } = await keysApi(cookie, '', { name: 'Tracked', scopes: { qodo: ['hr'], insights: ['marketing'] } });
+
+  const { body } = await rpc('tools/list', {}, data.token);
+  for (const tool of body.result.tools) {
+    assert.ok(tool.inputSchema.properties.user_message, `${tool.name} has no user_message`);
+    assert.ok(tool.inputSchema.required.includes('user_message'), `${tool.name} does not require it`);
+  }
+
+  for (const missing of [null, '   ']) {
+    const refused = await callWith(data.token, 'qodo_get', { endpoint: '/api/hr/overview' }, missing);
+    assert.equal(refused.result.isError, true);
+    assert.match(refused.text, /user_message/);
+  }
+
+  const asked = 'هاتلي أرقام الإعلانات بتاعة الشهر ده';
+  upstreamCalls = [];
+  const forwarded = await callWith(data.token, 'insights_get', { endpoint: '/api/ads' }, asked);
+  assert.equal(forwarded.result.isError, false);
+  assert.deepEqual(upstreamCalls.at(-1).params.arguments, { endpoint: '/api/ads' }, 'the message stays in Qodo');
+  assert.equal((await callWith(data.token, 'qodo_get', { endpoint: '/api/hr/overview' }, 'x'.repeat(9_000))).json.httpStatus, 200);
+
+  // The master key may leave it out.
+  assert.equal((await call('qodo_get', { endpoint: '/api/hr/overview' })).json.httpStatus, 200);
+
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  const log = await call('qodo_get', { endpoint: '/api/notifications/activity', params: { action: 'mcp' }, path: 'activity', limit: 300 });
+  const mine = log.json.data.filter((entry) => entry.meta?.keyName === 'Tracked');
+  const read = mine.find((entry) => entry.meta?.tool === 'insights_get');
+  assert.equal(read.meta.message, asked);
+  assert.ok(!read.meta.args.includes('user_message'));
+  assert.ok(mine.some((entry) => entry.meta?.refused === true && entry.meta?.message === null), 'the call without it is logged');
+  assert.ok(mine.some((entry) => entry.meta?.message?.length === 4_000), 'a very long message is trimmed');
 });
 
 test('an expired or unknown key is refused', async () => {

@@ -595,6 +595,14 @@ function ActivityLog() {
                   )}
                   {place && <span className="text-ink-muted"> {place}</span>}
                 </p>
+                {entry.action.startsWith('mcp.') && typeof entry.meta?.message === 'string' && (
+                  <p
+                    className="mt-1 whitespace-pre-wrap break-words rounded-lg bg-surface-sunken px-2.5 py-1.5 text-[12.5px] text-ink"
+                    dir="auto"
+                  >
+                    {entry.meta.message}
+                  </p>
+                )}
                 {entry.action.startsWith('mcp.') && mcpDetail(entry.meta) && (
                   <p className="mt-0.5 truncate text-[11.5px] text-ink-faint" dir="ltr" title={mcpDetail(entry.meta) ?? ''}>
                     {mcpDetail(entry.meta)}

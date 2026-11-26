@@ -24,6 +24,14 @@ Enforcement is in Qodo (`server/mcpScopes.js`), before anything is forwarded: to
 
 `NOD_MCP_TOKEN` still works as the full-access master key; rotate it in Railway to stop it.
 
+## The person's message
+
+MCP carries tool calls only, never the chat. So every tool in `/api/mcp` also asks for `user_message`: the message the person wrote that led to the call, word for word. It is logged with the call (up to 4,000 characters) and shown under the entry in Settings → Activity → MCP requests. It is removed before the tool runs or is forwarded, so Insights Hub and Mobde3 never receive it. Answers are still not stored.
+
+Personal keys must send it: a call without it is refused (and logged) with a note telling the agent to add it. The `NOD_MCP_TOKEN` master key may leave it out. The text is what the agent reports; the server cannot compare it with the real chat.
+
+Anyone whose key can read the activity log (Qodo: all, or "Team, apps and activity log") can read these messages, other people's included.
+
 ## One endpoint for every dashboard
 
 `/api/mcp` also lists and forwards the tools of the Insights Hub and Mobde3 (Social Pulse) MCP servers (`server/mcpGateway.js`), so Nod needs one URL and one token. Set on Railway:
