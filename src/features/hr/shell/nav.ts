@@ -2,6 +2,7 @@ import {
   BarChart3,
   BriefcaseBusiness,
   ClipboardList,
+  Fingerprint,
   Gauge,
   LayoutDashboard,
   Network,
@@ -23,13 +24,14 @@ export interface HRNavItem {
 }
 
 /**
- * The nine HR areas. Visibility here is a courtesy — every endpoint behind
+ * The ten HR areas. Visibility here is a courtesy — every endpoint behind
  * these pages re-checks the same permission on the server.
  */
 export const HR_NAV: HRNavItem[] = [
   { id: 'home', to: '/hr', end: true, icon: LayoutDashboard, label: { ar: 'الرئيسية', en: 'HR Home' }, visible: (a) => !a.performanceOnly },
   { id: 'recruitment', to: '/hr/recruitment', icon: BriefcaseBusiness, label: { ar: 'التوظيف', en: 'Recruitment' }, visible: (a) => a.recruitment || a.requests || a.kpiReview || a.rewards || a.offers },
   { id: 'people', to: '/hr/people', icon: UsersRound, label: { ar: 'الموظفون', en: 'People' }, visible: (a) => a.people || a.team },
+  { id: 'attendance', to: '/hr/attendance', icon: Fingerprint, label: { ar: 'الحضور والانصراف', en: 'Attendance' }, visible: (a) => Boolean(a.attendance) },
   { id: 'personnel', to: '/hr/personnel', icon: ClipboardList, label: { ar: 'شئون العاملين', en: 'Personnel' }, visible: (a) => a.personnel },
   { id: 'payroll', to: '/hr/payroll', icon: WalletCards, label: { ar: 'الرواتب والمزايا', en: 'Payroll & Benefits' }, visible: (a) => a.payroll },
   // Anyone with an HR record may read their own KPI, and anyone may find a colleague's seat.

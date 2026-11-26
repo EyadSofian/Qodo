@@ -67,18 +67,15 @@ export function AnimatedOutlet({ keyOf, order }: { keyOf: (pathname: string) => 
 }
 
 /**
- * The colour behind every HR page: a soft aurora in the current area's
- * colours, drifting slowly, under a faint dot grid. Glass sheets sit on it.
+ * The quiet backdrop behind every HR page: a cool grey with one faint wash of
+ * the current area's colour along the top, and a fine dot grid. No moving
+ * blobs — the colour lives in the heroes and actions, not behind the text.
  */
-function Aurora() {
+function Backdrop() {
   return (
-    <div aria-hidden="true" className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
-      <div className="absolute inset-0 bg-[linear-gradient(160deg,#EEF2FF_0%,#F5F3FF_36%,#FDF4FF_62%,#EFF6FF_100%)]" />
-      <div className="hr-aurora-blob absolute -top-[22%] start-[4%] h-[52vw] w-[52vw] rounded-full blur-3xl transition-[background] duration-700" style={{ background: 'radial-gradient(circle, rgb(var(--hr-a1) / 0.42), transparent 64%)' }} />
-      <div className="hr-aurora-blob absolute top-[26%] -end-[12%] h-[44vw] w-[44vw] rounded-full blur-3xl transition-[background] duration-700" style={{ animationDelay: '-8s', background: 'radial-gradient(circle, rgb(var(--hr-a2) / 0.36), transparent 64%)' }} />
-      <div className="hr-aurora-blob absolute -bottom-[24%] start-[26%] h-[40vw] w-[40vw] rounded-full blur-3xl" style={{ animationDelay: '-15s', background: 'radial-gradient(circle, rgb(244 114 182 / 0.3), transparent 64%)' }} />
-      <div className="hr-aurora-blob absolute top-[4%] end-[26%] h-[28vw] w-[28vw] rounded-full blur-3xl" style={{ animationDelay: '-4s', background: 'radial-gradient(circle, rgb(56 189 248 / 0.3), transparent 64%)' }} />
-      <div className="absolute inset-0 opacity-40 [background-image:radial-gradient(rgb(79_70_229/0.13)_1px,transparent_1px)] [background-size:22px_22px]" />
+    <div aria-hidden="true" className="pointer-events-none fixed inset-0 -z-10 overflow-hidden bg-[#F3F5F9]">
+      <div className="absolute inset-x-0 top-0 h-[420px] transition-[background] duration-700" style={{ background: 'linear-gradient(180deg, rgb(var(--hr-a1) / 0.07), transparent)' }} />
+      <div className="absolute inset-0 opacity-60 [background-image:radial-gradient(rgb(15_23_42/0.06)_1px,transparent_1px)] [background-size:24px_24px]" />
     </div>
   );
 }
@@ -113,7 +110,7 @@ export function HRLayout() {
   return (
     <HRProvider>
       <div className="relative isolate min-h-[calc(100dvh-var(--topbar-h)-var(--sat))]">
-        <Aurora />
+        <Backdrop />
         <div className="mx-auto flex w-full max-w-[1680px]">
           <HRSidebar expanded={expanded} onToggle={() => setExpanded((value) => !value)} />
           <div className="min-w-0 flex-1">

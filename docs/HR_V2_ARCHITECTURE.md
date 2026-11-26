@@ -37,7 +37,8 @@ Read-only discovery against production (Postgres session opened with
 /hr/recruitment/odoo-jobs    Published Odoo Jobs (read-only, live)
 /hr/recruitment/kpi          Recruitment KPI
 /hr/recruitment/rewards      Rewards
-/hr/people[/:employeeCode]   People
+/hr/people[/:employeeCode]   People (profile tabs: ?tab=attendance|leave|records|payroll)
+/hr/attendance[?tab=…]       Attendance (fingerprint): today, employees, departments, trends, devices
 /hr/personnel[/requests|/onboarding|/leave|/clearance]
 /hr/payroll                  Payroll & Benefits (hr.payroll)
 /hr/performance              Performance
@@ -442,6 +443,7 @@ and KPI deductions. Reading Settings needs `hr.manage` or
 | Shell | `GET /hr/access` · `GET /hr/overview` |
 | People | `GET /hr/people` · `GET /hr/people/:code/photo[?size=512]` · `GET /hr/employees/:code` (falls back to Odoo-only) · `GET /hr/employees/:code/odoo` (manager, reports, time off) · `PATCH /hr/employees/:code/:section` · `PUT /hr/employees/:code/link` |
 | Recruitment | `GET /hr/recruitment/overview · team · summary · alerts · capacity · capacity/check` · `GET·POST /hr/recruitment/requests` · `GET·PATCH /hr/recruitment/requests/:id` · `POST …/:id/submit · review · approve · assign · priority · extend · hold · resume · cancel · accepted` · `GET …/:id/odoo` · `PUT …/:id/odoo-link` · `GET /hr/recruitment/odoo · odoo/jobs · odoo/pipelines` · `GET /hr/recruitment/kpi[/:code]` · `POST /hr/recruitment/kpi/events` · `POST …/kpi/events/:id/void` · `GET /hr/recruitment/rewards` · `POST …/rewards/batches/:id/decision` |
+| Attendance | `GET /hr/attendance` · `GET /hr/attendance/employees` · `GET /hr/attendance/departments` (all `?from&to&site`) · `GET /hr/employees/:code/attendance` · `GET /hr/employees/:code/summary` · `GET /hr/people/search?q=` |
 | Personnel | `GET·POST /hr/personnel` · `GET /hr/personnel/leave` · `GET·PATCH /hr/personnel/:id` · `POST /hr/personnel/:id/checklist/:itemId` · `POST /hr/personnel/:id/form` |
 | Public form | `GET·POST /hr-forms/:token` |
 | Payroll | `GET /hr/payroll` (`hr.payroll`) |
@@ -453,12 +455,18 @@ and KPI deductions. Reading Settings needs `hr.manage` or
 
 ## 18. Interface conventions
 
-* **Glass on colour.** HR sits on a soft aurora background under
-  `body.hr-theme`; sheets are frosted glass (`.hr-glass`). Each area has its
-  own two-stop gradient (`ui/theme.ts` `AREA_THEME`: home indigo, recruitment
-  violet, people sky, personnel emerald, payroll amber, performance rose,
-  organization blue, reports purple, settings slate) set as `--hr-a1` /
-  `--hr-a2` RGB triplets on `<body>`, so portaled dialogs inherit it. The
+* **Calm sheets, deep colour (owner, 2026-11-26).** The vivid glass-on-aurora
+  look was "hard on the eye", so HR sits on a quiet grey backdrop
+  (`#F3F5F9`, one faint area wash at the top, no moving blobs) under
+  `body.hr-theme`; `.hr-glass` sheets are near-solid white with a fine slate
+  edge, and translucent-white wells inside a sheet become slate wells (the
+  `--hr-well` overrides in `index.css`). Each area keeps its own two-stop
+  colour (`ui/theme.ts` `AREA_THEME`: home navy, recruitment violet, people
+  blue, attendance indigo, personnel green, payroll bronze, performance
+  rose, organization slate-blue, reports plum, settings slate), deep and
+  low-saturation so white hero text stays at 4.5:1 or better, set as
+  `--hr-a1` / `--hr-a2` RGB triplets on `<body>`, so portaled dialogs inherit
+  it. The
   sidebar chip, the page hero, primary buttons, the active tab and neutral
   metric icons all take it. Status colours stay semantic on top — red
   critical/overdue, amber required/warning, blue planned/info, green success.
@@ -484,3 +492,53 @@ and KPI deductions. Reading Settings needs `hr.manage` or
   the page. Tables become stacked cards below `md`.
 * Arabic keeps Latin digits (`-u-nu-latn`); amounts in a Latin currency are
   isolated as one left-to-right run so "US$ 5,351" never reorders.
+
+## 19. Attendance (ZKTeco fingerprint)
+
+The fingerprint devices (3 at `branch-01`) are pulled by a Windows sync over
+TCP and posted to a separate service on Railway (`zkteco-attendance-receiver`
+→ `attendance-api`, Flask + SQLite on a volume; source in "ZKTeco Attendance
+Sync"). That service owns the punches and the rules that judge them: global
+shift 11:00–19:00, 15 min grace, 8 required hours, Sunday–Thursday, per
+department rules (Accounting and Sales start 12:00, Operations flexible), per
+person overrides, holiday detection (<25% in on a workday), duplicate taps,
+and "now" = the newest synced punch, so unsynced days are never absent.
+
+Qodo reads its JSON (`/dashboard/api/overview|employees|departments|
+employees/:code`) through `server/hr/attendance.js` with `ATTENDANCE_API_URL`
+(and `ATTENDANCE_API_TOKEN`, sent as a Bearer token, once the service closes
+its public mode and sets `ATTENDANCE_READ_TOKEN`). Answers are cached for a
+minute; nothing is written back. It adds:
+
+* **Who the code is.** The device's `employee_code` is Odoo's
+  `registration_number`, which is the HR employee code; joined through
+  `comparableCode`, with the HR photo and name. Odoo-only people work too.
+* **Time off over the days.** Approved Odoo leave turns an absent (or not yet
+  in) day into `leave`; an away type (`time_type = other`: WFH, mission,
+  missed fingerprint, late/early permission) into `away`, and a late or
+  one-punch day under an away type into `excused`. Pending requests are
+  shown beside the day, never change it. What is left is an *unexcused
+  absence*; the profile's attendance rate takes leave and away days out of
+  the expected days.
+* **Late but still in.** The service calls any one-punch day `in`; the
+  overview moves those who arrived after shift start + grace to `late`
+  (still flagged in the office).
+
+Access: the area and the company-wide endpoints need `hr.view` or
+`hr.personnel.view`; one person's attendance and summary follow the profile
+(HR, Personnel, the person, their Odoo manager tree). `access.attendance` /
+`attendanceConnected` drive the sidebar and the profile tab.
+
+Screens: `/hr/attendance` (today by status with the live feed and arrival
+times; employees with rate, punctuality, late, unexcused, leave and a strip
+of recent days; departments; trends against the previous period with a
+weekday×hour heatmap and stand-outs; devices with last receipt). The profile
+opens on an overview (today at the device, the month's four figures, leave
+left by type, manager and team) and has an Attendance tab (period figures,
+calendar, day detail with every punch, arrival by weekday, devices).
+
+MCP: `hr_employee_profile` (code or Arabic/English name → the
+`/summary` answer: job, manager, today, the period's attendance, leave
+balances and requests; never pay, bank or ID numbers) and
+`hr_attendance_today` (who is in, late, absent, on leave, not yet in, per
+department). Both run as the MCP account through the routes above.

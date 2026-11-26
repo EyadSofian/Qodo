@@ -110,6 +110,12 @@ export const hrApi = {
   personnelCase: (id: string) => `/hr/personnel/${encodeURIComponent(id)}`,
   leave: '/hr/personnel/leave',
   dashboard: '/hr/dashboard',
+  attendance: {
+    overview: '/hr/attendance',
+    employees: '/hr/attendance/employees',
+    departments: '/hr/attendance/departments',
+    employee: (code: string, range: string) => `/hr/employees/${encodeURIComponent(code)}/attendance?${range}`,
+  },
   imports: '/hr/imports',
   recruitment: {
     overview: '/hr/recruitment/overview',

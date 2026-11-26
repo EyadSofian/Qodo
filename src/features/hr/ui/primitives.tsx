@@ -45,8 +45,8 @@ function HeroArt({ icon: Icon, floating }: { icon: LucideIcon; floating: boolean
     <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
       <div className="absolute -end-20 -top-24 h-72 w-72 rounded-full bg-white/10" />
       <div className="absolute -bottom-40 end-16 h-80 w-80 rounded-full border-[30px] border-white/[0.07]" />
-      <div className="absolute end-1/3 top-0 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
-      <div className="absolute inset-0 opacity-40 [background-image:radial-gradient(rgb(255_255_255/0.35)_1px,transparent_1px)] [background-size:18px_18px] [mask-image:linear-gradient(to_left,black,transparent_65%)] rtl:[mask-image:linear-gradient(to_right,black,transparent_65%)]" />
+      <div className="absolute end-1/3 top-0 h-40 w-40 rounded-full bg-white/[0.06] blur-2xl" />
+      <div className="absolute inset-0 opacity-30 [background-image:radial-gradient(rgb(255_255_255/0.3)_1px,transparent_1px)] [background-size:18px_18px] [mask-image:linear-gradient(to_left,black,transparent_65%)] rtl:[mask-image:linear-gradient(to_right,black,transparent_65%)]" />
       <Icon size={210} strokeWidth={1.2} className="absolute -bottom-12 -end-8 rotate-[-10deg] text-white/[0.09]" />
       {floating && (
         <>
@@ -72,7 +72,7 @@ export function PageHeader({ eyebrow, title, description, actions, faces, stats 
   const theme = AREA_THEME[areaOf(pathname)];
   return (
     <header
-      className="relative isolate overflow-hidden rounded-[28px] px-5 py-6 text-white shadow-[0_26px_60px_-32px_rgb(var(--hr-a1)/0.95),inset_0_1px_0_rgb(255_255_255/0.25)] sm:px-8 sm:py-8"
+      className="relative isolate overflow-hidden rounded-[28px] px-5 py-6 text-white shadow-[0_18px_40px_-28px_rgb(15_23_42/0.6),inset_0_1px_0_rgb(255_255_255/0.12)] sm:px-8 sm:py-8"
       style={{ backgroundImage: gradient(theme) }}
     >
       <HeroArt icon={theme.icon} floating={!actions} />
@@ -120,10 +120,10 @@ export function SectionTitle({ title, hint, action, id }: { title: ReactNode; hi
 
 /** Colour pairs a metric's icon chip and glow take by tone; neutral takes the area's own. */
 const TONE_COLORS: Record<Tone, [string, string]> = {
-  critical: ['225 29 72', '239 68 68'],
-  warning: ['245 158 11', '234 88 12'],
-  info: ['14 165 233', '37 99 235'],
-  success: ['16 185 129', '22 163 74'],
+  critical: ['190 18 60', '220 38 38'],
+  warning: ['180 83 9', '194 65 12'],
+  info: ['29 78 216', '37 99 235'],
+  success: ['21 128 61', '22 101 52'],
   neutral: ['var(--hr-a1)', 'var(--hr-a2)'],
 };
 const rgb = (value: string) => `rgb(${value})`;
@@ -133,7 +133,7 @@ export function Metric({ label, value, hint, to, tone = 'neutral', emphasis = fa
   const [from, to2] = TONE_COLORS[tone];
   const body = (
     <>
-      <span className="pointer-events-none absolute -end-10 -top-12 h-32 w-32 rounded-full opacity-30 blur-2xl transition-opacity duration-300 group-hover:opacity-50" style={{ background: `radial-gradient(circle, ${rgb(from)}, transparent 70%)` }} aria-hidden="true" />
+      <span className="pointer-events-none absolute -end-10 -top-12 h-32 w-32 rounded-full opacity-[0.12] blur-2xl transition-opacity duration-300 group-hover:opacity-20" style={{ background: `radial-gradient(circle, ${rgb(from)}, transparent 70%)` }} aria-hidden="true" />
       <span className="relative flex items-center gap-2 text-[12px] font-semibold text-slate-600">
         {Icon ? (
           <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl text-white shadow-[0_8px_16px_-8px_rgb(15_23_42/0.45)]" style={{ backgroundImage: `linear-gradient(135deg, ${rgb(from)}, ${rgb(to2)})` }}>

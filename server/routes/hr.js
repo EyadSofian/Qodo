@@ -33,6 +33,7 @@ import {
 } from '../hr/personnel.js';
 import { odooEmployeeByKey, odooEmployeeFor, odooEmployeeIndex, odooPhoto } from '../hr/odooPeople.js';
 import { inTeam } from '../hr/teamReach.js';
+import { attendanceDepartments, attendanceEmployees, attendanceOverview, employeeAttendance, employeeSnapshot, searchPeople } from '../hr/attendance.js';
 
 const router = Router();
 const uploadBody = express.raw({ type: () => true, limit: MAX_HR_WORKBOOK_BYTES });
@@ -208,6 +209,16 @@ router.get('/employees/:employeeCode', async (req, res) => {
 
 router.get('/employees/:employeeCode/odoo', h((req) => employeeOdoo(req.user, req.params.employeeCode)));
 
+/* ── Attendance (ZKTeco fingerprint service, read-only) ─────────── */
+
+const rangeOf = (req) => ({ from: req.query.from, to: req.query.to, site: req.query.site, refresh: req.query.refresh === '1' });
+router.get('/employees/:employeeCode/attendance', h((req) => employeeAttendance(req.user, req.params.employeeCode, rangeOf(req))));
+// One person in one answer — identity, today at the device, the month, leave — for chat assistants.
+router.get('/employees/:employeeCode/summary', h((req) => employeeSnapshot(req.user, req.params.employeeCode, rangeOf(req))));
+router.get('/attendance', h((req) => attendanceOverview(req.user, rangeOf(req))));
+router.get('/attendance/employees', h((req) => attendanceEmployees(req.user, rangeOf(req))));
+router.get('/attendance/departments', h((req) => attendanceDepartments(req.user, rangeOf(req))));
+
 router.get('/imports', requirePermission(PERMISSIONS.HR_MANAGE), async (req, res) => {
   try {
     res.json({ runs: await hrImportHistory(organizationOf(req.user), req.query.limit) });
@@ -295,6 +306,7 @@ router.put('/employees/:employeeCode/link', requirePermission(PERMISSIONS.HR_MAN
 router.get('/access', h(async (req) => ({ access: await hrAccess(req.user) })));
 router.get('/overview', h((req) => hrHome(req.user)));
 router.get('/people', h((req) => peopleDirectory(req.user)));
+router.get('/people/search', h((req) => searchPeople(req.user, req.query.q, req.query.limit)));
 
 /**
  * A real employee photo, read from Odoo `hr.employee.image_128` and never a

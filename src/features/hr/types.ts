@@ -37,6 +37,12 @@ export interface HRAccess {
   requests: boolean;
   kpiReview: boolean;
   rewards: boolean;
+  /** The fingerprint attendance area: the service is connected and the caller is HR or Personnel. */
+  attendance?: boolean;
+  /** The fingerprint service is connected at all (anyone's own attendance shows on their profile). */
+  attendanceConnected?: boolean;
+  /** The fingerprint service's own dashboard (shift rules, roster) — for HR settings holders. */
+  attendanceDashboard?: string | null;
 }
 
 export interface TeamMember {

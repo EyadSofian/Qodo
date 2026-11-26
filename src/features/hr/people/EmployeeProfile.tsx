@@ -1,5 +1,8 @@
 /**
- * /hr/people/:employeeCode — one person's HR record.
+ * /hr/people/:employeeCode — one person's HR record, in tabs: an overview
+ * (today at the fingerprint device, the month's figures, leave left, manager
+ * and team), attendance day by day, leave, the HR file's records and pay.
+ * `?tab=` opens a tab directly (the attendance area links to `?tab=attendance`).
  *
  * The same endpoints and permission rules as before HR V2: sensitive contact
  * and bank fields are masked unless the reader manages HR or is the person,
@@ -9,8 +12,8 @@
  */
 
 import { useEffect, useState, type ReactNode } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, BriefcaseBusiness, CalendarDays, Check, ClipboardList, Cloud, Database, ExternalLink, FileCheck2, IdCard, Landmark, Link2, Pencil, ShieldCheck, WalletCards } from 'lucide-react';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { ArrowLeft, ArrowRight, BriefcaseBusiness, CalendarDays, Check, ClipboardList, Cloud, Database, ExternalLink, FileCheck2, Fingerprint, IdCard, Landmark, LayoutDashboard, Link2, Pencil, ShieldCheck, UserRound, WalletCards } from 'lucide-react';
 import { errorMessage } from '../../../lib/api';
 import { cx } from '../../../lib/utils';
 import { Modal, Spinner, useToast } from '../../../components/ui';
@@ -23,8 +26,12 @@ import type { EmployeeOdooData, PersonnelCase } from '../types';
 import { Badge, Card, KeyValue, LinkArrow, PersonAvatar, SectionTitle } from '../ui/primitives';
 import { LeaveRow, LeaveTypeChip, personName } from '../ui/timeOff';
 import { EmptyBlock, ErrorBlock, PageSkeleton } from '../ui/states';
+import { PillTabs } from '../ui/PillTabs';
+import { AttendanceFigures, AttendancePanel, AttendanceToday, TodayChip, useEmployeeAttendance } from '../attendance/EmployeeAttendance';
+import { presetRange } from '../attendance/model';
 
 type EditSection = 'master' | 'payroll' | 'insurance' | 'bank';
+type ProfileTab = 'overview' | 'attendance' | 'leave' | 'records' | 'payroll';
 
 function Section({ icon: Icon, title, action, children }: { icon: typeof IdCard; title: string; action?: ReactNode; children: ReactNode }) {
   return (
@@ -142,6 +149,37 @@ function OdooTimeOff({ code }: { code: string }) {
   );
 }
 
+/** What is left to take: the leave workbook's balance and Odoo's allocations, by type. */
+function LeaveBalances({ employee, onOpen }: { employee: HREmployeeProfile; onOpen: () => void }) {
+  const { t, lang } = useHRText();
+  const { data } = useHRQuery<EmployeeOdooData>(hrApi.employeeOdoo(employee.employeeCode));
+  const allocations = data?.connected ? data.timeOff?.allocations ?? [] : [];
+  const pending = data?.connected ? (data.timeOff?.requests ?? []).filter((leave) => leave.state === 'confirm' || leave.state === 'validate1') : [];
+  if (!employee.leave && !allocations.length) return null;
+  return (
+    <Section icon={CalendarDays} title={t('رصيد الإجازات', 'Leave left')} action={<button type="button" className="text-[12.5px] font-semibold text-[rgb(var(--hr-a1))] hover:underline" onClick={onOpen}>{t('كل الإجازات', 'All leave')}</button>}>
+      <ul className="space-y-2.5">
+        {employee.leave && employee.leave.availableNow !== null && (
+          <li className="flex items-center justify-between gap-3 rounded-2xl bg-slate-50 px-3 py-2.5 ring-1 ring-slate-200/70">
+            <span className="text-[12.5px] font-semibold text-slate-700">{t('المتاح الآن (ملف الإجازات)', 'Available now (leave workbook)')}</span>
+            <b className={cx('text-[18px] font-extrabold tabular-nums', Number(employee.leave.availableNow) < 0 ? 'text-rose-700' : 'text-navy')}>{num(employee.leave.availableNow, lang, 1)}</b>
+          </li>
+        )}
+        {allocations.map((allocation) => (
+          <li key={allocation.id} className="rounded-2xl bg-slate-50 px-3 py-2.5 ring-1 ring-slate-200/70">
+            <div className="flex items-center justify-between gap-2">
+              <LeaveTypeChip type={allocation.type} />
+              <span className="text-[12.5px] text-slate-600"><b className="text-[16px] font-extrabold tabular-nums text-navy">{num(allocation.remaining, lang, 1)}</b> {t(`متبقٍ من ${num(allocation.days, lang, 1)}`, `left of ${num(allocation.days, lang, 1)}`)}</span>
+            </div>
+            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200"><span className="block h-full rounded-full bg-[rgb(var(--hr-a1))]" style={{ width: `${allocation.days ? Math.min(100, (allocation.taken / allocation.days) * 100) : 0}%` }} /></div>
+          </li>
+        ))}
+      </ul>
+      {pending.length > 0 && <p className="mt-3 text-[12px] font-semibold text-amber-800">{t(`${num(pending.length, lang)} طلب إجازة قيد الاعتماد`, `${num(pending.length, lang)} leave request(s) awaiting approval`)}</p>}
+    </Section>
+  );
+}
+
 /** A link to someone's profile when HR can address them, plain text when it cannot. */
 function PersonLink({ code, className, children }: { code: string | null; className: string; children: ReactNode }) {
   return code ? <Link to={`/hr/people/${encodeURIComponent(code)}`} className={cx(className, 'hr-lift')}>{children}</Link> : <div className={className}>{children}</div>;
@@ -250,6 +288,11 @@ export function EmployeeProfile() {
   useEffect(() => {
     setEditing(null);
   }, [employeeCode]);
+  const [params, setParams] = useSearchParams();
+  const attendanceOn = Boolean(access?.attendanceConnected);
+  // The month the overview and the hero read; the attendance tab picks its own range.
+  const [month] = useState(() => presetRange('month'));
+  const attendance = useEmployeeAttendance(employeeCode, month, attendanceOn);
 
   if (error && !data) return <ErrorBlock error={error} onRetry={reload} />;
   if (loading && !data) return <PageSkeleton rows={2} />;
@@ -271,10 +314,25 @@ export function EmployeeProfile() {
 
   const photo = `/api/hr/people/${encodeURIComponent(employee.employeeCode)}/photo`;
   const odooOnly = Boolean(employee.odooOnly);
+  const tabs: Array<{ id: ProfileTab; label: string; icon: ReactNode }> = [
+    { id: 'overview', label: t('نظرة عامة', 'Overview'), icon: <LayoutDashboard size={15} aria-hidden="true" /> },
+    ...(attendanceOn ? [{ id: 'attendance' as const, label: t('الحضور والانصراف', 'Attendance'), icon: <Fingerprint size={15} aria-hidden="true" /> }] : []),
+    { id: 'leave', label: t('الإجازات', 'Leave'), icon: <CalendarDays size={15} aria-hidden="true" /> },
+    ...(!odooOnly ? [{ id: 'records' as const, label: t('البيانات', 'Records'), icon: <UserRound size={15} aria-hidden="true" /> }] : []),
+    ...(showsPayroll && !odooOnly ? [{ id: 'payroll' as const, label: t('الراتب', 'Pay'), icon: <WalletCards size={15} aria-hidden="true" /> }] : []),
+  ];
+  const asked = params.get('tab') as ProfileTab | null;
+  const tab: ProfileTab = asked && tabs.some((item) => item.id === asked) ? asked : 'overview';
+  const setTab = (next: ProfileTab) => {
+    const copy = new URLSearchParams(params);
+    if (next === 'overview') copy.delete('tab');
+    else copy.set('tab', next);
+    setParams(copy, { replace: true });
+  };
 
   return (
     <div className="space-y-6">
-      <header className="relative isolate overflow-hidden rounded-[28px] text-white shadow-[0_26px_60px_-32px_rgb(var(--hr-a1)/0.95)]" style={{ backgroundImage: 'linear-gradient(135deg, rgb(var(--hr-a1)), rgb(var(--hr-a2)))' }}>
+      <header className="relative isolate overflow-hidden rounded-[28px] text-white shadow-[0_18px_40px_-28px_rgb(15_23_42/0.6)]" style={{ backgroundImage: 'linear-gradient(135deg, rgb(var(--hr-a1)), rgb(var(--hr-a2)))' }}>
         <BlurredPhoto src={`${photo}?size=512`} />
         <div className="absolute inset-0 -z-10 bg-[linear-gradient(180deg,rgb(11_37_69/0.15)_0%,rgb(11_37_69/0.55)_100%)]" aria-hidden="true" />
         <div aria-hidden="true" className="pointer-events-none absolute -end-16 -top-20 -z-10 h-64 w-64 rounded-full bg-white/10" />
@@ -287,6 +345,7 @@ export function EmployeeProfile() {
                 <span className="rounded-full bg-white/15 px-2.5 py-0.5 font-mono text-[12px] font-semibold ring-1 ring-white/25">#{employee.employeeCode}</span>
                 <span className={cx('rounded-full px-2.5 py-0.5 text-[11.5px] font-bold', employee.status === 'active' ? 'bg-emerald-400/90 text-emerald-950' : 'bg-white/25 text-white')}>{employee.status === 'active' ? t('نشط', 'Active') : employee.status === 'inactive' ? t('غير نشط', 'Inactive') : t('غير محدد', 'Unknown')}</span>
                 {odooOnly && <span className="inline-flex items-center gap-1 rounded-full bg-violet-500/90 px-2.5 py-0.5 text-[11.5px] font-bold"><Cloud size={12} aria-hidden="true" />{t('في Odoo فقط', 'Odoo only')}</span>}
+                {attendanceOn && <TodayChip data={attendance.data} />}
               </div>
               <h1 className="hr-bidi mt-2 truncate text-[28px] font-extrabold tracking-tight drop-shadow-sm sm:text-[34px]">{name}</h1>
               <p className="mt-1 text-[14px] text-white/85">{[employee.title, employee.department || employee.sector].filter(Boolean).join(' · ') || '—'}</p>
@@ -304,9 +363,20 @@ export function EmployeeProfile() {
         </p>
       )}
 
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <div className="hr-stagger min-w-0 space-y-5">
-          <OdooCard code={employee.employeeCode} />
+      <PillTabs
+        value={tab}
+        onChange={setTab}
+        label={t('أقسام الملف', 'Profile sections')}
+        layoutId="profile-tabs"
+        options={tabs}
+      />
+
+      {tab === 'overview' && (
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="hr-stagger min-w-0 space-y-5">
+            {attendanceOn && <AttendanceToday data={attendance.data} loading={attendance.loading} onOpen={() => setTab('attendance')} />}
+            {attendanceOn && attendance.data?.found && <AttendanceFigures data={attendance.data} />}
+            <OdooCard code={employee.employeeCode} />
           {!odooOnly && <Section icon={BriefcaseBusiness} title={t('البيانات الوظيفية', 'Employment')} action={edit('master')}>
             <dl className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
               <KeyValue label={t('المسمى الوظيفي', 'Job title')} value={employee.title} />
@@ -319,20 +389,27 @@ export function EmployeeProfile() {
               {employee.resignationDate && <KeyValue label={t('تاريخ الاستقالة', 'Resignation date')} value={date(employee.resignationDate, lang)} />}
             </dl>
           </Section>}
-
-          {!odooOnly && <Section icon={IdCard} title={t('الهوية والتواصل', 'Identity & contact')}>
-            <dl className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
-              <KeyValue label={t('البريد الوظيفي', 'Company e-mail')} value={<span className="ltr">{employee.companyEmail || '—'}</span>} />
-              <KeyValue label={t('البريد الشخصي', 'Personal e-mail')} value={<span className="ltr">{employee.personalEmail || '—'}</span>} />
-              <KeyValue label={t('الموبايل', 'Mobile')} value={<span className="ltr">{employee.mobile || '—'}</span>} />
-              <KeyValue label={t('الرقم القومي', 'National ID')} value={<span className="ltr">{employee.nationalId || '—'}</span>} />
-              <KeyValue label={t('تاريخ الميلاد', 'Birth date')} value={date(employee.birthDate, lang)} />
-              <KeyValue label={t('النوع', 'Gender')} value={employee.gender} />
-              <KeyValue label={t('الحالة الاجتماعية', 'Marital status')} value={employee.maritalStatus} />
-              <KeyValue label={t('العنوان', 'Address')} value={employee.address} />
-            </dl>
+          </div>
+          <aside className="hr-stagger min-w-0 space-y-5">
+            <LeaveBalances employee={employee} onOpen={() => setTab('leave')} />
+          {!odooOnly && <Section icon={FileCheck2} title={t('اكتمال المستندات', 'Documents')}>
+            <div className="flex items-end justify-between"><span className="text-[12px] font-semibold text-slate-500">{t('مكتمل', 'Complete')}</span><b className="text-[24px] font-extrabold tabular-nums text-navy">{docsRate}%</b></div>
+            <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-slate-200/70"><span className={cx('block h-full rounded-full transition-[width] duration-700', docsRate >= 100 ? 'bg-gradient-to-r from-emerald-400 to-green-600' : 'bg-gradient-to-r from-amber-400 to-orange-500')} style={{ width: `${Math.min(100, docsRate)}%` }} /></div>
+            <ul className="mt-3 grid grid-cols-2 gap-1.5">
+              {documents.map(([key, value]) => <li key={key} className={cx('flex items-center gap-1.5 rounded-xl px-2 py-1.5 text-[11.5px] font-semibold', value ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100' : 'bg-white/60 text-slate-400 ring-1 ring-white/80')}>{value ? <Check size={12} aria-hidden="true" /> : <span aria-hidden="true">—</span>}<span className="truncate">{DOCUMENT_LABEL[key] ? pick(DOCUMENT_LABEL[key]) : key}</span><span className="sr-only">{value ? t('موجود', 'on file') : t('ناقص', 'missing')}</span></li>)}
+            </ul>
           </Section>}
+          {!odooOnly && <Section icon={Link2} title={t('حساب Qodo', 'Qodo account')}>
+            {canManage && dashboard.data ? <AccountLink employee={employee} accounts={dashboard.data.accounts} onSaved={() => void reload()} /> : <p className="text-[12.5px] text-slate-500">{employee.linkedUserId ? t('مربوط بحساب دخول.', 'Linked to a sign-in account.') : t('غير مربوط بحساب دخول.', 'Not linked to a sign-in account.')}</p>}
+          </Section>}
+          </aside>
+        </div>
+      )}
 
+      {tab === 'attendance' && <AttendancePanel code={employee.employeeCode} />}
+
+      {tab === 'leave' && (
+        <div className="hr-stagger min-w-0 space-y-5">
           <Section icon={CalendarDays} title={t('الإجازات والأرصدة', 'Leave & balances')} action={access?.personnel ? <LinkArrow to="/hr/personnel/leave">{t('كل الإجازات', 'All leave')}</LinkArrow> : null}>
             {employee.leave ? (
               <div className="space-y-4">
@@ -351,7 +428,74 @@ export function EmployeeProfile() {
             ) : !odooOnly ? <p className="rounded-2xl bg-white/60 px-3 py-2.5 text-[12.5px] text-slate-500">{t('لا يوجد رصيد في ملف الإجازات لهذا الكود.', 'The leave workbook has no balance for this code.')}</p> : null}
             <OdooTimeOff code={employee.employeeCode} />
           </Section>
+        </div>
+      )}
 
+      {tab === 'records' && (
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="hr-stagger min-w-0 space-y-5">
+          {!odooOnly && <Section icon={BriefcaseBusiness} title={t('البيانات الوظيفية', 'Employment')} action={edit('master')}>
+            <dl className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
+              <KeyValue label={t('المسمى الوظيفي', 'Job title')} value={employee.title} />
+              <KeyValue label={t('القسم', 'Department')} value={employee.department} />
+              <KeyValue label={t('القطاع', 'Sector')} value={employee.sector} />
+              <KeyValue label={t('تاريخ التعيين', 'Hiring date')} value={date(employee.hiringDate, lang)} />
+              <KeyValue label={t('نوع العمل', 'Work type')} value={employee.workType} />
+              <KeyValue label={t('الوردية', 'Shift')} value={employee.shiftStart || employee.shiftEnd ? `${employee.shiftStart} — ${employee.shiftEnd}` : '—'} />
+              <KeyValue label={t('ساعات أسبوعية', 'Weekly hours')} value={employee.weeklyHours ? num(employee.weeklyHours, lang, 1) : '—'} />
+              {employee.resignationDate && <KeyValue label={t('تاريخ الاستقالة', 'Resignation date')} value={date(employee.resignationDate, lang)} />}
+            </dl>
+          </Section>}
+          {!odooOnly && <Section icon={IdCard} title={t('الهوية والتواصل', 'Identity & contact')}>
+            <dl className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
+              <KeyValue label={t('البريد الوظيفي', 'Company e-mail')} value={<span className="ltr">{employee.companyEmail || '—'}</span>} />
+              <KeyValue label={t('البريد الشخصي', 'Personal e-mail')} value={<span className="ltr">{employee.personalEmail || '—'}</span>} />
+              <KeyValue label={t('الموبايل', 'Mobile')} value={<span className="ltr">{employee.mobile || '—'}</span>} />
+              <KeyValue label={t('الرقم القومي', 'National ID')} value={<span className="ltr">{employee.nationalId || '—'}</span>} />
+              <KeyValue label={t('تاريخ الميلاد', 'Birth date')} value={date(employee.birthDate, lang)} />
+              <KeyValue label={t('النوع', 'Gender')} value={employee.gender} />
+              <KeyValue label={t('الحالة الاجتماعية', 'Marital status')} value={employee.maritalStatus} />
+              <KeyValue label={t('العنوان', 'Address')} value={employee.address} />
+            </dl>
+          </Section>}
+          {access?.personnel && (
+            <Section icon={ClipboardList} title={t('طلبات شئون العاملين', 'Personnel cases')} action={<LinkArrow to="/hr/personnel/requests">{t('فتح شئون العاملين', 'Open personnel')}</LinkArrow>}>
+              {cases.length ? (
+                <ul className="space-y-2">
+                  {cases.map((item) => (
+                    <li key={item.id}><Link to={`/hr/personnel/${item.type === 'onboarding' ? 'onboarding' : item.type === 'clearance' ? 'clearance' : item.type === 'leave' ? 'leave' : 'requests'}?case=${encodeURIComponent(item.id)}`} className="hr-lift flex items-center justify-between gap-3 rounded-2xl border border-white/80 bg-white/60 px-3 py-2.5"><span className="text-[13px] font-semibold text-navy">{pick(PERSONNEL_TYPE_LABEL[item.type])}</span><Badge tone={item.status === 'done' ? 'success' : item.status === 'cancelled' ? 'neutral' : 'info'}>{pick(PERSONNEL_STATUS_LABEL[item.status])}</Badge></Link></li>
+                  ))}
+                </ul>
+              ) : <p className="text-[12.5px] text-ink-faint">{t('لا توجد طلبات.', 'No cases.')}</p>}
+            </Section>
+          )}
+          </div>
+          <aside className="hr-stagger min-w-0 space-y-5">
+          {!odooOnly && <Section icon={Landmark} title={t('الحساب البنكي', 'Bank')} action={edit('bank')}>
+            <dl className="space-y-3">
+              <KeyValue label={t('البنك', 'Bank')} value={employee.bankName} />
+              <KeyValue label={t('الحالة', 'Status')} value={employee.bankStatus} />
+              <KeyValue label={t('رقم الحساب', 'Account')} value={<span className="ltr">{employee.bankAccount || '—'}</span>} />
+            </dl>
+          </Section>}
+          {!odooOnly && <Section icon={FileCheck2} title={t('اكتمال المستندات', 'Documents')}>
+            <div className="flex items-end justify-between"><span className="text-[12px] font-semibold text-slate-500">{t('مكتمل', 'Complete')}</span><b className="text-[24px] font-extrabold tabular-nums text-navy">{docsRate}%</b></div>
+            <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-slate-200/70"><span className={cx('block h-full rounded-full transition-[width] duration-700', docsRate >= 100 ? 'bg-gradient-to-r from-emerald-400 to-green-600' : 'bg-gradient-to-r from-amber-400 to-orange-500')} style={{ width: `${Math.min(100, docsRate)}%` }} /></div>
+            <ul className="mt-3 grid grid-cols-2 gap-1.5">
+              {documents.map(([key, value]) => <li key={key} className={cx('flex items-center gap-1.5 rounded-xl px-2 py-1.5 text-[11.5px] font-semibold', value ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100' : 'bg-white/60 text-slate-400 ring-1 ring-white/80')}>{value ? <Check size={12} aria-hidden="true" /> : <span aria-hidden="true">—</span>}<span className="truncate">{DOCUMENT_LABEL[key] ? pick(DOCUMENT_LABEL[key]) : key}</span><span className="sr-only">{value ? t('موجود', 'on file') : t('ناقص', 'missing')}</span></li>)}
+            </ul>
+          </Section>}
+          <Section icon={Database} title={t('مصادر الملف', 'Sources')}>
+            <ul className="grid grid-cols-2 gap-1.5">
+              {Object.entries(employee.sources).map(([source, present]) => <li key={source} className={cx('rounded-xl px-2.5 py-1.5 text-[11.5px] font-semibold ring-1', present ? 'bg-[rgb(var(--hr-a1)/0.1)] text-[rgb(var(--hr-a1))] ring-[rgb(var(--hr-a1)/0.2)]' : 'bg-white/60 text-slate-400 ring-white/80')}>{present ? '✓' : '—'} {source}</li>)}
+            </ul>
+          </Section>
+          </aside>
+        </div>
+      )}
+
+      {tab === 'payroll' && (
+        <div className="hr-stagger min-w-0 space-y-5">
           {showsPayroll && !odooOnly && (
             <Section icon={WalletCards} title={t('الراتب الحالي', 'Current payroll')} action={edit('payroll')}>
               {employee.payroll ? (
@@ -363,7 +507,6 @@ export function EmployeeProfile() {
               ) : <EmptyBlock title={t('لا يوجد سجل راتب لهذا الكود', 'No payroll row for this code')} />}
             </Section>
           )}
-
           {showsPayroll && !odooOnly && (
             <Section icon={ShieldCheck} title={t('التأمينات والضرائب', 'Insurance & tax')} action={edit('insurance')}>
               {employee.insurance ? (
@@ -378,45 +521,8 @@ export function EmployeeProfile() {
               ) : <EmptyBlock title={t('لا يوجد سجل تأمين لهذا الكود', 'No insurance row for this code')} />}
             </Section>
           )}
-
-          {access?.personnel && (
-            <Section icon={ClipboardList} title={t('طلبات شئون العاملين', 'Personnel cases')} action={<LinkArrow to="/hr/personnel/requests">{t('فتح شئون العاملين', 'Open personnel')}</LinkArrow>}>
-              {cases.length ? (
-                <ul className="space-y-2">
-                  {cases.map((item) => (
-                    <li key={item.id}><Link to={`/hr/personnel/${item.type === 'onboarding' ? 'onboarding' : item.type === 'clearance' ? 'clearance' : item.type === 'leave' ? 'leave' : 'requests'}?case=${encodeURIComponent(item.id)}`} className="hr-lift flex items-center justify-between gap-3 rounded-2xl border border-white/80 bg-white/60 px-3 py-2.5"><span className="text-[13px] font-semibold text-navy">{pick(PERSONNEL_TYPE_LABEL[item.type])}</span><Badge tone={item.status === 'done' ? 'success' : item.status === 'cancelled' ? 'neutral' : 'info'}>{pick(PERSONNEL_STATUS_LABEL[item.status])}</Badge></Link></li>
-                  ))}
-                </ul>
-              ) : <p className="text-[12.5px] text-ink-faint">{t('لا توجد طلبات.', 'No cases.')}</p>}
-            </Section>
-          )}
         </div>
-
-        <aside className="hr-stagger min-w-0 space-y-5">
-          {!odooOnly && <Section icon={FileCheck2} title={t('اكتمال المستندات', 'Documents')}>
-            <div className="flex items-end justify-between"><span className="text-[12px] font-semibold text-slate-500">{t('مكتمل', 'Complete')}</span><b className="text-[24px] font-extrabold tabular-nums text-navy">{docsRate}%</b></div>
-            <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-slate-200/70"><span className={cx('block h-full rounded-full transition-[width] duration-700', docsRate >= 100 ? 'bg-gradient-to-r from-emerald-400 to-green-600' : 'bg-gradient-to-r from-amber-400 to-orange-500')} style={{ width: `${Math.min(100, docsRate)}%` }} /></div>
-            <ul className="mt-3 grid grid-cols-2 gap-1.5">
-              {documents.map(([key, value]) => <li key={key} className={cx('flex items-center gap-1.5 rounded-xl px-2 py-1.5 text-[11.5px] font-semibold', value ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100' : 'bg-white/60 text-slate-400 ring-1 ring-white/80')}>{value ? <Check size={12} aria-hidden="true" /> : <span aria-hidden="true">—</span>}<span className="truncate">{DOCUMENT_LABEL[key] ? pick(DOCUMENT_LABEL[key]) : key}</span><span className="sr-only">{value ? t('موجود', 'on file') : t('ناقص', 'missing')}</span></li>)}
-            </ul>
-          </Section>}
-          {!odooOnly && <Section icon={Landmark} title={t('الحساب البنكي', 'Bank')} action={edit('bank')}>
-            <dl className="space-y-3">
-              <KeyValue label={t('البنك', 'Bank')} value={employee.bankName} />
-              <KeyValue label={t('الحالة', 'Status')} value={employee.bankStatus} />
-              <KeyValue label={t('رقم الحساب', 'Account')} value={<span className="ltr">{employee.bankAccount || '—'}</span>} />
-            </dl>
-          </Section>}
-          {!odooOnly && <Section icon={Link2} title={t('حساب Qodo', 'Qodo account')}>
-            {canManage && dashboard.data ? <AccountLink employee={employee} accounts={dashboard.data.accounts} onSaved={() => void reload()} /> : <p className="text-[12.5px] text-slate-500">{employee.linkedUserId ? t('مربوط بحساب دخول.', 'Linked to a sign-in account.') : t('غير مربوط بحساب دخول.', 'Not linked to a sign-in account.')}</p>}
-          </Section>}
-          <Section icon={Database} title={t('مصادر الملف', 'Sources')}>
-            <ul className="grid grid-cols-2 gap-1.5">
-              {Object.entries(employee.sources).map(([source, present]) => <li key={source} className={cx('rounded-xl px-2.5 py-1.5 text-[11.5px] font-semibold ring-1', present ? 'bg-[rgb(var(--hr-a1)/0.1)] text-[rgb(var(--hr-a1))] ring-[rgb(var(--hr-a1)/0.2)]' : 'bg-white/60 text-slate-400 ring-white/80')}>{present ? '✓' : '—'} {source}</li>)}
-            </ul>
-          </Section>
-        </aside>
-      </div>
+      )}
 
       {editing && <Editor employee={employee} section={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); void reload(); }} />}
     </div>

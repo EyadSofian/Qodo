@@ -99,6 +99,7 @@ const RecruitmentKPI = hrPage(() => import('./features/hr/recruitment/pages/Recr
 const RecruitmentRewards = hrPage(() => import('./features/hr/recruitment/pages/RecruitmentRewards'), 'RecruitmentRewards');
 const PeopleDirectory = hrPage(() => import('./features/hr/people/PeopleDirectory'), 'PeopleDirectory');
 const EmployeeProfile = hrPage(() => import('./features/hr/people/EmployeeProfile'), 'EmployeeProfile');
+const AttendancePage = hrPage(() => import('./features/hr/attendance/AttendancePage'), 'AttendancePage');
 const personnelPages = () => import('./features/hr/personnel/PersonnelPages');
 const PersonnelLayout = hrPage(personnelPages, 'PersonnelLayout');
 const PersonnelOverview = hrPage(personnelPages, 'PersonnelOverview');
@@ -314,6 +315,7 @@ function Gate() {
           </Route>
           <Route path="people" element={<Suspended><PeopleDirectory /></Suspended>} />
           <Route path="people/:employeeCode" element={<Suspended><EmployeeProfile /></Suspended>} />
+          <Route path="attendance" element={<Suspended><AttendancePage /></Suspended>} />
           <Route path="personnel" element={<Suspended><PersonnelLayout /></Suspended>}>
             <Route index element={<Suspended><PersonnelOverview /></Suspended>} />
             <Route path="requests" element={<Suspended><PersonnelRequests /></Suspended>} />

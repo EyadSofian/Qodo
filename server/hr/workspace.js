@@ -33,6 +33,7 @@ import { photoUrlFor } from './recruitment/team.js';
 import { recruitmentOverview } from './recruitment/desk.js';
 import { performanceOverview } from './performance.js';
 import { PAYROLL_TYPES } from './personnel.js';
+import { attendanceConfigured, attendanceDashboardUrl } from './attendance.js';
 
 function rights(user) {
   return {
@@ -66,6 +67,12 @@ export async function hrAccess(user) {
     requests: can(user, PERMISSIONS.HR_RECRUITMENT_REQUEST) || can(user, PERMISSIONS.HR_RECRUITMENT_REVIEW),
     kpiReview: can(user, PERMISSIONS.HR_RECRUITMENT_KPI_REVIEW),
     rewards: can(user, PERMISSIONS.HR_RECRUITMENT_REWARDS_MANAGE),
+    // The fingerprint service is connected: HR and Personnel see everyone's
+    // attendance, anyone else their own (and their team's) on the profile.
+    attendance: attendanceConfigured() && (r.people || r.personnel),
+    attendanceConnected: attendanceConfigured(),
+    // Shift rules and the roster are edited on the fingerprint service itself.
+    attendanceDashboard: (r.settings || r.manage) ? attendanceDashboardUrl() : null,
   };
 }
 

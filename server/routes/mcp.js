@@ -147,6 +147,138 @@ const getEndpoint = {
   },
 };
 
+/** A GET to this server as the MCP account, so the route's own permission checks decide. */
+async function internalGet(ctx, path, params = {}) {
+  const url = new URL(path, selfOrigin());
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null && value !== '') url.searchParams.set(key, String(value));
+  }
+  const response = await fetch(url, {
+    headers: { accept: 'application/json', ...internalHeaders(ctx.user) },
+    redirect: 'manual',
+    signal: AbortSignal.timeout(120_000),
+  });
+  const type = response.headers.get('content-type') || '';
+  const body = type.includes('json') ? await response.json() : null;
+  return { status: response.status, body };
+}
+
+const DAY_PATTERN = { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' };
+
+function refusedOrFailed(status, body, what) {
+  if (status === 403) throw new McpToolError(`The MCP account may not read ${what}.`);
+  if (status === 503) throw new McpToolError(`${what} is not available right now (${body?.error || 'service unavailable'}).`);
+  throw new McpToolError(`${what} answered HTTP ${status}${body?.error ? ` (${body.error})` : ''}.`);
+}
+
+/**
+ * "Tell me about Ahmed" in one call: finds the person by code or name, then
+ * returns their profile summary — job, manager, today at the fingerprint
+ * device, the period's attendance with Odoo leave laid over it, and leave
+ * balances and requests.
+ */
+const employeeProfile = {
+  name: 'hr_employee_profile',
+  title: 'Employee profile with attendance and leave',
+  description:
+    'One employee\'s full profile: HR code, Arabic and English name, job, department, manager, hiring date, status, ' +
+    'today\'s fingerprint punches (first in, last out, in the office now), the period\'s attendance (present, absent, ' +
+    'unexcused absences, late days and minutes, early leave, missing punches, average arrival and hours, overtime, ' +
+    'attendance rate with and without leave) and Odoo time off (balances left per type, approved, upcoming and pending ' +
+    'requests). Pass an HR employee code or a name in Arabic or English. If several people match, the matches come back ' +
+    'to choose from. Defaults to the last 30 days; pass from/to (YYYY-MM-DD) for another period.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      employee: { type: 'string', description: 'HR employee code (e.g. 216) or a name, Arabic or English.' },
+      from: { ...DAY_PATTERN, description: 'First day, YYYY-MM-DD. Default: 29 days before "to".' },
+      to: { ...DAY_PATTERN, description: 'Last day, YYYY-MM-DD. Default: today.' },
+    },
+    required: ['employee'],
+    additionalProperties: false,
+  },
+  annotations: READ_ONLY,
+  run: async (args, ctx) => {
+    const wanted = String(args.employee || '').trim();
+    if (!wanted) throw new McpToolError('Name an employee by code or name.');
+    const range = { from: args.from, to: args.to };
+    const summaryOf = async (code) => internalGet(ctx, `/api/hr/employees/${encodeURIComponent(code)}/summary`, range);
+    if (/^(\d{1,8}|o\d+)$/i.test(wanted)) {
+      const direct = await summaryOf(wanted);
+      if (direct.status === 200) return direct.body;
+      if (direct.status !== 404) refusedOrFailed(direct.status, direct.body, 'This employee');
+    }
+    const search = await internalGet(ctx, '/api/hr/people/search', { q: wanted, limit: 8 });
+    if (search.status !== 200) refusedOrFailed(search.status, search.body, 'The employee directory');
+    const matches = search.body?.matches ?? [];
+    if (!matches.length) throw new McpToolError(`No employee matches "${wanted}".`);
+    const best = matches[0];
+    const clear = matches.length === 1 || best.score >= 90 && (matches[1]?.score ?? 0) < best.score;
+    if (!clear) {
+      return { ambiguous: true, note: 'Several employees match; call again with one employeeCode.', matches };
+    }
+    const found = await summaryOf(best.employeeCode);
+    if (found.status !== 200) refusedOrFailed(found.status, found.body, 'This employee');
+    return found.body;
+  },
+};
+
+const minuteText = (value) => (typeof value === 'string' ? value.slice(0, 5) : null);
+
+/** Who is in, late, absent, on leave or not yet in on one day, from the fingerprint devices. */
+const attendanceToday = {
+  name: 'hr_attendance_today',
+  title: 'Attendance today (fingerprint)',
+  description:
+    'Who is in the office, on time, late, absent, on approved Odoo leave or away (WFH, mission), or not in yet, on one day, ' +
+    'from the ZKTeco fingerprint devices, with first and last punch per person. Defaults to today (the last synced day). ' +
+    'Optionally narrow to one department.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      date: { ...DAY_PATTERN, description: 'The day, YYYY-MM-DD. Default: today.' },
+      department: { type: 'string', description: 'Optional department name (or part of it) to narrow to.' },
+    },
+    additionalProperties: false,
+  },
+  annotations: READ_ONLY,
+  run: async (args, ctx) => {
+    const params = args.date ? { from: args.date, to: args.date } : {};
+    const { status, body } = await internalGet(ctx, '/api/hr/attendance', params);
+    if (status !== 200) refusedOrFailed(status, body, 'Attendance');
+    if (!body?.connected) throw new McpToolError('The fingerprint attendance service is not connected to Qodo.');
+    const department = String(args.department || '').trim().toLowerCase();
+    const groups = {};
+    for (const [key, rows] of Object.entries(body.snapshot?.people ?? {})) {
+      const kept = (rows ?? []).filter((row) => !department || String(row.department || '').toLowerCase().includes(department));
+      if (!kept.length) continue;
+      groups[key] = kept.map((row) => ({
+        code: row.hr?.hrCode ?? row.code,
+        name: row.hr?.nameArabic || row.name || row.hr?.nameEnglish || '',
+        department: row.department || '',
+        firstIn: minuteText(row.first),
+        lastOut: minuteText(row.last),
+        lateMinutes: row.late ? Math.round(row.late) : 0,
+        inOfficeNow: Boolean(row.in_office),
+        timeOff: row.timeOff?.type ?? undefined,
+      }));
+    }
+    return {
+      day: body.range?.snapshot,
+      dataUntil: body.range?.data_until,
+      dayType: body.snapshot?.type,
+      inOfficeNow: body.snapshot?.in_office,
+      counts: Object.fromEntries(Object.entries(groups).map(([key, rows]) => [key, rows.length])),
+      people: groups,
+      legend: {
+        ontime: 'arrived on time', late: 'arrived after shift start + grace', in: 'in, one punch so far', present: 'present (flexible shift)',
+        incomplete: 'one punch only on a past day', absent: 'no punch, no approved leave', pending: 'not in yet, shift still running',
+        leave: 'on approved Odoo leave', away: 'away on an Odoo away type (WFH, mission, permission)', extra: 'worked on a day off',
+      },
+    };
+  },
+};
+
 const ASSISTANT_TOOLS = TOOL_DEFINITIONS.map((definition) => ({
     name: definition.name,
     title: TITLES[definition.name] ?? definition.name,
@@ -158,7 +290,7 @@ const ASSISTANT_TOOLS = TOOL_DEFINITIONS.map((definition) => ({
     run: (args, ctx) => runTool(definition.name, args, ctx.user, lang()),
 }));
 
-const LOCAL_TOOLS = [...ASSISTANT_TOOLS, listEndpoints, getEndpoint];
+const LOCAL_TOOLS = [...ASSISTANT_TOOLS, employeeProfile, attendanceToday, listEndpoints, getEndpoint];
 
 export const QODO_MCP = {
   name: 'engosoft-workspace',
@@ -166,6 +298,7 @@ export const QODO_MCP = {
   instructions:
     'Engosoft workspace: one MCP for every Engosoft dashboard. ' +
     'Qodo (company workspace): quick answers with list_projects, task_summary, decision_brief, list_team, recent_activity; ' +
+    'one employee\'s profile, attendance and leave with hr_employee_profile; who is in, late or absent today with hr_attendance_today; ' +
     'full data of every module, HR first, with qodo_list_endpoints then qodo_get. ' +
     'Insights Hub (marketing, ads, CRM, sales, accounting, P&L, courses from Odoo): insights_list_surfaces/insights_read for ' +
     'headline figures, insights_list_endpoints/insights_get for every ad set, ad, creative, lead and row. ' +

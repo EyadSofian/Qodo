@@ -22,7 +22,7 @@ export const SECTIONS = {
       ar: 'الموارد البشرية (الموظفين، المرتبات، الأداء، الإجازات، التوظيف)',
       en: 'HR (employees, payroll, performance, leave, recruitment)',
       paths: ['/api/hr/*', '/api/hr-operations/*'],
-      tools: [],
+      tools: ['hr_employee_profile', 'hr_attendance_today'],
     },
     kpi: { ar: 'مؤشرات الأداء KPI', en: 'KPI scorecards', paths: ['/api/kpi/*'], tools: [] },
     tasks: {
